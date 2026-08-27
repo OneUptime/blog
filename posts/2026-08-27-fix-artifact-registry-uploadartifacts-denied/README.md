@@ -43,7 +43,7 @@ gcloud artifacts repositories describe "${REPOSITORY}" \
   --project="${REPOSITORY_PROJECT_ID}"
 ```
 
-Confirm that the repository exists in that project and location and that its format is Docker. A typo in the location, project, or repository can look like an IAM failure because the grant applies to a different resource.
+Confirm that the repository exists in that project and location, that its format is Docker, and that its mode is standard. A typo in the location, project, or repository can look like an IAM failure because the grant applies to a different resource.
 
 ## Identify the principal used by the helper
 
@@ -54,7 +54,7 @@ gcloud auth list --filter=status:ACTIVE \
   --format='value(account)'
 ```
 
-In CI, the active principal is often a service account rather than a user. If Docker runs under another operating-system user, through `sudo`, or with a different `DOCKER_CONFIG`, it can read a different helper configuration and credential context.
+In CI, the active principal is often a service account rather than a user. If Docker runs under another operating-system user or through `sudo`, it can read a different Docker helper configuration and gcloud credential context. A different `DOCKER_CONFIG` changes which Docker client configuration, and therefore which registry helper, Docker uses.
 
 Configure the exact registry hostname as the same user that runs Docker:
 
@@ -105,7 +105,7 @@ docker tag "${SOURCE_IMAGE}" "${TARGET_IMAGE}"
 docker push "${TARGET_IMAGE}"
 ```
 
-If the push still fails, capture the exact destination and error without sharing tokens. Recheck the effective policy on the repository:
+If the push still fails, capture the exact destination and error without sharing tokens. Recheck the allow policy attached to the repository:
 
 ```bash
 gcloud artifacts repositories get-iam-policy "${REPOSITORY}" \
@@ -113,25 +113,25 @@ gcloud artifacts repositories get-iam-policy "${REPOSITORY}" \
   --project="${REPOSITORY_PROJECT_ID}"
 ```
 
-Consider IAM conditions, group membership propagation, and organization policies when a visible binding does not apply to the request.
+This command does not include inherited allow policies, IAM deny policies, or principal access boundary policies. Consider IAM conditions, group membership propagation, deny policies, and principal access boundary policies when a visible allow-policy binding does not apply to the request.
 
 ## Check adjacent causes without conflating them
 
 Several failures occur at a similar point in a Docker workflow:
 
 - A missing `docker-credential-gcloud` executable is a local helper problem, not repository IAM.
-- A `401 Unauthorized` usually indicates that the registry did not receive usable authentication.
+- A final `401 Unauthorized` usually indicates that the registry did not receive usable authentication.
 - An `uploadArtifacts` denial indicates the identified principal lacks the required permission on the addressed repository, or the addressed repository path is not the one whose policy was updated.
-- An immutable-tags policy can reject replacing an existing tag even when upload permission is present. Use a new tag or follow the repository's release policy.
-- A token obtained from a Compute Engine VM can also be constrained by the VM's access scopes in addition to IAM.
+- The immutable image tags setting rejects using an existing tag for a different image version even when upload permission is present. Use a new tag or follow the repository's release policy.
+- Credentials for a Compute Engine VM's attached service account can also be constrained by the VM's access scopes in addition to IAM.
 
-The Artifact Registry API must be enabled for the repository project, and the repository must already exist unless a documented create-on-push migration workflow is being used.
+The Artifact Registry API must be enabled for the repository project, and a `pkg.dev` repository must already exist. Create-on-push roles apply only to `gcr.io` repositories in documented Container Registry migration workflows.
 
 ## Design production access deliberately
 
 For automated builds, use a dedicated service account with Writer on only the required repositories. Prefer an attached identity or Workload Identity Federation over a service account key. Separate build identities from deployment identities when their permissions differ.
 
-Reader cannot upload. Repository Administrator is broader because it can manage artifacts and repository policies. The documented Writer role is the narrower predefined role intended for reading and writing artifacts within an existing repository.
+Reader cannot upload. Repository Administrator is broader because it can read, write, and delete artifacts. The documented Writer role is the narrower predefined role intended for reading and writing artifacts within an existing repository.
 
 ## Official Documentation
 
