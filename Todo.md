@@ -117,7 +117,6 @@
 
 ## ServiceMonitors
 
-5. Why a ServiceMonitor Endpoint Must Reference the Named Service Port, Not the Container Port
 6. ServiceMonitor vs PodMonitor: Which One Should Scrape Your Kubernetes Workload?
 7. How to Scrape an External VM or FQDN with Prometheus Operator: ServiceMonitor or ScrapeConfig?
 8. How to Configure Basic Authentication in a ServiceMonitor Without Secret Newline Failures
