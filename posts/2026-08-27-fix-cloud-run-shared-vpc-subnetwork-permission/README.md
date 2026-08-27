@@ -66,7 +66,8 @@ The simpler layout grants Compute Network User across the host project:
 ```bash
 gcloud projects add-iam-policy-binding "${HOST_PROJECT_ID}" \
   --member="serviceAccount:${RUN_SERVICE_AGENT}" \
-  --role='roles/compute.networkUser'
+  --role='roles/compute.networkUser' \
+  --condition=None
 ```
 
 This lets the service agent use subnets across the host project. For narrower scope, grant Network Viewer on the host project and Network User on only the selected subnet:
@@ -74,7 +75,8 @@ This lets the service agent use subnets across the host project. For narrower sc
 ```bash
 gcloud projects add-iam-policy-binding "${HOST_PROJECT_ID}" \
   --member="serviceAccount:${RUN_SERVICE_AGENT}" \
-  --role='roles/compute.networkViewer'
+  --role='roles/compute.networkViewer' \
+  --condition=None
 
 gcloud compute networks subnets add-iam-policy-binding "${SUBNET}" \
   --project="${HOST_PROJECT_ID}" \
@@ -151,7 +153,7 @@ Resolve the exact principal, project, region, and subnet before adding any bindi
 - [Direct VPC egress for Cloud Run](https://cloud.google.com/run/docs/configuring/vpc-direct-vpc)
 - [Cloud Run service agent IAM role](https://cloud.google.com/iam/docs/roles-permissions/run#run.serviceAgent)
 - [Shared VPC overview and IAM roles](https://cloud.google.com/vpc/docs/shared-vpc)
-- [Cloud Run Direct VPC egress IP allocation](https://cloud.google.com/run/docs/configuring/shared-vpc-direct-vpc#ip-address-allocation)
+- [Cloud Run Direct VPC egress IP allocation](https://cloud.google.com/run/docs/configuring/shared-vpc-direct-vpc#direct-vpc-ip-allocation)
 
 ## Conclusion
 
