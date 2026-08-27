@@ -28,7 +28,7 @@ groups:
     interval: 1m
     rules:
       - record: tls_certificate_seconds_remaining
-        expr: probe_ssl_earliest_cert_expiry - time()
+        expr: probe_ssl_earliest_cert_expiry{job="blackbox-https"} - time()
 ```
 
 This preserves the source labels such as `instance`, `job`, region, and vantage point. The earliest chain expiry can belong to an intermediate presented by the server, not necessarily the leaf. That is useful because an expiring served intermediate can also break clients, but dashboards should make the distinction clear when they separately inventory the leaf.
@@ -85,15 +85,15 @@ groups:
 
 At exactly seven days, the warning remains active and the critical comparison is false; at the next value below seven days, warning stops and critical begins immediately. The critical rule deliberately has no `for`, avoiding a pending-state gap during escalation. If policy requires “seven days or less” to be critical, use `<=` for critical and `>` for the warning's lower bound.
 
-A negative seconds-remaining value keeps the critical alert active after expiry. That is normally desirable. The runbook should distinguish expired from near expiry in its first diagnostic step.
+If the metric remains available after expiry—for example, in a separate probe that skips certificate verification—a negative seconds-remaining value keeps the critical alert active. With normal certificate validation, expiry can instead fail the TLS handshake and remove the metric, so `TLSProbeFailed` becomes the actionable state. The runbook should distinguish expired from near expiry in its first diagnostic step.
 
 ## Use `for` for Data Stability, Not Procrastination
 
-Prometheus's `for` clause requires the expression to remain active before firing. It can stop one anomalous observation from creating a warning, but it does not preserve an already firing alert when the series disappears. A missing evaluation resets a pending alert and normally resolves a firing alert unless `keep_firing_for` is configured.
+Prometheus's `for` clause requires the expression to remain active before firing. It can stop one anomalous observation from creating a warning, but it does not preserve an already firing alert when the series disappears. If a successful evaluation no longer returns the series, a pending alert resets and a firing alert normally resolves unless `keep_firing_for` is configured.
 
 Expiry normally decreases monotonically, so delaying the critical tier adds little value and creates an escalation gap after the mutually exclusive warning ends. Let the critical tier fire immediately, then use Alertmanager's `group_wait` to absorb near-simultaneous related alerts. Apply `for` to genuinely noisy probe-failure or rollout signals according to their failure budget.
 
-Do not use a multi-day `for` to simulate a second threshold. A rule edit or a Prometheus restart can reset pending state, and the alert annotation still describes the wrong boundary. Put calendar policy in the expression and use `for` only for stability.
+Do not use a multi-day `for` to simulate a second threshold. Changes to a rule's name or labels can reset pending state. Prometheus attempts to restore `for` state across restarts, but restoration is bounded by `--rules.alert.for-outage-tolerance` and requires the prior state to remain available. The alert annotation would still describe the wrong boundary. Put calendar policy in the expression and use `for` only for stability.
 
 `keep_firing_for` can prevent false resolutions when data momentarily disappears, but use it carefully on expiry alerts. A separate `TLSProbeFailed` rule is still required, and a long keep-firing period can delay the visible resolution after a successful rotation.
 
@@ -115,7 +115,7 @@ route:
       repeat_interval: 2h
 ```
 
-Grouping by `instance` creates one notification per endpoint. Leaving `instance` out groups a fleet's expiring certificates by alert name and team, while the notification template can list every affected instance. Select the behavior the receiver can act on.
+Adding `instance` to `group_by` creates separate groups per endpoint and per any other grouped labels. Leaving `instance` out groups a fleet's expiring certificates by alert name and team, while the notification template can list every affected instance. Select the behavior the receiver can act on.
 
 `group_wait` allows related alerts to arrive before the first notification. `group_interval` governs updates to an existing group. `repeat_interval` governs reminders when nothing changed and should be a multiple of `group_interval`.
 
@@ -124,8 +124,10 @@ Add inhibition as defense in depth if warning and critical rules might overlap d
 ```yaml
 inhibit_rules:
   - source_matchers:
+      - alertname="TLSCertificateExpiryCritical"
       - severity="critical"
     target_matchers:
+      - alertname="TLSCertificateExpiryWarning"
       - severity="warning"
     equal: [job, instance]
 ```
@@ -138,7 +140,7 @@ The same certificate can be observed through several DNS names, IP families, reg
 
 - Keep `vantage` and `ip_family` when they identify a path that can fail independently.
 - Add a stable `certificate_owner` or `service` label for routing.
-- Add a `certificate_group` label when many endpoints intentionally share one managed certificate and should produce one work item.
+- Add a stable `certificate_group` label when many endpoints intentionally share one managed certificate, and use it in notification grouping or downstream ticket deduplication to produce one work item.
 - Do not put a changing days-remaining value or full certificate PEM in labels.
 - Avoid monitoring every SAN as a separate target unless each hostname is independently served and operationally owned.
 
@@ -167,7 +169,7 @@ Before relying on the policy, test these cases in a staging rule group:
 6. Alertmanager restarts and retains notification state as designed;
 7. a silence covers planned work but does not outlive its maintenance window.
 
-Use `promtool check rules` and `amtool check-config` where available to check syntax. This is distinct from application-specific blog validation.
+Use `promtool check rules /path/to/rules.yml` and `amtool check-config /path/to/alertmanager.yml` where available to check syntax. This is distinct from application-specific blog validation.
 
 ## Official Documentation
 
