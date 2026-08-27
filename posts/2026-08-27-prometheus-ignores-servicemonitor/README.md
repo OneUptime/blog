@@ -8,16 +8,16 @@ Description: Trace a ServiceMonitor through Operator selection, generated config
 
 ---
 
-A `ServiceMonitor` can be accepted by the Kubernetes API and still have no effect on Prometheus. Existence proves only that the CRD is installed and the object passed API validation. Four separate selections must succeed:
+A `ServiceMonitor` can be accepted by the Kubernetes API and still have no effect on Prometheus. Existence proves only that the CRD is installed and the object passed API validation. Four separate boundaries must be satisfied:
 
 ```text
 Prometheus selects ServiceMonitor namespace
   -> Prometheus selects ServiceMonitor labels
     -> ServiceMonitor selects Service namespace and labels
-      -> endpoint selects a named Service port
+      -> endpoint identifies the scrape port
 ```
 
-Debug those boundaries in order. A scrape error is relevant only after the monitor has generated a scrape job and discovered a target.
+Debug those boundaries in order. A scrape error is relevant only after the monitor has generated a scrape job and produced an active target.
 
 ## 1. Find the Prometheus Custom Resource
 
@@ -71,11 +71,11 @@ kubectl get events -n MONITOR_NAMESPACE \
   --sort-by=.lastTimestamp
 ```
 
-Also inspect the Operator logs for reconciliation errors. Names vary by installation, so find the deployment rather than assuming it:
+Also inspect the Operator logs for reconciliation errors. Deployment names and labels vary by installation, so list deployments rather than assuming either, then inspect the Operator deployment:
 
 ```bash
-kubectl get deployment -A \
-  -l app.kubernetes.io/name=prometheus-operator
+kubectl get deployment -A
+kubectl logs -n OPERATOR_NAMESPACE deployment/OPERATOR_DEPLOYMENT
 ```
 
 The generated configuration is stored in a Secret named for the Prometheus resource with a `prometheus-` prefix. The Operator troubleshooting guide shows this check for a Prometheus resource named `k8s`:
@@ -85,16 +85,16 @@ kubectl -n monitoring get secret prometheus-k8s -o json \
   | jq -r '.data["prometheus.yaml.gz"]' \
   | base64 -d \
   | gunzip \
-  | grep 'MONITOR_NAME'
+  | grep -F 'serviceMonitor/MONITOR_NAMESPACE/MONITOR_NAME/'
 ```
 
 Treat generated configuration as sensitive because it can contain rendered references and authentication configuration. Do not paste it into a public ticket.
 
-If the monitor name is absent, remain at the Operator-selection layer. If it is present, continue to target discovery.
+If this job prefix is absent, remain at the Operator-selection layer. If it is present, continue to target discovery.
 
 ## 3. Check What the ServiceMonitor Selects
 
-The `ServiceMonitor` uses `spec.namespaceSelector` to choose Service namespaces and `spec.selector` to match Service labels:
+The `ServiceMonitor` uses `spec.namespaceSelector` to choose Service namespaces and `spec.selector` to match Service labels. If the owning `Prometheus` resource sets `spec.ignoreNamespaceSelectors: true`, the Operator ignores the monitor's namespace selector and restricts discovery to the `ServiceMonitor` object's namespace.
 
 ```yaml
 apiVersion: monitoring.coreos.com/v1
@@ -128,7 +128,7 @@ The labels on a Deployment or Pod do not substitute for labels on the Service. I
 
 ## 4. Match the Named Service Port
 
-`endpoints[].port` is the name of a port in `Service.spec.ports`, not a numeric container port:
+When set, `endpoints[].port` is the name of a port in `Service.spec.ports`, not a numeric container port:
 
 ```yaml
 apiVersion: v1
@@ -154,28 +154,36 @@ kubectl get service api -n production \
 
 If the monitor says `port: metrics`, the Service must contain `name: metrics`. The Pod's container port name matters to the Service's `targetPort`, but it is not what `ServiceMonitor.endpoints[].port` directly references.
 
+As an alternative, `ServiceMonitor.endpoints[].targetPort` can select a Pod container port by name or number. If both fields are set, `port` takes precedence.
+
 ## 5. Verify Discovery RBAC and the Live Target
 
-Prometheus performs Kubernetes service discovery and needs permission to list and watch the relevant resources. Depending on whether the configured discovery role is `Endpoints` or `EndpointSlice`, verify Services, Pods, and Endpoints or EndpointSlices in the target namespaces:
+Prometheus performs Kubernetes service discovery and needs `get`, `list`, and `watch` permissions on the relevant resources. Check `spec.serviceDiscoveryRole` on the `ServiceMonitor`; if it is unset, it inherits the `Prometheus` setting, and if both are unset the Operator uses `Endpoints`. Kubernetes deprecated the Endpoints API in version 1.33, so prefer `EndpointSlice` for current deployments after granting the corresponding RBAC.
+
+For each target namespace, replace `DISCOVERY_RESOURCE` with `endpoints` for the `Endpoints` role or `endpointslices.discovery.k8s.io` for the `EndpointSlice` role, then verify all three verbs:
 
 ```bash
-kubectl auth can-i list services --all-namespaces \
-  --as=system:serviceaccount:PROMETHEUS_NAMESPACE:PROMETHEUS_SERVICE_ACCOUNT
-kubectl auth can-i list pods --all-namespaces \
-  --as=system:serviceaccount:PROMETHEUS_NAMESPACE:PROMETHEUS_SERVICE_ACCOUNT
-kubectl auth can-i list endpointslices.discovery.k8s.io --all-namespaces \
-  --as=system:serviceaccount:PROMETHEUS_NAMESPACE:PROMETHEUS_SERVICE_ACCOUNT
+for resource in services pods DISCOVERY_RESOURCE; do
+  for verb in get list watch; do
+    kubectl auth can-i "$verb" "$resource" -n TARGET_NAMESPACE \
+      --as=system:serviceaccount:PROMETHEUS_NAMESPACE:PROMETHEUS_SERVICE_ACCOUNT
+  done
+done
 ```
 
-Port-forward the Prometheus Service and inspect **Status > Service Discovery** and **Status > Targets**:
+Repeat the checks for every selected namespace. Use `--all-namespaces` instead of `-n TARGET_NAMESPACE` only when the generated discovery configuration watches all namespaces. Your current identity must also be allowed to impersonate the Prometheus ServiceAccount for `--as` to work. If `attachMetadata.node` is enabled, verify `list` and `watch` permissions on the cluster-scoped `nodes` resource as well.
+
+Find and port-forward a Pod for the specific Prometheus resource, then inspect **Status > Service discovery** and **Status > Target health**:
 
 ```bash
+kubectl -n PROMETHEUS_NAMESPACE get pod \
+  -l operator.prometheus.io/name=PROMETHEUS_NAME
 kubectl -n PROMETHEUS_NAMESPACE port-forward \
-  service/prometheus-operated 9090:9090
+  pod/PROMETHEUS_POD 9090:9090
 ```
 
 - absent from generated configuration means Operator selection or rejection;
-- job present with no discovered targets means Service selection, port matching, discovery RBAC, or endpoint data;
+- job present but no active target means inspect dropped targets for Service selection or port matching, then check discovery RBAC and endpoint data;
 - target present but down means network, TLS, authentication, path, response format, or timeout.
 
 This classification prevents unrelated fixes such as changing NetworkPolicy when Prometheus never selected the monitor.
@@ -186,8 +194,8 @@ This classification prevents unrelated fixes such as changing NetworkPolicy when
 - [Prometheus Operator troubleshooting](https://prometheus-operator.dev/docs/platform/troubleshooting/)
 - [Prometheus Operator getting started](https://prometheus-operator.dev/docs/developer/getting-started/)
 - [Kubernetes label selectors](https://kubernetes.io/docs/concepts/overview/working-with-objects/labels/)
-- [Prometheus target page](https://prometheus.io/docs/prometheus/latest/querying/api/#targets)
+- [Prometheus targets API](https://prometheus.io/docs/prometheus/latest/querying/api/#targets)
 
 ## Conclusion
 
-Prometheus does not scrape a ServiceMonitor merely because Kubernetes stores it. Verify the live Prometheus selectors, rejection Events, generated configuration, matching Service labels, named Service port, discovery RBAC, and finally the target page. Each check proves one boundary and identifies the layer that is actually ignoring the object.
+Prometheus does not scrape a ServiceMonitor merely because Kubernetes stores it. Verify the live Prometheus selectors, rejection Events, generated configuration, matching Service labels, configured endpoint port, discovery RBAC, and finally the target-health page. Each check proves one boundary and identifies the layer that is actually ignoring the object.
