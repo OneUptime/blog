@@ -24,12 +24,12 @@ kubectl get pod worker-abcde -n batch -o yaml
 kubectl describe pod worker-abcde -n batch
 kubectl get events -n batch \
   --field-selector involvedObject.name=worker-abcde \
-  --sort-by=.lastTimestamp
+  --sort-by=.metadata.creationTimestamp
 ```
 
 Inspect `.status.reason`, `.status.message`, container states, the assigned node, declared `ephemeral-storage` requests and limits, and every `emptyDir.sizeLimit`.
 
-Messages that identify a container's writable layer and logs exceeding its limit, the Pod's aggregate local storage exceeding summed limits, or one `emptyDir` exceeding its size limit point to Pod-level isolation. A message about low `nodefs`, `imagefs`, or inode availability points to node-pressure eviction.
+Messages that identify a container exceeding its local `ephemeral-storage` limit, the Pod's aggregate local storage exceeding summed limits, or one `emptyDir` exceeding its size limit point to Pod-level isolation. A message that the node was low on `ephemeral-storage` or `inodes` points to node-pressure eviction; it does not by itself identify whether `nodefs`, `imagefs`, or `containerfs` crossed the threshold.
 
 ## Read the Node's DiskPressure Condition
 
@@ -42,7 +42,7 @@ kubectl get node "$NODE" -o json \
   | jq '.status.conditions[] | select(.type == "DiskPressure")'
 
 kubectl describe node "$NODE"
-kubectl get events --all-namespaces --sort-by=.lastTimestamp \
+kubectl get events --all-namespaces --sort-by=.metadata.creationTimestamp \
   | grep -E "$NODE|DiskPressure|Evicted"
 ```
 
@@ -82,12 +82,12 @@ Then correlate the filesystem with Pod statistics:
 kubectl get --raw "/api/v1/nodes/${NODE}/proxy/stats/summary" \
   | jq '.pods[] | {
       pod: (.podRef.namespace + "/" + .podRef.name),
-      ephemeral: .ephemeralStorage,
+      ephemeral: .["ephemeral-storage"],
       volumes: .volume
     }'
 ```
 
-Summary data is measured periodically. Directory-scan mode can miss deleted files that remain open. Use node process and filesystem inspection to find that case, or use supported project-quota monitoring for more accurate kubelet accounting.
+Summary data is measured periodically. Directory-scan mode can miss deleted files that remain open. Use node process and filesystem inspection to find that case. For eligible `emptyDir` volumes, supported project-quota monitoring provides more accurate kubelet accounting.
 
 ## Understand Kubelet Reclamation and Ranking
 
