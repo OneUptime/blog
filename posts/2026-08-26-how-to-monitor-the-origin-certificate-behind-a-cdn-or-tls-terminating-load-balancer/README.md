@@ -8,7 +8,7 @@ Description: Monitor the certificate on the CDN-to-origin or load-balancer-to-ba
 
 ---
 
-When a CDN or load balancer terminates visitor TLS, a public check sees the edge certificate. If the platform opens a second HTTPS connection to the origin, that connection has a different certificate, trust policy, hostname, and sometimes a private network path.
+When a CDN or load balancer terminates visitor TLS, a public check sees the edge certificate. If the platform opens a second HTTPS connection to the origin, that connection is a separate TLS session; its certificate, trust policy, hostname, and network path can differ from the public hop.
 
 Both hops can fail independently:
 
@@ -16,7 +16,7 @@ Both hops can fail independently:
 client -- TLS certificate A --> CDN or load balancer -- TLS certificate B --> origin
 ```
 
-Monitoring only certificate A can stay green while certificate B expires and the edge begins returning gateway errors. The solution is not to bypass the edge accidentally; it is to create a deliberate origin probe that reproduces the second hop's security policy.
+Monitoring only certificate A can stay green while certificate B expires and the edge begins returning gateway errors. The solution is not to bypass the edge accidentally; it is to create a deliberate origin probe that reproduces the second hop's security policy or applies a deliberately stricter, documented policy.
 
 ## Define the Two Endpoints Separately
 
@@ -35,6 +35,7 @@ Connecting to an origin IP without SNI often returns its default virtual host. U
 
 ```bash
 curl --verbose \
+  --noproxy '*' \
   --resolve app.example.com:443:10.20.30.40 \
   https://app.example.com/healthz
 ```
@@ -61,7 +62,7 @@ openssl s_client \
   -CAfile /etc/ssl/origin-monitor-roots.pem </dev/null
 ```
 
-Never replace verification with `-verify 0` or `insecure_skip_verify: true`. That would prove encryption but not that the monitor reached the authentic origin.
+Never omit `-verify_hostname` or `-verify_return_error`, and never set `insecure_skip_verify: true`. By default, `openssl s_client` reports verification errors but continues the connection; `-verify` accepts a positive chain-depth value, so `-verify 0` is not a way to disable verification. A TLS connection without successful chain and hostname verification proves encryption but not that the monitor reached the authentic origin.
 
 ## Put the Probe on an Authorized Path
 
@@ -119,9 +120,9 @@ scrape_configs:
         replacement: blackbox-origin.example.net:9115
 ```
 
-Omit `ca_file` when the origin certificate chains to the normal system roots. For mTLS, use the module's `cert_file` and `key_file` fields with a narrowly authorized monitoring identity and strict file permissions.
+Omit `ca_file` when the origin certificate chains to the normal system roots. For mTLS, set `cert_file` and `key_file` under the module's `http.tls_config` with a narrowly authorized monitoring identity and strict file permissions.
 
-The current exporter exposes the live leaf identity in `probe_ssl_last_chain_info`, the earliest presented-chain expiry as `probe_ssl_earliest_cert_expiry`, and probe validity as `probe_success`.
+The current exporter exposes the live leaf identity in `probe_ssl_last_chain_info`, the earliest presented-chain expiry as `probe_ssl_earliest_cert_expiry`, and the overall probe result as `probe_success`.
 
 ## Alert on Failure and Expiry Separately
 
@@ -129,13 +130,13 @@ The current exporter exposes the live leaf identity in `probe_ssl_last_chain_inf
 groups:
   - name: origin-tls
     rules:
-      - alert: OriginTLSProbeFailed
+      - alert: OriginHTTPSProbeFailed
         expr: probe_success{job="ssl-origin"} == 0
         for: 10m
         labels:
           severity: critical
         annotations:
-          summary: "Origin TLS failed for {{ $labels.service }}"
+          summary: "Origin HTTPS probe failed for {{ $labels.service }}"
 
       - alert: OriginTLSCertificateExpiresSoon
         expr: |
@@ -152,11 +153,11 @@ An expiry alert cannot replace the probe-failure alert. When validation or conne
 
 ## Account for Origin-Specific Trust
 
-Cloudflare Full (strict), for example, requires an unexpired origin certificate whose CN or SAN matches the requested or target hostname and which is issued by a publicly trusted CA or Cloudflare Origin CA. A Cloudflare Origin CA certificate is intended for the Cloudflare-to-origin hop; a normal browser connecting directly to the origin need not trust it.
+Cloudflare Full (strict), for example, requires an unexpired origin certificate whose CN or SAN matches the requested or target hostname and whose issuer Cloudflare trusts. By default, accepted issuers include a publicly trusted CA or Cloudflare Origin CA. When the optional Custom Origin Trust Store is configured, Cloudflare can instead use CA roots uploaded for the zone. A Cloudflare Origin CA certificate is intended for the Cloudflare-to-origin hop; a normal browser connecting directly to the origin need not trust it.
 
 That is why the origin module can require a dedicated CA file while the public-edge module uses public roots. Keep that CA file scoped to this module. Adding a private or Origin CA root to the system-wide trust store changes the trust decisions of unrelated software.
 
-For managed load balancers, also inspect control-plane state. A backend may terminate TLS on an ingress controller, service mesh gateway, appliance, or application process that is not represented in the public listener's certificate inventory.
+For managed load balancers, also inspect control-plane state. Backend certificate validation is platform-specific: an AWS Application Load Balancer does not validate certificates on HTTPS targets and permits expired or self-signed certificates, so a verified probe intentionally enforces a stricter policy than the ALB itself. A backend may terminate TLS on an ingress controller, service mesh gateway, appliance, or application process that is not represented in the public listener's certificate inventory.
 
 ## Prevent False Origin Results
 
@@ -173,11 +174,14 @@ For managed load balancers, also inspect control-plane state. A backend may term
 
 - [OpenSSL `s_client` command](https://docs.openssl.org/master/man1/openssl-s_client/)
 - [curl command-line manual: `--resolve`](https://curl.se/docs/manpage.html#--resolve)
+- [curl command-line manual: `--noproxy`](https://curl.se/docs/manpage.html#--noproxy)
 - [Prometheus blackbox exporter configuration](https://github.com/prometheus/blackbox_exporter/blob/master/CONFIGURATION.md)
 - [Prometheus multi-target exporter pattern](https://prometheus.io/docs/guides/multi-target-exporter/)
 - [Cloudflare Full (strict) SSL/TLS mode](https://developers.cloudflare.com/ssl/origin-configuration/ssl-modes/full-strict/)
 - [Cloudflare Origin CA](https://developers.cloudflare.com/ssl/origin-configuration/origin-ca/)
+- [Cloudflare Custom Origin Trust Store](https://developers.cloudflare.com/ssl/origin-configuration/custom-origin-trust-store/)
 - [AWS Application Load Balancer listeners](https://docs.aws.amazon.com/elasticloadbalancing/latest/application/load-balancer-listeners.html)
+- [AWS Application Load Balancer target groups](https://docs.aws.amazon.com/elasticloadbalancing/latest/application/load-balancer-target-groups.html)
 
 ## Conclusion
 
