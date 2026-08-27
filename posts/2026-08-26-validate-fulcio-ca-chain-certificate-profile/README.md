@@ -55,11 +55,11 @@ The root **must** satisfy all of these:
 - Key Usage is critical and contains exactly Certificate Sign and CRL Sign.
 - Basic Constraints is critical and contains `CA:TRUE`.
 - Extended Key Usage is absent.
-- Subject Key Identifier is present.
+- Subject Key Identifier is present and non-critical.
 - serial is unique, random, positive, and 160 bits.
 - the certificate is RFC 5280 compliant.
 
-The root **may** include a path-length constraint. If it includes an Authority Key Identifier, that value must equal its SKI. Additional Subject attributes are allowed.
+The root **may** include a path-length constraint. For this root-intermediate hierarchy, any root path-length constraint must permit at least one non-self-issued intermediate; `pathlen:0` would reject issued leaves chained through it. If the root includes an Authority Key Identifier, the extension must be non-critical and its value must equal the root's SKI. Additional Subject attributes are allowed.
 
 The profile recommends an ECDSA NIST P-384 or stronger CA key, or RSA-4096, and a lifetime that avoids frequent root rotation, such as ten years.
 
@@ -73,7 +73,7 @@ openssl x509 -in fulcio-root.pem -noout \
   -nameopt RFC2253
 ```
 
-Do not compare only the displayed CN. Multi-valued RDNs, ordering, string encodings, and additional attributes can differ. A ceremony validator should compare the parsed X.509 `pkix.Name`/raw issuer and subject representation according to RFC 5280; the text output is a human review aid.
+Do not compare only the displayed CN. A ceremony validator should ASN.1-decode the raw Subject and Issuer as RDN sequences and apply RFC 5280 Section 7.1 name matching: normalize supported DirectoryString values, treat attribute order within a multi-valued RDN as insignificant, and preserve RDN-sequence order. For this newly generated CA chain, also require byte-identical root `RawIssuer`/`RawSubject` and intermediate `RawIssuer`/root `RawSubject`; RFC 5280 Section 4.1.2.6 requires a CA's Subject to be encoded identically in Issuer fields. Do not compare only Go's `pkix.Name`, which flattens multi-valued RDN grouping. The text output is a human review aid.
 
 ### Check exact extensions and criticality
 
@@ -96,10 +96,9 @@ Reject Digital Signature, Key Encipherment, or any other root Key Usage. Reject 
 ROOT_SERIAL=$(openssl x509 -in fulcio-root.pem -noout -serial |
   sed 's/^serial=//')
 printf '%s\n' "$ROOT_SERIAL"
-printf '%s' "$ROOT_SERIAL" | wc -c
 ```
 
-The canonical hexadecimal value should be positive and represent 20 octets (40 hex digits), with enough entropy from a cryptographic random generator. Text length alone cannot prove randomness or uniqueness. Check the CA issuance database/ceremony inventory for collision and preserve the generation evidence.
+The profile calls for a positive, random 160-bit serial, but that wording is in tension with RFC 5280: `serialNumber` must be a positive INTEGER no longer than 20 encoded octets, while a positive 160-bit magnitude whose high bit is set needs a leading `00` DER sign octet. Do not require 40 displayed hexadecimal digits; OpenSSL's serial display omits DER sign padding and leading zeroes. Parse the DER INTEGER, enforce a nonzero positive value and RFC 5280's 20-octet maximum, and document the interpretation and generator pinned for the ceremony. Text length cannot prove randomness or uniqueness. Check the CA issuance database/ceremony inventory for collision and preserve the generation evidence.
 
 ## Validate the Intermediate's Required Fields
 
@@ -117,8 +116,8 @@ The intermediate **must** satisfy:
 - its validity interval is contained within the parent's interval.
 - Basic Constraints is critical and contains `CA:TRUE`.
 - serial is unique, random, positive, and 160 bits.
-- SKI is present.
-- AKI equals the parent's SKI.
+- SKI is present and non-critical.
+- AKI is non-critical and equals the parent's SKI.
 - the certificate is RFC 5280 compliant.
 
 The intermediate should use `pathlen:0`, should use ECDSA P-384 or stronger or RSA-4096, should have a lifetime such as three years, and should not mark its Code Signing EKU critical. It should not switch between RSA and ECDSA relative to its parent because some clients cannot build mixed-scheme chains.
@@ -180,6 +179,7 @@ Use the root as the trust anchor and the intermediate as the certificate being c
 ```bash
 openssl verify \
   -show_chain \
+  -x509_strict \
   -check_ss_sig \
   -CAfile fulcio-root.pem \
   -purpose any \
@@ -193,19 +193,22 @@ For a representative issued leaf:
 ```bash
 openssl verify \
   -show_chain \
+  -x509_strict \
   -CAfile fulcio-root.pem \
   -untrusted fulcio-intermediate.pem \
   -purpose any \
   issued-leaf.pem
 ```
 
-The leaf test catches some chaining constraints, but leaf profile validation is a separate checklist: empty Subject, exactly one critical SAN GeneralName, critical Digital Signature usage, Code Signing EKU, issuer OID, ten-minute lifetime, and CT evidence.
+The leaf test catches some chaining constraints, but leaf profile validation is a separate checklist: empty Subject, exactly one critical SAN GeneralName, critical Digital Signature usage, Code Signing EKU, issuer OID, a validity interval contained within its parent (the current Fulcio implementation and public-good deployment use ten minutes), and CT evidence.
 
 ## Verify the Active Signer Matches Certificate Zero
 
 For `fileca`, compare the private key's public SPKI with the intermediate:
 
 ```bash
+set -o pipefail
+
 openssl pkey \
   -in fulcio-intermediate-key.pem \
   -passin env:FULCIO_FILECA_PASSWORD \
@@ -221,22 +224,22 @@ openssl x509 \
   openssl dgst -sha256
 ```
 
-For KMS/HSM, export or query only the public key and compute the same SPKI fingerprint. It must match certificate zero exactly. Be precise about provider key version; an alias that moved after certification is a different signer.
+Treat either pipeline's nonzero exit status as a validation failure before comparing the hashes. For KMS/HSM, export or query only the public key and compute the same SPKI fingerprint. It must match certificate zero exactly. Be precise about provider key version; an alias that moved after certification is a different signer.
 
 ## Let a Pinned Fulcio Build Enforce Its Runtime Checks
 
-Current `kmsca`, `fileca`, and `tinkca` call Fulcio's shared `VerifyCertChain` routine. It:
+As of Fulcio v1.8.8, `kmsca`, `fileca`, and `tinkca` call Fulcio's shared `VerifyCertChain` routine. It:
 
-- builds a path with the last certificate as root;
+- builds a path from certificate zero, treating the last certificate as a trust anchor and the others as intermediates;
 - checks Code Signing usage;
 - requires certificate zero to be a CA;
 - requires Code Signing EKU on certificate zero when the chain contains a parent;
 - compares certificate zero with the signer's public key; and
-- applies Sigstore's public-key strength checks.
+- applies Sigstore's generic public-key acceptance checks to the active signer's key, not the stronger profile recommendation across the whole chain.
 
 Start the exact production binary against staged copies of the key resource and chain. A successful startup is an important integration gate, but not a replacement for the full profile audit: the runtime function does not explicitly check every normative root/intermediate field listed above.
 
-The current `pkcs11ca` implementation does not call that shared validation and loads only one CA certificate. Give it an independent profile/key-match gate and account for its different chain model.
+In that release, the `pkcs11ca` implementation does not call that shared validation and loads only one CA certificate. Give it an independent profile/key-match gate and account for its different chain model.
 
 ## Make Validation Reproducible
 
@@ -261,7 +264,7 @@ Fail the pipeline on an extra usage or missing critical marker. Warnings tend to
 - [Normative Sigstore Fulcio certificate profile](https://github.com/sigstore/architecture-docs/blob/main/fulcio-spec.md#7-certificate-profile)
 - [Fulcio repository certificate specification](https://github.com/sigstore/fulcio/blob/main/docs/certificate-specification.md)
 - [Fulcio CA certificate requirements](https://github.com/sigstore/fulcio/blob/main/docs/setup.md#ca-certificate-requirements)
-- [Fulcio runtime chain validation](https://github.com/sigstore/fulcio/blob/main/pkg/ca/common.go)
+- [Fulcio v1.8.8 runtime chain validation](https://github.com/sigstore/fulcio/blob/v1.8.8/pkg/ca/common.go)
 - [Fulcio Certificate Maker and templates](https://github.com/sigstore/fulcio/blob/main/docs/certificate-maker.md)
 - [RFC 5280 certificate and CRL profile](https://www.rfc-editor.org/rfc/rfc5280)
 - [OpenSSL `x509` command](https://docs.openssl.org/master/man1/openssl-x509/)
