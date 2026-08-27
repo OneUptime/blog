@@ -90,7 +90,7 @@ groups:
           summary: "TLS policy probe failed for {{ $labels.instance }}"
 ```
 
-The cipher allowlist above is intentionally a narrow example for a TLS-1.3-only endpoint. A service that legitimately negotiates TLS 1.2 needs approved TLS 1.2 suite names too. Build the expression from your written policy and client compatibility requirements rather than copying the sample.
+The cipher allowlist above is intentionally a narrow example for a TLS-1.3-only endpoint. A service that legitimately negotiates TLS 1.2 needs approved TLS 1.2 suite names too. Build the expression from your written policy and client compatibility requirements rather than copying the sample. The legacy-version rule is relevant only to probes that permit those versions; the `min_version: TLS12` module shown above cannot negotiate TLS 1.0 or TLS 1.1.
 
 Keep `TLSProbeFailed` separate. If the server no longer has any version or cipher in common with the monitor, the negotiated-info metrics can be absent.
 
@@ -99,13 +99,13 @@ Keep `TLSProbeFailed` separate. If the server no longer has any version or ciphe
 Because version and cipher are labels on info metrics, `changes()` does not detect their transition. Count distinct label sets in a bounded window:
 
 ```promql
-count by (instance) (
+count without (version) (
   count_over_time(probe_tls_version_info[30m]) > 0
 ) > 1
 ```
 
 ```promql
-count by (instance) (
+count without (cipher) (
   count_over_time(probe_tls_cipher_info[30m]) > 0
 ) > 1
 ```
@@ -147,6 +147,7 @@ modules:
     prober: http
     timeout: 10s
     http:
+      fail_if_not_ssl: true
       follow_redirects: false
       tls_config:
         min_version: TLS10
@@ -194,7 +195,7 @@ Version and cipher labels create new time series when they change, but their dom
 - [OpenSSL TLS version options](https://docs.openssl.org/master/man1/openssl/)
 - [OpenSSL `s_client` command](https://docs.openssl.org/master/man1/openssl-s_client/)
 - [Nmap `ssl-enum-ciphers` NSE script](https://nmap.org/nsedoc/scripts/ssl-enum-ciphers.html)
-- [RFC 8446: TLS 1.3](https://www.rfc-editor.org/rfc/rfc8446)
+- [RFC 9846: TLS 1.3](https://www.rfc-editor.org/rfc/rfc9846)
 - [RFC 8996: Deprecating TLS 1.0 and TLS 1.1](https://www.rfc-editor.org/rfc/rfc8996)
 
 ## Conclusion
