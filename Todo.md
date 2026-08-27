@@ -114,7 +114,6 @@
 
 ## Google Cloud
 
-5. Why Does `google.auth.default()` Find Credentials but Return No Google Cloud Project ID?
 6. How to Fix `docker-credential-gcloud Not in System PATH` for Artifact Registry
 7. Why Artifact Registry Returns `uploadArtifacts` Denied After `gcloud auth configure-docker`
 8. How to Fix Google Cloud Storage Signed URL `SignatureDoesNotMatch` by Matching Signed Headers
