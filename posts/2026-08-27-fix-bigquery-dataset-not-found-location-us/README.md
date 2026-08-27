@@ -26,15 +26,15 @@ Do not rely on the active gcloud project or a dataset name shown in another brow
 PROJECT_ID='example-analytics-project'
 DATASET_ID='events'
 
-gcloud config get-value project
+gcloud config get project
 
-bq show --format=prettyjson \
+bq show --dataset_view=METADATA --format=prettyjson \
   "${PROJECT_ID}:${DATASET_ID}"
 ```
 
-Check the returned `id` and `location` fields. If the command fails, verify spelling, the selected project, IAM access, and whether the dataset was deleted. A fully qualified ID prevents `bq show events` from silently checking the current default project.
+Check the returned `id` and `location` fields. If the command fails, verify spelling, the supplied project ID, IAM access, and whether the dataset was deleted. A fully qualified ID prevents `bq show events` from silently checking the current default project.
 
-IAM can intentionally hide resource existence in some API errors. Ensure the diagnostic identity is allowed to retrieve dataset metadata before concluding that the dataset is missing.
+IAM-related errors can be ambiguous about whether a resource exists. Ensure the diagnostic identity has the `bigquery.datasets.get` permission before concluding that the dataset is missing.
 
 ## Run the query in the dataset's actual location
 
@@ -68,10 +68,10 @@ BigQuery normally infers job location from referenced datasets, a referenced con
 This often affects:
 
 - Queries assembled dynamically, because dynamic SQL cannot be parsed early enough for automatic location selection.
-- Scripts whose first operations do not reference a regional resource.
+- Scripts whose regional resource references cannot be determined before execution.
 - Jobs that set a destination table in another location.
 - Tools or schedulers that submit `jobReference.location=US` by default.
-- Console tabs that retained a previous Data location setting.
+- Console query settings with Data location explicitly set to another location.
 
 For a BigQuery script, the `@@location` system variable can set the location when it is the first statement:
 
@@ -99,10 +99,10 @@ BigQuery's global queries feature can execute some cross-location queries when e
 A destination table determines where a query with a destination executes. Inspect both datasets:
 
 ```bash
-bq show --format=prettyjson \
+bq show --dataset_view=METADATA --format=prettyjson \
   'example-analytics-project:events'
 
-bq show --format=prettyjson \
+bq show --dataset_view=METADATA --format=prettyjson \
   'example-reporting-project:reports'
 ```
 
