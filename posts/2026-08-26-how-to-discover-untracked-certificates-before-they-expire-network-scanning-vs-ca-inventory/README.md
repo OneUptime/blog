@@ -23,7 +23,7 @@ Neither is complete. Reconcile them instead of choosing one.
 | --- | --- | --- |
 | CA or cloud certificate inventory | Issued and managed certificates, status, metadata, usage links | Self-signed certs, other CAs, exported copies, unmanaged deployments, another account or region |
 | ACME client state | Certificate lineages managed by that client | Other hosts and clients, deleted state, certificates copied elsewhere |
-| Network scan | Certificates currently served on reachable ports | Firewalled/dormant services, SNI names not supplied, client-authenticated endpoints, UDP/QUIC, unscanned ranges |
+| Network scan | Certificates currently served on reachable ports | Firewalled/dormant services, SNI names not supplied, unsupported or unscanned transports such as QUIC over UDP, unscanned address families or ranges |
 | Certificate Transparency | Publicly logged issuance for domain names | Private PKI, deployment state, ownership certainty, services using certificates not publicly logged |
 | Infrastructure and secret inventory | Intended bindings and stored artifacts | Drift, stale configuration, a listener serving a different file |
 
@@ -49,7 +49,7 @@ For Certbot-managed certificates:
 sudo certbot certificates
 ```
 
-The command reports each managed certificate name, domains, expiry, certificate path, and private-key path. It describes that Certbot installation only.
+The command reports each managed certificate name, domains, expiry, certificate path, and private-key path. It describes only the certificates known in the Certbot configuration directory used for that invocation.
 
 For AWS Certificate Manager, query each in-scope account and region:
 
@@ -92,7 +92,7 @@ nmap -sV --script ssl-cert \
   -p 443 10.20.30.40
 ```
 
-The `tls.servername` argument applies to the scan target, so a single IP hosting many names still requires an inventory of hostnames and deliberate per-name probes. An IP-only scan commonly sees the default certificate and misses every other virtual host.
+The `tls.servername` argument overrides the target name used for SNI and affects every target in that Nmap invocation. A single IP hosting many names therefore still requires an inventory of hostnames and deliberate per-name probes, typically one invocation per SNI name. An IP-only scan commonly sees the default certificate and misses every other virtual host.
 
 Nmap's TLS support also knows how to negotiate STARTTLS for several common protocols, but discovery scope should list the actual protocols and ports. Do not assume every certificate is on TCP 443.
 
