@@ -120,7 +120,6 @@
 
 ## Ephemeral Volumes
 
-8. How to Monitor emptyDir Usage per Pod with Kubelet and Prometheus Metrics
 9. How to Diagnose DiskPressure and Inode Evictions Caused by Pod Ephemeral Storage
 10. How to Guarantee Fixed Scratch-Disk Capacity with a Generic Ephemeral Volume
 11. How to Schedule Generic Ephemeral Volumes with WaitForFirstConsumer and Storage Topology
