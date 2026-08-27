@@ -60,7 +60,8 @@ curl --silent --show-error --get \
   --data-urlencode 'module=tls_certificate' \
   --data-urlencode 'target=api.example.com:443' \
   http://localhost:9115/probe |
-sed -n '/^probe_success\|^probe_ssl_earliest_cert_expiry/p'
+sed -n -e '/^probe_success/p' \
+  -e '/^probe_ssl_earliest_cert_expiry/p'
 ```
 
 Expect `probe_success 1` and an expiry value around the current Unix epoch. A value such as `1789000000` is a timestamp, not seconds remaining.
@@ -75,7 +76,7 @@ groups:
     interval: 1m
     rules:
       - record: probe_ssl_earliest_cert_expiry_seconds_remaining
-        expr: probe_ssl_earliest_cert_expiry - time()
+        expr: probe_ssl_earliest_cert_expiry{job="blackbox-tls-certificate"} - time()
 ```
 
 For a dashboard in days:
@@ -119,7 +120,7 @@ groups:
 
 The warning range excludes the critical range, so both alerts do not fire for the same target. Another valid design is overlapping rules plus Alertmanager inhibition, but make that relationship explicit.
 
-`for` filters brief changes caused by a partial load-balancer rollout. It must still be short relative to the critical response window. A 24-hour `for` on a 7-day threshold needlessly consumes remediation time.
+`for` delays firing and can filter brief changes caused by a partial load-balancer rollout when the condition clears before the configured duration. Choose it with the scrape interval in mind, and keep it short relative to the critical response window. A 24-hour `for` on a 7-day threshold needlessly consumes remediation time.
 
 ## Alert When No Valid Certificate Can Be Measured
 
@@ -153,11 +154,11 @@ If a target is deleted from service discovery, all of its series disappear and n
 The gauge iterates over `tls.ConnectionState.PeerCertificates`: the exact list sent by the peer, with the leaf first. Therefore:
 
 - an intermediate that expires before the leaf correctly advances the alert;
-- a server that omits an intermediate may not expose that intermediate's expiry, but strict verification should set `probe_success` to `0`;
+- a server that omits an intermediate does not expose that certificate's expiry; if the verifier cannot build another trusted path, strict verification sets `probe_success` to `0`;
 - a superfluous certificate sent by a misconfigured server can make the gauge conservative even if a client builds another valid path; and
 - the trust anchor normally is not sent, so monitor private and public root lifetimes from the CA inventory as well.
 
-Current Blackbox Exporter also exposes `probe_ssl_last_chain_expiry_timestamp_seconds`, derived from verified chains, but it has different path-selection semantics. Do not silently exchange the two metrics in existing alerts. Investigate the served chain with `openssl s_client -showcerts` when they disagree.
+Current Blackbox Exporter also exposes `probe_ssl_last_chain_expiry_timestamp_seconds`, derived from verified chains, but it has different path-selection semantics. Do not silently exchange the two metrics in existing alerts. Investigate the served list with `openssl s_client -connect api.example.com:443 -servername api.example.com -showcerts </dev/null` and the exporter's trust store when they disagree.
 
 ## Validate the Alert Path
 
@@ -167,7 +168,7 @@ Test three controlled cases before relying on notification delivery:
 2. A hostname mismatch or untrusted chain, which should trigger `TLSCertificateProbeFailed`.
 3. A stopped or unreachable exporter, which should trigger the `up` alert.
 
-Run `promtool check rules` against the rule file in your own validation workflow, then use Prometheus's Rules page to confirm pending and firing states. Also route warning and critical labels through Alertmanager and verify that the intended team, runbook, and deduplication keys survive.
+Run `promtool check rules tls-certificate-rules.yml` in your own validation workflow, then use Prometheus's Rules page to confirm pending and firing states. Also route warning and critical labels through Alertmanager and verify that the intended team, runbook, and deduplication keys survive.
 
 ## Official Documentation
 
