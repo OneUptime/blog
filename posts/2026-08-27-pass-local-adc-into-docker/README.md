@@ -91,7 +91,7 @@ For a Python image with `google-auth` installed, use this diagnostic:
 import google.auth
 
 credentials, project_id = google.auth.default()
-print("credential_type:", type(credentials).__name__)
+print("credential_type:", f"{type(credentials).__module__}.{type(credentials).__qualname__}")
 print("project_id:", project_id)
 print("quota_project_id:", getattr(credentials, "quota_project_id", None))
 ```
@@ -105,13 +105,13 @@ test -r /var/run/google/adc.json
 test "${GOOGLE_APPLICATION_CREDENTIALS:-}" = /var/run/google/adc.json
 ```
 
-If the credential is found but the project is `None`, configure the resource project explicitly in the application. A quota project in ADC is not the same as an application's default resource project.
+If the credential is found but `project_id` is `None` and the client or request needs a project, configure the intended project explicitly in the application. A quota project in ADC controls quota and billing for applicable APIs; it is not an application's default resource project.
 
 ## Handle federated credential configurations carefully
 
 An external account credential configuration can reference another file or an executable that supplies a subject token. Mounting only the top-level JSON is insufficient if its referenced dependency is absent or appears at a different path inside the container.
 
-Use the documented federation layout for that credential type, mount every required dependency read-only, and keep the paths in the configuration consistent with container paths. Do not expand access to the entire host home directory as a shortcut.
+Use the documented federation layout for that credential type, mount every required input dependency read-only, and keep the paths in the configuration consistent with container paths. Do not expand access to the entire host home directory as a shortcut.
 
 ## Keep this pattern out of production
 
@@ -119,7 +119,7 @@ This bind-mount pattern is for a trusted developer's local machine. It gives the
 
 For production workloads:
 
-- On Google Cloud, attach a user-managed service account to the runtime and grant it minimum IAM roles.
+- On supported Google Cloud runtimes, attach a user-managed service account and grant it minimum IAM roles.
 - On GKE, use Workload Identity Federation for GKE.
 - Outside Google Cloud, use Workload Identity Federation where supported.
 - Avoid long-lived service account keys.
