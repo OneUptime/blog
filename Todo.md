@@ -5271,3 +5271,233 @@
 18. How to Diagnose Why Nix Builds a Package from Source Instead of Using a Binary Cache
 19. How to Set Up and Sign a Private HTTP Binary Cache for Nix
 20. How to Delete Old Nix Generations and Garbage-Collect the Store Safely
+
+## Histogram Buckets
+
+1. How to Read Cumulative Prometheus Histogram Buckets Without Double-Counting Observations
+2. How to Count Observations Between Two Classic Histogram Bucket Boundaries in PromQL
+3. How to Measure the Fraction of Requests Below an SLO Threshold with a Histogram Bucket
+4. How to Calculate an Apdex Score from Prometheus Histogram Buckets
+5. How to Fix Empty `histogram_quantile()` Results by Preserving the `le` Label
+6. How to Diagnose `NaN` and `+Inf` Results from `histogram_quantile()`
+7. How to Estimate Quantile Error When Latency Spikes Land Inside a Wide Histogram Bucket
+8. How to Change Classic Histogram Boundaries Without Breaking Cross-Instance Aggregation
+9. How to Detect Histogram Overflow by Comparing the Highest Finite Bucket with `+Inf`
+10. How to Convert Millisecond Latencies to Prometheus Base Units Before Defining Buckets
+11. How to Verify That a Classic Histogram Exposes `+Inf`, `_sum`, and `_count` Correctly
+12. How to Derive Non-Cumulative Bucket Counts for a Grafana Heatmap
+13. How to Apply `rate()` to Histogram Bucket Counters Without Restart Spikes
+14. How to Calculate Request Throughput from a Histogram’s `_count` Series
+15. How to Generate Linear and Exponential Bucket Boundaries with Prometheus Client Libraries
+16. How to Add Route and Status Labels to a Histogram Without Exploding Cardinality
+17. How to Handle Negative Histogram Observations Without Misusing `rate()` on `_sum`
+18. How to Enable Native Histogram Scraping and Remote Write in Prometheus
+19. How to Query a Native Histogram’s Arbitrary Value Range with `histogram_fraction()`
+20. How to Count Native Histogram Observations in a Range with PromQL Trim Operators
+
+## Nautobot
+
+1. How to Install Nautobot with Docker Compose for a Local Lab
+2. How to Deploy Nautobot on Ubuntu with PostgreSQL, Redis, uWSGI, and NGINX
+3. How to Upgrade Nautobot Safely Across App, Job, and Database Schema Changes
+4. How to Back Up and Restore Nautobot with PostgreSQL Dumps and Media Files
+5. How to Clone Production Nautobot Data into a Development Instance Without Reusing Secrets
+6. How to Migrate from NetBox to Nautobot and Resolve Importer Integrity Errors
+7. How to Bulk-Import Devices, Interfaces, and IP Addresses into Nautobot in Dependency Order
+8. How to Create and Update Devices with `pynautobot` and the REST API
+9. How to Paginate and Filter Large Nautobot REST API Result Sets Without Missing Records
+10. How to Query Devices, Custom Fields, and Relationships with Nautobot GraphQL
+11. How to Write, Register, Enable, and Run Your First Nautobot Job
+12. How to Load Nautobot Jobs from a Git Repository and Make Code Changes Appear
+13. How to Unit-Test Nautobot Jobs That Execute Through Celery
+14. How to Profile a Slow Nautobot Job and Read Its cProfile Report
+15. How to Schedule Nautobot Jobs with Multi-Stage Approval Workflows
+16. How to Configure LDAP Authentication and Group-to-Permission Mapping in Nautobot
+17. How to Configure OAuth2 or SAML SSO for Nautobot Behind a Reverse Proxy
+18. How to Install and Enable a Nautobot App Across Web and Worker Containers
+19. How to Build Dynamic Device Groups and Refresh Their Cached Membership in Nautobot
+20. How to Add a Validated Nautobot Custom Field and Query It Through REST and GraphQL
+
+## Prometheus Rules
+
+1. How to Load Prometheus Rule Files and Reload Them Without Restarting the Server
+2. How to Fix a Valid Prometheus Rule File That Does Not Appear on the `/rules` Page
+3. How to Validate Prometheus Rule YAML and PromQL with `promtool check rules`
+4. How to Debug an Alerting Rule That Stays Inactive, Pending, or Never Reaches Firing
+5. How to Use `for` and `keep_firing_for` to Prevent Flapping Prometheus Alerts
+6. How to Prevent Prometheus Alert Rules from Failing with Many-to-Many Vector Matching Errors
+7. How to Template `$labels`, `$value`, External Labels, and Runbook URLs in Prometheus Alerts
+8. How to Prevent One Kubernetes Incident from Creating Hundreds of Per-Pod Prometheus Alerts
+9. How to Set Different Prometheus Alert Thresholds per Service Without Duplicating Rules
+10. How to Exclude Maintenance Targets from a Prometheus Alerting Rule with `unless`
+11. How to Alert on Missing Metrics with `absent()` and `absent_over_time()`
+12. How to Write Prometheus Ratio Alerts When Numerator and Denominator Labels Differ
+13. How to Order Dependent Recording Rules for Same-Cycle Evaluation
+14. How to Choose Prometheus Rule Group Intervals Without Skipped Evaluations
+15. How to Use Rule Group `query_offset` When Metrics Arrive Late
+16. How to Cap Alerts and Recorded Series with a Prometheus Rule Group `limit`
+17. How to Name Prometheus Recording Rules with the `level:metric:operations` Convention
+18. How to Remove Stale Recording Rules After Deleting a `PrometheusRule` Resource
+19. How to Make Prometheus Operator Select `PrometheusRule` Resources Across Namespaces
+20. How to Troubleshoot a Rejected `PrometheusRule` with Kubernetes Events and Generated Config
+
+## Velero
+
+1. How to Pin Compatible Velero Server, CRD, and Object-Store Plugin Versions in Helm—and Match the CLI Separately
+2. How to Configure Velero with MinIO Using Path-Style S3 URLs and Custom CA Certificates
+3. How to Apply Velero Volume Policies to Mix Snapshots, File System Backup, and Skips by StorageClass
+4. How to Enable Velero File System Backup with the Node Agent and Kopia
+5. How to Back Up and Restore PersistentVolume Data Instead of Only PVC Metadata with Velero
+6. How to Restore Velero Backups When the Destination Cluster Uses Different Kubernetes API Versions
+7. How to Preserve NodePorts and HealthCheckNodePorts During a Velero Cross-Cluster Restore
+8. How to Migrate Applications Between Kubernetes Clusters with Different StorageClasses Using Velero
+9. How to Configure Velero Kopia Repository Maintenance Jobs Without Starving Backup and Restore Workloads
+10. How to Apply Global Velero Volume Policies and Override Them for One Backup
+11. How to Exclude Cluster-Scoped Resources and Specific Volumes from a Velero Backup
+12. How to Stage Velero Restores for CRDs, Operators, and Dependent Workloads
+13. How to Verify Which Velero Volume Backup Method Protected Each PVC
+14. How to Diagnose PartiallyFailed Velero Backups with Describe, Logs, and Debug Bundles
+15. How to Fix Velero Restores Stuck on PodVolumeRestore or DataDownload Operations
+16. How to Restore Over Existing Kubernetes Resources with Velero’s Existing Resource Policy
+17. How to Rotate Velero Object-Store Credentials Without Invalidating Existing Backups
+18. How to Protect Velero Backup Storage with Read-Only Disaster-Recovery Clusters
+19. How to Tune Velero Node-Agent Concurrency, Timeouts, and Repository Cache for Large Volume Backups
+20. How to Delete a Velero Backup Safely When Its BackupStorageLocation Is Missing
+
+## Multi-Stage Builds
+
+1. How to Convert a Single-Stage Dockerfile into a Multi-Stage Build Without Changing Runtime Behavior
+2. How to Copy Build Artifacts Between Named Docker Stages with COPY --from
+3. How to Export Artifacts from an Intermediate Docker Stage with Buildx `--output`
+4. How to Copy a Generated Directory Tree Between Docker Stages with `COPY --parents` Without Flattening Paths
+5. How to Keep Numeric UID and GID Ownership Stable When Builder and Runtime Stages Use Different User Databases
+6. How to Build a Distroless Debug Variant Alongside a Locked-Down Production Target
+7. How to Preserve npm, pnpm, or Yarn Workspace Symlinks When Copying a Monorepo into the Final Stage
+8. How to Inject Runtime Configuration into a Static SPA Built in an Earlier Docker Stage
+9. How to Keep Python Native Extensions Working When Builder and Runtime Stages Use Different Linux C Libraries
+10. How to Publish a .NET Application into an ASP.NET Runtime Stage
+11. How to Prevent Concurrent Builds from Corrupting BuildKit Cache Mounts with `sharing=locked`
+12. How to Mount Artifacts from One Build Stage into a Later `RUN` Step Without Creating a `COPY` Layer
+13. How to Test Every Multi-Stage Docker Target on AMD64 and ARM64 in CI
+14. How to Give Only Dependency-Download Steps Network Access with `RUN --network=none` in Later Stages
+15. How to Exclude Source Maps and Test Fixtures from a Final Docker Stage with `COPY --exclude`
+16. How to Scan an Intermediate Build Stage Without Installing Scanner Binaries in the Final Image
+17. How to Reuse a Common Base Stage Across Parallel Docker Build Stages
+18. How to Share Build Artifacts Across Separate Dockerfiles with Tagged Intermediate Images
+19. How to Diagnose glibc-versus-musl Failures After Copying Binaries into a Minimal Runtime Stage
+20. How to Verify That Build Tools, Source Code, and Secrets Are Absent from the Final Image
+
+## Kibana
+
+1. How to Create a Kibana Data View That Matches Multiple Indices, Data Streams, and Aliases
+2. How to Fix a Kibana Data View That Shows No Fields or Newly Added Fields
+3. How to Choose the Correct Timestamp Field and Fix Empty Kibana Dashboards
+4. How to Pin Filters Across Kibana Apps and Apply Them to Dashboard Controls
+5. How to Use ES|QL in Kibana Discover Without Creating a Data View
+6. How to Replace Scripted Fields with Runtime Fields in Kibana
+7. How to Build a Kibana Lens Dashboard with Interactive Options Lists and Time Controls
+8. How to Add Dashboard-to-Dashboard and URL Drilldowns in Kibana
+9. How to Show Raw Log Lines and Selected Fields in a Kibana Dashboard Table
+10. How to Create Threshold Alerts from Kibana Queries and Route Notifications Through Connectors
+11. How to Display Active Alerts and Alert History on a Kibana Dashboard
+12. How to Export and Import Kibana Dashboards with Their Dependent Saved Objects
+13. How to Change a Dashboard’s Data View Without Rebuilding Every Visualization
+14. How to Embed a Kibana Dashboard in a Web Application with Authentication
+15. How to Configure Kibana Behind Nginx with server.basePath and HTTPS
+16. How to Expose Kibana Remotely Without Binding Elasticsearch to the Public Network
+17. How to Use Document-Level and Field-Level Security Without Leaking Data Through a Shared Kibana Data View
+18. How to Diagnose a Slow Kibana Dashboard by Inspecting and Profiling Panel Queries
+19. How to Fix “Kibana Server Is Not Ready Yet” During Saved Object Migrations
+20. How to Correct Time Zone and Timestamp Parsing Errors in Kibana Visualizations
+
+## Read Replicas
+
+1. How to Route Reads and Writes to Separate Database Endpoints Without Misclassifying Mutating `SELECT` Statements
+2. How to Load-Balance Read Traffic Across Multiple Replicas and Drain an Unhealthy Endpoint
+3. How to Refresh Connection Pools When Aurora Adds or Removes Read Replicas Behind a DNS Reader Endpoint
+4. How to Keep Pagination Stable When Consecutive Pages Are Served by Lagging Read Replicas
+5. How to Warm a Read Replica’s Cache Before Adding It to the Reader Pool
+6. How to Reduce Read Replica Lag Caused by Long Transactions, Bulk DML, and Schema Changes
+7. How to Size Read Replica CPU, Memory, IOPS, and Parallel Apply Capacity for the Primary’s Write Rate
+8. How to Stop PostgreSQL Read Replica Queries from Failing with “Canceling Statement Due to Conflict with Recovery”
+9. How to Isolate Interactive Reads, Analytics, and Backups on Separate Replicas Without Starving WAL Replay
+10. How to Build a PostgreSQL Reporting Replica with Extra Indexes by Choosing Logical Instead of Physical Replication
+11. How to Run `pg_dump` or Analytical Queries on a Read Replica Without Stalling WAL Replay
+12. How to Detect and Repair a Read Replica That Falls Behind the Primary’s Retained WAL Window
+13. How to Upgrade a PostgreSQL Primary and Its Read Replicas Across Major Versions
+14. How to Design a Cross-Region Read Replica for Low-Latency Reads Without Hiding Its RPO
+15. How to Promote a Read Replica Safely by Quiescing Writes and Waiting for Zero Lag
+16. How to Verify Timeline Ancestry Before Reattaching a Demoted PostgreSQL Primary as a Replica
+17. How to Detect Whether a Database Connection Reached the Primary or a Read Replica Before Running Writes
+18. How to Keep Multi-Statement Transactions on the Primary While Offloading Independent Reads
+19. How to Use a Delayed Read Replica to Recover from Accidental Deletes Without Replaying the Mistake
+20. How to Benchmark Whether Read Replicas Reduce Primary Load After Accounting for Cache Warmth and Connection Overhead
+
+## Bareos
+
+1. How to Install a Bareos Director, Storage Daemon, File Daemon, and PostgreSQL Catalog for a First Disk Backup
+2. How to Add a Remote Bareos Client with Matching Director Credentials, Reachable DNS, and Direct or Passive Connectivity
+3. How to Build Bareos FileSets That Exclude Pseudo-Filesystems, Cache Data, and the Backup Repository Itself
+4. How to Schedule Bareos Full, Differential, and Incremental Jobs with Separate Pools and Retention Windows
+5. How to Configure Bareos Disk Volumes, Pruning, and Recycling Without Getting “No Appendable Volumes”
+6. How to Run Concurrent Bareos Disk Backups with Multiple Devices or a Virtual Autochanger
+7. How to Configure a Bareos Tape Autochanger with `mtx-changer`, Barcode Labels, Slots, and Drive Indexes
+8. How to Find Bareos Tapes That Are Safe to Recycle Without Breaking the Latest Restore Chain
+9. How to Store Bareos Volumes in S3-Compatible Object Storage with the Dplcompat Backend
+10. How to Enforce Certificate-Based TLS Across Bareos Daemons and Fix FQDN, Certificate CN, and Peer-Verification Mismatches
+11. How to Encrypt and Sign Bareos Backups on the Client with an Offline Master Recovery Key
+12. How to Create Least-Privilege Bareos WebUI Profiles That Can Browse Jobs and Restore Files
+13. How to Restore One Bareos File Version to an Alternate Client or Path Without Overwriting Existing Data
+14. How to Restore a Large Bareos File Set When the WebUI File Browser Times Out: Job IDs, `bconsole`, and Regex Selection
+15. How to Recover the Bareos Catalog from a `BackupCatalog` Bootstrap File After Losing the Backup Server
+16. How to Build a Bare-Metal Recovery Workflow with Bareos and Relax-and-Recover
+17. How to Back Up PostgreSQL Online with the Bareos Plugin and Restore to a Point in Time from WAL
+18. How to Back Up Docker Persistent Volumes with Bareos `RunScript` Hooks That Quiesce and Restart Services
+19. How to Upgrade Bareos Across Major Versions Without Skipping Catalog Schema, Configuration, or Plugin Checks
+20. How to Verify Bareos Backups with Automated Restore Drills, Checksums, and Job Monitoring
+
+## Log Aggregation
+
+1. How to Design a Decoupled Log Aggregation Pipeline That Keeps Applications Running When the Backend Is Down
+2. How to Choose a Log Aggregation Backend by Query Model, Ingest Rate, Retention, and Operating Cost
+3. How to Collect Logs from Short-Lived Kubernetes Jobs Before Their Pods and Metadata Disappear
+4. How to Standardize a JSON Log Schema Across Languages Without Losing the Original Message
+5. How to Keep Node-Level Log Collectors Working When inotify Watches or Open File Descriptors Are Exhausted
+6. How to Preserve Event Time Across Time Zones, Clock Skew, Buffering, and Delayed Ingestion
+7. How to Preserve Trace and Span IDs Through Collector Parsing, Relabeling, and Re-encoding
+8. How to Configure Filesystem Buffering and Backpressure Limits So Fluent Bit Survives a Backend Outage
+9. How to Minimize Lost Logs and Deduplicate Retries with Checkpoints, Deterministic IDs, and At-Least-Once Delivery
+10. How to Quarantine Parse Failures and Mapping Conflicts Without Blocking the Main Log Pipeline
+11. How to Backfill Archived Logs Without Duplicating Documents or Firing Historical Alerts
+12. How to Archive Complete Raw Logs to Object Storage While Indexing Only a Searchable Subset
+13. How to Reduce Log Ingestion Volume While Quantifying the Forensic Risk of Filtering and Sampling
+14. How to Keep Kubernetes Label Churn from Creating New Loki Streams After Every Rollout
+15. How to Prevent a Log Collector from Ingesting Its Own Diagnostic Logs in a Feedback Loop
+16. How to Isolate Tenant Logs with Separate Streams, Indexes, and Role-Based Access
+17. How to Send Logs Through an Authenticated HTTP Proxy Without Embedding Proxy Credentials in Collector Config
+18. How to Capacity Plan a Log Aggregation Cluster from Daily Volume, Burst Rate, Retention, and Query Concurrency
+19. How to Enforce Per-Tenant Log Ingestion Quotas Without Dropping Every Short Burst
+20. How to Send Synthetic Canary Logs and Measure End-to-End Ingestion Loss, Lag, and Searchability
+
+## CIDR
+
+1. How to Test Whether an IPv4 or IPv6 Address Falls Inside Any CIDR Without Enumerating Hosts
+2. How to Collapse Duplicate and Nested CIDRs in Python Without Expanding Every Address
+3. How to Test CIDR Equality, Containment, and Disjointness Correctly in Go
+4. How to Troubleshoot AWS “CIDR Address Is Not Within CIDR Address from VPC” Errors
+5. How to Validate Canonical IPv4 and IPv6 CIDRs in Terraform Without Accepting Host Bits
+6. How to Store CIDRs in PostgreSQL and Index Containment Queries with GiST
+7. How to Prevent Overlapping CIDRs in PostgreSQL with an Exclusion Constraint
+8. How to Join Millions of IP Addresses to CIDR Ranges Efficiently in PostgreSQL
+9. How to Find the Longest Matching CIDR for an IP Address with a Prefix Trie
+10. How to Match IP Addresses Against a CIDR Allowlist in Shell Scripts with `grepcidr`
+11. How to Delegate Reverse DNS for a Classless IPv4 CIDR with RFC 2317
+12. How to Handle IPv4-Mapped IPv6 Addresses in CIDR Membership Checks
+13. How to Reduce a Large CIDR Allowlist Without Accidentally Broadening Access
+14. How to Diff Two CIDR Allowlists Semantically During a Firewall Migration
+15. How to Detect CIDR Shadowing in Ordered Firewall Rules Before a Broader Prefix Masks a Later Rule
+16. How to Parse CIDR Files Safely When They Mix Comments, Hosts, IPv4, and IPv6
+17. How to Fuzz CIDR Parsers for Invalid Prefix Lengths, Host Bits, and Address-Family Confusion
+18. How to Enforce Maximum CIDR Sizes in API Validation to Block Overly Broad Allowlists
+19. How to Keep CIDR Allowlists Current When Cloud Provider IP Range Feeds Change
+20. How to Detect Public, Private, and Other Special-Use Address Ranges Inside a CIDR Using the IANA Registries
