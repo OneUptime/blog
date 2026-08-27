@@ -19,17 +19,18 @@ Kubernetes discovery
   -> TSDB ingestion
 ```
 
-Use `relabelings` to decide which targets to scrape and how Prometheus contacts or labels them. Use `metricRelabelings` to transform or discard samples returned by a successful scrape.
+Use `relabelings` to decide which targets to scrape and how Prometheus contacts or labels them. Use `metricRelabelings` to transform or discard samples in the scrape response.
 
 ## Target Relabeling Runs Before the Request
 
-`relabelings` operates on each discovered target's label set. At this stage, Kubernetes service discovery provides temporary labels such as:
+`relabelings` operates on each discovered target's label set. At this stage, the target label set includes Kubernetes discovery metadata such as:
 
 - `__meta_kubernetes_namespace`;
 - `__meta_kubernetes_service_name`;
 - `__meta_kubernetes_service_label_<labelname>`;
-- Pod and endpoint metadata for the active discovery role;
-- special scrape labels such as `__address__`, `__scheme__`, and `__metrics_path__`.
+- endpoint or EndpointSlice metadata for the active discovery role, plus Pod metadata when the endpoint is backed by a Pod.
+
+Prometheus also initializes special scrape labels such as `__address__`, `__scheme__`, and `__metrics_path__`.
 
 This rule drops every target whose Service has `environment=development`:
 
@@ -90,7 +91,7 @@ metricRelabelings:
     regex: 'request_id|session_id'
 ```
 
-Use that only after checking uniqueness. Removing a distinguishing label can collapse multiple samples in one scrape onto the same final label set, which can cause duplicate-series errors or destroy useful dimensions.
+Use that only after checking uniqueness. Removing a distinguishing label can collapse multiple samples in one scrape onto the same final label set, which can produce duplicate-sample ingestion warnings, cause conflicting samples to be dropped, and destroy useful dimensions.
 
 Prometheus documents that metric relabeling does not apply to automatically generated series such as `up`. A rule intended to drop `up` will not work here.
 
@@ -99,8 +100,10 @@ Prometheus documents that metric relabeling does not apply to automatically gene
 This cannot select targets when placed under `metricRelabelings`:
 
 ```yaml
+action: drop
 sourceLabels:
   - __meta_kubernetes_namespace
+regex: development
 ```
 
 The `__meta_*` discovery labels are target-relabel inputs and are gone by metric-relabel time unless copied to durable labels.
@@ -108,6 +111,7 @@ The `__meta_*` discovery labels are target-relabel inputs and are gone by metric
 Likewise, this cannot match an exporter metric under `relabelings`:
 
 ```yaml
+action: drop
 sourceLabels:
   - __name__
 regex: http_requests_total
@@ -144,7 +148,7 @@ metric_relabel_configs:
 
 Do not paste raw Prometheus field names into a ServiceMonitor. Use `kubectl explain servicemonitor.spec.endpoints.relabelings` to inspect the installed CRD schema.
 
-Rules run in list order. A later rule sees changes made by an earlier rule. `sourceLabels` values are concatenated with `separator`, matched against `regex`, and processed according to `action`. Default values exist, but explicit `action`, `sourceLabels`, `regex`, and `targetLabel` make production rules easier to review.
+Rules run in list order. A later rule sees changes made by an earlier rule. For actions such as `replace`, `keep`, and `drop`, `sourceLabels` values are concatenated with `separator` and matched against `regex`. Relabel fields are action-specific; explicitly setting `action` and the fields used by that action makes production rules easier to review.
 
 ## Relabeling and Limits Interact
 
@@ -161,7 +165,7 @@ Before a change, capture:
 - `scrape_samples_scraped` and `scrape_samples_post_metric_relabeling` for the job;
 - representative series and label sets from queries.
 
-After applying the rule, confirm that the intended boundary changed. A target rule should change active or dropped target sets. A metric rule should change post-relabel sample counts or stored series while the target remains active.
+After applying the rule, confirm that the intended boundary changed. A target-selection rule should change active or dropped target sets; a metadata copy or request rewrite should change target labels or the scrape URL. A metric rule should change post-relabel sample counts or stored series while the target remains active.
 
 Inspect rejection Events if the rule cannot be translated:
 
@@ -183,4 +187,4 @@ Invalid regular expressions and unsupported actions should be fixed in the resou
 
 ## Conclusion
 
-`relabelings` transforms discovery targets before any network request, while `metricRelabelings` transforms returned samples just before ingestion. Kubernetes `__meta_*` labels belong to the first stage, and metric names belong to the second. Put each rule where its inputs exist, then verify the corresponding target or sample-count change.
+`relabelings` transforms discovery targets before any network request, while `metricRelabelings` transforms returned samples just before ingestion. Kubernetes `__meta_*` labels belong to the first stage, and metric names belong to the second. Put each rule where its inputs exist, then verify the corresponding change in target membership, scrape URL, stored label set, or sample count.
