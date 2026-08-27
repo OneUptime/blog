@@ -13,7 +13,7 @@ Not every certificate is discoverable through a network probe. Services can be d
 The reverse is also true: a fresh file or keystore entry does not prove that a running process loaded it. A complete design always compares two views:
 
 1. **stored state** — the certificate in a Windows store, Java keystore, PEM file, secret manager, or deployment artifact;
-2. **served state** — the leaf and chain returned by the live TLS endpoint.
+2. **served state** — the leaf and chain returned by a full handshake with the live TLS endpoint.
 
 Inventory both by fingerprint, issuer plus serial, SANs, key identity, validity, location, and owner.
 
@@ -63,7 +63,7 @@ Get-ChildItem -Path $stores -SSLServerAuthentication |
         }}
 ```
 
-Find certificates expiring within 30 days:
+Find certificates that have already expired or will expire within 30 days:
 
 ```powershell
 $expiringCertificateSplat = @{
@@ -89,8 +89,8 @@ Also inspect the service binding. IIS, HTTP.sys, Remote Desktop, SQL Server, and
 Java keystores can contain several entry types:
 
 - `PrivateKeyEntry` normally holds a private key and its certificate chain for a server or client identity;
-- `trustedCertEntry` is a certificate trusted by the application;
-- a keystore can contain several aliases, only one of which the application selects.
+- `trustedCertEntry` holds a certificate trusted by the keystore owner; it affects an application only when that keystore is used as a trust store;
+- a keystore can contain several aliases, and the selected alias can vary by application configuration or connection.
 
 List a PKCS#12 keystore verbosely without placing its password directly in the process arguments:
 
@@ -118,7 +118,7 @@ keytool -exportcert -rfc \
       -ext subjectAltName
 ```
 
-Use `-cacerts` when intentionally auditing the JDK trust store. Do not assume the JVM running the service uses the `keytool` binary or `cacerts` file in your interactive shell. Containers, application servers, custom `javax.net.ssl.keyStore` settings, and embedded JREs can select a different Java installation and keystore.
+Use `-cacerts` when intentionally auditing the `cacerts` keystore associated with the invoked `keytool` installation. Do not assume the JVM running the service uses that `keytool` binary or `cacerts` file. Containers, application servers, custom `javax.net.ssl.keyStore` or `javax.net.ssl.trustStore` settings, `jssecacerts`, and embedded JREs can select a different Java installation or key/trust store.
 
 Record alias and entry type. Alerting on every trusted root with the same urgency as a serving leaf creates noise; apply separate policies to identity keystores and trust stores.
 
@@ -135,7 +135,7 @@ openssl x509 \
   -ext subjectAltName
 ```
 
-Use `-checkend` for a script-friendly threshold. This exits nonzero if the certificate expires within the next 30 days:
+Use `-checkend` for a script-friendly threshold. This exits nonzero if the certificate is already expired or expires within the next 30 days:
 
 ```bash
 openssl x509 \
@@ -152,7 +152,7 @@ openssl x509 -in /etc/tls/app/cert.pem -pubkey -noout \
   | openssl dgst -sha256
 ```
 
-PEM is an encoding, not a semantic file type. A file can contain a leaf, a chain, many certificates, a CSR, or a private key. Traditional single-certificate `openssl x509` workflows may inspect only the first certificate in a bundle. Parse every PEM certificate object with a bounded certificate-aware collector and record its chain position.
+PEM is an encoding, not a semantic file type. A file can contain a leaf, a chain, many certificates, a CSR, or a private key. Traditional single-certificate `openssl x509` workflows may inspect only the first certificate in a bundle. Parse every PEM certificate object with a bounded certificate-aware collector, record its position in the file, and determine its chain role where applicable.
 
 Scan configured paths from an asset inventory instead of recursively reading an entire filesystem. Broad scans encounter backups, package CA bundles, unreadable secrets, and unrelated credentials. Never log PEM contents or pass a private-key file to a certificate parser.
 
@@ -174,7 +174,7 @@ Alert on remaining time and collection freshness. A collector that silently stop
 After every renewal or deployment:
 
 1. calculate the stored leaf's SHA-256 fingerprint;
-2. make a new TLS connection with the production SNI;
+2. perform a new, full (non-resumed) TLS handshake with the production SNI;
 3. calculate the served leaf's fingerprint;
 4. compare every advertised IP, address family, region, and backend where convergence matters;
 5. alert until served state matches the approved stored state;
@@ -193,4 +193,4 @@ A mismatch commonly means the process was not reloaded, the wrong alias is selec
 
 ## Conclusion
 
-Windows stores, Java keystores, and PEM files require different collection tools, but they can share one certificate inventory model. Monitor the correct store and entry role, protect all private-key material, normalize public certificate identities, and always compare stored state with a fresh handshake. That final comparison catches the certificate that renewed on disk but never reached clients.
+Windows stores, Java keystores, and PEM files require different collection tools, but they can share one certificate inventory model. Monitor the correct store and entry role, protect all private-key material, normalize public certificate identities, and always compare stored state with a fresh, non-resumed handshake. That final comparison catches the certificate that renewed on disk but never reached clients.
