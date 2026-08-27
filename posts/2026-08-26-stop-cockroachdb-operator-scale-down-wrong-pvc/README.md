@@ -64,10 +64,10 @@ kubectl get pvc -n "$NAMESPACE" \
   -o custom-columns='NAME:.metadata.name,UID:.metadata.uid,STATUS:.status.phase,VOLUME:.spec.volumeName,CLASS:.spec.storageClassName,CAPACITY:.status.capacity.storage'
 
 kubectl get pv \
-  -o custom-columns='NAME:.metadata.name,STATUS:.status.phase,CLAIM:.spec.claimRef.namespace/.spec.claimRef.name,RECLAIM:.spec.persistentVolumeReclaimPolicy,CLASS:.spec.storageClassName'
+  -o custom-columns='NAME:.metadata.name,STATUS:.status.phase,CLAIM_NAMESPACE:.spec.claimRef.namespace,CLAIM_NAME:.spec.claimRef.name,RECLAIM:.spec.persistentVolumeReclaimPolicy,CLASS:.spec.storageClassName'
 ```
 
-Do not rely on a broad application label to delete claims. Other data, WAL, log, backup, or sidecar volumes can share labels. The public operator's pruner derives expected claim names from the StatefulSet's `volumeClaimTemplates` and treats only ordinals greater than or equal to current replicas as unused.
+Do not rely on a broad application label to delete claims. Other data, WAL, log, backup, or sidecar volumes can share labels. The public operator's pruner builds the exact claim names for active ordinals from the StatefulSet's `volumeClaimTemplates`; among claims matching the StatefulSet selector and a claim-template prefix, it considers any name outside that active set unused.
 
 ## Map a Pod Ordinal to a CockroachDB Node ID
 
@@ -107,7 +107,7 @@ Observe controller conditions, events, and logs while this happens:
 
 ```bash
 kubectl describe crdbcluster "$CLUSTER" -n "$NAMESPACE"
-kubectl get events -n "$NAMESPACE" --sort-by=.lastTimestamp
+kubectl get events -n "$NAMESPACE" --sort-by=.metadata.creationTimestamp
 kubectl logs -n "$NAMESPACE" \
   deployment/cockroach-operator-manager \
   --since=2h --all-containers=true
@@ -145,11 +145,11 @@ kubectl get pv "$TARGET_PV" \
   -o jsonpath='pv={.metadata.name} reclaim={.spec.persistentVolumeReclaimPolicy} class={.spec.storageClassName}{"\n"}'
 ```
 
-Review the resolved names before the deletion command. Do not turn the example variables into an unattended loop.
+Review the resolved names before the deletion command. Serialize scaling and cleanup from this check through deletion: `kubectl delete` is name-based and does not enforce the inspected UID or resource version as an API precondition. Do not turn the example variables into an unattended loop.
 
-With reclaim policy `Delete`, deleting the PVC normally causes the dynamically provisioned PV and external storage asset to be deleted. With `Retain`, the PV and storage asset remain in a released state and need a separate sanitization or recovery process. A CSI snapshot is not a substitute for a tested CockroachDB backup, but it can be useful for an approved forensic hold.
+With reclaim policy `Delete`, deleting the PVC normally causes the dynamically provisioned PV and external storage asset to be deleted. With `Retain`, the PV remains in the `Released` phase and the external storage asset remains; they need a separate sanitization or recovery process. A CSI snapshot is not a substitute for a tested CockroachDB backup, but it can be useful for an approved forensic hold.
 
-After the required backup or snapshot, delete only the confirmed orphan claim:
+After completing the required backup and, if applicable, an approved snapshot, delete only the confirmed orphan claim:
 
 ```bash
 kubectl delete pvc "$PVC" -n "$NAMESPACE"
@@ -159,7 +159,7 @@ Then verify the expected provider-side outcome. Do not manually delete a retaine
 
 ## Make the Next Scale-Up Safe
 
-Before increasing `spec.nodes`, calculate which ordinal the StatefulSet will create. For a four-replica StatefulSet, the next pod is ordinal 4. Confirm no claim from the old ordinal remains:
+Before increasing `spec.nodes`, calculate which ordinal the StatefulSet will create. For this operator-generated StatefulSet, which uses the default start ordinal 0, the next pod after four replicas is ordinal 4. Confirm no claim from the old ordinal remains:
 
 ```bash
 kubectl get statefulset "$CLUSTER" -n "$NAMESPACE" \
@@ -168,28 +168,32 @@ kubectl get statefulset "$CLUSTER" -n "$NAMESPACE" \
 kubectl get pvc -n "$NAMESPACE" -o name | rg -- "-${CLUSTER}-4$"
 ```
 
-If `rg` is not installed on the operator workstation, filter the exact generated claim name with `kubectl get pvc`. Absence of the stale claim allows the StatefulSet to provision a fresh store. Raise the custom resource by one, then wait for the new pod to become healthy before adding another:
+If `rg` is not installed on the operator workstation, filter the exact generated claim name with `kubectl get pvc`. Absence of the stale claim lets the StatefulSet create a new PVC for the ordinal. With dynamic provisioning it can receive a fresh volume; verify the new PVC UID, bound PV, and provider-side storage asset. Raise the custom resource by one, wait for the operator to apply the desired replica count, then wait for the new pod to become healthy before adding another:
 
 ```bash
 kubectl patch crdbcluster "$CLUSTER" -n "$NAMESPACE" \
   --type=merge \
   -p '{"spec":{"nodes":5}}'
 
-kubectl rollout status statefulset "$CLUSTER" -n "$NAMESPACE"
+kubectl wait -n "$NAMESPACE" \
+  --for=jsonpath='{.spec.replicas}'=5 \
+  "statefulset/${CLUSTER}" --timeout=10m
+
+kubectl rollout status "statefulset/${CLUSTER}" -n "$NAMESPACE"
 ```
 
 Confirm CockroachDB reports a new active node ID and that ranges begin balancing to it. A new Kubernetes pod UID alone is not proof of a new CockroachDB store; the PVC and membership evidence must also be new.
 
 ## Understand Automatic Pruning Before Enabling It
 
-The public operator's alpha `AutoPrunePVC` gate prunes claims before and after scaling. The implementation:
+During the public operator's scale-down routine, the alpha `AutoPrunePVC` gate invokes the pruner before decommissioning or replica changes and again afterward. The ordinary scale-up path does not invoke this pruner. The implementation:
 
 - reads the current StatefulSet replica count;
 - builds the set of claim names expected for active ordinals;
 - filters claims by the StatefulSet selector and claim-template prefixes;
 - watches for concurrent replica changes;
 - deletes by exact PVC UID and resource version; and
-- waits for foreground deletion of each selected claim.
+- requests foreground deletion propagation for each selected claim, but does not itself wait for the bound PV or backing storage to disappear.
 
 Those safeguards reduce races but do not replace database-level proof or backups. The source itself warns that the feature can delete data and keeps it disabled by default. If an organization chooses to enable it, pin the operator version, test failure injection with the real CSI driver and reclaim policy, serialize scaling operations, and alert on pruning errors. Do not copy an unversioned feature-gate argument from a blog into production; use the manifest and release documentation for the installed version.
 
