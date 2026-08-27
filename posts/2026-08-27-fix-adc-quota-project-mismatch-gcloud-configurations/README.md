@@ -21,7 +21,7 @@ As a result, client-library calls can continue using the previous ADC user or qu
 
 ## Recognize the mismatch
 
-Typical symptoms include quota or service usage errors that name the wrong project, while `gcloud config get-value project` shows the expected project. A request might also work through gcloud but fail through application code.
+Typical symptoms include quota or service usage errors that name the wrong project, while `gcloud config get project` shows the expected project. A request might also work through gcloud but fail through application code.
 
 Inspect all named configurations and the active configuration:
 
@@ -45,6 +45,8 @@ print("detected_project_id:", project_id)
 print("quota_project_id:", getattr(credentials, "quota_project_id", None))
 ```
 
+For user ADC, `detected_project_id` can be derived from the active gcloud configuration. It does not identify the ADC user or replace the separate quota-project value.
+
 Also check whether `GOOGLE_APPLICATION_CREDENTIALS` is set:
 
 ```bash
@@ -63,9 +65,9 @@ The active gcloud configuration and the ADC file are separate state:
 - `gcloud auth application-default login` writes user credentials to the local ADC file.
 - `gcloud auth application-default set-quota-project` changes the quota project stored in the local ADC file.
 
-During an ADC login, gcloud attempts to choose a quota project from `billing/quota_project` and then `core/project`, subject to the caller having the required permission. That selection occurs when the ADC file is written. A later configuration switch does not synchronize it.
+By default, during an ADC login, gcloud attempts to choose a quota project from `billing/quota_project` and then `core/project`, subject to the account written into ADC having the required permission. That selection occurs when the ADC file is written. A later configuration switch does not synchronize it.
 
-The quota project is the project to which request quota and applicable billing are attributed. It is not necessarily the project containing the requested resource, and it does not grant access to that resource.
+For client-based APIs that honor it, the quota project is the project to which request quota and applicable billing are attributed. It is not necessarily the project containing the requested resource, and it does not grant access to that resource.
 
 ## Fix the quota project explicitly
 
@@ -88,12 +90,12 @@ gcloud projects add-iam-policy-binding QUOTA_PROJECT_ID \
   --role='roles/serviceusage.serviceUsageConsumer'
 ```
 
-An administrator should scope this grant according to the organization's access policy. The required API must also be enabled in the quota project.
+An administrator should scope this grant according to the organization's access policy. For client-based API calls, the required API must also be enabled in the quota project.
 
-If the ADC identity itself should change, recreate local ADC after activating and verifying the desired account:
+If the ADC user itself should change, recreate local ADC after activating the desired configuration and pass the intended account explicitly. Activating a configuration alone does not select the account for the ADC login flow:
 
 ```bash
-gcloud auth application-default login
+gcloud auth application-default login DEVELOPER_EMAIL
 gcloud auth application-default set-quota-project QUOTA_PROJECT_ID
 ```
 
@@ -117,8 +119,8 @@ Do not confuse `GOOGLE_CLOUD_QUOTA_PROJECT` with `GOOGLE_CLOUD_PROJECT`. The for
 Test that ADC can obtain a token while discarding the token value:
 
 ```bash
-gcloud auth application-default print-access-token >/dev/null
-echo 'ADC token creation succeeded'
+gcloud auth application-default print-access-token >/dev/null &&
+  echo 'ADC token creation succeeded'
 ```
 
 Then make a low-risk application request against the intended resource and verify quota or audit information in the correct project. Token creation alone does not confirm IAM authorization, API enablement, resource selection, or quota attribution.
