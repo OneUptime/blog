@@ -114,7 +114,6 @@
 
 ## Google Cloud
 
-10. Why BigQuery Says `Dataset Was Not Found in Location US` When the Dataset Exists
 11. How to Fix `iam.serviceAccounts.actAs` When Deploying Cloud Run with a Custom Service Account
 12. How to Diagnose Cloud Run `The Request Was Aborted Because There Was No Available Instance`
 13. How to Fix Pub/Sub Push 403s to an Authenticated Cloud Run Service
