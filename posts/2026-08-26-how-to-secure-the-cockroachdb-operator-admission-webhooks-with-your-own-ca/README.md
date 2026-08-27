@@ -8,16 +8,16 @@ Description: Replace the legacy v1alpha1 Public Operator webhook CA safely, unde
 
 ---
 
-The deprecated CockroachDB Public Operator can use an organization-controlled CA for its admission webhooks, but the Secret it accepts is a **signing CA**, not a ready-made webhook server certificate. On each process start, the operator reads that CA, generates a fresh serving leaf in memory, writes the leaf and key into its pod-local certificate directory, and patches both admission configurations with the CA certificate.
+The legacy CockroachDB Public Operator can use an organization-controlled CA for its admission webhooks, but the Secret it accepts is a **signing CA**, not a ready-made webhook server certificate. On each process start with webhook setup enabled, the operator reads that CA, generates a fresh serving leaf in memory, writes the leaf and key into its pod-local certificate directory, and patches both admission configurations with the CA certificate.
 
-This guide applies to `cockroachdb/cockroach-operator`, the legacy `crdb.cockroachlabs.com/v1alpha1` controller. The GA `v1beta1` CockroachDB Operator uses a different shared Secret named `cockroach-operator-certs` and the Helm value `selfSignedOperatorCerts`. Do not create the legacy Secret and assume the GA chart will consume it.
+This guide applies to `cockroachdb/cockroach-operator`, the legacy `crdb.cockroachlabs.com/v1alpha1` controller, when webhook setup is enabled as it is in the standard upstream manifest. It does not apply to deployments started with `-skip-webhook-config`, including the OLM/OpenShift manifest, because that mode expects webhook TLS to be handled separately. The GA `v1beta1` CockroachDB Operator uses a different shared Secret named `cockroach-operator-certs` and the Helm value `selfSignedOperatorCerts`. Do not create the legacy Secret and assume the GA chart will consume it.
 
 ## Know What the Public Operator Generates
 
 The legacy operator looks for `cockroach-operator-webhook-ca` in its own namespace. The Secret must contain:
 
 - `tls.crt`: a PEM-encoded CA certificate;
-- `tls.key`: the matching PEM-encoded CA private key.
+- `tls.key`: the matching unencrypted, PEM-encoded PKCS#1 RSA CA private key.
 
 If the Secret is missing, the operator creates its own CA. If it exists, the operator uses it to sign a new serving certificate with these DNS names:
 
@@ -54,20 +54,23 @@ openssl req -x509 -new -sha256 \
   -addext 'keyUsage=critical,keyCertSign,cRLSign' \
   -out webhook-ca.crt
 
-openssl verify -CAfile webhook-ca.crt webhook-ca.crt
+openssl verify -check_ss_sig -CAfile webhook-ca.crt webhook-ca.crt
 openssl x509 -in webhook-ca.crt -noout -subject -issuer -serial -dates
 head -n 1 webhook-ca.key
 # Expected for this legacy operator: -----BEGIN RSA PRIVATE KEY-----
 ```
 
-The `-traditional` option is intentional. The current legacy source parses the CA key as PKCS#1 RSA, while current OpenSSL can otherwise emit PKCS#8 (`BEGIN PRIVATE KEY`). The CA certificate does not need the webhook Service SANs; those belong on the generated serving leaf. Keep the validity period aligned with policy and alert well before expiration because the operator does not renew an externally supplied CA for you.
+The `-traditional` option is intentional. The current legacy source requires an unencrypted PKCS#1 RSA CA key, while current OpenSSL can otherwise emit PKCS#8 (`BEGIN PRIVATE KEY`). The CA certificate does not need the webhook Service SANs; those belong on the generated serving leaf. Keep the validity period aligned with policy and alert well before expiration because the operator does not renew an externally supplied CA for you.
 
 ## Install the Secret Before First Startup
 
-For a fresh install, create the Secret in the exact namespace where the Public Operator Deployment runs **before** starting it:
+For a fresh install, create the namespace and then the Secret **before** starting the Public Operator Deployment:
 
 ```bash
 export OPERATOR_NAMESPACE=cockroach-operator-system
+
+kubectl create namespace "$OPERATOR_NAMESPACE" \
+  --dry-run=client -o yaml | kubectl apply -f -
 
 kubectl create secret tls cockroach-operator-webhook-ca \
   --cert=webhook-ca.crt \
@@ -104,23 +107,23 @@ The implementation reads the CA and generates the serving leaf only at startup; 
 
 ## Verify CA, Service, Leaf, and Admission as Separate Layers
 
-First compare the configured CA bundle with the Secret. The two SHA-256 digests should match:
+First compare the configured CA bundle with the Secret. All three SHA-256 digests should match:
 
 ```bash
 kubectl get secret cockroach-operator-webhook-ca \
   -n "$OPERATOR_NAMESPACE" \
   -o jsonpath='{.data.tls\.crt}' | base64 -d \
-  | openssl x509 -outform DER | openssl dgst -sha256
+  | openssl dgst -sha256
 
 kubectl get validatingwebhookconfiguration \
   cockroach-operator-validating-webhook-configuration \
   -o jsonpath='{.webhooks[0].clientConfig.caBundle}' | base64 -d \
-  | openssl x509 -outform DER | openssl dgst -sha256
+  | openssl dgst -sha256
 
 kubectl get mutatingwebhookconfiguration \
   cockroach-operator-mutating-webhook-configuration \
   -o jsonpath='{.webhooks[0].clientConfig.caBundle}' | base64 -d \
-  | openssl x509 -outform DER | openssl dgst -sha256
+  | openssl dgst -sha256
 ```
 
 Check the Service selector and its EndpointSlices:
@@ -133,7 +136,7 @@ kubectl get endpointslice \
   -l kubernetes.io/service-name=cockroach-operator-webhook-service
 ```
 
-Port-forward the Service and validate its serving leaf with the same CA and the Service DNS name used by the API server:
+Port-forward the Service and validate its serving leaf with the same CA and the Service DNS name used by the API server. `-partial_chain` allows a dedicated intermediate CA to terminate verification when its issuing root is not included in the file:
 
 ```bash
 kubectl get secret cockroach-operator-webhook-ca \
@@ -152,6 +155,7 @@ openssl s_client \
   -servername "cockroach-operator-webhook-service.$OPERATOR_NAMESPACE.svc" \
   -verify_hostname "cockroach-operator-webhook-service.$OPERATOR_NAMESPACE.svc" \
   -CAfile webhook-ca-current.crt \
+  -partial_chain \
   -verify_return_error </dev/null
 ```
 
