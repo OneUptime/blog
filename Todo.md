@@ -114,7 +114,6 @@
 
 ## Google Cloud
 
-20. How to Diagnose an Unhealthy Google Cloud Load Balancer Backend When the Firewall Rule Looks Correct
 
 ## ServiceMonitors
 
