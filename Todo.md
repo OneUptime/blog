@@ -120,7 +120,6 @@
 
 ## Ephemeral Volumes
 
-4. How to Size a Memory-Backed emptyDir Without Triggering a Pod OOM
 5. Does emptyDir Survive a Container Restart? Understanding Pod and Container Lifecycles
 6. How to Share Build Artifacts Between Init Containers and App Containers with emptyDir
 7. How to Make /tmp Writable with emptyDir When readOnlyRootFilesystem Is Enabled
