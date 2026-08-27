@@ -120,7 +120,6 @@
 
 ## Ephemeral Volumes
 
-6. How to Share Build Artifacts Between Init Containers and App Containers with emptyDir
 7. How to Make /tmp Writable with emptyDir When readOnlyRootFilesystem Is Enabled
 8. How to Monitor emptyDir Usage per Pod with Kubelet and Prometheus Metrics
 9. How to Diagnose DiskPressure and Inode Evictions Caused by Pod Ephemeral Storage
