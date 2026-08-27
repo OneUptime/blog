@@ -14,7 +14,7 @@ This guide targets the GA `crdb.cockroachlabs.com/v1beta1` Operator. Current sch
 
 ## Verify the Failure Domains First
 
-Kubernetes only considers nodes that have the requested topology key. List region and zone labels and count schedulable capacity:
+Kubernetes only considers nodes that have the requested topology key. List region and zone labels, then inspect the uncordoned nodes in each domain:
 
 ```bash
 kubectl get nodes \
@@ -35,7 +35,7 @@ The region entry in a `CrdbCluster` is not a list of availability zones. For a s
 
 ## Use the Current v1beta1 Pod Template
 
-The following complete example shows the scheduling and locality shape. It assumes the external certificate ConfigMap and Secrets, ServiceAccount/RBAC, and `fast-expandable` StorageClass already exist:
+The following complete example shows the scheduling and locality shape. It assumes the Operator is configured with `cloudRegion=us-east-1` (or `CLOUD_REGION=us-east-1`), and that the external certificate ConfigMap and Secrets, ServiceAccount/RBAC, and `fast-expandable` StorageClass already exist:
 
 ```yaml
 apiVersion: crdb.cockroachlabs.com/v1beta1
@@ -128,7 +128,7 @@ spec:
 
 Pin a CockroachDB version supported by your tested Operator/chart combination rather than copying this example indefinitely. The selector must match the pod's own labels. If it does not, the scheduler can place "ghost" pods that do not count toward skew. Use cluster-specific labels when more than one CockroachDB cluster shares a namespace.
 
-`maxSkew: 1` permits counts such as 2/2/1 but not 3/1/1 for five pods across three eligible zones. `minDomains: 3` treats fewer than three eligible zones as a missing failure domain. It is supported by the Kubernetes versions required by the GA chart, but check the API version if applying the manifest to an older cluster.
+`maxSkew: 1` permits counts such as 2/2/1 but not 3/1/1 for five pods across three eligible zones. When fewer than three eligible zones exist, `minDomains: 3` makes the scheduler use zero as the global minimum. It is supported by the Kubernetes 1.30 and later versions required by the GA charts, but check the Kubernetes server version and feature-gate state if applying the manifest to an older cluster.
 
 The hostname constraint keeps counts within one across eligible nodes and therefore avoids co-location while enough empty eligible hostname domains exist. It does not guarantee one pod per node after pod count exceeds eligible nodes or the domain set is constrained; use required pod anti-affinity if strict one-per-node placement is a hard requirement. The node-affinity rule keeps this regional cluster on `us-east-1` nodes.
 
@@ -136,7 +136,7 @@ The hostname constraint keeps counts within one across eligible nodes and theref
 
 `DoNotSchedule` is fail-closed: Kubernetes leaves a new pod Pending when placing it would violate the skew. That proves the spread objective is real, but a missing or full zone can block initial deployment, scale-up, upgrade, or recovery.
 
-`ScheduleAnyway` is a preference. It improves the odds of getting a replacement pod running when a zone has no capacity, but can co-locate failure domains and reduce actual resilience. Choose deliberately:
+`ScheduleAnyway` is a preference. It improves the odds of getting a replacement pod running when a zone has no capacity, but can co-locate failure domains and reduce actual resilience. If you change the sample's zone constraint to `ScheduleAnyway`, remove `minDomains`; Kubernetes permits `minDomains` only with `DoNotSchedule`. Choose deliberately:
 
 - use `DoNotSchedule` when three-zone placement is a hard requirement and the platform guarantees capacity;
 - use `ScheduleAnyway` when restoring pod count is more important than strict placement during an outage; and
@@ -161,7 +161,7 @@ Local persistent volumes need even more care: the PV is tied to a node, and a no
 
 ## Keep Scheduler Placement and CockroachDB Locality Aligned
 
-`localityMappings` causes the Operator's init path to read Kubernetes node labels and build CockroachDB locality tiers such as `region=us-east-1,zone=us-east-1a`. The pod ServiceAccount therefore needs cluster-scoped permission to read Nodes. The GA chart creates node-reader RBAC by default; split-chart installations must arrange the exact ServiceAccount binding before disabling that chart resource.
+`localityMappings` causes the Operator's init path to read Kubernetes node labels and build CockroachDB locality tiers such as `region=us-east-1,zone=us-east-1a`. The pod ServiceAccount therefore needs cluster-scoped permission to read Nodes. The CockroachDB chart creates per-release node-reader RBAC by default; split-chart installations must arrange the exact ServiceAccount binding before disabling that chart resource.
 
 Topology spread controls where the pod runs. Locality tells CockroachDB where it runs. Neither alone guarantees a particular database survival goal. Review CockroachDB multi-region database topology, zone configurations, replication factors, and survival settings for the workload. A three-zone pod layout is necessary infrastructure, but it does not prove every range has the placement required for a zone outage.
 
@@ -176,18 +176,20 @@ kubectl get crdbcluster cockroachdb -n cockroachdb \
   -o jsonpath='{.metadata.generation}{" observed="}{.status.observedGeneration}{" reconciled="}{.status.reconciled}{"\n"}'
 
 kubectl get pods -n cockroachdb \
-  -l app.kubernetes.io/name=cockroachdb \
+  -l app.kubernetes.io/name=cockroachdb,app.kubernetes.io/instance=cockroachdb,app.kubernetes.io/component=cockroachdb \
   -o custom-columns='POD:.metadata.name,READY:.status.containerStatuses[0].ready,NODE:.spec.nodeName,ZONE:.metadata.labels.topology\.kubernetes\.io/zone' \
   --sort-by=.spec.nodeName
 ```
 
-Pod metadata does not normally copy the node's zone label, so the last column may be empty. Join pod node names to Node labels for an authoritative view:
+Pod metadata does not normally copy the node's zone label, so the last column may be empty. Join scheduled pod node names to Node labels for an authoritative view:
 
 ```bash
 kubectl get pods -n cockroachdb \
-  -l app.kubernetes.io/name=cockroachdb \
+  -l app.kubernetes.io/name=cockroachdb,app.kubernetes.io/instance=cockroachdb,app.kubernetes.io/component=cockroachdb \
   -o json |
-  jq -r '.items[] | [.metadata.name, .spec.nodeName] | @tsv' |
+  jq -r '.items[] |
+    select(.spec.nodeName != null and .spec.nodeName != "") |
+    [.metadata.name, .spec.nodeName] | @tsv' |
 while IFS=$'\t' read -r pod node; do
   zone=$(kubectl get node "$node" \
     -o jsonpath='{.metadata.labels.topology\.kubernetes\.io/zone}')
