@@ -8,7 +8,7 @@ Description: Build an SSL monitoring policy that validates hostname, chain trust
 
 ---
 
-An unexpired certificate can still be unusable or unsafe. It can name the wrong host, chain to an untrusted root, omit an intermediate, be revoked, use a key below policy, lack server-authentication purpose, or belong to the wrong backend.
+An unexpired certificate can still be unusable or unsafe. It can name the wrong host, chain to an untrusted root, omit an intermediate, be revoked, use a key below policy, have key usage or extended key usage that excludes server authentication, or belong to the wrong backend.
 
 Expiry is one input to X.509 validation, not a complete TLS health check. A useful monitor evaluates the connection in layers and reports which contract failed.
 
@@ -49,8 +49,9 @@ For an offline diagnostic with separated files:
 
 ```bash
 openssl verify \
-  -CAfile trusted-roots.pem \
+  -trusted trusted-roots.pem \
   -untrusted intermediates.pem \
+  -purpose sslserver \
   -verify_hostname api.example.com \
   leaf.pem
 ```
@@ -83,13 +84,13 @@ openssl s_client \
   -status </dev/null
 ```
 
-No stapled response does not by itself mean the certificate is revoked; stapling is optional unless certificate or application policy requires it. A monitor that requires stapling should verify the response signature, certificate status, `thisUpdate`, and `nextUpdate`, and alert separately on missing, stale, unknown, and revoked states.
+No stapled response does not by itself mean the certificate is revoked; stapling is optional unless certificate or application policy requires it. A monitor that requires stapling should confirm that the response covers the certificate, verify its signature and the signer's authorization, evaluate the certificate status, and enforce freshness from `thisUpdate` and, when present, `nextUpdate`, alerting separately on missing, stale, unknown, and revoked states.
 
-CRL checks need a valid issuer-signed CRL and freshness checks. OpenSSL verification supports `-crl_check` and `-crl_check_all`; `s_client` can use supplied CRLs and supports CRL distribution-point downloading in current versions. Fetching URLs embedded in an untrusted certificate has egress and server-side request-forgery implications, so restrict targets, protocols, response sizes, destinations, and timeouts.
+CRL checks need a fresh CRL with a valid signature from the certificate issuer or an authorized indirect CRL issuer. OpenSSL verification supports `-crl_check` and `-crl_check_all`; indirect CRLs and alternate CRL signing keys additionally require `-extended_crl`. `s_client` can use a supplied CRL when CRL checking is enabled and, with `-crl_check -crl_download`, supports CRL distribution-point downloading in current versions. Fetching URLs embedded in an untrusted certificate has egress and server-side request-forgery implications, so restrict targets, protocols, response sizes, destinations, and timeouts.
 
-## Use Current Blackbox Exporter Validation Carefully
+## Use Blackbox Exporter Validation Carefully
 
-A strict HTTPS module can enforce normal hostname and chain validation, a minimum TLS version, and current CRL collection:
+A strict HTTPS module can enforce normal hostname and chain validation and a minimum TLS version. As of August 27, 2026, the CRL portion below requires a blackbox exporter build containing upstream [commit `372bf83`](https://github.com/prometheus/blackbox_exporter/commit/372bf83b8e4b49860df77ef9d8cec0b94839027c) or a later release; it is not available in [v0.28.0](https://github.com/prometheus/blackbox_exporter/releases/tag/v0.28.0), the latest tagged release:
 
 ```yaml
 modules:
@@ -105,9 +106,9 @@ modules:
         min_version: TLS12
 ```
 
-When the target URL uses a DNS hostname, the exporter uses that hostname for verification. When targeting an origin IP, set `tls_config.server_name` and the HTTP `Host` header explicitly.
+By default, when the target URL uses a DNS hostname, the exporter uses that hostname for verification. When targeting an origin IP, set `tls_config.server_name` and the HTTP `Host` header explicitly.
 
-Current blackbox exporter documentation states that `check_revoked` checks certificates against CRLs and emits `probe_ssl_crl_*` metrics. A revoked certificate or unreachable CRL does **not** change `probe_success`; alert on the CRL metrics themselves:
+Current upstream `master` documentation states that `check_revoked` checks certificates against CRLs and emits `probe_ssl_crl_*` metrics. A revoked certificate or unreachable CRL does **not** change `probe_success`; alert on the CRL metrics themselves:
 
 ```promql
 probe_ssl_crl_revoked{chain_pos="0"} == 1
