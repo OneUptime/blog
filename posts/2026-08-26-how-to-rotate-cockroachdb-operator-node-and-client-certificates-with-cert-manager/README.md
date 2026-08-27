@@ -10,7 +10,7 @@ Description: Configure and exercise cert-manager leaf-certificate rotation for a
 
 In the GA CockroachDB Operator, cert-manager owns issuance and renewal while the CockroachDB chart supplies the two `Certificate` specifications and tells `CrdbNode` pods which Secrets and CA ConfigMap to mount. A successful cert-manager renewal is therefore only the first checkpoint. Rotation is complete when the live CockroachDB endpoints present and trust the new material.
 
-This guide targets the GA `crdb.cockroachlabs.com/v1beta1` Operator installed from `cockroachdb-parent`. It does not use the deprecated Public Operator's `v1alpha1` fields `nodeTLSSecret` and `clientTLSSecret`, nor the older StatefulSet chart's `tls.certs.certManager` values.
+This guide targets the GA `crdb.cockroachlabs.com/v1beta1` Operator and CockroachDB subchart distributed in `cockroachdb-parent`. The Operator must already be installed and ready. It does not use the deprecated Public Operator's `v1alpha1` fields `nodeTLSSecret` and `clientTLSSecret`, nor the older StatefulSet chart's `tls.certs.certManager` values.
 
 ## Build the Trust Path First
 
@@ -29,7 +29,7 @@ spec:
     secretName: cockroachdb-ca
 ```
 
-Create a trust-manager `Bundle` that publishes the CA certificate as `ca.crt` in ConfigMap `cockroachdb-ca`. Apply the namespace-selection and trust-namespace rules from the trust-manager version you installed; do not grant it broad Secret access merely to make the example work.
+Place the trusted CA certificate in a dedicated, public-only ConfigMap in trust-manager's configured trust namespace. Then create a trust-manager `Bundle` that publishes it as `ca.crt` in ConfigMap `cockroachdb-ca`. Do not point the Bundle directly at the signer Secret in production: changing that Secret during CA rotation can immediately remove the old root from distributed trust. Apply the namespace-selection and trust-namespace rules from the trust-manager version you installed; trust-manager does not need access to the signer private key.
 
 Before installing CockroachDB, verify both sides exist:
 
@@ -42,7 +42,7 @@ kubectl get configmap cockroachdb-ca -n database \
 
 ## Enable Exactly One Certificate Mode
 
-Use the GA parent chart's nested values. The following example requests one-year node certificates renewed seven days before expiration and 28-day root-client certificates renewed two days before expiration:
+Use the GA CockroachDB subchart's nested values and merge this TLS fragment into the complete values for your cluster. In that complete file, ensure the active `cockroachdb.crdbCluster.regions` entry has `namespace: database` and a `code` that matches the Operator's `cloudRegion`. The following example requests one-year node certificates renewed seven days before expiration and 28-day root-client certificates renewed two days before expiration:
 
 ```yaml
 cockroachdb:
@@ -74,12 +74,12 @@ The chart renders two cert-manager resources:
 - `<release-fullname>-node`, with Common Name `node`, server and client usages, and DNS SANs for localhost, public Service names, pod wildcards, and the GA `-join` Service;
 - `<release-fullname>-root-client`, with Common Name `root` and client-auth usage.
 
-Their output Secrets are the configured `cockroachdb-node` and `cockroachdb-root`. The chart then maps those into `spec.template.spec.certificates.externalCertificates` on the `v1beta1` `CrdbCluster`, together with the CA ConfigMap. Do not hand-edit the rendered `Certificate` objects to add routine SANs; put supported configuration in Helm values so the next upgrade does not revert it.
+Their output Secrets are the configured `cockroachdb-node` and `cockroachdb-root`. The chart then maps those into `spec.template.spec.certificates.externalCertificates` on the `v1beta1` `CrdbCluster`, together with the CA ConfigMap. At the reviewed chart revision, it also maps the root-client Secret to `httpSecretName`, even though that Certificate requests client authentication only and has no server DNS SANs. Verify HTTPS serving against the exact pinned chart release before relying on this mapping. Do not hand-edit the rendered `Certificate` objects: the chart owns their built-in SAN list, and this chart version exposes no arbitrary additional-SAN value for cert-manager.
 
-Install or upgrade with the pinned parent chart:
+Install or upgrade with the pinned CockroachDB subchart after the Operator is ready:
 
 ```bash
-helm upgrade --install crdb ./cockroachdb-parent \
+helm upgrade --install crdb ./cockroachdb-parent/charts/cockroachdb \
   --namespace database \
   --create-namespace \
   --values values.yaml
@@ -95,7 +95,7 @@ kubectl wait --for=condition=Ready certificate --all \
   -n database --timeout=5m
 
 kubectl get certificate -n database \
-  -o custom-columns=NAME:.metadata.name,SECRET:.spec.secretName,READY:.status.conditions[0].status,RENEWAL:.status.renewalTime
+  -o 'custom-columns=NAME:.metadata.name,SECRET:.spec.secretName,READY:.status.conditions[?(@.type=="Ready")].status,RENEWAL:.status.renewalTime'
 ```
 
 Inspect the issued leaves without exposing private keys:
@@ -118,7 +118,10 @@ kubectl get configmap cockroachdb-ca -n database \
   -o go-template='{{index .data "ca.crt"}}' > "$workdir/ca.crt"
 kubectl get secret cockroachdb-node -n database \
   -o jsonpath='{.data.tls\.crt}' | base64 -d > "$workdir/node.crt"
+kubectl get secret cockroachdb-root -n database \
+  -o jsonpath='{.data.tls\.crt}' | base64 -d > "$workdir/root.crt"
 openssl verify -CAfile "$workdir/ca.crt" "$workdir/node.crt"
+openssl verify -CAfile "$workdir/ca.crt" "$workdir/root.crt"
 ```
 
 ## Trigger a Controlled Leaf Renewal
@@ -132,7 +135,9 @@ kubectl get secret cockroachdb-node cockroachdb-root -n database \
 cmctl renew <release-fullname>-node -n database
 cmctl renew <release-fullname>-root-client -n database
 
-kubectl get certificate,certificaterequest -n database -w
+# Run these watches in separate terminals.
+kubectl get certificate -n database -w
+kubectl get certificaterequest -n database -w
 ```
 
 Wait for a new `CertificateRequest` to become Ready, the corresponding `Certificate.status.revision` to increment, and both target Secret resource versions to change. A simple `kubectl wait` on `Certificate` Ready is insufficient for this rehearsal because the old revision may still satisfy that condition when the renewal begins.
@@ -147,22 +152,22 @@ kubectl get pods -n database \
   -l crdb.cockroachlabs.com/cluster=<cluster-name> -w
 ```
 
-The installed Operator/chart release controls how mounted certificate changes are reloaded. Do not call the operation complete from the Secret alone. Verify every live SQL and HTTPS endpoint presents the new certificate and accepts the intended client chain. CockroachDB supports reloading certificates with `SIGHUP`; if your installed release does not complete the reload automatically, use the chart's supported rolling-restart mechanism during a maintenance window rather than deleting all database pods together.
+The GA Operator injects a `cert-reloader` sidecar when TLS is enabled. Confirm from its logs and fresh live handshakes that projected Secret changes caused a reload. Do not call the operation complete from the Secret alone. Verify every live SQL and HTTPS endpoint presents the new certificate and accepts the intended client chain. CockroachDB supports reloading certificates with `SIGHUP`; if live endpoints still present old material, use the chart's supported rolling-restart mechanism during a maintenance window rather than deleting all database pods together.
 
-For a chart-managed cluster, changing `cockroachdb.crdbCluster.timestamp` on a Helm upgrade requests an operator-controlled rolling restart:
+For a chart-managed cluster reconciling in the default `MutableOnly` mode, changing `cockroachdb.crdbCluster.timestamp` on a Helm upgrade requests an operator-controlled rolling restart. `CreateOnly` does not propagate this change to existing `CrdbNode` resources, and `Disabled` does not reconcile them:
 
 ```bash
-helm upgrade crdb ./cockroachdb-parent \
+helm upgrade crdb ./cockroachdb-parent/charts/cockroachdb \
   --namespace database \
   --reuse-values \
   --set-string cockroachdb.crdbCluster.timestamp="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 ```
 
-Confirm pod readiness and zero unavailable or under-replicated ranges throughout. Finally, make a real application-style connection with the renewed root-client Secret. A certificate visible on disk but not in the live TLS handshake has not been rotated operationally.
+Watch pod readiness and range health throughout. After each pod restart, and again at completion, confirm the pod is Ready and unavailable and under-replicated ranges have returned to zero. Finally, make a real application-style connection with the renewed root-client Secret. A certificate visible on disk but not in the live TLS handshake has not been rotated operationally.
 
 ## Treat CA Rotation as a Separate Ceremony
 
-The steps above rotate leaf certificates under the same CA. Replacing the CA Secret is not equivalent. During CA rotation, old nodes, new nodes, old clients, and new clients overlap. CockroachDB's documented procedure distributes a combined old-plus-new CA bundle first, reloads trust everywhere, and only then rotates node and client leaves. Removing the old CA before every participant trusts the new one can partition the cluster or lock out clients.
+The steps above rotate leaf certificates under the same CA. Replacing the CA Secret is not equivalent. During CA rotation, old nodes, new nodes, old clients, and new clients overlap. CockroachDB's documented procedure distributes a combined new-plus-old CA bundle first, reloads trust everywhere, and only then rotates node and client leaves. Removing the old CA before every participant trusts the new one can partition the cluster or lock out clients.
 
 cert-manager's CA Issuer does not by itself orchestrate that distributed trust transition. Plan CA rotation independently, update the trust-manager Bundle safely, and verify both roots are accepted before issuing new leaves. Retire the old root only after all live nodes and clients have moved.
 
