@@ -23,7 +23,7 @@ For an embedded SCT, Fulcio:
 2. adds the critical CT poison extension `1.3.6.1.4.1.11129.2.4.3`;
 3. signs that invalid precertificate with the Fulcio CA;
 4. submits the precertificate and CA chain to the CT log's `add-pre-chain` API;
-5. verifies and receives the log's SCT;
+5. receives the log's SCT and, when `--ct-log-public-key-path` is configured, verifies its signature;
 6. removes the poison, adds the SCT-list extension `1.3.6.1.4.1.11129.2.4.2`; and
 7. signs and returns the final certificate.
 
@@ -37,17 +37,18 @@ Current `main` embeds Fulcio's reusable `BaseCA` in `kmsca`, `fileca`, `tinkca`,
 
 Older setup documentation says only KMS and file backends support embedded SCTs. Treat that statement and current source as evidence from different versions. Pin a Fulcio release, inspect its concrete CA type, and issue a canary certificate. The response's v2 oneof will be `signedCertificateEmbeddedSct` when the embedded flow was used.
 
-Use `kmsca` with an online intermediate beneath an offline root for a typical production deployment. `fileca` and `ephemeralca` are testing-oriented; SoftHSM is not equivalent to a qualified hardware HSM.
+Use `kmsca` with an online intermediate beneath an offline root for a typical production deployment. `ephemeralca` is testing-only; `fileca` keeps its encrypted signing key on disk and generally needs stronger host and key protections than a KMS/HSM-backed signer for production. SoftHSM is not equivalent to a qualified hardware HSM.
 
 ## Configure the CT Log to Accept the Fulcio Hierarchy
 
-Fulcio speaks the RFC 6962-style CT submission API through `certificate-transparency-go`. The current Fulcio Compose lab runs the official Tesseract static-CT implementation with arguments equivalent to:
+Fulcio speaks the RFC 6962-style CT submission API through `certificate-transparency-go`. The current Fulcio Compose lab pins the official Tesseract POSIX v0.1.1 image and wraps its `posix` binary as `tesseract`. Its arguments, adapted for an explicit external shard prefix, are:
 
 ```bash
 tesseract \
   --http_endpoint=0.0.0.0:6962 \
   --storage_dir=/var/lib/tesseract \
-  --origin=acme-fulcio-2026 \
+  --origin=ct-write.example.com/acme-fulcio-2026 \
+  --path_prefix=/acme-fulcio-2026 \
   --private_key=/etc/tesseract/ct-private-key.pem \
   --roots_pem_file=/etc/tesseract/accepted-fulcio-roots.pem \
   --ext_key_usages=CodeSigning
@@ -55,9 +56,9 @@ tesseract \
 
 Pin the Tesseract release and follow its deployment-specific storage documentation. The write API and static read surface are different operational concerns in Tesseract. Production also needs durable storage, backups, append-only monitoring, checkpoint distribution/witnessing, rate limits, high availability, and protected log signing keys.
 
-`--roots_pem_file` controls which CA roots the log accepts. Put only the intended Fulcio roots there. During an intermediate rotation beneath the same root, valid chain submission can continue. During a root migration, update and validate the log's accepted roots before Fulcio starts using the new hierarchy.
+For the pinned v0.1.1 setup, `--roots_pem_file` controls which CA roots the log accepts and is read once at startup. Put only the intended Fulcio roots there. During an intermediate rotation beneath the same root, valid chain submission can continue. During a root migration, update the file, restart or redeploy the log, and validate the accepted roots before Fulcio starts using the new hierarchy. Newer Tesseract releases can also load remotely fetched roots and cached copies from storage, so audit every root source when upgrading.
 
-The CT `--origin` is part of log identity/checkpoint operations. Give each environment and shard a stable, unique origin; do not reuse a production log key/origin in staging.
+The CT `--origin` must equal the schema-less submission prefix (host, optional port, and any path, without a trailing slash); Tesseract uses it as the checkpoint origin and key name. `--path_prefix` makes Tesseract serve submission handlers beneath that path. Give each environment and shard a stable, unique origin; do not reuse a production log key/origin in staging.
 
 ## Export and Pin the CT Public Key
 
@@ -76,7 +77,7 @@ openssl pkey \
   openssl dgst -sha256
 ```
 
-The SHA-256 digest of the DER public key is the RFC 6962 Log ID shown in an SCT. Publish the public key through authenticated private trust distribution before the log issues production SCTs.
+The SHA-256 digest of the DER-encoded SubjectPublicKeyInfo is the RFC 6962 Log ID shown in an SCT. Publish the public key through authenticated private trust distribution before the log issues production SCTs.
 
 Do not give the CT private key to Fulcio. Fulcio needs only the CT public key so it can verify that the submission response came from the expected log.
 
@@ -97,10 +98,10 @@ fulcio-server serve \
 
 Use the exact submission base URL expected by the CT implementation. `--ct-log-public-key-path` makes the CT client verify SCT signatures. `--ct-log.tls-ca-cert` is only for an internal HTTPS CA; it does not replace the CT log signature key.
 
-Current `--ct-log-origin` overrides the HTTP `Host` header when the routing origin differs from the URL host. It does not install a public key or rename the Log ID. Use it only for a reviewed reverse-proxy/routing requirement:
+Current `--ct-log-origin` overrides the HTTP `Host` header. It is useful when Fulcio connects to an internal URL but Tesseract's submission prefix uses a different hostname. It does not install a public key or rename the Log ID. For example, if the client URL is `https://internal-ct-writer.example.net/acme-fulcio-2026` but the configured submission prefix is `ct-write.example.com/acme-fulcio-2026`, use:
 
 ```text
---ct-log-origin=internal-ct-writer.example.net
+--ct-log-origin=ct-write.example.com
 ```
 
 Leaving `--ct-log-public-key-path` empty means Fulcio can accept the CT server response without locally pinning its signature key. Even if downstream clients later check the SCT, production Fulcio should pin and verify the expected log at issuance time.
@@ -114,17 +115,16 @@ openssl x509 -in issued-leaf.pem -noout -text |
   grep -A 16 'CT Precertificate SCTs'
 
 openssl x509 -in issued-leaf.pem -noout -text |
-  grep -F '1.3.6.1.4.1.11129.2.4.3' &&
+  grep -E 'CT Precertificate Poison|1\.3\.6\.1\.4\.1\.11129\.2\.4\.3' &&
   echo 'ERROR: poison extension remained in final certificate'
 ```
 
 The final leaf should display a CT Precertificate SCTs block, and it must not contain the poison extension. Compare the displayed Log ID and timestamp with the configured key and issuance time.
 
-Do not use OpenSSL display output as the cryptographic SCT verifier. Verify a real bundle with Cosign and a private `TrustedRoot` containing the Fulcio chain and CT public key:
+Do not use OpenSSL display output as the cryptographic SCT verifier. Verify the signed image and its registry-attached bundle with Cosign and a private `TrustedRoot` containing the Fulcio chain, CT public key, and the Rekor/TSA trust material required by the bundle:
 
 ```bash
 cosign verify \
-  --bundle artifact.sigstore.json \
   --trusted-root trusted_root.json \
   --certificate-identity='EXPECTED_IDENTITY' \
   --certificate-oidc-issuer='EXPECTED_ISSUER' \
@@ -149,9 +149,9 @@ Check CA/HSM capacity too. The embedded flow doubles CA signature operations and
 
 ## Publish CT Trust and Rotation Intervals
 
-Create a Sigstore `TrustedRoot` entry with the CT URL, public key, origin, start time, and eventual end time. Publish it through private TUF before signers receive SCTs from that key.
+Create an RFC 6962 CT entry in the Sigstore `TrustedRoot` with its URL, public key, derived 32-byte Log ID, and the key's start and eventual end time. With the current Cosign `trusted-root create` command, leave `origin` out of that entry so it retains the RFC 6962 Log ID used for SCT lookup. If the same v0.1 trust root must identify Tesseract static checkpoints, add a second CT entry for the same key with `origin`; TrustedRoot v0.2 instead represents the RFC 6962 `logId` and signed-note `checkpointKeyId` separately. Pin and test the format your clients consume. Publish it through private TUF before signers receive SCTs from that key.
 
-For a new CT shard or key:
+For a new CT shard with a new key:
 
 1. publish the new key and validity interval alongside historical keys;
 2. let clients update;
