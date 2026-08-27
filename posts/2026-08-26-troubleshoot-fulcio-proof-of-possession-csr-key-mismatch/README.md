@@ -10,10 +10,10 @@ Description: Debug Fulcio v2 public-key challenges and PKCS#10 requests by pinni
 
 Fulcio will issue a certificate only after authenticating the OIDC token and proving that the caller controls the private key corresponding to the public key placed in the leaf. The v2 API offers two mutually exclusive proof paths:
 
-- a public key plus a signature over the configured identity challenge; or
+- a public key plus a signature over Fulcio's mapped identity challenge; or
 - a PKCS#10 CSR whose self-signature proves possession of its embedded public key.
 
-Both paths can produce Fulcio's generic client message, `The signature supplied in the request could not be verified`. Debug them by preserving one request's token, keypair, exact challenge bytes, and serialized body as a single unit. Regenerating one component between checks creates a new mismatch.
+Both paths can produce Fulcio's generic client message, `The signature supplied in the request could not be verified`. Debug them by preserving one request's token, keypair, exact challenge bytes, and serialized body as a single unit. Regenerating one component between checks can create a new mismatch or obscure the original one.
 
 ## Locate the Failing Stage
 
@@ -24,7 +24,7 @@ Current Fulcio processes a request in this order:
 3. apply Sigstore key-strength validation;
 4. verify the CSR self-signature or explicit proof of possession;
 5. check the public-key/hash combination against `--client-signing-algorithms`; and
-6. ask the CA/CT backends to issue and log the certificate.
+6. ask the CA and, when configured, CT backends to issue and log the certificate.
 
 The public error identifies the broad stage:
 
@@ -35,9 +35,10 @@ The public error identifies the broad stage:
 | `The certificate signing request could not be parsed` | PKCS#10 PEM and base64 JSON encoding |
 | `The public key supplied in the request is insecure` | curve, RSA size/exponent/weak primes, supported key type |
 | `The signature supplied in the request could not be verified` | challenge bytes/key pair or CSR self-signature |
-| `signing algorithm not permitted` | server algorithm allowlist and selected hash/signature algorithm |
+| `unrecognized signature algorithm: ...` | CSR signature scheme/hash that current Fulcio cannot map, such as RSA-PSS or SHA-1 |
+| `signing algorithm not permitted: ...` | server algorithm allowlist and public-key/hash combination |
 
-Token authentication happens first. Do not debug a proof while the server is rejecting the token. Fulcio operator logs contain the underlying error with the generic client message; correlate a test request using safe request metadata without logging the bearer token or private key.
+Once the HTTP gateway or gRPC transport has decoded the request, token authentication happens first. Malformed ProtoJSON, including invalid base64 in a `bytes` field, can be rejected by the gateway before this server flow. Do not debug a proof while the server is rejecting the token. Fulcio operator logs contain the underlying error with the generic client message; correlate a test request using safe request metadata without logging the bearer token or private key.
 
 ## Read the Server's Advertised Challenge
 
@@ -55,18 +56,18 @@ curl --fail --silent --show-error \
   }'
 ```
 
-Select the issuer whose URL exactly matches the token's `iss`. The `challengeClaim` tells clients which token claim is intended for proof of possession. Current built-in defaults are:
+Select the entry whose `issuerUrl` exactly matches the token's `iss`, or whose `wildcardIssuerUrl` matches it under Fulcio's documented wildcard rule. The `challengeClaim` advertises the token claim clients are intended to sign; current verification does not read this field directly. Current built-in configuration defaults advertised by the endpoint are:
 
 - `email` for an email issuer; and
 - `sub` for GitHub, GitLab, CI provider, Kubernetes, SPIFFE, URI, username, Buildkite, and the other built-in workload types.
 
 This is why blindly signing the JWT `sub` fails for a verified-email issuer: current Fulcio verifies the signature over the mapped email identity.
 
-The protobuf comment still summarizes the proof as a signature over `sub`, while the configuration API supports a release/configuration-specific challenge claim. Trust the endpoint for client behavior and run a positive integration test for any custom `challenge-claim`; current server verification ultimately uses the identity implementation's `principal.Name`, so a custom mapping must be proven against the exact release.
+The protobuf comment still summarizes the proof as a signature over `sub`, while the configuration API exposes release/configuration-specific challenge metadata. Use the endpoint as metadata, not as the sole source of truth. Current server verification uses the identity implementation's `principal.Name`; changing only `challenge-claim` changes the advertised value, not the verifier input. Most built-in mappings align, but `chainguard-identity` uses `email` when that claim is present and verified, uses `sub` only when `email` is absent, and rejects a present-but-unverified email, even though the endpoint advertises `sub`. Positive-test custom clients and overrides against the exact release.
 
 ## Preserve the Exact Challenge Bytes
 
-Decode the token locally with a trusted JWT tool and extract the advertised claim. Do not paste production tokens into web decoders or CI logs.
+Decode the token locally with a trusted JWT tool and extract the value Fulcio will use as `principal.Name`, starting with the advertised claim and accounting for the mapping caveat above. Do not paste production tokens into web decoders or CI logs.
 
 Set the value without adding whitespace:
 
@@ -82,11 +83,11 @@ Common byte mismatches are:
 - surrounding JSON quotes;
 - signing base64url-encoded JWT payload bytes instead of the claim value;
 - Unicode normalization differences;
-- using `sub` when `email` is advertised;
+- using `sub` when the verified principal maps to `email`;
 - case-folding or trimming a value that Fulcio does not transform; and
 - refreshing the ID token after signing a challenge whose value changed.
 
-Use one fresh ID token and its exact claim for the request. Never log `ID_TOKEN` while debugging.
+Use one fresh ID token and the exact server-mapped challenge value for the request. Never log `ID_TOKEN` while debugging.
 
 ## Prove the Public Key Matches the Private Key
 
@@ -139,7 +140,7 @@ The local OpenSSL verification must say `Verified OK` before sending anything. I
 
 ## Serialize the v2 Public-Key Request Correctly
 
-Protobuf `bytes` fields are base64 strings in JSON. The public-key `content` field is a normal string containing PEM or raw DER represented according to the client interface; PEM is easiest for JSON.
+Protobuf `bytes` fields are base64 strings in JSON. The public-key `content` field is a normal protobuf string; for the JSON gateway, place PEM text directly in it. Arbitrary binary DER is not reliably representable in a ProtoJSON string.
 
 ```bash
 PUBLIC_KEY=$(< leaf-public.pem)
@@ -170,11 +171,12 @@ Destroy `request.json` promptly because it contains the bearer token.
 
 ## Validate the CSR Path Independently
 
-Create a CSR with the same key that will sign the artifact:
+Create a CSR with the same key that will sign the artifact. This example pins SHA-256 for P-256 or RSA:
 
 ```bash
 openssl req \
   -new \
+  -sha256 \
   -key leaf-private.pem \
   -subj / \
   -out leaf.csr.pem
@@ -185,6 +187,8 @@ openssl req \
   -verify \
   -text
 ```
+
+For P-384 or P-521, use `-sha384` or `-sha512`, respectively; Ed25519 uses its pure mode and needs no digest selection. OpenSSL commonly defaults to SHA-256, which creates a locally valid but default-policy-disallowed CSR for P-384 or P-521.
 
 Fulcio uses the CSR's embedded public key and verifies its PKCS#10 self-signature. It ignores the CSR Subject and all requested SAN fields; certificate identity comes from the authenticated OIDC token. Adding an email or workflow SAN to the CSR will not override the token mapping.
 
@@ -199,7 +203,7 @@ openssl pkey -in leaf-private.pem -pubout -outform DER |
   openssl dgst -sha256
 ```
 
-If `openssl req -verify` fails, the CSR was corrupted, re-encoded incorrectly, or created by a custom implementation that signed with a different key/algorithm. Fulcio correctly rejects it.
+If `openssl req -verify` parses the CSR but reports an invalid self-signature, the CSR was corrupted, re-encoded incorrectly, or created by a custom implementation whose signing key or signature parameters do not match the embedded key and algorithm identifier. Fulcio rejects an invalid CSR self-signature.
 
 ## Serialize the CSR as Protobuf Bytes
 
@@ -261,7 +265,7 @@ Current Fulcio defaults permit:
 
 The server exposes `--client-signing-algorithms` to change that list. A CSR can be cryptographically valid with RSA/SHA-384, for example, yet fail policy if the deployed allowlist includes only the current RSA/SHA-256 defaults. Inspect the actual server arguments and do not weaken the list merely to accommodate an unexplained client.
 
-Also distinguish a CA signing-key algorithm from the ephemeral client-key algorithm. This flag governs keys placed in issued leaves and their proof/CSR signature combination, not the KMS key used by Fulcio to sign certificates.
+Also distinguish a CA signing-key algorithm from the ephemeral client-key algorithm. This flag governs the client public-key/hash combinations accepted for issued leaves; proof and CSR signature-format verification happens separately. It does not govern the KMS key or algorithm Fulcio uses to sign certificates.
 
 ## Use a Controlled Negative-Test Matrix
 
@@ -269,12 +273,13 @@ Run these tests against staging:
 
 | Mutation | Expected result |
 | --- | --- |
-| proof signs exact advertised claim with submitted key | issuance succeeds |
+| proof signs exact server-mapped principal value with submitted key | issuance succeeds |
 | append newline to challenge | invalid signature |
 | sign `sub` for an email challenge | invalid signature |
 | submit key A and proof from key B | invalid signature |
 | corrupt one CSR signature byte | invalid signature |
-| valid CSR, unsupported hash/algorithm | signing algorithm not permitted |
+| valid CSR, recognized but unpermitted key/hash combination | `signing algorithm not permitted: ...` |
+| valid CSR with an unrecognized signature algorithm, such as RSA-PSS or SHA-1 | `unrecognized signature algorithm: ...` |
 | weak RSA key | insecure public key |
 | valid CSR with fake Subject/SAN | issuance uses token identity, not CSR names |
 | valid proof with expired/wrong-audience token | identity-token error before proof checking |
@@ -294,4 +299,4 @@ These tests distinguish byte, key, policy, and token problems and protect custom
 
 ## Conclusion
 
-Proof-of-possession debugging is deterministic when one token, exact advertised claim value, keypair, signature/CSR, and request body stay together. Verify locally, compare SPKI digests before and after issuance, and inspect the server's algorithm policy; most “Fulcio key mismatch” reports are a changed byte, changed key, wrong claim, or wrong serialization at one of those boundaries.
+Proof-of-possession debugging is deterministic when one token, exact server-mapped challenge value, keypair, signature/CSR, and request body stay together. Verify locally, compare SPKI digests before and after issuance, and inspect the server's algorithm policy; most “Fulcio key mismatch” reports are a changed byte, changed key, wrong claim, or wrong serialization at one of those boundaries.
