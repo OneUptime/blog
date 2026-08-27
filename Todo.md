@@ -120,7 +120,6 @@
 
 ## Ephemeral Volumes
 
-10. How to Guarantee Fixed Scratch-Disk Capacity with a Generic Ephemeral Volume
 11. How to Schedule Generic Ephemeral Volumes with WaitForFirstConsumer and Storage Topology
 12. Why a Generic Ephemeral Volume PVC Stays Pending—and How to Debug Provisioning
 13. How to Back Kubernetes Scratch Space with Local NVMe and Automatic Pod-Lifecycle Cleanup
