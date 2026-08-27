@@ -10,7 +10,7 @@ Description: Map local ephemeral-storage requests and limits to container logs, 
 
 Kubernetes local `ephemeral-storage` is a schedulable resource measured in bytes. Its per-Pod accounting combines several storage consumers that appear unrelated inside a container: writable image layers, container logs, and disk-backed `emptyDir` volumes.
 
-It does not include every temporary-looking volume. Memory-backed `emptyDir` is charged to memory, and PVC-backed generic ephemeral volumes use storage capacity and PVC quota instead.
+It does not include every temporary-looking volume. Memory-backed `emptyDir` is charged to memory, and PVC-backed generic ephemeral volumes use PVC-requested storage capacity and are subject to any applicable PVC-related `ResourceQuota` instead.
 
 ## What Kubelet Measures
 
@@ -21,20 +21,21 @@ When local storage capacity isolation is active on a supported filesystem layout
 - disk-backed `emptyDir` volumes used by the Pod;
 - other Pod-managed local files that Kubernetes maps into the Pod, such as `/etc/hosts`.
 
-Kubelet can measure by periodic directory scans or, when the required feature and filesystem support are enabled, project-quota monitoring. Directory scans miss the allocated blocks of a file that was deleted while a process still holds it open. Project quotas track that case accurately but are a measurement feature, not hard-quota enforcement.
+Kubelet performs periodic scans of disk-backed `emptyDir` volumes, container log directories, and writable layers. For qualifying disk-backed `emptyDir` volumes, it can instead use project-quota monitoring when the relevant feature gates are enabled, the Pod runs in a supported user namespace, and filesystem project quotas are configured. Directory scans miss the allocated blocks of a file in an `emptyDir` that was deleted while a process still holds it open. Project quotas track that case accurately but are a measurement feature, not hard-quota enforcement.
 
-Read-only container image layers also consume node storage and can drive `imagefs` pressure and image garbage collection. They are not added to the Pod-level sum used to compare writable layers, logs, and disk `emptyDir` usage with the Pod's container `ephemeral-storage` limits.
+Read-only container image layers also consume node storage and can drive `imagefs` pressure and image garbage collection. They are not added to the Pod-level sum used to compare writable layers, logs, disk `emptyDir` usage, and Kubernetes-managed Pod files with the Pod's container `ephemeral-storage` limits.
 
 ## Container and Pod Limits Are Evaluated Differently
 
 A container-level limit covers that container's writable layer and logs. If those exceed its limit, kubelet marks the Pod for eviction.
 
-A Pod-level limit is the sum of the `ephemeral-storage` limits of all its containers. Kubelet compares that total with:
+For a Pod with only regular app containers, the overall Pod storage limit is the sum of their `ephemeral-storage` limits. Pods with init containers use Kubernetes' effective Pod limit calculation instead. Kubelet compares that total with:
 
 ```text
 all container writable layers
 + all container logs
 + all disk-backed emptyDir usage in the Pod
++ Kubernetes-managed Pod files such as /etc/hosts
 ```
 
 If the sum exceeds the Pod limit, kubelet marks the Pod for eviction. A shared `emptyDir` is not assigned to one container's storage limit based on which container wrote each file; it contributes to the overall Pod comparison.
@@ -43,7 +44,7 @@ The `emptyDir.sizeLimit` is an additional volume-specific cap. Crossing either t
 
 ## Requests Drive Scheduling
 
-The scheduler adds the containers' `ephemeral-storage` requests and compares the Pod request with the node's allocatable local ephemeral storage. An `emptyDir.sizeLimit` does not automatically become a scheduler request. Declare the expected consumption in container requests:
+For a Pod with only regular app containers, the scheduler adds their `ephemeral-storage` requests and compares the Pod request with the node's allocatable local ephemeral storage. Pods with init containers use Kubernetes' effective Pod request calculation instead. An `emptyDir.sizeLimit` does not automatically become a scheduler request. Declare the expected consumption in container requests:
 
 ```yaml
 apiVersion: v1
@@ -78,7 +79,7 @@ spec:
         sizeLimit: 2Gi
 ```
 
-This Pod requests 1.25 GiB and has an aggregate local storage limit of 3.5 GiB. The shared `emptyDir` may use at most 2 GiB before its own limit is violated, but its real usage also competes with both containers' logs and writable layers under the 3.5 GiB Pod limit.
+This Pod requests 1.25 GiB and has an aggregate local storage limit of 3.5 GiB. The shared `emptyDir` may use at most 2 GiB before its own limit is violated, but its real usage also competes with both containers' logs and writable layers, as well as Kubernetes-managed Pod files, under the 3.5 GiB Pod limit.
 
 Use uppercase suffixes carefully. Kubernetes documents that `400m` means 0.4 bytes, not 400 MiB. Use `400Mi` or `400M`.
 
@@ -108,12 +109,13 @@ kubectl describe node "$(kubectl get pod report-worker -o jsonpath='{.spec.nodeN
 Fetch the kubelet Summary API through the Kubernetes API server for detailed Pod and volume statistics:
 
 ```bash
+POD_UID=$(kubectl get pod report-worker -o jsonpath='{.metadata.uid}')
 NODE=$(kubectl get pod report-worker -o jsonpath='{.spec.nodeName}')
 kubectl get --raw "/api/v1/nodes/${NODE}/proxy/stats/summary" \
-  | jq '.pods[] | select(.podRef.name=="report-worker")'
+  | jq --arg uid "${POD_UID}" '.pods[] | select(.podRef.uid==$uid)'
 ```
 
-If a Pod was evicted, `kubectl describe pod` and Events distinguish a Pod limit or `emptyDir` violation from node-wide `DiskPressure`. Node pressure is based on filesystem availability and inode signals, even when each individual Pod remains below its declared limit.
+If a Pod was evicted, `kubectl describe pod` and Events distinguish a Pod limit or `emptyDir` violation from node-wide `DiskPressure`. Node pressure is based on filesystem availability and, on Linux nodes, free-inode signals, even when each individual Pod remains below its declared limit.
 
 ## Official Documentation
 
@@ -125,4 +127,4 @@ If a Pod was evicted, `kubectl describe pod` and Events distinguish a Pod limit 
 
 ## Conclusion
 
-Budget local ephemeral storage as one Pod-wide system: container logs and writable layers plus disk-backed `emptyDir`. Requests affect scheduling, summed container limits define the Pod ceiling, and kubelet evicts rather than throttles. Keep tmpfs and PVC-backed ephemeral capacity in their separate memory and storage accounting domains.
+Budget local ephemeral storage as one Pod-wide system: container logs and writable layers, disk-backed `emptyDir`, and Kubernetes-managed Pod files. Requests affect scheduling, Kubernetes' effective Pod limit calculation defines the Pod ceiling, and kubelet evicts rather than throttles. Keep tmpfs and PVC-backed ephemeral capacity in their separate memory and storage accounting domains.
