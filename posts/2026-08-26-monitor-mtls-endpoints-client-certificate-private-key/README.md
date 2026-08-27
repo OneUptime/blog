@@ -26,7 +26,7 @@ openssl x509 -in monitor-client.crt -noout \
 If Extended Key Usage is present, it needs to permit client authentication. Confirm that the key matches the leaf without using an RSA-only modulus check:
 
 ```bash
-set -o pipefail
+set -euo pipefail
 
 cert_public_key=$(
   openssl x509 -in monitor-client.crt -pubkey -noout |
@@ -59,7 +59,9 @@ openssl s_client \
   -key monitor-client.key </dev/null
 ```
 
-If the server needs client intermediates that are not in `monitor-client.crt`, provide them with OpenSSL's `-cert_chain` for this diagnostic. For Blackbox Exporter, place the client leaf first and its required intermediate certificates after it in `cert_file`; keep the matching private key in `key_file`.
+If the server needs client intermediates, put them in a separate PEM file and provide it with OpenSSL's `-cert_chain`; `-cert` selects the leaf for this diagnostic. For Blackbox Exporter, place the client leaf first and its required intermediate certificates after it in `cert_file`; keep the matching private key in `key_file`.
+
+`s_client` sends the configured certificate only when the server requests one, so a successful connection alone does not prove that client authentication is enforced. Repeat the check without `-cert` and `-key` and confirm it fails. If authorization is enforced at the HTTP layer, request the real URL with an HTTP client for that negative control.
 
 Do not confuse the bundles:
 
@@ -79,6 +81,7 @@ modules:
     http:
       method: GET
       valid_status_codes: [200]
+      follow_redirects: false
       fail_if_not_ssl: true
       tls_config:
         ca_file: /etc/blackbox-exporter/mtls/server-root-ca.pem
@@ -108,17 +111,17 @@ scrape_configs:
         replacement: blackbox-exporter.monitoring.svc:9115
 ```
 
-An explicit `server_name` is useful when the connection is pinned to an IP. For a normal hostname target it is redundant but documents the identity this credential is allowed to contact. Do not set `insecure_skip_verify`; mTLS client authentication does not compensate for failing to authenticate the server.
+An explicit `server_name` is useful when the connection is pinned to an IP. For a normal hostname target it is redundant but documents the expected server identity; it does not restrict where the client certificate can be used. Disabling redirects prevents this fixed health probe from carrying the credential to another host. Do not set `insecure_skip_verify`; mTLS client authentication does not compensate for failing to authenticate the server.
 
 The configured `ca_file` forms the module's server root pool rather than augmenting system roots. Use a separate module for public targets or build a deliberate combined bundle.
 
 ## Distinguish TLS and Application Authorization Failures
 
-A completed mTLS handshake proves that each TLS side accepted the other's certificate policy. The application can still return `401` or `403` because the certificate identity lacks route authorization, a proxy failed to forward authenticated identity, or an allowlist changed.
+On an endpoint configured to require and verify client certificates, a completed mTLS handshake proves that each TLS side accepted the other's certificate policy. A positive probe alone does not prove that the server still requires a client certificate, which is why the negative control matters. The application can still return `401` or `403` because the certificate identity lacks route authorization, a proxy failed to forward authenticated identity, or an allowlist changed.
 
 Keeping `valid_status_codes: [200]` makes those failures visible through `probe_success`. Choose a health endpoint that is read-only, inexpensive, and representative of the authorization path. Do not point a privileged client identity at a state-changing URL.
 
-Enable per-probe debug output only on a protected exporter endpoint. Server TLS logs often provide the more precise reason for client rejection, such as unknown client CA, expired client certificate, unsuitable key usage, or signature-algorithm mismatch.
+Use per-probe debug output only when the exporter web surface is protected. Current Blackbox Exporter versions also retain recent probe debug output and expose it through `/logs`. Server TLS logs often provide the more precise reason for client rejection, such as unknown client CA, expired client certificate, unsuitable key usage, or signature-algorithm mismatch.
 
 ## Monitor the Client Certificate Separately
 
@@ -128,7 +131,7 @@ Enable per-probe debug output only on a protected exporter endpoint. Server TLS 
 if ! openssl x509 \
   -in /etc/blackbox-exporter/mtls/monitor-client-chain.pem \
   -noout -checkend 2592000; then
-  echo "monitor client certificate expires within 30 days" >&2
+  echo "monitor client certificate is unreadable, expired, or expires within 30 days" >&2
   exit 1
 fi
 ```
@@ -147,7 +150,7 @@ A failed mTLS handshake can remove the server-expiry metric, so the `probe_succe
 
 Before rotating the client identity, confirm the server trusts the new issuing chain. Where policy allows, overlap old and new client CAs, deploy the new certificate and key atomically, verify successful probes from every exporter replica, and then remove old trust.
 
-Certificate and key files must change as one pair. In Kubernetes, a projected Secret volume is updated eventually, but a `subPath` mount does not receive automated Secret updates. Verify how the deployed Blackbox Exporter version reloads TLS files and trigger a controlled rollout if necessary.
+Certificate and key files must be published in the same Secret revision. In Kubernetes, a Secret volume is updated eventually and each generation is published atomically, but a reader opening the two paths separately can straddle the swap and transiently see a mismatched pair. A `subPath` mount does not receive automated Secret updates. Blackbox Exporter v0.28.0 rereads file-backed TLS material; verify the behavior of the deployed version and trigger a controlled rollout if necessary.
 
 Restrict access to the `/probe` endpoint. Anyone who can select this mTLS module and an arbitrary target can make the exporter initiate authenticated requests from its network position. Use network policy, authentication, fixed discovery, and a client identity whose authorization is minimal.
 
@@ -155,7 +158,7 @@ Restrict access to the `/probe` endpoint. Anyone who can select this mTLS module
 
 - [Blackbox Exporter TLS configuration](https://github.com/prometheus/blackbox_exporter/blob/master/CONFIGURATION.md#tls_config)
 - [Prometheus common client-certificate loading](https://github.com/prometheus/common/blob/main/config/http_config.go)
-- [Go `tls.LoadX509KeyPair`](https://pkg.go.dev/crypto/tls#LoadX509KeyPair)
+- [Go `tls.X509KeyPair`](https://pkg.go.dev/crypto/tls#X509KeyPair)
 - [OpenSSL `s_client` client-certificate options](https://docs.openssl.org/master/man1/openssl-s_client/)
 - [OpenSSL certificate purposes](https://docs.openssl.org/master/man1/openssl-x509/)
 - [Kubernetes Secret volume update behavior](https://kubernetes.io/docs/concepts/configuration/secret/#using-secrets-as-files-from-a-pod)
