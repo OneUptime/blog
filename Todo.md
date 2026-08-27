@@ -114,7 +114,6 @@
 
 ## Google Cloud
 
-2. How to Fix ADC Quota Project Mismatch When Switching Between gcloud Configurations
 3. How to Fix Google API Quota Errors in Raw REST Calls with the `x-goog-user-project` Header
 4. How to Pass Local Google Application Default Credentials into Docker Without Baking In a Key
 5. Why Does `google.auth.default()` Find Credentials but Return No Google Cloud Project ID?
