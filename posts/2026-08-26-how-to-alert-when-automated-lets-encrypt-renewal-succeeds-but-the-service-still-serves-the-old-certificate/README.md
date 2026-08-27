@@ -14,7 +14,7 @@ An expiry-only monitor eventually notices the problem, but it wastes most of the
 
 ## Understand What Certbot Success Means
 
-`certbot renew` attempts renewal only for certificates considered near expiry. Its exit status is zero both when all attempted renewals succeed and when no certificate needed renewal. A deploy hook is the supported way to run a command only after a successful renewal.
+`certbot renew` normally attempts renewal only for certificates Certbot considers due for renewal. Its exit status is zero both when all attempted renewals succeed and when no certificate needed renewal. A deploy hook is the supported way to run a command only after a successful renewal.
 
 ```bash
 sudo certbot renew --deploy-hook /usr/local/sbin/deploy-renewed-certificates
@@ -55,6 +55,8 @@ Verification must use the live endpoint.
 The first certificate in Certbot's `fullchain.pem` is the leaf. Calculate its SHA-256 fingerprint in a normalized lowercase, colon-free form:
 
 ```bash
+set -euo pipefail
+
 lineage=/etc/letsencrypt/live/app.example.com
 
 expected_fingerprint=$(
@@ -85,9 +87,9 @@ served_fingerprint=$(
   | tr '[:upper:]' '[:lower:]'
 )
 
-test -n "${expected_fingerprint}"
-test -n "${served_fingerprint}"
-test "${expected_fingerprint}" = "${served_fingerprint}"
+[[ "${expected_fingerprint}" =~ ^[0-9a-f]{64}$ ]] &&
+  [[ "${served_fingerprint}" =~ ^[0-9a-f]{64}$ ]] &&
+  [[ "${expected_fingerprint}" == "${served_fingerprint}" ]]
 ```
 
 Treat command or parsing failure as unknown or failed, never as a match. Do not compare only serial numbers or expiration dates: issuer names and date ranges can coincide across different certificates. A full SHA-256 fingerprint identifies the exact leaf.
@@ -99,7 +101,7 @@ If a CDN terminates public TLS, the public fingerprint belongs to the CDN. Compa
 Current blackbox exporter HTTP probes expose the served fingerprint in:
 
 ```text
-probe_ssl_last_chain_info{fingerprint_sha256="lowercase-hex", ...} 1
+probe_ssl_last_chain_info{fingerprint_sha256="lowercase-hex",issuer="...",serialnumber="...",subject="...",subjectalternative="..."} 1
 ```
 
 Publish the expected disk fingerprint through a small collector after renewal:
@@ -108,23 +110,31 @@ Publish the expected disk fingerprint through a small collector after renewal:
 tls_expected_certificate_info{endpoint_id="app-origin",fingerprint_sha256="lowercase-hex"} 1
 ```
 
-`tls_expected_certificate_info` is a custom metric defined by this monitoring design, not a built-in exporter metric. Write textfile-collector output atomically—write a temporary file in the same directory, then rename it—and restrict the input so domain names cannot inject arbitrary labels.
+`tls_expected_certificate_info` is a custom metric defined by this monitoring design, not a built-in exporter metric. Write textfile-collector output atomically—write a temporary file whose name does not end in `.prom` in the same directory, then rename it to the final `.prom` file—and restrict the input so domain names cannot inject arbitrary labels.
 
 Attach the same stable `endpoint_id` label to the blackbox target. The mismatch expression is:
 
 ```promql
-(probe_ssl_last_chain_info == 1)
-unless on (endpoint_id, fingerprint_sha256)
+(
+  (probe_ssl_last_chain_info == 1)
+  unless on (endpoint_id, fingerprint_sha256)
+  (tls_expected_certificate_info == 1)
+)
+and on (endpoint_id)
 (tls_expected_certificate_info == 1)
 ```
 
-This returns the served certificate series when no expected series has the same endpoint and fingerprint. Add independent alerts for a missing expected metric, failed probe, and stale collector timestamp; otherwise missing data can produce misleading results.
+This returns the served certificate series when expected state exists for the endpoint but no expected series has the same endpoint and fingerprint. Add independent alerts for a missing expected metric, failed probe, and stale collector timestamp; otherwise missing data can produce misleading results.
 
 ```yaml
 - alert: TLSServiceStillServesOldCertificate
   expr: |
-    (probe_ssl_last_chain_info == 1)
-    unless on (endpoint_id, fingerprint_sha256)
+    (
+      (probe_ssl_last_chain_info == 1)
+      unless on (endpoint_id, fingerprint_sha256)
+      (tls_expected_certificate_info == 1)
+    )
+    and on (endpoint_id)
     (tls_expected_certificate_info == 1)
   for: 10m
   labels:
