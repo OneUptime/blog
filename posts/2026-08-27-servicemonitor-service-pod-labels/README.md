@@ -73,9 +73,9 @@ spec:
     - port: metrics
 ```
 
-The resulting scraped series receive target labels derived from those objects. Kubernetes label keys that are not valid Prometheus label names are sanitized in generated configuration. For example, `app.kubernetes.io/version` is represented as a Prometheus-compatible label such as `app_kubernetes_io_version`. Verify the actual target label name before writing dashboards.
+The resulting scraped series receive target labels derived from those objects. Prometheus 3 accepts UTF-8 label names, but Kubernetes discovery meta-label suffixes and the Operator's generated target-label names still replace characters outside `[A-Za-z0-9_]` with underscores. For example, the Operator maps `app.kubernetes.io/version` to `app_kubernetes_io_version`. Verify the actual target label name before writing dashboards.
 
-If the Service lacks `monitoring-job`, `jobLabel` falls back to the associated Service name. A missing copied label is simply absent; it is not populated from a similarly named label on another object.
+If the Service lacks `monitoring-job`, `jobLabel` falls back to the associated Service name. If a requested source label is absent or empty, that generated copy rule does nothing; there is no automatic fallback to the same-named label on another object.
 
 ## Know Which Object Owns Each Value
 
@@ -95,18 +95,20 @@ podTargetLabels:
   - app.kubernetes.io/version
 ```
 
-For selectorless Services backed by external addresses, there may be no Pod `targetRef`, so Pod labels cannot be copied. Manually managed EndpointSlices should use Service labels or explicit relabeling for metadata they actually expose.
+For selectorless Services backed by external addresses, there may be no Pod `targetRef`, so Pod labels cannot be copied.
+
+When scraping manually managed EndpointSlices, set `serviceDiscoveryRole: EndpointSlice` on the ServiceMonitor (or configure that role globally on Prometheus or PrometheusAgent) and link each slice to the Service with `kubernetes.io/service-name`. Use Service labels or explicit relabeling for metadata the discovered target actually exposes.
 
 When different Pods behind one Service have different versions, `podTargetLabels` preserves that per-target distinction. A Service-level version label cannot express a mixed rollout accurately.
 
-## Use Stable, Bounded Labels
+## Use Stable, Controlled Labels
 
-Good copied labels usually come from bounded vocabularies:
+Good copied labels usually come from stable or operationally controlled vocabularies:
 
 - team or owner;
 - environment;
 - region or cluster tier;
-- application version;
+- application version, when release-level filtering justifies a vocabulary that grows over time;
 - workload component.
 
 Avoid copying labels that change for every Pod or deployment revision unless queries genuinely need them:
@@ -117,15 +119,15 @@ Avoid copying labels that change for every Pod or deployment revision unless que
 - request, session, or customer identifiers;
 - timestamps encoded as labels.
 
-Every unique final label set is a separate Prometheus time series. Copying a high-cardinality Pod label onto every exported metric multiplies series churn.
+Every unique combination of metric name and final label set is a separate Prometheus time series. A high-cardinality target label adds an expensive dimension to every exported metric, and changing that label gives every affected metric series a new identity.
 
-Use the existing `pod`, `namespace`, `service`, `endpoint`, `job`, and `instance` labels produced by generated configuration where suitable. Inspect live targets before duplicating them under another name.
+Use the standard `pod`, `namespace`, `service`, `endpoint`, `job`, and `instance` labels normally produced by the Operator and Prometheus where present. Inspect live targets before duplicating them under another name.
 
 ## Resolve Exporter Label Conflicts Deliberately
 
 Copied values become target labels. If an exporter emits a sample with the same label name, Prometheus's `honor_labels` behavior decides the conflict.
 
-With the default `honorLabels: false`, Prometheus keeps the target label and renames the exporter's conflicting label to `exported_<name>`. With `honorLabels: true`, the exporter value wins and the conflicting server-side target label is not attached.
+With the default `honorLabels: false`, Prometheus keeps the target label and prefixes the exporter's conflicting label with `exported_`, repeating the prefix if needed to avoid another collision. With `honorLabels: true`, the exporter value wins on the conflicting sample, so that sample does not receive the target value.
 
 Use unique ownership names when possible:
 
@@ -139,7 +141,7 @@ Kubernetes label keys must actually use those names for the direct fields. If yo
 
 ## Rename or Derive a Label with `relabelings`
 
-Direct copy fields retain the source label's logical name. For a renamed destination, use a discovery meta label:
+Direct copy fields use the source key as the destination name after underscore sanitization. For a renamed destination, use a discovery meta label:
 
 ```yaml
 endpoints:
@@ -151,7 +153,7 @@ endpoints:
         targetLabel: platform_team
 ```
 
-Target relabeling runs before the scrape. The `__meta_kubernetes_service_label_team` value is available only during discovery, so copy it to a durable label without the `__` prefix.
+Target relabeling runs before the scrape. The `__meta_kubernetes_service_label_team` value is available during target relabeling and is removed afterward, so copy it to a durable label without the `__` prefix.
 
 Prefer `targetLabels` and `podTargetLabels` for straightforward same-name copies. They document intent at the ServiceMonitor level and avoid repeating rules across endpoints.
 
@@ -174,9 +176,9 @@ kubectl get pods -n checkout \
   --show-labels
 ```
 
-If target labels are correct but a scraped series contains `exported_team`, investigate a conflict from the exporter and the endpoint's `honorLabels` setting.
+If target labels are correct but a scraped series contains `exported_team`, investigate a conflict from the exporter, the endpoint's `honorLabels` setting, and any Prometheus or PrometheusAgent `overrideHonorLabels` setting.
 
-Measure series growth before and after adding labels. A label with one value does not multiply current series, but a label whose value changes frequently creates churn and additional historical series.
+Measure series growth before and after adding labels. A target label adds one value to each affected sample rather than duplicating it, but adding or changing that label gives the affected series new identities and creates historical-series churn.
 
 ## Official Documentation
 
