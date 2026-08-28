@@ -121,7 +121,6 @@
 
 ## Ephemeral Volumes
 
-14. emptyDir sizeLimit vs ephemeral-storage Limit: Which Limit Evicts the Pod First?
 15. How to Enforce Namespace Defaults and Quotas for Kubernetes Ephemeral Storage
 16. How to Prevent Generic Ephemeral PVC Name Collisions and Ownership Conflicts
 17. How to Rescue Files from an emptyDir Before a Failing Pod Is Deleted
