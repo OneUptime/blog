@@ -124,7 +124,6 @@
 
 ## Qdrant
 
-7. How to Create Qdrant Payload Indexes for Fast Filtered Vector Search
 8. How to Paginate an Entire Qdrant Collection Safely with the Scroll API
 9. How to Delete Qdrant Points by Payload Filter and Wait for the Update to Finish
 10. How to Build Dense-and-Sparse Hybrid Search in Qdrant with RRF Fusion
