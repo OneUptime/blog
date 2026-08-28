@@ -12,7 +12,7 @@ An ESXi host can report `No space left on device` while every VMFS datastore sti
 
 The error can also mean that a ramdisk's file table is exhausted by a very large number of small files. In that case, byte usage alone may look less dramatic. Diagnose the exact path and resource before deleting anything.
 
-This guide targets ESXi 7.x and 8.x. Product-specific ramdisks, including vSAN and NSX trace areas, must be handled with the KB for the installed product and version.
+This guide targets ESXi 7.x and 8.x. Product-specific ramdisks, including the vSAN trace ramdisk and NSX-specific ramdisks, must be handled with the KB for the installed product and version.
 
 ## Preserve Access and Evidence
 
@@ -76,14 +76,14 @@ Then inspect the largest non-symlinked directory. To locate unexpectedly large f
 find . -type f -size +10M
 ```
 
-If the log says the file or inode table is full, also look for a directory containing thousands of small files:
+If the log says the file or inode table is full, use regular-file counts in likely affected trees as a starting point:
 
 ```bash
 find /tmp -type f | wc -l
 find /var -type f | wc -l
 ```
 
-Counts are diagnostic, not deletion criteria. Common patterns documented by Broadcom include stale patch artifacts in `/tmp`, runaway scripts creating `vim-cmd*.txt`, excessive SNMP trap files, a large locked `vmware-vmx-*.log`, and add-on logging or rotation failures. The filename, owner process, and timestamps should lead to a specific KB or vendor fix.
+These commands count regular files only; they do not measure the ramdisk's complete file-table use. Counts are diagnostic, not deletion criteria. Common patterns documented by Broadcom include stale patch artifacts in `/tmp`, NSX-T `nsx-exporter` leaving `vim-cmd*.txt` files, excessive SNMP trap files, a large locked `vmware-vmx-*.log`, and add-on logging or rotation failures. The filename, owner process, and timestamps should lead to a specific KB or vendor fix.
 
 ## Attribute the Files Before Removing Them
 
@@ -96,11 +96,15 @@ For a suspicious file or directory, answer four questions:
 
 Never recursively clear `/tmp`, `/var`, `/var/run`, `/var/lib`, or `/var/log`. These paths contain live sockets, state, locks, journals, and service data. Do not delete VMware Tools images from `/vmimages`, active logs, bootbank content, VIB metadata, or files merely because they are large.
 
-If a confirmed obsolete artifact must be retained for analysis, copy it to a datastore with sufficient space before removal:
+If a confirmed obsolete artifact must be retained for analysis, copy it to a datastore with sufficient space before removal. Replace the example values with the exact source and destination paths:
 
 ```bash
-cp /tmp/<confirmed-obsolete-file> /vmfs/volumes/<datastore>/<case-directory>/
-rm /tmp/<confirmed-obsolete-file>
+source_file="/tmp/CONFIRMED_OBSOLETE_FILE"
+case_directory="/vmfs/volumes/DATASTORE/CASE_DIRECTORY"
+
+mkdir -p "$case_directory" &&
+  cp "$source_file" "$case_directory/" &&
+  rm "$source_file"
 ```
 
 Use explicit filenames. A shell glob or recursive deletion is too broad for emergency cleanup.
