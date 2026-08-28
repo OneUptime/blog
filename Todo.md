@@ -29,7 +29,6 @@
 
 ## ESXi
 
-4. How to Verify ESXi `bootbank` and `altbootbank` Health Before an Upgrade
 5. How to Replace an ESXi Host Certificate with an External CA Certificate in vSphere 8.0 U3+
 6. How to Configure ESXi Remote Syslog over TLS and Verify Log Delivery
 7. How to Persist ESXi Logs and Scratch Data on Hosts That Boot from USB or SD Card
