@@ -8,7 +8,7 @@ Description: Diagnose ESXi reserved-component metadata failures and choose a sup
 
 ---
 
-An ESXi patch or upgrade can fail with `[MissingComponentError] Missing reserved components ...` followed by a list of storage, network, management, or OEM components. The wording is easy to misread: it does not necessarily say those VIBs are absent from the running host. Broadcom documents cases where the VIBs are installed but the metadata under `/var/db/esximg/reservedComponents` is missing or corrupt.
+An ESXi patch or upgrade can fail with `[MissingComponentError] Missing reserved components ...` followed by a list of storage, network, management, or OEM components. The wording is easy to misread: it does not necessarily say those VIBs are absent from the running host. Broadcom documents one case where the named VIBs are installed and another where the metadata under `/var/db/esximg/reservedComponents` is missing or corrupt.
 
 Removing a listed OEM VIB is therefore both ineffective and dangerous. Broadcom's reproduced case continued to report `storcli` after that VIB was removed. A listed NIC or storage driver may also be the only driver keeping the management uplink or boot/storage controller online.
 
@@ -32,6 +32,7 @@ Inventory critical hardware paths as well:
 ```bash
 esxcli network nic list
 esxcli storage core adapter list
+esxcli storage core path list
 esxcli hardware pci list
 ```
 
@@ -57,9 +58,9 @@ Broadcom's example identifies a vLCM-created state with a name such as `(Updated
 
 ### Reserved-component metadata is missing or corrupt
 
-Broadcom KB 427454 documents the same error during VUM/SDDC Manager remediation and attributes it to missing or corrupt data under `/var/db/esximg/reservedComponents`. The KB states that there is no in-place resolution and gives an interactive ISO upgrade from the direct console as the workaround.
+Broadcom KB 427454 documents a VUM/SDDC Manager remediation failure for which an offline-bundle dry run reports the same `MissingComponentError`. It attributes the failure to missing or corrupt data under `/var/db/esximg/reservedComponents`. The KB provides no direct repair procedure and gives an interactive ISO upgrade from the direct console as the workaround.
 
-Do not try to recreate the directory from another host. Reserved metadata must match the exact image history and hardware-specific component set; copying it creates an unvalidated state.
+Do not manually recreate or copy this directory unless Broadcom Support provides a procedure for the exact failure. KB 427454 documents no metadata-reconstruction procedure and instead prescribes the ISO upgrade workaround.
 
 ## Build a Desired Image That Preserves OEM Support
 
@@ -69,7 +70,7 @@ For a vLCM-managed cluster, compose the target image from deliberate inputs:
 2. Add the server vendor's certified OEM add-on.
 3. Retain any independently supplied component that the hardware or solution requires.
 4. If a Hardware Support Manager is used, validate the compatible firmware/driver combination.
-5. Run the vLCM image validation, hardware-compatibility, and compliance checks before remediation.
+5. Run the vLCM image validation, applicable hardware-compatibility checks, and compliance checks before remediation.
 
 Do not substitute a vanilla image for an OEM image without proving that every boot, storage, network, and management device is supported by the inbox driver set. Broadcom provides current OEM Custom ISOs and OEM Add-ons in the Support Portal; older certified combinations may have to come from the OEM.
 
@@ -86,7 +87,7 @@ When the error matches Broadcom KB 427454, plan the ISO path rather than dismant
 5. Boot the ISO and follow Broadcom's **Upgrade Hosts Interactively** procedure. Review the installer choice carefully so the intended ESXi installation and datastore are selected.
 6. Do not choose a fresh installation or overwrite a VMFS datastore as an improvised fix. If the installer cannot offer the supported upgrade path, stop and open a Broadcom/OEM case.
 
-The console upgrade rebuilds the image through the installer while the OEM ISO supplies the vendor-certified components. It avoids deleting live drivers one at a time.
+The documented workaround performs the upgrade through the installer, while an appropriate OEM Custom ISO supplies compatible vendor components. It avoids deleting live drivers one at a time.
 
 ## Validate Before Returning the Host to Service
 
@@ -99,6 +100,7 @@ esxcli software component list
 esxcli software vib list
 esxcli network nic list
 esxcli storage core adapter list
+esxcli storage core path list
 ```
 
 Verify that all expected physical NICs, HBAs, RAID/storage paths, datastores, and management integrations are present. Review boot and update logs for component or signature failures, then run vLCM compliance again. Only reconnect workloads after management redundancy, storage multipathing, and the hardware vendor's health checks pass.
@@ -124,4 +126,4 @@ If a critical NIC or storage device disappears, use the console, stop workload p
 
 ## Conclusion
 
-Treat `MissingComponentError` as an image-integrity and image-ownership problem, not as an instruction to uninstall every component it names. Preserve the hardware inventory, use vLCM for a vLCM-generated image, and use the documented OEM ISO upgrade when reserved metadata is corrupt. That repairs the image while keeping required drivers in the supported design.
+Treat `MissingComponentError` as an image-integrity and image-ownership problem, not as an instruction to uninstall every component it names. Preserve the hardware inventory, use vLCM for a vLCM-generated image, and use the documented OEM ISO upgrade when reserved metadata is corrupt. That follows the supported recovery path while keeping required drivers in the target image.
