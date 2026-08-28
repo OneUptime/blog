@@ -49,11 +49,12 @@ In the vSphere Client, select the host and open **Configure > Networking > VMker
 
 1. Add a VMkernel adapter to the standard or distributed port group dedicated to NFS.
 2. Select the **Default TCP/IP stack**.
-3. Assign the storage VLAN and static IP configuration required by the network design.
-4. In the port group's teaming policy, restrict the traffic to the intended storage uplink or uplinks.
-5. Make the matching switch port, VLAN, MTU, gateway, and ACL changes outside ESXi.
+3. Assign the storage VLAN and static IP configuration required by the network design. Do not reuse a subnet already assigned to another VMkernel adapter on the Default TCP/IP stack.
+4. If the NFS endpoint is routed, ensure `vmk2` has a supported forward path, using a per-adapter gateway override or destination-specific static route through the storage gateway when required.
+5. In the port group's teaming policy, restrict the traffic to the intended storage uplink or uplinks.
+6. Make the matching switch port, VLAN, MTU, routing, and ACL changes outside ESXi.
 
-Do not move the management VMkernel adapter or change its gateway as part of this storage change. If NFS crosses a router, confirm that the return route to the dedicated VMkernel subnet is correct.
+Do not move the management VMkernel adapter or replace the Default TCP/IP stack's existing default gateway as part of this storage change. If NFS crosses a router, confirm both the ESXi forward path through `vmk2` and the return route to the dedicated VMkernel subnet.
 
 Test the exact source adapter before touching the datastore:
 
@@ -80,7 +81,7 @@ To identify established NFS connections, inspect TCP connections whose remote po
 esxcli network ip connection list | grep -E 'Proto|:2049'
 ```
 
-The local address shows which ESXi source address is actually carrying each connection. Treat this as the before-state for later verification.
+The local address shows which ESXi source address is actually carrying each connection. Treat this as the before-state for later verification. NFS 4.1 can share a session and TCP connection among datastores from the same server instance, so this is endpoint-level evidence and might not identify a socket unique to the target datastore; use it together with the target volume's `Vmknics` value.
 
 ## Bind a New NFS 4.1 Datastore
 
@@ -134,7 +135,7 @@ Confirm all of the following:
 
 - the target datastore lists `vmk2` in the `Vmknics` column;
 - `Accessible` and `Mounted` are both `true`;
-- the NFS TCP connection's local address is the address assigned to `vmk2`;
+- the connection output shows an established NFS connection from the address assigned to `vmk2`, and every connection attributable to the target uses that source; if shared sessions make attribution ambiguous or an unexpected source remains, treat the live path as unverified;
 - the remote address is an approved NFS endpoint;
 - the datastore browser can read an existing known file;
 - a controlled non-destructive read/write test succeeds if the change plan permits one.
@@ -145,11 +146,11 @@ Also monitor `/var/run/log/vmkernel.log`. A `Permission denied` mount failure co
 
 If the new mapping makes the datastore inaccessible, stop the test immediately and restore the recorded configuration.
 
-- If the datastore previously had another explicit VMkernel mapping, use `esxcli storage nfs41 param set -I <server>:<original-vmk> -v <volume>` to restore it.
+- If the datastore previously had explicit VMkernel mappings, restore every recorded mapping in one `esxcli storage nfs41 param set` command by repeating `-I <server>:<original-vmk>` for each mapping and supplying `-v <volume>`.
 - If the datastore was previously unbound, there is no generic `clear binding` command documented in the cited Broadcom procedure. With all consumers stopped, remove and re-add the mount using its exact original server, export, security, and connection parameters.
 - For a simple single-server `AUTH_SYS` mount, the unbound add form is `esxcli storage nfs41 add -H <server> -s <share> -v <volume>`.
 
-Do not remove an accessible datastore that still contains running, registered, or script-accessed objects. Do not use the simple `-H` example to reconstruct a Kerberos or multi-endpoint mount; use the complete recorded configuration and current product documentation.
+Do not remove any datastore while virtual machines or templates are registered on it, swap files reside on it, or scripts or other consumers still reference it. Do not use the simple `-H` example to reconstruct a Kerberos or multi-endpoint mount; use the complete recorded configuration and current product documentation.
 
 After rollback, repeat both verification commands and confirm the local TCP address matches the restored path.
 
@@ -167,7 +168,7 @@ After rollback, repeat both verification commands and confirm the local TCP addr
 - [Unable to mount NFS4.1 datastores with error Permission denied](https://knowledge.broadcom.com/external/article/419497)
 - [Support for nConnect feature added in ESXi's NFS41 client](https://knowledge.broadcom.com/external/article/370672)
 - [NFS Support in VMware vSphere 8.0 and Beyond](https://knowledge.broadcom.com/external/article/370665)
-- [NFS storage using a custom TCP/IP stack after upgrading to vSphere 8](https://knowledge.broadcom.com/external/article/413049)
+- [After the Upgrade to vSphere 8 U3, vMotion fails with "Launch failure: Out of resources"](https://knowledge.broadcom.com/external/article/413049)
 
 ## Conclusion
 
