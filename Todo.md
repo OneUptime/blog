@@ -121,7 +121,6 @@
 
 ## Ephemeral Volumes
 
-17. How to Rescue Files from an emptyDir Before a Failing Pod Is Deleted
 18. How Generic Ephemeral Volumes Are Cleaned Up After Jobs and CronJobs
 19. How to Migrate a Workload from emptyDir to Generic Ephemeral Storage
 20. Why Local Ephemeral Storage Shows Less Allocatable Space Than Node Disk Capacity
