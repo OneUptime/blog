@@ -14,7 +14,7 @@ Qdrant's shard, replica, and consistency settings control different things:
 - `replication_factor` controls how many physical copies exist for each logical shard.
 - `write_consistency_factor` controls how many replicas must acknowledge a write before Qdrant reports success.
 - Per-request `ordering` controls whether concurrent writes may be reordered.
-- Per-request read `consistency` controls how many replicas a read consults and how their answers are resolved.
+- Per-request read `consistency` controls how many replica results a read requires and how their answers are resolved.
 
 Increasing one setting does not substitute for another. In particular, a high write consistency factor does not serialize concurrent updates, and `wait=true` does not turn a one-replica collection into a replicated one.
 
@@ -47,7 +47,7 @@ Use TLS outside a trusted local network.
 | `write_consistency_factor` | Collection | Minimum replica acknowledgements for write success | A single global write order |
 | `wait` | Write request | Whether the response waits for processing instead of only receipt | Extra replication or concurrent-write serialization |
 | `ordering` | Write request | Weak, medium, or strong serialization behavior | Read reconciliation by itself |
-| `consistency` | Read request | Replica fan-out and result resolution | More stored replicas |
+| `consistency` | Read request | Required replica results and their resolution | More stored replicas |
 
 Choose the physical topology first, then choose request guarantees that fit its failure budget.
 
@@ -55,7 +55,7 @@ Choose the physical topology first, then choose request guarantees that fit its 
 
 For the default automatic sharding method, `shard_number` is the total number of logical shards in the collection. Qdrant distributes their replicas among cluster peers.
 
-If the value is omitted, current Qdrant uses one shard for a standalone node and, in a cluster, the number of nodes present when the collection is created. The self-hosted shard count cannot be changed without recreating the collection. Qdrant Cloud supports resharding, but a large reshard can take a long time.
+With Qdrant's built-in collection defaults, omitting the value uses one shard for a standalone node and, in a cluster, the number of nodes present when the collection is created. The self-hosted shard count cannot be changed without recreating the collection. Qdrant Cloud supports resharding on multi-node clusters, including Hybrid and Private Cloud, but a large reshard can take a long time.
 
 Current Qdrant guidance recommends at least two shards per node as a starting point when future horizontal growth is expected. Twelve shards is a common growth-oriented starting point because it divides evenly across 1, 2, 3, 6, and 12 nodes. These are planning heuristics, not universal targets. More shards consume resources and add coordination overhead.
 
@@ -77,11 +77,11 @@ For example:
 
 Ten shard keys produce `10 x 1 x 2 = 20` physical shard replicas. Custom sharding is therefore intended for low-cardinality routing keys, such as a limited set of large tenants or regions. It is not a replacement for a high-cardinality tenant payload index.
 
-Applications must pass the correct `shard_key` on custom-sharded operations. A request without it may execute across all shard groups. Qdrant also warns against using the same point ID in different shard keys, even though current uniqueness enforcement is local to each key.
+Applications must pass the correct `shard_key` to target specific custom shards. Operations that omit it execute on all shards. Qdrant also warns against using the same point ID in different shard keys, even though current uniqueness enforcement is local to each key.
 
 ## Choose the Replication Factor from the Failure Requirement
 
-`replication_factor` is the number of physical copies for every logical shard. The default is one, which means no automatically maintained extra copy.
+`replication_factor` is the number of physical copies for every logical shard. The built-in default is one, which means no automatically maintained extra copy.
 
 A replication factor of two lets a shard retain another copy when one replica fails, provided the replicas are placed on distinct surviving nodes. It approximately doubles the collection's shard storage and increases write and recovery work. A larger factor costs more again.
 
@@ -91,7 +91,7 @@ Replication factor can also increase read capacity because any active replica ca
 
 ## Choose the Write Consistency Factor Separately
 
-`write_consistency_factor` ranges from one through `replication_factor` and defaults to one. It is the number of replicas that must acknowledge a write before the operation is reported as successful.
+`write_consistency_factor` ranges from one through `replication_factor`; its built-in default is one. It is the number of replicas that must acknowledge a write before the operation is reported as successful.
 
 For a replication factor of two:
 
@@ -104,7 +104,7 @@ Do not generate new IDs on every retry. An upsert with a new ID creates another 
 
 ## Create an Automatic-Sharded Replicated Collection
 
-This example creates six logical shards, two copies of each shard, and requires both copies to acknowledge writes:
+Run this example against a distributed cluster with at least two peers; Qdrant does not place two replicas of the same shard on one node. It creates six logical shards, two copies of each shard, and requires both copies to acknowledge writes:
 
 ```bash
 curl -fsS -X PUT "$QDRANT_URL/collections/documents" \
@@ -112,7 +112,7 @@ curl -fsS -X PUT "$QDRANT_URL/collections/documents" \
   -H 'Content-Type: application/json' \
   -d '{
     "vectors": {
-      "size": 384,
+      "size": 3,
       "distance": "Cosine"
     },
     "shard_number": 6,
@@ -136,7 +136,7 @@ client = QdrantClient(
 client.create_collection(
     collection_name="documents",
     vectors_config=models.VectorParams(
-        size=384,
+        size=3,
         distance=models.Distance.COSINE,
     ),
     shard_number=6,
@@ -145,7 +145,7 @@ client.create_collection(
 )
 ```
 
-Six logical shards at replication factor two create twelve physical shard replicas. Confirm the cluster has capacity for the vectors, payloads, indexes, snapshots, write-ahead logs, and rebuild headroom before creating them.
+With at least two peers available, six logical shards at replication factor two create twelve physical shard replicas. Confirm the cluster has capacity for the vectors, payloads, indexes, snapshots, write-ahead logs, and rebuild headroom before creating them.
 
 ## Add Write Ordering Only Where Needed
 
@@ -155,7 +155,7 @@ Qdrant exposes three per-request ordering levels:
 - `medium` routes writes through a dynamically selected leader. A leader change can cause a short inconsistency.
 - `strong` routes writes through a permanent leader. It provides strong ordering but writes may be unavailable while that leader is down.
 
-Use ordering for concurrent changes to the same logical point when sequence matters. It costs latency and availability, so do not enable `strong` globally merely because the collection is replicated.
+Use the same non-weak ordering level for every competing change to a logical point when replicas must observe those writes in one consistent processing order. Ordering does not inspect payload revision values or enforce application-level version precedence. It costs latency and availability, so do not enable `strong` globally merely because the collection is replicated.
 
 REST example:
 
@@ -175,7 +175,7 @@ curl -fsS -X PUT \
   }'
 ```
 
-Use a vector with the configured dimension; the short vector is illustrative.
+The three-dimensional vector is illustrative.
 
 Python example:
 
@@ -185,7 +185,7 @@ client.upsert(
     points=[
         models.PointStruct(
             id=101,
-            vector=vector_384,
+            vector=[0.1, 0.2, 0.3],
             payload={"revision": 7},
         )
     ],
@@ -198,14 +198,14 @@ client.upsert(
 
 ## Choose Read Consistency per Request
 
-Without an explicit read consistency, Qdrant defaults to one replica. Current read options are:
+Without an explicit read consistency, Qdrant requires one replica result. Current read options are:
 
-- An integer `N`: query `N` randomly selected replicas and return points present on all queried replicas.
-- `quorum`: query a randomly selected majority and return points present on all of them.
+- An integer `N`: require results from `N` replicas and return points present on all of them. Values above the shard's replica-set size are capped at that size.
+- `quorum`: require results from a majority of replicas and return points present on all of them.
 - `majority`: query all replicas and return points present on a majority.
 - `all`: query all replicas and return points present on all of them.
 
-Stronger fan-out can reduce the chance of observing a replica disagreement, but it costs latency and availability. It is not automatically required for every search workload.
+Requiring more replica results can reduce the chance of observing a replica disagreement, but it costs latency and availability. It is not automatically required for every search workload.
 
 REST Query API example:
 
@@ -229,7 +229,7 @@ Python example:
 ```python
 hits = client.query_points(
     collection_name="documents",
-    query=vector_384,
+    query=[0.1, 0.2, 0.3],
     limit=10,
     consistency="majority",
 )
@@ -245,8 +245,8 @@ Select stronger read consistency for paths where concurrent updates or a recentl
 | Three-node production, tolerate one node failure | Enough automatic shards to use all nodes, replication 2 | RF 2 retains a copy; continued writes during replica loss require WCF 1, while WCF 2 rejects them |
 | Never report an unreplicated write as successful with RF 2 | Write consistency 2 | Writes fail when fewer than two replicas can acknowledge |
 | High write availability during one replica outage | Write consistency 1 | Recovered copies may need synchronization |
-| Concurrent same-point updates must be ordered | `medium` or `strong` per write | Strong ordering can become unavailable with its leader |
-| Reads must reconcile replica disagreement | `majority`, `quorum`, `all`, or integer consistency | More fan-out increases latency and failure sensitivity |
+| Concurrent same-point updates must be ordered | `strong` on every competing write | Ordering does not compare payload revisions; `strong` can become unavailable with its leader |
+| Reads must reconcile replica disagreement | `majority`, `quorum`, `all`, or integer `N` from 2 through the replica-set size | More fan-out increases latency and failure sensitivity |
 | Large tenant or region routing | Custom sharding with low-cardinality shard keys | `shard_number` is per key and unscoped requests fan out |
 
 Treat this table as a test starting point, not a substitute for failure drills.
@@ -291,7 +291,7 @@ Do not perform the first failure drill on the only production copy of unverified
 
 ## Change and Rollback Cautions
 
-Automatic shard count is difficult to change. Self-hosted Qdrant generally requires a new collection and data migration; Qdrant Cloud resharding is a separate capability and can be lengthy.
+Automatic shard count is difficult to change. Self-hosted Qdrant generally requires a new collection and data migration; resharding is available on multi-node Qdrant Cloud clusters, including Hybrid and Private Cloud, and can be lengthy.
 
 Changing `replication_factor` after collection creation behaves differently by deployment. Qdrant Cloud variants automatically create or remove replicas to match it. In current self-hosted open-source Qdrant, updating the collection-level value does not itself create or remove physical replicas; use the cluster setup API to manage them.
 
@@ -302,7 +302,7 @@ Never interpret a timed-out or failed distributed write as proof that nothing ch
 ## Version Scope and Limitations
 
 - Current shard-count defaults depend on whether the collection is created on a standalone node or a cluster.
-- Qdrant Cloud resharding is documented from 1.13; self-hosted behavior differs.
+- Resharding is documented from Qdrant 1.13 for multi-node Qdrant Cloud, Hybrid Cloud, and Private Cloud clusters; it is not available in self-hosted open source.
 - Custom sharding is available from Qdrant 1.7.
 - Replica-factor reconciliation after a configuration update differs between Qdrant Cloud variants and self-hosted open source.
 - Some shard-transfer methods can affect ordering guarantees; review the current transfer documentation before topology work.
