@@ -98,7 +98,7 @@ Qdrant exposes three recovery priorities:
 
 Use `snapshot` for a new recovery collection. Select another mode only when the documented cluster-recovery procedure specifically requires it.
 
-The server can also recover from an accessible snapshot URL through the recovery endpoint. Upload is often simpler because the operator controls transfer and checksum verification directly.
+A self-hosted Qdrant node can also recover from a snapshot URL it can reach through the recovery endpoint. Qdrant Cloud does not support URL recovery because it blocks outbound traffic; use an uploaded file there. Upload is often simpler because the operator controls transfer and checksum verification directly.
 
 ## Restore Every Required Shard in a Cluster
 
@@ -135,7 +135,7 @@ Use a service credential with only the network and storage access the job needs.
 
 ## Collection Snapshots vs Full Storage Snapshots
 
-Qdrant also supports full storage snapshots for single-node deployments. Their restore path is a startup command-line operation, not the collection upload endpoint, and they are not the normal choice for a distributed cluster. Collection snapshots are usually easier for granular backup, migration, and isolated restore testing.
+Qdrant also supports full storage snapshots for single-node deployments. Their restore path is a startup command-line operation, not the collection upload endpoint, and distributed mode is not supported because a full storage snapshot does not contain the necessary cluster files. Collection snapshots are usually easier for granular backup, migration, and isolated restore testing.
 
 Do not substitute a raw live-directory filesystem copy unless the documented storage-snapshot procedure guarantees consistency. Database files can change while they are copied.
 
