@@ -29,7 +29,6 @@
 
 ## ESXi
 
-6. How to Configure ESXi Remote Syslog over TLS and Verify Log Delivery
 7. How to Persist ESXi Logs and Scratch Data on Hosts That Boot from USB or SD Card
 8. How to Fix an ESXi `vm-support` Bundle That Contains an Empty `/var/run/logs` Directory
 9. How to Configure ESXi NTP and Diagnose Hosts That Refuse to Synchronize
