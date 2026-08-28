@@ -8,7 +8,7 @@ Description: Migrate Qdrant to a different embedding dimension by building a new
 
 ---
 
-A Qdrant vector field has a fixed dimension. Changing from a 768-dimensional embedding model to a 1,024-dimensional model is therefore a data migration, not an in-place resize. Existing vectors cannot be padded or truncated without changing their meaning, and Qdrant rejects vectors whose length does not match the collection schema.
+A Qdrant dense-vector field has a fixed dimension. Changing from a 768-dimensional embedding model to a 1,024-dimensional model is therefore a data migration, not an in-place resize. Padding or truncating an old-model embedding does not convert it into an embedding in the new model's vector space, and Qdrant rejects dense vectors whose length does not match the collection schema.
 
 The safe pattern is blue-green: create a new collection with the new dimension, generate new embeddings from the original source content, keep writes synchronized, validate the result, and atomically move a stable alias from the old collection to the new one.
 
@@ -28,12 +28,12 @@ Also decide whether the distance metric changes. Use the metric recommended by t
 
 Before creating the replacement, record:
 
-- vector names, dimensions, and distance metrics;
+- vector names, dimensions, data types, multivector settings, and distance metrics;
 - sparse-vector configuration;
 - shard number, replication, write consistency, and on-disk settings;
-- HNSW, optimizer, quantization, and memory-tier configuration;
+- HNSW, optimizer, WAL, quantization, and memory-tier configuration;
 - payload schema and payload indexes;
-- tenant or custom sharding rules;
+- tenant or custom sharding rules and existing shard keys;
 - strict-mode settings;
 - aliases and application timeouts.
 
@@ -44,6 +44,8 @@ curl --fail-with-body \
   -H 'api-key: YOUR_API_KEY' \
   http://localhost:6333/collections/documents-v1
 ```
+
+For custom sharding, list the existing shard keys separately with `GET /collections/documents-v1/shards`.
 
 Collection snapshots do not contain aliases, so export the mapping independently before any migration or rollback work.
 
@@ -64,13 +66,13 @@ curl --fail-with-body -X PUT \
   }'
 ```
 
-Recreate the required payload indexes before or during ingestion according to Qdrant's indexing guidance. Copying only the vector size can produce a destination with different filter performance, storage behavior, or durability.
+Recreate the required payload indexes before ingestion according to Qdrant's indexing guidance. Copying only the vector size can produce a destination with different filter performance, storage behavior, or durability.
 
 Do not restore the old collection snapshot into the new schema: it contains vectors with the old dimension and the old collection configuration. Backfill by reading source content and computing genuinely new embeddings.
 
 ## Preserve Stable Point Identity
 
-Use the same Qdrant point IDs and payload semantics in both collections. Stable IDs make retries idempotent, simplify count and sample comparisons, and let the application correlate an item through rollback.
+Use the same Qdrant point IDs, shard keys when using custom sharding, and payload semantics in both collections. Stable IDs make retries idempotent, simplify count and sample comparisons, and let the application correlate an item through rollback.
 
 The original source—documents, rows, objects, or an event log—should remain authoritative. If the Qdrant payload lacks the complete text or preprocessing metadata needed to reproduce embeddings, do not pretend an old vector can be converted into a new one. Retrieve the original content.
 
@@ -91,9 +93,9 @@ Never store secrets or credentials in payload metadata.
 
 Before the backfill starts, update the ingestion path so each new or changed item is embedded with both approved models and upserted to both collections. A successful write policy must define what happens if one side fails: retry from a durable queue or log until both reach the same logical version.
 
-Dual-writing only upserts is insufficient if the workload also performs deletes, payload-only changes, partial vector updates, or index-dependent schema changes. Mirror every mutation type or pause unsupported mutations during the migration. Qdrant's migration tutorial explicitly calls out this gap.
+Dual-writing only upserts is insufficient if the workload also performs deletes, payload-only changes, partial vector updates, or index-dependent schema changes. Pause those operations or implement race-safe handling such as ordered replay, delete tombstones, or conditional writes; merely issuing the same mutation to both collections is insufficient when a backfill can race it. Qdrant's migration tutorial explicitly calls out this gap.
 
-Use a monotonic source version or timestamp to prevent an old backfill task from overwriting a newer dual-write result. The latest authoritative event must win on both sides.
+Use Qdrant's `insert_only` update mode for backfill so it cannot overwrite a point already populated by dual-writing. If updates require more elaborate conflict resolution, enforce a monotonic source version or timestamp with conditional updates or serialize writes through an ordered queue; storing a version in payload does not enforce ordering by itself. The latest authoritative event must win on both sides.
 
 ## Backfill with Scroll and Re-Embedding
 
@@ -105,8 +107,8 @@ For every batch:
 2. apply the exact new chunking and preprocessing pipeline;
 3. generate 1,024-dimensional embeddings;
 4. verify every output has the expected finite length;
-5. upsert with stable IDs and payloads into `documents-v2`;
-6. persist the batch cursor only after the write is acknowledged;
+5. write with stable IDs and payloads into `documents-v2` using `insert_only` mode;
+6. persist the batch cursor only after the write reports `completed` by waiting for completion, or after independently verifying it;
 7. retry failed items idempotently.
 
 Throttle the job based on embedding-provider limits and Qdrant CPU, memory, disk, and optimizer pressure. A fast backfill that destabilizes production is not a successful migration.
