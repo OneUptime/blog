@@ -8,7 +8,7 @@ Description: Identify the faulting passthrough device, preserve the right ESXi a
 
 ---
 
-When a VM using VMDirectPath I/O powers off and `vmware.log` reports `PCI passthru device ... caused an IOMMU fault`, ESXi has stopped the VM after the platform IOMMU rejected a DMA transaction. The shutdown protects isolation between the guest and host. It is not evidence that VM memory is exhausted, and increasing 64-bit MMIO space is not a generic fix.
+When a VM using VMDirectPath I/O powers off and `vmware.log` reports `PCI passthru device ... caused an IOMMU fault`, the platform IOMMU has detected and blocked an invalid DMA request. ESXi treats the resulting VMX fault as unrecoverable, so the VM terminates. The IOMMU block enforces DMA isolation between the guest and host. It is not evidence that VM memory is exhausted, and increasing 64-bit MMIO space is not a generic fix.
 
 Broadcom documents this failure especially for DMA-capable Intel accelerator devices, but the investigation applies to any directly assigned PCI function. The useful evidence is the exact PCI address, fault type and address, the device and platform firmware levels, the guest driver, and the workload occurring at the time.
 
@@ -19,20 +19,20 @@ Repeatedly powering the VM back on can reproduce a disruptive device or firmware
 1. Keep the affected VM powered off.
 2. Record the host, datastore, VM name, last failure time, and recent changes.
 3. If the service must be restored before the device is debugged, remove the passthrough device from the powered-off VM and start it only if the application supports a no-accelerator mode.
-4. Do not disable IOMMU or weaken passthrough isolation as a workaround.
+4. Do not disable the host/platform IOMMU or weaken passthrough isolation as a workaround.
 5. Preserve the original logs before rotations overwrite them.
 
 Removing a PCI device from VM settings does not erase its datastore disks, but the guest may fail to boot or the application may fail if it requires that hardware. Have an application-level recovery plan first.
 
 ## Capture the Exact VMX Failure
 
-Find the VM's configuration path in **VM > Configure > General > Configuration file**, or on the host:
+Find the VM's working directory in **VM > Summary > Edit Settings > VM Options > General > Virtual Machine Working Location**, or obtain its configuration path on the host:
 
 ```bash
 vim-cmd vmsvc/getallvms
 ```
 
-Use the datastore path returned for the VM and search its log. Quote paths that contain spaces:
+Use the displayed working directory, or the directory containing the `.vmx` path returned for the VM, and search its log. Quote paths that contain spaces:
 
 ```bash
 cd '/vmfs/volumes/DATASTORE/VM_DIRECTORY'
@@ -53,7 +53,7 @@ Record all three fields exactly:
 - the numeric fault type;
 - the faulting address.
 
-Also retain messages before the fatal line. They show whether the VM had already reported a guest-driver reset, device timeout, PCIe error, or power event. Do not publish these logs without reviewing them for host names, datastore names, IP addresses, and guest data.
+Also retain messages before the fatal line for VMX-side context, including passthrough-device and VM power events. Correlate guest-driver resets or device timeouts in the guest logs, and PCIe errors in `vmkernel.log` and platform hardware logs. Do not publish these logs without reviewing them for host names, datastore names, IP addresses, and guest data.
 
 ## Map the PCI Address to Physical Hardware
 
@@ -86,7 +86,7 @@ The VM ran and then terminated with the fault line. Broadcom attributes this to 
 
 ### MMIO allocation failure at power-on
 
-Messages such as `The firmware could not allocate ... KB of PCI MMIO` or `total number of pages needed ... exceeds limit` occur while the VM is powering on. Those can require UEFI firmware and correctly sized `pciPassthru.use64bitMMIO` settings. They do not explain a later DMA transaction rejected by the IOMMU.
+Messages such as `The firmware could not allocate ... KB of PCI MMIO` or `total number of pages needed ... exceeds limit` occur while the VM is powering on. Those can require UEFI VM firmware, `pciPassthru.use64bitMMIO = TRUE`, and an appropriately sized `pciPassthru.64bitMMIOSizeGB` value. They do not explain a later DMA transaction rejected by the IOMMU.
 
 ### Reset or topology incompatibility
 
@@ -103,10 +103,10 @@ grep -n -i -B 20 -A 40 'iommu\|pcipassthru\|dma' \
   /var/run/log/vmkernel.log
 ```
 
-In the guest, collect the kernel or system event log, the device driver's log, and vendor diagnostics from the same interval. Look for:
+In the guest, collect the kernel or system event log, the device driver's log, and vendor diagnostics from the same interval. Correlate that evidence with `vmkernel.log` and platform hardware logs. Look for:
 
 - a driver reset immediately before the fault;
-- firmware-health or PCIe AER events;
+- firmware-health events in guest or vendor diagnostics, or PCIe error events in host or platform logs;
 - a workload operation that consistently triggers the failure;
 - a recent driver, firmware, BIOS, application, or ESXi change;
 - the same physical card failing when assigned to a controlled test VM.
@@ -121,7 +121,7 @@ In vSphere Client, select the host and use **Monitor > Logs > Export System Logs
 vm-support
 ```
 
-Record the generated bundle path and copy it to supported secure storage before leaving maintenance mode. Give Broadcom, the server vendor, device vendor, and application vendor the same timeline and identifiers. Broadcom's IOMMU-fault guidance recommends joint analysis because the failing transaction can originate from hardware, firmware, the in-guest driver, or the application that programs the device.
+Record the generated bundle path and copy it to supported secure storage. Give Broadcom, the server vendor, device vendor, and application vendor the same timeline and identifiers. Broadcom's IOMMU-fault guidance recommends joint analysis because the invalid DMA can result from device hardware or firmware, or from the in-guest driver or application that programs the device.
 
 ## Test One Change at a Time
 
