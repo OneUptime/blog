@@ -8,7 +8,7 @@ Description: Trace a generated claim from Pod ownership through scheduling, topo
 
 ---
 
-A generic ephemeral volume creates a real PVC from the Pod's inline `volumeClaimTemplate`. If its StorageClass uses `WaitForFirstConsumer`, `Pending` is initially expected: Kubernetes waits for the scheduler to identify a compatible node before provisioning storage. It becomes a fault only when events show that scheduling or provisioning cannot progress.
+A generic ephemeral volume creates a real PVC from the Pod's inline `volumeClaimTemplate`. If its StorageClass uses `WaitForFirstConsumer`, `Pending` is initially expected: Kubernetes waits for the scheduler to identify a compatible node before provisioning storage. It becomes a fault when scheduling or provisioning cannot progress; events usually help reveal why.
 
 Debug the generated PVC exactly like an ordinary claim, but include the Pod-owner and deterministic-name checks that are unique to generic ephemeral volumes.
 
@@ -39,14 +39,14 @@ kubectl get pod importer -n data -o wide
 kubectl get pvc importer-scratch -n data -o wide
 ```
 
-If no PVC exists, inspect the Pod and namespace events first:
+If the Pod itself does not exist, inspect the error returned by the create or apply operation. If the Pod exists but no PVC does, inspect the Pod and namespace events:
 
 ```bash
 kubectl describe pod importer -n data
 kubectl get events -n data --sort-by=.metadata.creationTimestamp
 ```
 
-The Pod may have failed admission, the ephemeral volume controller may be unhealthy, or a deterministic-name collision may block creation.
+The generated PVC may have failed admission, the ephemeral volume controller may be unhealthy, or a deterministic-name collision may block creation.
 
 ## Verify Ownership, Not Just the Name
 
@@ -59,7 +59,7 @@ kubectl get pvc importer-scratch -n data -o yaml
 kubectl get pod importer -n data -o jsonpath='{.metadata.uid}{"\n"}'
 ```
 
-Compare the Pod UID with `metadata.ownerReferences[].uid` on the PVC. If they do not match, resolve the name collision by safely deleting or renaming the unrelated object or by changing the Pod/volume naming scheme. Do not attach a foreign claim by editing owner references.
+Compare the Pod UID with the UID in the PVC's controlling owner reference: the `metadata.ownerReferences[]` entry with `controller: true`. If they do not match, resolve the name collision by safely deleting the unrelated PVC, recreating it under another name if it is still needed, or recreating the Pod with a different Pod/volume naming scheme. Do not attach a foreign claim by editing owner references.
 
 ## Read Events on Both Objects
 
@@ -68,7 +68,7 @@ Describe the Pod and PVC before reading controller logs:
 ```bash
 kubectl describe pod importer -n data
 kubectl describe pvc importer-scratch -n data
-kubectl get events -n data --sort-by=.lastTimestamp
+kubectl get events -n data --sort-by=.metadata.creationTimestamp
 ```
 
 Events usually identify which phase is blocked:
@@ -99,7 +99,7 @@ Verify:
 - the requested access and volume modes are supported;
 - the reclaim policy matches the intended lifecycle.
 
-If `storageClassName` is omitted, default-class selection applies. More than one default can make behavior depend on which default was created most recently. An explicit class is easier to diagnose for ephemeral scratch.
+If `storageClassName` is omitted, Kubernetes uses the default StorageClass when one exists; without a default, the field remains unset until a default becomes available. More than one default can make behavior depend on which default was created most recently. An explicit class is easier to diagnose for ephemeral scratch.
 
 ## Check Whether Scheduling Was Bypassed
 
@@ -124,12 +124,12 @@ CPU, memory, extended resources, taints, affinity, topology spread, and storage 
 ## Inspect the CSI Driver and Capacity Objects
 
 ```bash
-kubectl get csidriver
-kubectl get csinode
-kubectl get csistoragecapacity --all-namespaces
+kubectl get csidriver -o yaml
+kubectl get csinode -o yaml
+kubectl get csistoragecapacity --all-namespaces -o yaml
 ```
 
-Confirm that the StorageClass provisioner has a `CSIDriver` and that eligible nodes publish the expected topology. If `CSIDriver.spec.storageCapacity` is true, the driver's controller should publish suitable `CSIStorageCapacity` objects for late-bound volumes.
+For a CSI-backed class, confirm that a `CSIDriver` exists whose `metadata.name` matches the StorageClass provisioner. In each eligible node's `CSINode`, confirm the driver entry and expected `topologyKeys`, then verify those keys' values on the Node labels. If `CSIDriver.spec.storageCapacity` is true, the driver installation should publish suitable `CSIStorageCapacity` objects for late-bound volumes.
 
 No matching capacity object, an unset or zero capacity, or a `maximumVolumeSize` below the request can cause the scheduler to reject a topology. Capacity information can also be stale: Kubernetes may select a node, receive an actual provisioning failure, clear the selection, and retry.
 
@@ -146,7 +146,7 @@ kubectl get pvc importer-scratch -n data \
 
 - **PVC Pending, no PV:** scheduling, matching, or provisioning is blocked.
 - **PVC Bound, Pod Pending:** investigate scheduler constraints or volume attachment.
-- **Pod scheduled, container waiting:** inspect attach, stage, format, and mount events on the Pod and node.
+- **Pod scheduled, container waiting:** inspect applicable attach, stage/publish, format, and mount failures in Pod events, `VolumeAttachment` status, and kubelet or CSI node-plugin logs.
 
 Once bound, inspect the exact PV:
 
@@ -168,7 +168,7 @@ kubectl describe resourcequota -n data
 kubectl describe limitrange -n data
 ```
 
-Check `persistentvolumeclaims`, `requests.storage`, and any StorageClass-specific quota keys. A LimitRange can also reject a claim below its minimum or above its maximum storage request. Admission events on the Pod or generated claim normally state the violated policy.
+Check `persistentvolumeclaims`, `requests.storage`, and any StorageClass-specific quota keys. A LimitRange can also reject a claim below its minimum or above its maximum storage request. If claim creation is rejected, the PVC does not exist; the ephemeral volume controller emits a `FailedBinding` warning event on the Pod with the API rejection.
 
 ## Use a Minimal Reproduction
 
@@ -178,14 +178,20 @@ Do not change several fields on the production Pod at once. Generated PVCs are t
 
 ## Confirm Cleanup After the Fix
 
-Once provisioning succeeds, delete a disposable test Pod and watch its PVC, PV, and backing volume:
+Once provisioning succeeds, start separate watches for the disposable test Pod's PVC and PV, then delete the Pod from another terminal:
 
 ```bash
+# Terminal 1
+kubectl get pvc -n data --watch
+
+# Terminal 2
+kubectl get pv --watch
+
+# Terminal 3
 kubectl delete pod importer-test -n data
-kubectl get pvc,pv --watch
 ```
 
-The Pod-owned PVC should be garbage-collected. With a dynamically provisioned StorageClass using `Delete`, the PV and backing volume normally follow. Stuck finalizers or a `Retain` policy require the driver's documented recovery process, not forced finalizer removal as a first step.
+The Pod-owned PVC should be garbage-collected. With a dynamically provisioned StorageClass using `Delete`, the PV and backing volume normally follow; verify the backing volume separately with driver or provider tooling. Diagnose stuck finalizers before removing them. A `Retain` policy intentionally leaves the PV and storage asset for manual reclamation; follow Kubernetes and driver documentation for cleanup.
 
 ## Official Documentation
 
@@ -197,4 +203,4 @@ The Pod-owned PVC should be garbage-collected. With a dynamically provisioned St
 
 ## Conclusion
 
-Start with the generated PVC's ownership and events, then follow the chain through StorageClass, scheduler, topology, CSI capacity, provisioning, and mount. `Pending` under `WaitForFirstConsumer` is normal only while a viable scheduling decision is still forming; persistent events reveal the exact constraint or controller that prevents progress.
+Start with the generated PVC's ownership and events, then follow the chain through StorageClass, scheduler, topology, CSI capacity, provisioning, and mount. `Pending` under `WaitForFirstConsumer` is normal only while a viable scheduling decision is still forming; repeated events usually point to the constraint or controller that prevents progress.
