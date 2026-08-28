@@ -121,7 +121,6 @@
 
 ## Ephemeral Volumes
 
-20. Why Local Ephemeral Storage Shows Less Allocatable Space Than Node Disk Capacity
 
 ## Qdrant
 
