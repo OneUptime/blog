@@ -129,7 +129,6 @@
 8. How to Paginate an Entire Qdrant Collection Safely with the Scroll API
 9. How to Delete Qdrant Points by Payload Filter and Wait for the Update to Finish
 10. How to Build Dense-and-Sparse Hybrid Search in Qdrant with RRF Fusion
-14. How to Back Up and Restore Qdrant Collections with Snapshots
 15. How to Change a Qdrant Embedding Dimension with a New Collection and Alias Swap
 16. One Collection per Tenant or Payload Partitioning? Designing Qdrant Multitenancy
 17. How to Enforce Tenant Isolation in Qdrant with JWT RBAC Payload Filters
