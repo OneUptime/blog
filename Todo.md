@@ -44,7 +44,6 @@
 13. How to Remount a Disconnected NFS 4.1 Datastore Without Rebooting ESXi
 14. How to Trunk VLANs to an ESXi Guest Through a Standard-Switch Port Group with VLAN ID 4095
 15. How to Enable PCI Passthrough on ESXi and Diagnose Devices Stuck at `Needs Reboot`
-16. How to Diagnose an ESXi VM That Powers Off with `PCI Passthru Device Caused IOMMU Fault`
 17. How to Size 64-Bit MMIO Space for Multi-GPU PCI Passthrough on ESXi
 18. How to Register an Orphaned ESXi VM from Its `.vmx` File Without Changing Its Identity
 19. How to Clone a Thin-Provisioned VMDK with `vmkfstools` Without Inflating It
