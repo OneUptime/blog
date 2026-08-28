@@ -121,7 +121,6 @@
 
 ## Ephemeral Volumes
 
-15. How to Enforce Namespace Defaults and Quotas for Kubernetes Ephemeral Storage
 16. How to Prevent Generic Ephemeral PVC Name Collisions and Ownership Conflicts
 17. How to Rescue Files from an emptyDir Before a Failing Pod Is Deleted
 18. How Generic Ephemeral Volumes Are Cleaned Up After Jobs and CronJobs
