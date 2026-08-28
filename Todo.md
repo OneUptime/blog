@@ -124,7 +124,6 @@
 
 ## Qdrant
 
-8. How to Paginate an Entire Qdrant Collection Safely with the Scroll API
 9. How to Delete Qdrant Points by Payload Filter and Wait for the Update to Finish
 10. How to Build Dense-and-Sparse Hybrid Search in Qdrant with RRF Fusion
 16. One Collection per Tenant or Payload Partitioning? Designing Qdrant Multitenancy
