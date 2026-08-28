@@ -97,7 +97,7 @@ spec:
             requests:
               ephemeral-storage: 2Gi
             limits:
-              ephemeral-storage: 4Gi
+              ephemeral-storage: 12Gi
           volumeMounts:
             - name: work
               mountPath: /work
@@ -125,7 +125,7 @@ spec:
             requests:
               ephemeral-storage: 2Gi
             limits:
-              ephemeral-storage: 4Gi
+              ephemeral-storage: 12Gi
           volumeMounts:
             - name: work
               mountPath: /work
@@ -157,8 +157,8 @@ Use only access modes and `volumeMode` values supported by the driver. The examp
 Create a separate one-replica canary workload with the same Pod constraints and claim template. Verify:
 
 ```bash
-kubectl get pod,pvc -n "$namespace" -w
-kubectl get events -n "$namespace" --sort-by=.lastTimestamp
+kubectl get pods,pvc -n "$namespace"
+kubectl get events -n "$namespace" --sort-by=.metadata.creationTimestamp
 ```
 
 The generated PVC name is `<Pod name>-<volume name>`. Confirm that it is owned by the canary Pod UID, becomes `Bound`, and provisions in topology compatible with the scheduled node.
@@ -166,7 +166,7 @@ The generated PVC name is `<Pod name>-<volume name>`. Confirm that it is owned b
 Inside the canary, validate the mount and application permissions:
 
 ```bash
-canary_pod=<canary-pod-name>
+canary_pod=CANARY_POD_NAME  # Replace with the actual canary Pod name.
 kubectl exec -n "$namespace" "$canary_pod" -c worker -- \
   sh -c 'mount | grep " /work "; df -h /work; touch /work/.write-test; rm /work/.write-test'
 ```
@@ -188,7 +188,7 @@ For other controllers:
 
 - A DaemonSet follows its configured update strategy and needs capacity on each node or topology.
 - A StatefulSet recreates stable Pod names. Its old generated PVC may still be terminating when the replacement Pod with the same name and a new UID appears, temporarily causing an ownership conflict. Verify claim deletion and CSI timing during a canary ordinal.
-- An existing Job's Pod template is not a migration target; create a new Job revision. Updating a CronJob affects Jobs created after the template change, not already running Jobs.
+- An existing Job's Pod template is not a migration target; create a new Job with a new name. Updating a CronJob affects Jobs created after the template change, not already running Jobs.
 - A bare Pod must be deleted and recreated, which destroys its `emptyDir`.
 
 ## Verify Lifecycle and Cleanup
@@ -218,11 +218,13 @@ If new Pods remain Pending or fail readiness, pause the Deployment rollout while
 
 ```bash
 kubectl rollout pause deployment/"$workload" -n "$namespace"
-kubectl describe pod <new-pod-name> -n "$namespace"
-kubectl describe pvc <new-pvc-name> -n "$namespace"
+new_pod=NEW_POD_NAME  # Replace with the actual new Pod name.
+new_pvc=NEW_PVC_NAME  # Replace with the actual generated PVC name.
+kubectl describe pod "$new_pod" -n "$namespace"
+kubectl describe pvc "$new_pvc" -n "$namespace"
 ```
 
-Resolve StorageClass, quota, topology, attach, mount, or permission errors. To abandon the migration, restore the previous Deployment revision or apply the saved manifest, then resume and monitor the rollback.
+Resolve StorageClass, quota, topology, attach, mount, or permission errors. To abandon the migration, resume with `kubectl rollout resume deployment/"$workload" -n "$namespace"`, then restore the previous revision with `kubectl rollout undo deployment/"$workload" -n "$namespace"`; Kubernetes cannot roll back a paused Deployment. Monitor the rollback.
 
 Rollback creates new Pods with new `emptyDir` volumes; it does not copy files back from generic ephemeral claims. Allow Kubernetes and the CSI driver to delete the failed rollout's PVCs. Do not strip finalizers or manually delete bound PVs during an active rollout.
 
