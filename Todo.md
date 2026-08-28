@@ -124,7 +124,6 @@
 
 ## Qdrant
 
-18. How to Choose Qdrant Shard, Replication, and Write-Consistency Settings
 
 ## SLOs
 
