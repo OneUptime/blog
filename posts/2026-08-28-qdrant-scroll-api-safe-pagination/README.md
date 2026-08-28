@@ -121,12 +121,12 @@ while True:
 print(f"Processed {processed} point records")
 ~~~
 
-On restart, load the saved token and pass it as <code>offset</code>. There is an unavoidable checkpoint boundary:
+On restart, load the saved token and pass it as <code>offset</code>. Unless destination writes and the checkpoint can be committed atomically, there is a checkpoint boundary:
 
 - Saving before the destination commits can skip data after a crash.
 - Saving after the destination commits can replay a page if the process crashes before the checkpoint.
 
-The safer pattern is the second one plus an idempotent destination. Upsert by point ID, or deduplicate by point ID and export job ID.
+When an atomic commit is unavailable, the safer pattern is the second one plus an idempotent destination. Upsert by point ID, or deduplicate by point ID and export job ID.
 
 If an API call times out, retry the same cursor. Do not advance based on an uncertain response.
 
@@ -197,8 +197,8 @@ With the default ID ordering, a point inserted after the scan has passed its pos
 Choose an operational model explicitly:
 
 1. **Quiesced scan:** Pause writers, run the scan, verify it, then resume. This is the simplest stable export.
-2. **Application-defined batch:** Filter on an immutable batch or generation field and prevent backfilled writes into that generation during the scan.
-3. **Live, at-least-once scan:** Allow writes, accept that the job is not a snapshot, make the destination idempotent, and reconcile changes afterward.
+2. **Application-defined batch:** Filter on an immutable batch or generation field and prevent inserts, updates, or deletes in that generation during the scan.
+3. **Live, best-effort scan:** Allow writes, accept that the job is not a snapshot, make the destination idempotent, and reconcile changes afterward.
 4. **Backup or recovery copy:** Use Qdrant snapshots or Qdrant Cloud backups instead of reconstructing a point-in-time backup with Scroll.
 
 A collection snapshot contains the collection configuration, points, and payloads. In a distributed deployment, collection snapshots are node-specific, so follow Qdrant's distributed snapshot procedure rather than taking one arbitrary node snapshot.

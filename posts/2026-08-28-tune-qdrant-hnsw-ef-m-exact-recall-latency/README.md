@@ -8,7 +8,7 @@ Description: Build an exact-search recall baseline, tune query-time hnsw_ef firs
 
 ---
 
-Qdrant's HNSW index trades exhaustive comparison for fast approximate nearest-neighbor search. Three settings affect different phases:
+Qdrant's HNSW index trades exhaustive comparison for fast approximate nearest-neighbor search. Three HNSW settings affect different phases, while exact mode provides a baseline:
 
 - `hnsw_ef` controls the dynamic candidate list for one query;
 - `m` controls how many graph edges each indexed point can have;
@@ -34,7 +34,7 @@ Do not optimize only average latency. Raising `hnsw_ef` increases work per query
 
 ## Establish an Exact Ground Truth
 
-Run the same query twice, changing only `exact`:
+Run the same vector, filter, limit, and output settings twice: once with exact search and once with the ANN `hnsw_ef` under test:
 
 ```python
 from qdrant_client import QdrantClient, models
@@ -43,17 +43,19 @@ client = QdrantClient(url="http://localhost:6333", api_key="...")
 
 query_vector = [0.12, -0.08, 0.31]  # Use the collection's full dimension.
 
+tenant_filter = models.Filter(
+    must=[
+        models.FieldCondition(
+            key="tenant_id",
+            match=models.MatchValue(value="tenant-42"),
+        )
+    ]
+)
+
 exact = client.query_points(
     collection_name="documents",
     query=query_vector,
-    query_filter=models.Filter(
-        must=[
-            models.FieldCondition(
-                key="tenant_id",
-                match=models.MatchValue(value="tenant-42"),
-            )
-        ]
-    ),
+    query_filter=tenant_filter,
     search_params=models.SearchParams(exact=True),
     limit=10,
     with_payload=False,
@@ -63,14 +65,7 @@ exact = client.query_points(
 approximate = client.query_points(
     collection_name="documents",
     query=query_vector,
-    query_filter=models.Filter(
-        must=[
-            models.FieldCondition(
-                key="tenant_id",
-                match=models.MatchValue(value="tenant-42"),
-            )
-        ]
-    ),
+    query_filter=tenant_filter,
     search_params=models.SearchParams(hnsw_ef=128, exact=False),
     limit=10,
     with_payload=False,
@@ -98,6 +93,7 @@ for hnsw_ef in (32, 64, 128, 256, 512):
     result = client.query_points(
         collection_name="documents",
         query=query_vector,
+        query_filter=tenant_filter,
         search_params=models.SearchParams(
             hnsw_ef=hnsw_ef,
             exact=False,
@@ -134,12 +130,15 @@ If recall plateaus even at an unacceptable `hnsw_ef`, the existing graph may be 
 - Higher `m` adds graph connectivity, which can improve recall but increases index memory/disk and construction work.
 - Higher `ef_construct` considers more candidates during construction, which can improve graph quality but increases build time.
 
-The collection defaults are commonly `m: 16` and `ef_construct: 100`, but deployment configuration and vector-specific overrides can differ. Read the effective collection configuration rather than assuming defaults:
+The collection defaults are commonly `m: 16` and `ef_construct: 100`, but deployment configuration and vector-specific overrides can differ. Read the collection-level configuration and any per-vector overrides rather than assuming defaults:
 
 ```python
 info = client.get_collection(collection_name="documents")
 print(info.config.hnsw_config)
+print(info.config.params.vectors)
 ```
+
+Values in a named vector's `hnsw_config` override the collection-level values. If the target vector overrides the field you are changing, update it through `vectors_config`; the `hnsw_config` examples below change the collection-level settings.
 
 Changing either build-time value triggers background HNSW rebuilding. Qdrant warns that collection updates can block while existing optimizers finish and can create large production overhead. Ensure CPU, RAM, and disk headroom and avoid changing every shard simultaneously without an operational plan.
 

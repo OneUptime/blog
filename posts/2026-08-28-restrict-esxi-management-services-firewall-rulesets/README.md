@@ -1,4 +1,4 @@
-# How to Restrict ESXi Management Services to Trusted Networks with Firewall Rulesets
+# How to Restrict ESXi Management Services with Firewall Rulesets
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
@@ -56,7 +56,7 @@ esxcli network firewall ruleset rule list
 esxcli network ip connection list
 ~~~
 
-Save the output outside the host. The **ruleset list** output on current ESXi builds includes whether enable/disable and allowed-IP settings are configurable. Starting with ESXi 8.0, some rulesets are system-owned. If **Allowed IP configurable** is false, do not attempt to override it.
+Save the output outside the host. The **ruleset list** output on current ESXi builds includes whether enable/disable and allowed-IP settings are configurable. Starting with ESXi 8.0 Update 2, the firewall management plane classifies rulesets as user-owned or system-owned. If **Allowed IP configurable** is false, do not change **allowed-all** or the allowed-IP list.
 
 Inspect individual candidate rules:
 
@@ -120,15 +120,15 @@ For the Host Client and API, add vCenter and every other required consumer immed
 esxcli network firewall ruleset allowedip list --ruleset-id=vSphereClient
 esxcli network firewall ruleset set --ruleset-id=vSphereClient --allowed-all=false
 esxcli network firewall ruleset allowedip add --ruleset-id=vSphereClient --ip-address=192.0.2.10
-esxcli network firewall ruleset allowedip add --ruleset-id=vSphereClient --ip-address=192.0.2.0/28
+esxcli network firewall ruleset allowedip add --ruleset-id=vSphereClient --ip-address=192.0.2.16/28
 esxcli network firewall ruleset allowedip list --ruleset-id=vSphereClient
 ~~~
 
 Expect vCenter or other remote access to be interrupted while the enforced list is empty. This is why the UI's single save is preferred and the CLI workflow belongs on a console.
 
-Some installations permit an allowed list to be populated while **allowed-all** remains true, which would avoid that interruption. Do not assume this behavior. Broadcom documents an ESXi 8.0 state-desynchronization case that returns **Couldn't update allowed ip list when allowed-all flag is true**; that issue is fixed in ESXi 9.0. If pre-population fails, stop and use the UI or the console workflow instead of repeatedly changing flags over SSH.
+Some installations permit an allowed list to be populated while **allowed-all** remains true, which would avoid that interruption. Do not assume this behavior. Broadcom documents an ESXi 8.0 state-desynchronization case that returns **Couldn't update allowed ip list when allowed-all flag is true**; that issue is fixed in ESXi 9.0. If this exact error occurs, stop instead of retrying through the UI or changing flags over SSH; Broadcom's documented workaround is to reboot the host under change control.
 
-The examples use documentation address ranges. Replace them with the exact approved sources. Avoid adding the same IP or overlapping entry repeatedly; Broadcom documents duplicate-entry conflicts on current incoming rules.
+The examples use documentation address ranges. Replace them with the exact approved sources. Avoid adding an entry already present in the same rule; Broadcom documents duplicate-entry conflicts on current incoming rules.
 
 Do not enable a disabled service merely to restrict it. If SSH is intentionally stopped, its existing allowed list can remain prepared while the service stays stopped.
 
@@ -171,7 +171,7 @@ In vSAN 8.0 Update 2 and later, Broadcom documents a case where the vSAN master 
 
 ## Handle System-Owned Rulesets
 
-ESXi 8.0 marks some rulesets as system-owned. Attempts to change them can return:
+Starting with ESXi 8.0 Update 2, the firewall management plane classifies rulesets as user-owned or system-owned. Attempts to change a protected property can return:
 
 ~~~text
 Can not change allowed ip list this ruleset, it is owned by system service.
@@ -183,7 +183,7 @@ This is expected protection, not a reason to edit configuration files. Run:
 esxcli network firewall ruleset list
 ~~~
 
-If **Enable/Disable configurable** or **Allowed IP configurable** is false, leave the ruleset under service control. Apply restrictions through the owning supported service configuration or an external network firewall.
+Treat the two configurability columns independently. If **Enable/Disable configurable** is false, do not toggle the ruleset directly; if **Allowed IP configurable** is false, do not change **allowed-all** or its allowed-IP list. Apply the protected operation through the owning supported service configuration or an external network firewall.
 
 ## Remove an Address Carefully
 
@@ -218,7 +218,7 @@ Do not disable the ESXi firewall globally to repair one rule. That expands expos
 
 After the canary is stable:
 
-- encode the approved lists in a Host Profile or vSphere Configuration Profile supported by the release;
+- encode the approved lists in a Host Profile or vSphere Configuration Profile only where the exact ruleset and release are supported by that profile mechanism;
 - document every allowed CIDR and its owner;
 - monitor drift between policy and host state;
 - test recovery-console access periodically;
@@ -230,7 +230,7 @@ A host profile can also overwrite a correct manual change. Inspect remediation p
 ## Limitations and Version Scope
 
 - Ruleset names, ports, direction, and configurability can differ by ESXi build and installed components.
-- ESXi 8.0 includes system-owned rulesets that administrators cannot modify directly.
+- Starting with ESXi 8.0 Update 2, system-owned rulesets can have properties that administrators cannot modify directly.
 - Restricting **vSphereClient** can affect vCenter, vSAN, backup, monitoring, and APIs, not only browser access.
 - Address allow lists are network controls, not user authentication or authorization.
 - Built-in rulesets cannot be extended with unsupported hand-edited firewall XML.

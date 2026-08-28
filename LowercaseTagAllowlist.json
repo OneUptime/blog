@@ -1302,5 +1302,13 @@
   "fsnotify",
   "podTemplate",
   "google-auth",
-  "emptyDir"
+  "emptyDir",
+  "altbootbank",
+  "bootbank",
+  "vCenter Server",
+  "vFAT",
+  "vm-support",
+  "vmkfstools",
+  "vSphere 8",
+  "vSphere Lifecycle Manager"
 ]

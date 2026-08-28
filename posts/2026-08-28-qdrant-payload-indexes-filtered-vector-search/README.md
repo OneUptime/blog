@@ -201,7 +201,7 @@ Every payload index consumes storage and memory. Prioritize:
 
 Avoid indexing large numbers of unused or open-ended keys. When payload keys are dynamic, remodel them into a fixed key/value shape that can be indexed predictably.
 
-Qdrant strict mode can reject retrieval queries that filter on unindexed fields by setting <code>unindexed_filtering_retrieve</code> to false. This converts an accidental scan into an immediate error. Current Qdrant Cloud collections apply these protections by default, so a filter that worked on an unrestricted local server may be rejected in Cloud until the matching index exists.
+Qdrant strict mode can reject retrieval queries that filter on unindexed fields by setting <code>unindexed_filtering_retrieve</code> to false. This converts an accidental scan into an immediate error. New Qdrant Cloud collections apply these protections by default, so a filter that worked on an unrestricted local server may be rejected in Cloud until the matching index exists.
 
 ## Roll Back an Index
 
@@ -238,7 +238,7 @@ Verify that <code>category</code> disappears from <code>payload_schema</code>. F
 - [Delete payload index API reference](https://api.qdrant.tech/api-reference/indexes/delete-field-index)
 - [Collection information and payload schema](https://qdrant.tech/documentation/manage-data/collections/)
 - [Qdrant filtering](https://qdrant.tech/documentation/search/filtering/)
-- [Bulk upload guidance](https://qdrant.tech/documentation/tutorials/bulk-upload/)
+- [Bulk upload guidance](https://qdrant.tech/documentation/manage-data/bulk-upload/)
 
 ## Conclusion
 

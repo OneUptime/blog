@@ -1,4 +1,4 @@
-# Validation Summary: How to Roll Back a Failed ESXi Patch by Recovering the Previous Image from `altbootbank`
+# Validation Summary: How to Roll Back a Failed ESXi Patch Using `altbootbank`
 
 ## Status
 

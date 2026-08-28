@@ -1,4 +1,4 @@
-# How to Roll Back a Failed ESXi Patch by Recovering the Previous Image from `altbootbank`
+# How to Roll Back a Failed ESXi Patch Using `altbootbank`
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
@@ -41,7 +41,7 @@ Keep the host in maintenance mode until the rolled-back image has passed storage
 
 ## Inspect Both Bootbank Builds
 
-When the host can boot far enough for ESXi Shell, inspect—not edit—the boot configuration:
+When the host can boot far enough for ESXi Shell, inspect-not edit-the boot configuration:
 
 ```bash
 ls -ld /bootbank /altbootbank
@@ -122,7 +122,7 @@ Before leaving maintenance mode:
 5. Test one low-risk workload and its network and storage paths.
 6. Monitor the host through at least one controlled reboot if the recovery plan requires proof of persistence.
 
-Do not immediately reapply the same patch. Resolve the original cause—wrong OEM image, incompatible driver, firmware, acceptance level, boot-media failure, or product dependency—and rebuild the desired image from supported components.
+Do not immediately reapply the same patch. Resolve the original cause-wrong OEM image, incompatible driver, firmware, acceptance level, boot-media failure, or product dependency-and rebuild the desired image from supported components.
 
 ## Protect the Next Rollback Window
 

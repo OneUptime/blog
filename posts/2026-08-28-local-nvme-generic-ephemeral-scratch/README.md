@@ -1,4 +1,4 @@
-# How to Back Kubernetes Scratch Space with Local NVMe and Automatic Pod-Lifecycle Cleanup
+# How to Use Local NVMe for Kubernetes Scratch Space with Pod Cleanup
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
@@ -99,6 +99,7 @@ spec:
             volumeClaimTemplate:
               metadata:
                 labels:
+                  app.kubernetes.io/name: sort-shards
                   storage-purpose: disposable-scratch
               spec:
                 accessModes: ["ReadWriteOnce"]
@@ -122,7 +123,7 @@ The generated PVC is owned by the Pod, not by the Job directly.
 Automatic cleanup has several asynchronous steps:
 
 1. The application exits.
-2. The Job controller retains or deletes the completed Pod according to Job and TTL policy.
+2. The completed Pod normally remains until the Job is deleted. With `ttlSecondsAfterFinished`, the TTL-after-finished controller eventually deletes the finished Job cascadingly, including its dependent Pod.
 3. When the Pod object is deleted, garbage collection deletes its owned PVC.
 4. The PV moves through release and deletion.
 5. The CSI provisioner performs `DeleteVolume` and returns capacity to its local pool.
@@ -130,10 +131,12 @@ Automatic cleanup has several asynchronous steps:
 
 A completed Pod that remains in the API keeps its generic ephemeral PVC. `ttlSecondsAfterFinished` applies to the finished Job and eventually removes dependents; it does not mean the NVMe is reclaimed at container exit.
 
-Watch all layers in a test namespace:
+Watch all layers in a test namespace, using a separate terminal for each watch:
 
 ```bash
-kubectl get job,pod,pvc -n batch --watch
+kubectl get job -n batch --watch
+kubectl get pod -n batch --watch
+kubectl get pvc -n batch --watch
 kubectl get pv --watch
 kubectl get events -n batch --sort-by=.metadata.creationTimestamp
 ```
@@ -167,7 +170,7 @@ Capacity overcommit needs operational alerts. A PVC request is a scheduling and 
 
 ## Avoid `hostPath` for Managed Scratch
 
-A `hostPath` volume exposes an arbitrary node path and has no PVC, StorageClass, capacity, ownership, or cleanup controller. It can also expose host credentials or files if misconfigured. It is not a substitute for a local CSI volume in a multi-tenant cluster.
+An inline `hostPath` volume exposes an arbitrary node path and has no PVC, StorageClass-based capacity management, or controller-managed cleanup lifecycle. It can also expose host credentials or files if misconfigured. It is not a substitute for a local CSI volume in a multi-tenant cluster.
 
 A disk-backed `emptyDir` is simpler and kubelet-managed, but it normally uses the kubelet's local ephemeral-storage filesystem and does not select a dedicated NVMe pool per Pod. Use it when that node layout and its softer capacity semantics meet the requirement.
 

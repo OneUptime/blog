@@ -27,7 +27,7 @@ Qdrant implements Cosine efficiently by normalizing vectors when they are upload
 - the magnitude of the vector supplied to a Cosine collection is discarded;
 - a vector read back from a Cosine collection can differ from the uploaded values because the stored vector is normalized.
 
-If preserving the original vector values is a strict requirement, Qdrant recommends considering `Dot` instead—but only if Dot is semantically correct for the model.
+If preserving the original vector values is a strict requirement, Qdrant recommends considering `Dot` instead-but only if Dot is semantically correct for the model.
 
 For unit-normalized indexed vectors and a unit-normalized query, Cosine, Dot, and Euclidean produce the same ranking for a fixed query. Their returned scores are still on different scales. Without unit normalization, Dot can favor longer vectors and Euclidean is sensitive to both scale and magnitude.
 
@@ -67,7 +67,7 @@ An existing vector name's size and distance are schema choices. Qdrant's collect
 
 ## Compare Metrics in Disposable Collections
 
-Ranking quality should be measured on representative, labeled queries—not guessed from a few attractive results. A small scratch test can reveal obvious behavior differences before a larger evaluation:
+Ranking quality should be measured on representative, labeled queries-not guessed from a few attractive results. A small scratch test can reveal obvious behavior differences before a larger evaluation:
 
 ```python
 import uuid
@@ -121,7 +121,7 @@ Build a fixed evaluation set containing real queries, expected relevant point ID
 2. load identical vectors and payloads into separate scratch collections or named vector spaces;
 3. run the same filtered queries and search parameters;
 4. compare recall at K, precision at K, rank of the first relevant result, and application-level outcomes;
-5. repeat after HNSW indexing has finished, because a new small collection can temporarily use exact search.
+5. repeat after HNSW indexing has finished if the collection crosses the indexing threshold; below that threshold, Qdrant may continue using exact search.
 
 Also sample stored vectors with `with_vectors=True` and calculate their L2 norms. Dot and Cosine rankings are equivalent only under the required normalization conditions. During a migration from another database, confirm its score convention: for example, another system might report `1 - cosine similarity`, squared L2, or negative inner product even when the underlying ranking is comparable.
 
@@ -133,13 +133,15 @@ For a broadly compatible migration:
 
 1. take a snapshot or confirm that the source data and embedding pipeline can rebuild the collection;
 2. create a new collection with the required size and distance;
-3. backfill it using stable point IDs and the complete intended payload;
-4. dual-write new changes to both collections;
+3. enable dual writes before backfilling, and ensure that writes to both collections succeed;
+4. backfill using stable point IDs, the complete intended payload, and a concurrency-safe mode such as `models.UpdateMode.INSERT_ONLY` so older records do not overwrite newer dual-written points;
 5. compare exact counts, sampled payloads, vector dimensions, and labeled retrieval metrics;
 6. switch a collection alias or application configuration to the new collection;
 7. retain the old collection through an observation window before removing it.
 
-Qdrant 1.18 added another option for collections already designed with named vectors: add a new named vector with the new size and metric, populate it in the background, change queries to `using=<new-name>`, and remove the old named vector only after validation. Existing points have no value for a newly added vector until it is populated.
+This blue-green pattern works as written for upserts. Pause deletes and partial updates during the backfill or handle them with explicit reconciliation logic so that the backfill cannot resurrect deleted points or overwrite newer state. Insert-only upserts require Qdrant 1.16 or later; on older releases, provide equivalent conflict protection.
+
+Qdrant 1.18 added another option for collections already designed with named vectors: add a new named vector with the new size and metric, start writing both vector names on every upsert, populate the new vector in the background, change queries to `using=<new-name>`, and remove the old named vector only after validation. Existing points have no value for a newly added vector until it is populated.
 
 Do not delete the old collection or vector name as part of the cutover transaction. Keeping it intact makes rollback a routing change instead of a data reconstruction exercise.
 
@@ -173,4 +175,4 @@ Approximate indexing, quantization, filters, and reranking can also change resul
 
 ## Conclusion
 
-Choose the metric promised by the embedding model, use Cosine only as the documented fallback when that promise is absent, and validate with labeled retrieval data. Because dimension and metric define a vector space, migrate through a new collection or—on Qdrant 1.18+—a new named vector, then keep the old route available until production verification is complete.
+Choose the metric promised by the embedding model, use Cosine only as the documented fallback when that promise is absent, and validate with labeled retrieval data. Because dimension and metric define a vector space, migrate through a new collection or-on Qdrant 1.18+-a new named vector, then keep the old route available until production verification is complete.

@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Local Ephemeral Storage, Node Allocatable, kubelet, DiskPressure, Scheduling, Capacity Planning
+Tags: Kubernetes, Local Ephemeral Storage, Node Allocatable, Kubelet, DiskPressure, Scheduling, Capacity Planning
 
 Description: Reconcile raw node disks, kubelet-observed filesystem capacity, Node Allocatable reservations, Pod requests, and live disk-pressure thresholds.
 
@@ -203,4 +203,4 @@ Filesystem discovery and `containerfs` support have evolved across Kubernetes an
 
 ## Conclusion
 
-Start with the Node API, identify the filesystem kubelet actually observes, and then reconcile partitions, filesystem overhead, daemon reservations, and eviction headroom. Allocatable storage is a protected scheduling budget—not the disk's marketing capacity and not its current free space. Preserve that distinction when sizing nodes or tuning kubelet policy.
+Start with the Node API, identify the filesystem kubelet actually observes, and then reconcile partitions, filesystem overhead, daemon reservations, and eviction headroom. Allocatable storage is a protected scheduling budget-not the disk's marketing capacity and not its current free space. Preserve that distinction when sizing nodes or tuning kubelet policy.

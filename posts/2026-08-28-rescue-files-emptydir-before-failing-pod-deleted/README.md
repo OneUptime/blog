@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, emptyDir, Pods, Data Recovery, kubectl, Ephemeral Containers, Troubleshooting
+Tags: Kubernetes, emptyDir, Pod, Data Recovery, kubectl, Ephemeral Container, Troubleshooting
 
 Description: Copy diagnostic or work files from an emptyDir while its original Pod, node, and volume still exist, using a running container or an explicitly mounted debug container.
 
@@ -75,7 +75,7 @@ Do not add `-t`; terminal allocation can alter a binary stream. Files that are a
 
 ## Add an Ephemeral Container with the Volume Mounted
 
-When the application container is crash-looping or has no shell or `tar`, an ephemeral container can help because it runs inside the existing Pod. However, a basic `kubectl debug` container does not automatically mount application volumes—the official example shows `Mounts: <none>`.
+When the application container is crash-looping or has no shell or `tar`, an ephemeral container can help because it runs inside the existing Pod. However, a basic `kubectl debug` container does not automatically mount application volumes-the official example shows `Mounts: <none>`.
 
 With `kubectl` 1.32 or later, which supports stable custom debug profiles, create a partial container specification that explicitly mounts the existing volume read-only:
 

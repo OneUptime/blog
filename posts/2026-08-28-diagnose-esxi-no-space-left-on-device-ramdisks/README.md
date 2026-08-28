@@ -1,4 +1,4 @@
-# How to Diagnose ESXi `No Space Left on Device` Errors in Ramdisks When VMFS Has Free Space
+# Diagnose ESXi `No Space Left on Device` Errors When VMFS Has Free Space
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

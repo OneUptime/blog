@@ -10,7 +10,7 @@ Description: Add or replace Qdrant points safely with the current upsert API whi
 
 A Qdrant collection does not need to be recreated when new data arrives. Create the collection once with the vector dimension and distance metric required by the embedding model, then use the points upsert API for ongoing ingestion.
 
-The important distinction is identity: a previously unseen point ID inserts a point, while an existing ID overwrites that point. Qdrant accepts point IDs as either unsigned 64-bit integers or UUIDs. Arbitrary strings such as `document-42-chunk-7` are not valid point IDs unless they are converted to a valid UUID or uint64 first.
+The important distinction is identity: within an automatically sharded collection-or within the targeted shard key under custom sharding-a previously unseen point ID inserts a point, while an existing ID overwrites that point. Qdrant accepts point IDs as either unsigned 64-bit integers or UUIDs. Arbitrary strings such as `document-42-chunk-7` are not valid point IDs unless they are converted to a valid UUID or uint64 first.
 
 This guide uses the current Python client and makes writes synchronous for straightforward verification.
 
@@ -25,7 +25,7 @@ Use an upsert when:
 - intentionally replacing the complete point associated with an ID;
 - backfilling data whose vectors match the existing vector schema.
 
-Use a new collection or a new named vector space when changing the embedding dimension or distance metric. An upsert cannot change the collection's vector schema.
+Use a new collection when changing the embedding dimension or distance metric. On Qdrant 1.18 or later, a collection that was created with named vectors can instead add a new named vector space. An upsert cannot change the collection's vector schema.
 
 ## Inspect the Schema Before Writing
 
@@ -48,11 +48,11 @@ print("points:", info.points_count)
 
 For a single unnamed dense vector, `info.config.params.vectors` contains one `size` and `distance`. For named vectors it is a mapping. Verify the exact vector name, dimension, and metric used by the application. A vector with the wrong number of elements is not adapted automatically.
 
-Also record whether the collection uses sparse vectors, custom sharding, strict mode, or write-ordering requirements. Those choices affect the request shape even though the basic upsert rule remains the same.
+Also record whether the collection uses sparse vectors, custom sharding, strict mode, or write-ordering requirements. Those choices affect the request shape even though the basic upsert rule remains the same. For custom sharding, pass the intended `shard_key_selector` and keep IDs globally unique across shard keys; Qdrant enforces ID uniqueness only within each shard key.
 
 ## Upsert a New Point
 
-This example assumes an unnamed four-dimensional vector collection. In a real RAG pipeline, `vector` must come from the same pinned embedding model used for the existing points.
+This example assumes an automatically sharded collection with one unnamed four-dimensional dense vector. In a real RAG pipeline, `vector` must come from the same pinned embedding model used for the existing points.
 
 ```python
 from qdrant_client import QdrantClient, models
@@ -128,7 +128,7 @@ Finally, run a representative query and payload filter. Successful retrieval by 
 
 ## Understand Same-ID Overwrites
 
-Qdrant point-loading APIs are idempotent: uploading the same request again with the same ID has the effect of one upload. For an existing ID, however, that means overwrite—not merge.
+Qdrant point-loading APIs are idempotent: uploading the same request again with the same ID has the effect of one upload. For an existing ID, however, that means overwrite-not merge.
 
 Treat a point upsert as a complete replacement operation:
 
@@ -202,7 +202,7 @@ Do not roll back a batch with a broad payload filter unless the filter has been 
 
 ## Limitations and Version Scope
 
-The code targets the current Qdrant Python client. Conditional `update_mode` values are documented as available from Qdrant 1.17. Named vector schema additions require Qdrant 1.18 or later; they do not alter an existing vector name's dimension or metric. If `prevent_unoptimized` is enabled on Qdrant 1.17.1+, review its documented interaction with `wait=True` before using synchronous high-volume writes.
+The code targets the current Qdrant Python client. Conditional `update_mode` values are documented as available from Qdrant 1.17. Named vector schema additions require Qdrant 1.18 or later and a collection originally configured with named vectors; they do not alter an existing vector name's dimension or metric. If `prevent_unoptimized` is enabled on Qdrant 1.17.1+, review its documented interaction with `wait=True` before using synchronous high-volume writes.
 
 ## Official Documentation
 

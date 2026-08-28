@@ -10,14 +10,14 @@ Description: Run parallel Qdrant Python workloads without inheriting gRPC channe
 
 Create a separate `QdrantClient` inside each worker process after that process starts. Never create a gRPC-enabled client in the parent and then fork, pass, pickle, or reuse it in children.
 
-gRPC Python channels are thread-safe, but they are not general process-shared objects. gRPC Core uses background threads and documents pre-fork channels as problematic. Its most robust multiprocessing alternative is to instantiate gRPC objects only after the child exists. Python's `spawn` start method makes that boundary explicit.
+Synchronous gRPC Python channels are thread-safe, but they are not general process-shared objects. gRPC Core uses background threads and documents pre-fork channels as problematic. Its most robust multiprocessing alternative is to instantiate gRPC objects only after the child exists. Python's `spawn` start method makes that boundary explicit.
 
 ## Prerequisites
 
 This guide assumes:
 
 - A remote Qdrant server or Qdrant Cloud cluster, not multiple processes opening the same Qdrant Local path.
-- A Python client version compatible with the Qdrant server.
+- Python 3.10 or newer and `qdrant-client` 1.19.0 with a compatible Qdrant server.
 - Client gRPC on port 6334 for a default self-hosted deployment. Port 6335 is Qdrant's internal cluster communication port and must not be exposed to application clients.
 - TLS and an API key for non-local or untrusted networks.
 - Stable point IDs and a durable source from which uncertain batches can be retried.
@@ -25,13 +25,13 @@ This guide assumes:
 Install the official client in a pinned environment:
 
 ```bash
-python -m pip install 'qdrant-client==YOUR_TESTED_VERSION'
+python -m pip install 'qdrant-client==1.19.0'
 ```
 
 Configure connection details without embedding secrets in source:
 
 ```bash
-export QDRANT_URL='http://qdrant.internal:6333'
+export QDRANT_URL='https://qdrant.internal:6333'
 export QDRANT_GRPC_PORT='6334'
 export QDRANT_API_KEY='replace-if-authentication-is-enabled'
 export QDRANT_COLLECTION='documents'
@@ -52,7 +52,7 @@ with multiprocessing.Pool(4) as pool:
     pool.map(upload_with_global_client, batches)
 ```
 
-The child inherits a snapshot of file descriptors, locks, background-thread state, and gRPC channel internals from the parent. The background threads themselves do not continue as a safely shared process resource. Symptoms can include hangs, unavailable-channel errors, stalled shutdown, duplicate retries, or behavior that changes with the gRPC version.
+The child inherits a snapshot of file descriptors, locks, background-thread state, and any initialized gRPC channel internals from the parent. The background threads themselves do not continue as a safely shared process resource. Symptoms can include hangs, unavailable-channel errors, stalled shutdown, duplicate retries, or behavior that changes with the gRPC version.
 
 Passing the `QdrantClient` as a task argument is not a fix. It owns network clients and gRPC channels and should not be treated as a serializable data object.
 
@@ -65,7 +65,10 @@ from __future__ import annotations
 
 import multiprocessing as mp
 import os
+import pickle
 import queue
+import time
+from multiprocessing.queues import Queue as MPQueue
 from typing import Any
 
 from qdrant_client import QdrantClient, models
@@ -73,6 +76,9 @@ from qdrant_client import QdrantClient, models
 
 Task = tuple[str, list[dict[str, Any]]]
 Result = tuple[str, bool, str]
+WorkerStatus = tuple[str, bool, str]
+SUPERVISOR_TIMEOUT_SECONDS = 120
+WORKER_JOIN_TIMEOUT_SECONDS = 30
 
 
 def build_client() -> QdrantClient:
@@ -87,13 +93,29 @@ def build_client() -> QdrantClient:
 
 
 def upload_worker(
-    tasks: mp.Queue[Task | None],
-    results: mp.Queue[Result],
+    tasks: MPQueue,
+    results: MPQueue,
+    readiness: MPQueue,
 ) -> None:
-    client = build_client()
-    collection_name = os.environ["QDRANT_COLLECTION"]
+    client: QdrantClient | None = None
 
     try:
+        try:
+            client = build_client()
+            collection_name = os.environ["QDRANT_COLLECTION"]
+        except Exception as exc:
+            readiness.put(
+                (
+                    mp.current_process().name,
+                    False,
+                    f"{type(exc).__name__}: {exc}",
+                )
+            )
+            return
+
+        # Construction is local; connection failures surface on requests.
+        readiness.put((mp.current_process().name, True, "client constructed"))
+
         while True:
             task = tasks.get()
             if task is None:
@@ -117,6 +139,11 @@ def upload_worker(
                     wait=True,
                     timeout=30,
                 )
+                if update.status != models.UpdateStatus.COMPLETED:
+                    raise RuntimeError(
+                        "Qdrant upsert returned "
+                        f"{update.status}; write outcome is uncertain"
+                    )
                 results.put((batch_id, True, str(update.status)))
             except Exception as exc:
                 results.put(
@@ -127,58 +154,250 @@ def upload_worker(
                     )
                 )
     finally:
-        client.close()
+        if client is not None:
+            client.close()
 
 
 def run_upload(batches: list[Task], process_count: int = 4) -> None:
+    if process_count < 1:
+        raise ValueError("process_count must be at least 1")
+
+    batch_ids = [batch_id for batch_id, _ in batches]
+    all_batch_ids = set(batch_ids)
+    if len(all_batch_ids) != len(batch_ids):
+        raise ValueError("Batch IDs must be unique")
+
+    # Queue.put() serializes in a feeder thread, so fail synchronously here
+    # instead of discovering an unpicklable batch through a later stall.
+    for batch in batches:
+        try:
+            pickle.dumps(batch, protocol=pickle.HIGHEST_PROTOCOL)
+        except Exception as exc:
+            raise ValueError(
+                f"Batch {batch[0]!r} contains a value that cannot cross "
+                "a multiprocessing queue"
+            ) from exc
+
     context = mp.get_context("spawn")
     tasks = context.Queue(maxsize=process_count * 2)
-    results = context.Queue()
+    results = context.Queue(maxsize=process_count * 2)
+    readiness = context.Queue(maxsize=process_count)
 
     workers = [
         context.Process(
             target=upload_worker,
-            args=(tasks, results),
+            args=(tasks, results, readiness),
             name=f"qdrant-uploader-{index}",
         )
         for index in range(process_count)
     ]
 
-    for worker in workers:
-        worker.start()
-
-    for batch in batches:
-        tasks.put(batch)
-
-    # One sentinel per worker causes a normal, client-closing exit.
-    for _ in workers:
-        tasks.put(None)
-
+    started_workers: list[mp.Process] = []
     failures: list[Result] = []
-    for _ in batches:
-        try:
-            result = results.get(timeout=120)
-        except queue.Empty as exc:
-            raise RuntimeError(
-                "A Qdrant worker stopped reporting results"
-            ) from exc
+    normal_shutdown = False
 
-        if not result[1]:
-            failures.append(result)
+    try:
+        for worker in workers:
+            worker.start()
+            started_workers.append(worker)
 
-    for worker in workers:
-        worker.join()
-        if worker.exitcode != 0:
-            failures.append(
-                (worker.name, False, f"exit code {worker.exitcode}")
+        expected_workers = {worker.name for worker in started_workers}
+        startup_statuses: dict[str, WorkerStatus] = {}
+        startup_deadline = time.monotonic() + SUPERVISOR_TIMEOUT_SECONDS
+
+        while len(startup_statuses) < len(started_workers):
+            remaining = startup_deadline - time.monotonic()
+            if remaining <= 0:
+                missing_workers = expected_workers - startup_statuses.keys()
+                raise RuntimeError(
+                    "Qdrant workers did not finish initialization: "
+                    f"{sorted(missing_workers)}"
+                )
+
+            try:
+                status = readiness.get(timeout=min(1.0, remaining))
+            except queue.Empty:
+                crashed_workers = [
+                    f"{worker.name} (exit code {worker.exitcode})"
+                    for worker in started_workers
+                    if worker.exitcode not in (None, 0)
+                ]
+                if crashed_workers:
+                    raise RuntimeError(
+                        "Qdrant workers exited during initialization: "
+                        + ", ".join(crashed_workers)
+                    )
+                continue
+
+            worker_name, _, _ = status
+            if worker_name not in expected_workers:
+                raise RuntimeError(
+                    f"Unexpected worker status from {worker_name}"
+                )
+            if worker_name in startup_statuses:
+                raise RuntimeError(
+                    f"Duplicate worker status from {worker_name}"
+                )
+            startup_statuses[worker_name] = status
+
+        setup_failures = [
+            status for status in startup_statuses.values() if not status[1]
+        ]
+        if setup_failures:
+            details = "; ".join(
+                f"{worker_name}: {message}"
+                for worker_name, _, message in setup_failures
             )
+            raise RuntimeError(f"Qdrant worker setup failures: {details}")
 
-    if failures:
-        details = "; ".join(
-            f"{batch_id}: {message}"
-            for batch_id, _, message in failures
+        submitted_ids: set[str] = set()
+        received_ids: set[str] = set()
+        next_batch_index = 0
+        sentinels_sent = 0
+        last_progress = time.monotonic()
+
+        def record_result(result: Result) -> None:
+            batch_id, succeeded, message = result
+            if batch_id not in submitted_ids:
+                raise RuntimeError(
+                    f"Unexpected result for batch {batch_id}"
+                )
+            if batch_id in received_ids:
+                raise RuntimeError(
+                    f"Duplicate result for batch {batch_id}"
+                )
+
+            received_ids.add(batch_id)
+            if not succeeded:
+                failures.append(result)
+
+        while (
+            next_batch_index < len(batches)
+            or sentinels_sent < len(started_workers)
+            or len(received_ids) < len(batches)
+        ):
+            made_progress = False
+
+            while next_batch_index < len(batches):
+                batch = batches[next_batch_index]
+                try:
+                    tasks.put_nowait(batch)
+                except queue.Full:
+                    break
+
+                submitted_ids.add(batch[0])
+                next_batch_index += 1
+                made_progress = True
+
+            # One sentinel per worker causes a normal, client-closing exit.
+            if next_batch_index == len(batches):
+                while sentinels_sent < len(started_workers):
+                    try:
+                        tasks.put_nowait(None)
+                    except queue.Full:
+                        break
+
+                    sentinels_sent += 1
+                    made_progress = True
+
+            while True:
+                try:
+                    result = results.get_nowait()
+                except queue.Empty:
+                    break
+
+                record_result(result)
+                made_progress = True
+
+            if not made_progress and len(received_ids) < len(batches):
+                try:
+                    result = results.get(timeout=1.0)
+                except queue.Empty:
+                    pass
+                else:
+                    record_result(result)
+                    made_progress = True
+
+            crashed_workers = [
+                f"{worker.name} (exit code {worker.exitcode})"
+                for worker in started_workers
+                if worker.exitcode not in (None, 0)
+            ]
+            if crashed_workers:
+                unacknowledged_ids = submitted_ids - received_ids
+                never_submitted_ids = all_batch_ids - submitted_ids
+                raise RuntimeError(
+                    "Qdrant workers exited before all results arrived: "
+                    + ", ".join(crashed_workers)
+                    + "; unacknowledged batches: "
+                    + f"{sorted(unacknowledged_ids)}"
+                    + "; never-submitted batches: "
+                    + f"{sorted(never_submitted_ids)}"
+                )
+
+            if made_progress:
+                last_progress = time.monotonic()
+            elif time.monotonic() - last_progress >= SUPERVISOR_TIMEOUT_SECONDS:
+                unacknowledged_ids = submitted_ids - received_ids
+                never_submitted_ids = all_batch_ids - submitted_ids
+                raise RuntimeError(
+                    "No Qdrant worker progress for "
+                    f"{SUPERVISOR_TIMEOUT_SECONDS} seconds; "
+                    f"unacknowledged batches: {sorted(unacknowledged_ids)}; "
+                    f"never-submitted batches: {sorted(never_submitted_ids)}"
+                )
+
+        for worker in started_workers:
+            worker.join(timeout=WORKER_JOIN_TIMEOUT_SECONDS)
+            if worker.is_alive():
+                failures.append(
+                    (worker.name, False, "did not exit after its sentinel")
+                )
+            elif worker.exitcode != 0:
+                failures.append(
+                    (worker.name, False, f"exit code {worker.exitcode}")
+                )
+
+        normal_shutdown = all(
+            not worker.is_alive() for worker in started_workers
         )
-        raise RuntimeError(f"Qdrant upload failures: {details}")
+
+        if failures:
+            details = "; ".join(
+                f"{batch_id}: {message}"
+                for batch_id, _, message in failures
+            )
+            raise RuntimeError(f"Qdrant upload failures: {details}")
+    finally:
+        # Forced stops are failure-only cleanup. Their in-flight writes are
+        # uncertain and must be reconciled before retrying.
+        for worker in started_workers:
+            if worker.is_alive():
+                worker.terminate()
+
+        for worker in started_workers:
+            worker.join(timeout=5)
+            if worker.is_alive():
+                worker.kill()
+                worker.join(timeout=5)
+
+        if not normal_shutdown:
+            tasks.cancel_join_thread()
+            results.cancel_join_thread()
+            readiness.cancel_join_thread()
+
+        tasks.close()
+        results.close()
+        readiness.close()
+
+        if normal_shutdown:
+            tasks.join_thread()
+            results.join_thread()
+            readiness.join_thread()
+
+        for worker in started_workers:
+            if not worker.is_alive():
+                worker.close()
 
 
 if __name__ == "__main__":
@@ -186,7 +405,7 @@ if __name__ == "__main__":
     run_upload(upload_batches, process_count=4)
 ```
 
-`load_batches_from_durable_source()` is intentionally application-specific. Each row should contain a stable `id`, a vector with the collection's configured dimensions, and an optional payload.
+`load_batches_from_durable_source()` is intentionally application-specific. Each row should contain a stable Qdrant point `id` (an unsigned 64-bit integer or UUID), a vector with the collection's configured dimensions, and an optional payload. All queued values must be pickle-safe. A point ID must occur at most once per run; serialize conflicting updates instead of dispatching them concurrently.
 
 The `if __name__ == "__main__"` guard is mandatory with `spawn`: the child imports the module, and unguarded top-level process creation would recursively start more children.
 
@@ -196,10 +415,10 @@ The important boundaries are:
 
 1. The parent process creates queues and processes, but no Qdrant client.
 2. Each child calls `build_client()` after it starts.
-3. Plain dictionaries cross the process queue; network clients do not.
+3. Plain, pickle-safe dictionaries cross the process queue; network clients do not.
 4. One child reuses its own client for multiple batches.
 5. Normal worker exit runs `client.close()` in `finally`.
-6. Every submitted batch produces a success or failure result that the parent checks.
+6. Every submitted batch produces a checked result or is detected as missing by the supervisor.
 
 Avoid relying only on `QdrantClient.__del__`. The official client exposes `close()` because the client owns external resources. Abrupt process termination can skip normal cleanup, so design shutdown around sentinels and joins rather than routinely killing workers.
 
@@ -220,7 +439,7 @@ Do not copy arbitrary `grpc_options` from unrelated deployments. Channel option 
 
 ## Control Connection Multiplication
 
-Each process owns its own Qdrant client and therefore its own connection pool. Four processes do not behave like four threads sharing one channel; the process count multiplies connections, in-flight requests, memory, and server work.
+Each process owns its own Qdrant client and therefore its own connection pool. In `qdrant-client` 1.19.0, each client defaults to a pool of three gRPC channels, so four worker processes can create four separate three-channel pools; the process count multiplies connections, in-flight requests, memory, and server work.
 
 Start with a small process count and batches large enough to amortize request overhead. Measure:
 
@@ -251,6 +470,15 @@ Operations that mutate payload incrementally may not have the same retry semanti
 Create a fresh client in the parent only after workers have joined, then retrieve a sample of stable point IDs:
 
 ```python
+from uuid import UUID
+
+
+def normalize_point_id(point_id: int | str | UUID) -> int | UUID:
+    if isinstance(point_id, int):
+        return point_id
+    return UUID(str(point_id))
+
+
 verification_client = QdrantClient(
     url=os.environ["QDRANT_URL"],
     grpc_port=int(os.environ.get("QDRANT_GRPC_PORT", "6334")),
@@ -265,15 +493,22 @@ try:
         ids=expected_sample_ids,
         with_payload=True,
         with_vectors=False,
+        consistency=models.ReadConsistencyType.MAJORITY,
     )
-    returned_ids = {str(record.id) for record in records}
-    missing = {str(point_id) for point_id in expected_sample_ids} - returned_ids
-    assert not missing, f"Missing point IDs: {sorted(missing)}"
+    returned_ids = {normalize_point_id(record.id) for record in records}
+    expected_ids = {
+        normalize_point_id(point_id) for point_id in expected_sample_ids
+    }
+    missing = expected_ids - returned_ids
+    if missing:
+        raise RuntimeError(
+            f"Missing point IDs: {sorted(str(point_id) for point_id in missing)}"
+        )
 finally:
     verification_client.close()
 ```
 
-For full validation, reconcile durable source IDs, payload versions, and expected counts. A count alone cannot detect an overwrite under an incorrect ID.
+This example checks majority visibility in replicated collections. Choose a read-consistency policy that matches the validation goal, and allow for replica recovery if convergence is still in progress. For full validation, reconcile durable source IDs, payload versions, and expected counts. A count alone cannot detect an overwrite under an incorrect ID.
 
 ## If an Existing Program Must Use `fork`
 
@@ -288,7 +523,7 @@ Switching to `spawn` avoids dependence on inherited gRPC state and behaves consi
 - Use TLS whenever the API key or data crosses an untrusted network.
 - Give workers the narrowest collection permission needed; do not distribute an admin key when a collection-scoped JWT is sufficient.
 - Keep the API key out of task payloads, logs, exception strings, and process command lines.
-- Bound the task queue so the parent cannot consume unbounded memory.
+- Bound the task queue to limit additional buffered work. This example still materializes `batches` as a list; stream the durable source if total parent memory must also be bounded.
 - Do not terminate workers during normal shutdown. A forced termination can leave an in-flight write with an unknown outcome.
 - A successful client result reflects the collection's configured write consistency factor. It does not imply every possible replica acknowledged if that factor is lower than the replication factor.
 - Qdrant Local's `force_disable_check_same_thread` concerns thread checking; it is not a multiprocessing safety switch for multiple processes opening one local database path.
@@ -303,8 +538,8 @@ Switching to `spawn` avoids dependence on inherited gRPC state and behaves consi
 ## Official Documentation
 
 - [Official Qdrant Python Client](https://github.com/qdrant/qdrant-client)
-- [QdrantClient Constructor and Close Implementation](https://github.com/qdrant/qdrant-client/blob/master/qdrant_client/qdrant_client.py)
-- [Qdrant Python Client API Reference](https://python-client.qdrant.tech/qdrant_client.qdrant_client)
+- [QdrantClient 1.19.0 Constructor and Close Implementation](https://github.com/qdrant/qdrant-client/blob/v1.19.0/qdrant_client/qdrant_client.py)
+- [Qdrant APIs and SDKs](https://qdrant.tech/documentation/interfaces/)
 - [Qdrant Points and Upsert Documentation](https://qdrant.tech/documentation/manage-data/points/)
 - [Qdrant Security](https://qdrant.tech/documentation/security/)
 - [gRPC Core Fork Support](https://grpc.github.io/grpc/core/md_doc_fork_support.html)

@@ -1,4 +1,4 @@
-# Validation Summary: How to Schedule Generic Ephemeral Volumes with WaitForFirstConsumer and Storage Topology
+# Validation Summary: How to Schedule Generic Ephemeral Volumes with WaitForFirstConsumer Topology
 
 ## Status
 

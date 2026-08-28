@@ -1,4 +1,4 @@
-# Validation Summary: How to Resolve ESXi `MissingComponentError` Without Removing Required OEM Drivers
+# Validation Summary: Resolve ESXi `MissingComponentError` Without Removing Required OEM Drivers
 
 ## Status
 validated

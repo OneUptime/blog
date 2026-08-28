@@ -180,8 +180,10 @@ remaining = client.count(
     exact=True,
 ).count
 
-assert remaining == 0, f"{remaining} matching points remain"
-print(f"Deleted {before} matching points")
+if remaining != 0:
+    raise RuntimeError(f"{remaining} matching points remain")
+
+print(f"Pre-delete count was {before}; no matching points remain")
 ~~~
 
 Use a timezone-qualified RFC 3339 datetime string. The <code>expires_at</code> field needs a datetime payload index for efficient Range evaluation; <code>tenant_id</code> and <code>lifecycle</code> need keyword indexes.
@@ -216,7 +218,7 @@ Qdrant's optional <code>ordering</code> parameter is separate from <code>wait</c
 - <code>medium</code> serializes writes through a dynamically selected leader.
 - <code>strong</code> serializes through a permanent leader but can reduce availability if that leader is unavailable.
 
-Use stronger ordering when concurrent operations on the same points require it, but do not mistake it for an atomic preview-plus-delete transaction. Read consistency on verification requests is another separate control for comparing replicas.
+Use the same stronger <code>ordering</code> value for all relevant concurrent write operations on the same points when required, but do not mistake it for an atomic preview-plus-delete transaction. Read consistency on verification requests is another separate control for comparing replicas.
 
 For example, a replicated deployment can request stronger write ordering explicitly:
 

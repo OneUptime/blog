@@ -1,4 +1,4 @@
-# How to Schedule Generic Ephemeral Volumes with WaitForFirstConsumer and Storage Topology
+# How to Schedule Generic Ephemeral Volumes with WaitForFirstConsumer Topology
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

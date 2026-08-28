@@ -1,4 +1,4 @@
-# Why a Generic Ephemeral Volume PVC Stays Pending—and How to Debug Provisioning
+# Why a Generic Ephemeral Volume PVC Stays Pending-and How to Debug Provisioning
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

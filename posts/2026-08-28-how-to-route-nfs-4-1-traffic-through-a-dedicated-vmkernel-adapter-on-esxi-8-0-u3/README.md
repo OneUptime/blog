@@ -1,4 +1,4 @@
-# How to Route NFS 4.1 Traffic Through a Dedicated VMkernel Adapter on ESXi 8.0 U3+
+# How to Route NFS 4.1 Through a Dedicated ESXi VMkernel Adapter
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

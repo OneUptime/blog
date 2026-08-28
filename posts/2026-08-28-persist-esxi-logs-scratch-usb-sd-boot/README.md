@@ -166,7 +166,7 @@ For a high-confidence acceptance test:
 1. Record a unique marker and the current scratch path.
 2. Perform a controlled maintenance-mode reboot.
 3. Confirm **ScratchConfig.CurrentScratchLocation** still matches the target.
-4. Confirm pre-reboot rotated log content remains on the datastore.
+4. Confirm the pre-reboot marker remains in the datastore-backed logs.
 5. Generate a post-reboot marker and confirm it reaches the same persistent target.
 6. Verify the host no longer raises the non-persistent-logging warning.
 

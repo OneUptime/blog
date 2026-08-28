@@ -1,8 +1,8 @@
-# How to Trunk VLANs to an ESXi Guest Through a Standard-Switch Port Group with VLAN ID 4095
+# How to Trunk VLANs to an ESXi Guest with Standard-Switch VLAN ID 4095
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: ESXi, vSphere, VLAN, VLAN Trunking, Standard Switch, Port Group, Virtual Guest Tagging, 802.1Q
+Tags: ESXi, vSphere, VLAN, VLAN Trunking, Standard Switch, Port Groups, Virtual Guest Tagging, 802.1Q
 
 Description: Pass selected 802.1Q VLANs to an ESXi guest through a vSphere Standard Switch port group configured for Virtual Guest Tagging with VLAN ID 4095.
 

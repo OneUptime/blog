@@ -2,13 +2,13 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Qdrant, Docker, Windows, WSL, Data Persistence, Troubleshooting
+Tags: Qdrant, Docker, Microsoft Windows, WSL, Data Persistence, Troubleshooting
 
 Description: Diagnose Qdrant data loss after Windows Docker restarts, replace unsafe host bind mounts with a Docker-managed volume, and verify recovery before trusting the deployment.
 
 ---
 
-A Qdrant container is disposable; its storage must not be. On Windows, a particularly dangerous failure mode occurs when `/qdrant/storage` is bind-mounted to a directory on the Windows filesystem. Qdrant relies on filesystem behavior that this Docker Desktop or WSL path may not provide completely. The database can look healthy until a restart, then collections may be missing or files may contain zeros.
+A Qdrant container is disposable; its storage must not be. On Windows, a particularly dangerous failure mode occurs when `/qdrant/storage` is bind-mounted to a directory on the Windows filesystem. Qdrant relies on filesystem behavior that this Docker Desktop or WSL path may not provide completely. The database can look healthy until a restart, then collections may be missing or vector data may be lost or returned as all zeros.
 
 Qdrant's official troubleshooting guidance is direct: do not use a Windows host-folder bind mount for database storage. Use a Docker-managed volume instead. Treat an affected store as potentially corrupt rather than repeatedly restarting it and hoping the data returns.
 
@@ -41,11 +41,11 @@ If data is missing or corruption is suspected:
 
 1. stop application writes and ingestion jobs;
 2. record the container image tag, mount configuration, logs, and Qdrant version;
-3. copy the affected storage directory or volume for forensic work;
+3. stop the Qdrant container, then copy the affected storage directory or volume for forensic work;
 4. do not run repair experiments against the only copy;
 5. recover from a known-good snapshot or source dataset into fresh storage.
 
-`docker restart` preserves the same container, while `docker compose down` followed by `up` commonly recreates it. Neither operation makes an unsafe host filesystem suitable for database files. A restart-correlated symptom can therefore be a storage-semantics problem, a missing mount, or a Compose volume-name change—not evidence that Qdrant keeps data only in RAM.
+`docker restart` preserves the same container, while `docker compose down` followed by `up` commonly recreates it. Neither operation makes an unsafe host filesystem suitable for database files. A restart-correlated symptom can therefore be a storage-semantics problem, a missing mount, or a Compose volume-name change-not evidence that Qdrant keeps data only in RAM.
 
 Inspect the effective mounts rather than relying on the Compose file you expected to deploy:
 
@@ -54,6 +54,8 @@ docker inspect qdrant --format '{{json .Mounts}}'
 docker logs qdrant
 docker image inspect qdrant/qdrant:v1.19.0 --format '{{.RepoDigests}}'
 ```
+
+These commands assume the container from the `docker run --name qdrant` example. For a Compose deployment, use `docker compose ps --all` to find the generated container name or ID, and use `docker compose logs qdrant` for service logs.
 
 Look for a mount whose destination is `/qdrant/storage`. Record whether its type is `volume` or `bind`, and confirm that the named volume in use is the one you expect.
 
@@ -150,4 +152,4 @@ For production deployments that need stronger durability and availability guaran
 
 ## Conclusion
 
-When Qdrant data vanishes or becomes corrupt after a Windows Docker restart, first inspect what actually backs `/qdrant/storage`. Replace Windows-host bind mounts with a Docker-managed named volume, recover into clean storage from a trusted snapshot or source, and prove persistence by recreating a disposable container. Then add off-host, restore-tested backups—a volume alone is not one.
+When Qdrant data vanishes or becomes corrupt after a Windows Docker restart, first inspect what actually backs `/qdrant/storage`. Replace Windows-host bind mounts with a Docker-managed named volume, recover into clean storage from a trusted snapshot or source, and prove persistence by recreating a disposable container. Then add off-host, restore-tested backups-a volume alone is not one.

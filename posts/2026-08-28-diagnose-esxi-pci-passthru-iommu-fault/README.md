@@ -1,4 +1,4 @@
-# How to Diagnose an ESXi VM That Powers Off with `PCI Passthru Device Caused IOMMU Fault`
+# How to Diagnose ESXi VM Power-Offs Caused by PCI Passthru IOMMU Faults
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -1,4 +1,4 @@
-# Validation Summary: How to Replace an ESXi Host Certificate with an External CA Certificate in vSphere 8.0 U3+
+# Validation Summary: How to Replace an ESXi Host Certificate with an External CA in vSphere 8.0 U3+
 
 ## Status
 validated

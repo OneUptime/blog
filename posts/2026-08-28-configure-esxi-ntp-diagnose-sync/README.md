@@ -44,6 +44,7 @@ Run:
 vmware -vl
 date
 esxcli system ntp get
+esxcli system ntp config get
 esxcli network firewall ruleset list --ruleset-id=ntpClient
 esxcli network firewall ruleset allowedip list --ruleset-id=ntpClient
 esxcli network ip route ipv4 list
@@ -58,7 +59,7 @@ In **esxcli system ntp get**, distinguish these fields:
 - **Service Providing Kernel Time** identifies which service currently owns time.
 - **Time Synchronized** is the actual synchronization result.
 
-Record the existing server list before replacing it.
+Record the complete output of **esxcli system ntp config get** before replacing the server list. The summary from **esxcli system ntp get** can omit global directives that are required for a complete rollback.
 
 ## Configure NTP in the vSphere Client
 
@@ -85,6 +86,8 @@ esxcli system ntp get
 ~~~
 
 The supplied server arguments define the intended list. Include every approved source in the command instead of assuming a new argument will append to the prior list.
+
+Use this server-only form only when the full configuration audit shows no required custom directives. If it does, build a complete configuration file containing every required source and directive, load it with **esxcli system ntp set -f /scratch/ntpconfig.txt**, and restart NTP using the version-specific Broadcom procedure.
 
 Do not copy extra options from another ESXi version. Inspect the exact host's interface first:
 
@@ -151,9 +154,9 @@ Acceptance requires **Time Synchronized: true** and at least one credible select
 
 ## Diagnose Reach 0 or .INIT.
 
-**.INIT.**, stratum 16, and reach 0 mean the host has not completed useful exchanges with that source.
+Together, **.INIT.**, stratum 16, and reach 0 indicate that the current association has not completed a valid exchange. Reach 0 by itself means no valid replies were received during the last eight polls; the peer could have worked earlier.
 
-Check name resolution and the actual address **ntpd** chose:
+Check DNS and compare it with the actual address **ntpd** chose:
 
 ~~~bash
 nslookup ntp1.example.com
@@ -203,7 +206,7 @@ tail -n 200 /var/run/log/syslog.log
 tail -n 200 /var/run/log/vmkwarning.log
 ~~~
 
-Messages such as **Clock Unsynchronized**, **no peer for too long**, or a rejected source provide the next branch. Do not force acceptance of a poor source merely to make an alarm disappear; repair the upstream hierarchy.
+A **Clock Unsynchronized** message immediately after **ntpd** starts is normal. Persistent unsynchronized state after the expected convergence window, **no peer for too long**, or an association rejection provides the next branch. Do not force acceptance of a poor source merely to make an alarm disappear; repair the upstream hierarchy.
 
 ## Handle DNS and Address Changes
 
@@ -242,13 +245,13 @@ Confirm the intended servers persisted, the service started, the current DNS res
 
 ## Roll Back Safely
 
-To roll back, restore the complete recorded server list with **esxcli system ntp set**, then verify peer selection. If NTP must be temporarily disabled:
+To roll back a server-only change, restore the complete recorded server list with **esxcli system ntp set**, then verify peer selection. If the original configuration contained custom directives, put the complete recorded configuration in a file, restore it with **esxcli system ntp set -f /scratch/ntpconfig.txt**, and restart NTP before verification. If NTP must be temporarily disabled:
 
 ~~~bash
 esxcli system ntp set -e 0
 ~~~
 
-Disabling NTP leaves the host free-running and is not a steady-state correction. Restore a reliable source promptly.
+If no other time service is active, disabling NTP leaves the host free-running; that is not a steady-state correction. If another service provides kernel time, verify that service instead. Restore a reliable source promptly.
 
 Remove a newly added firewall address only after the previous time sources are working and the exact rule is confirmed:
 

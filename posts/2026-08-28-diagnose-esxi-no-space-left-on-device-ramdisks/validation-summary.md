@@ -1,4 +1,4 @@
-# Validation Summary: How to Diagnose ESXi `No Space Left on Device` Errors in Ramdisks When VMFS Has Free Space
+# Validation Summary: Diagnose ESXi `No Space Left on Device` Errors When VMFS Has Free Space
 
 ## Status
 

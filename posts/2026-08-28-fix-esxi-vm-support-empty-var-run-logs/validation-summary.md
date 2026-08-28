@@ -1,4 +1,4 @@
-# Validation Summary: How to Fix an ESXi `vm-support` Bundle That Contains an Empty `/var/run/logs` Directory
+# Validation Summary: How to Fix an ESXi `vm-support` Bundle with Empty `/var/run/logs`
 
 ## Status
 validated

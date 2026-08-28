@@ -1,4 +1,4 @@
-# How to Move an ESXi Management VMkernel Adapter from a Distributed Switch to a Standard Switch
+# How to Move an ESXi Management VMkernel Adapter to a Standard Switch
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

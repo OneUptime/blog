@@ -656,6 +656,7 @@
 - Alias
 - Alias IP
 - Alias Records
+- Aliases
 - Alibaba
 - Alibaba Cloud
 - Alibaba container registry
@@ -688,6 +689,7 @@
 - Alpine-linux
 - Already Exists
 - ALSA
+- altbootbank
 - ALTER
 - ALTER EVENT
 - ALTER TABLE
@@ -2281,6 +2283,7 @@
 - Boot Time
 - Boot Troubleshooting
 - Bootable USB
+- bootbank
 - Bootc
 - Booth
 - Booting
@@ -5568,6 +5571,7 @@
 - Directory Services
 - Directory Structure
 - Directory-based promotion
+- DirectPath I/O
 - DirectQuery
 - Directus
 - Direnv
@@ -6583,7 +6587,9 @@
 - estimatedDocumentCount
 - Estimation
 - ESX-OSData
+- ESXCLI
 - ESXi
+- ESXi 8.0 U3
 - ETA Prediction
 - ETag
 - etcd
@@ -8190,6 +8196,7 @@
 - Hardware Security Module
 - Hardware Timestamping
 - Hardware Tokens
+- Hardware Troubleshooting
 - Hardware Watchdog
 - Harness
 - Harness CD
@@ -10357,6 +10364,7 @@
 - Lifecycle Events
 - Lifecycle Hooks
 - Lifecycle Management
+- Lifecycle Manager
 - Lifecycle Monitoring
 - Lifecycle Policies
 - Lifecycle Policy
@@ -10549,6 +10557,7 @@
 - Local Debugging
 - Local Development
 - Local Environment
+- Local Ephemeral Storage
 - Local Execution
 - Local File
 - Local Images
@@ -11342,6 +11351,7 @@
 - Microsoft Sentinel
 - Microsoft SQL Server
 - Microsoft Teams
+- Microsoft Windows
 - Microsoft-teams
 - Microtransactions
 - Middleboxes
@@ -11411,6 +11421,7 @@
 - Missing Field
 - Missing Metrics
 - Missing Spans
+- MissingComponentError
 - Mistakes
 - Mistral
 - MIT Kerberos
@@ -11453,6 +11464,7 @@
 - mlxconfig
 - mlxlink
 - MM2
+- MMIO
 - MMKV
 - MMTC
 - Mobile
@@ -11878,6 +11890,7 @@
 - Multiprocessing
 - Multiprotocol BGP
 - Multisite
+- Multitenancy
 - Multithreading
 - Multivalue Routing
 - Multivariate
@@ -12318,6 +12331,7 @@
 - Nf_conntrack_ftp
 - Nfdump
 - NFS
+- NFS 4.1
 - Nfsen
 - Nfsstat
 - NFSv4
@@ -12388,6 +12402,7 @@
 - Node Administration
 - Node Affinity
 - Node Agent
+- Node Allocatable
 - Node Authentication
 - Node Auto-Provisioning
 - Node Autoscaling
@@ -12720,6 +12735,7 @@
 - Odmantic
 - odo
 - OEE
+- OEM Drivers
 - Offboarding
 - Office 365
 - Office Documents
@@ -13397,6 +13413,7 @@
 - Pay-Per-Use
 - Payload
 - Payload CMS
+- Payload Indexing
 - Payload Length
 - Payload Size
 - Payment
@@ -14673,6 +14690,7 @@
 - quantileInterpolatedWeighted
 - quantileTDigest
 - quantileTiming
+- Quantization
 - Quantum Computing
 - Quarantine
 - Quarkus
@@ -14840,6 +14858,7 @@
 - Railway
 - RAM
 - RAM Disk
+- Ramdisk
 - Ramfs
 - RAN
 - Rancher
@@ -17690,6 +17709,7 @@
 - Standard Queue
 - Standard SKU
 - Standard SSD
+- Standard Switch
 - Standard Tier
 - Standard User
 - Standard Work
@@ -17876,6 +17896,7 @@
 - Storage Migration
 - Storage Monitoring
 - Storage Namespace
+- Storage Networking
 - Storage Networks
 - Storage Operations
 - Storage Operator
@@ -19748,6 +19769,7 @@
 - Vaultwarden
 - VBS
 - VCenter
+- vCenter Server
 - VCL
 - VCluster
 - VCN
@@ -19759,6 +19781,7 @@
 - Vec
 - Vector
 - Vector Database
+- Vector Dimensions
 - Vector Embeddings
 - Vector Matching
 - Vector Search
@@ -19830,6 +19853,7 @@
 - Vertical Slice Architecture
 - veth
 - VEX
+- vFAT
 - VFIO
 - VFS
 - VG
@@ -19890,6 +19914,7 @@
 - Virtual DOM
 - Virtual Entities
 - Virtual Environments
+- Virtual Guest Tagging
 - Virtual Hosting
 - Virtual Hosts
 - Virtual Interfaces
@@ -19929,6 +19954,7 @@
 - Visitor Counting
 - visitParam
 - VISMEMBER
+- VisorFS
 - Visual Design
 - Visual Designer
 - Visual ETL
@@ -19948,6 +19974,7 @@
 - VLAN Filtering
 - VLAN Priority
 - VLAN Tagging
+- VLAN Trunking
 - VLAN-aware Bridge
 - Vlan-raw-device
 - VLC
@@ -19982,14 +20009,18 @@
 - VM Sizing
 - VM Storage
 - VM Templates
+- vm-support
 - Vm.swappiness
 - VManage
 - VMCP
+- VMDirectPath I/O
 - VMDK
 - VMDK Lock
 - VMDK Tools
 - VMFS
 - VMkernel
+- VMkernel Port Binding
+- vmkfstools
 - VMotion
 - VMs
 - VMSS
@@ -20002,6 +20033,7 @@
 - VMware Tanzu
 - VMware vCenter
 - VMware VeloCloud
+- VMX
 - VMXNET3
 - VNC
 - VNet
@@ -20082,6 +20114,8 @@
 - VSCode
 - vsftpd
 - vSphere
+- vSphere 8
+- vSphere Lifecycle Manager
 - VSS
 - VTEP
 - VTI
@@ -20129,6 +20163,7 @@
 - Wait-for-it
 - Waitaof
 - WaitFor
+- WaitForFirstConsumer
 - WaitGroup
 - Waiting Room
 - Wake-on-LAN

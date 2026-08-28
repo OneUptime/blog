@@ -1,4 +1,4 @@
-# How to Register an Orphaned ESXi VM from Its `.vmx` File Without Changing Its Identity
+# How to Register an Orphaned ESXi VM from Its `.vmx` File
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
@@ -171,4 +171,4 @@ Power on the VM, then check guest disk state, networking, application consistenc
 
 ## Conclusion
 
-Preserve an orphaned VM by proving it is not active elsewhere, validating its original files, and registering the same `.vmx`. That maintains the guest identity stored in the configuration when moved—not copied—semantics are used. Then audit vCenter and external object mappings separately, because inventory IDs, policies, and integrations are not all stored in the VMX.
+Preserve an orphaned VM by proving it is not active elsewhere, validating its original files, and registering the same `.vmx`. That maintains the guest identity stored in the configuration when moved-not copied-semantics are used. Then audit vCenter and external object mappings separately, because inventory IDs, policies, and integrations are not all stored in the VMX.

@@ -1,4 +1,4 @@
-# How to Resolve ESXi `MissingComponentError` Without Removing Required OEM Drivers
+# Resolve ESXi `MissingComponentError` Without Removing Required OEM Drivers
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

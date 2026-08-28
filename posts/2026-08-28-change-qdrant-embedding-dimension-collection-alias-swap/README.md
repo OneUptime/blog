@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Qdrant, Embeddings, Vector Dimensions, Collections, Aliases, Migration
+Tags: Qdrant, Embedding, Vector Dimensions, Collection, Aliases, Migration
 
 Description: Migrate Qdrant to a different embedding dimension by building a new collection, dual-writing and backfilling it, then atomically swapping an alias with a tested rollback path.
 
@@ -74,7 +74,7 @@ Do not restore the old collection snapshot into the new schema: it contains vect
 
 Use the same Qdrant point IDs, shard keys when using custom sharding, and payload semantics in both collections. Stable IDs make retries idempotent, simplify count and sample comparisons, and let the application correlate an item through rollback.
 
-The original source—documents, rows, objects, or an event log—should remain authoritative. If the Qdrant payload lacks the complete text or preprocessing metadata needed to reproduce embeddings, do not pretend an old vector can be converted into a new one. Retrieve the original content.
+The original source-documents, rows, objects, or an event log-should remain authoritative. If the Qdrant payload lacks the complete text or preprocessing metadata needed to reproduce embeddings, do not pretend an old vector can be converted into a new one. Retrieve the original content.
 
 Version embedding provenance in payload or external metadata, for example:
 

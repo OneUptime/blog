@@ -1,8 +1,8 @@
-# How to Replace an ESXi Host Certificate with an External CA Certificate in vSphere 8.0 U3+
+# How to Replace an ESXi Host Certificate with an External CA in vSphere 8.0 U3+
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: VMware, ESXi, vSphere 8, TLS, Certificates, External CA, PKI, Security
+Tags: VMware, ESXi, vSphere 8, TLS, Certificate, External CA, PKI, Security
 
 Description: Replace a VMCA-issued ESXi TLS certificate through the vSphere 8.0 U3 Client using an ESXi-generated CSR and an enterprise CA trust chain.
 
@@ -142,4 +142,4 @@ The in-client ESXi external-CA workflow is available in vCenter 8.0 U3 and later
 
 ## Conclusion
 
-The reliable sequence is trust first, custom mode second, then one ESXi-generated CSR and its matching signed leaf. Validate the live TLS endpoint—not only the vSphere task—and treat renewal as an ongoing operational responsibility for the full inventory.
+The reliable sequence is trust first, custom mode second, then one ESXi-generated CSR and its matching signed leaf. Validate the live TLS endpoint-not only the vSphere task-and treat renewal as an ongoing operational responsibility for the full inventory.

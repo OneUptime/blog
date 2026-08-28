@@ -1,4 +1,4 @@
-# Validation Summary: How to Register an Orphaned ESXi VM from Its `.vmx` File Without Changing Its Identity
+# Validation Summary: How to Register an Orphaned ESXi VM from Its `.vmx` File
 
 ## Status
 

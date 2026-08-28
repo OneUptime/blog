@@ -1,4 +1,4 @@
-# Validation Summary: How to Trunk VLANs to an ESXi Guest Through a Standard-Switch Port Group with VLAN ID 4095
+# Validation Summary: How to Trunk VLANs to an ESXi Guest with Standard-Switch VLAN ID 4095
 
 ## Status
 

@@ -176,13 +176,13 @@ if obsolete_ids:
     )
 ```
 
-Delete after successful new writes, not before. If the new run fails halfway, readers can continue using the previous generation. Where the application cannot tolerate mixed generations, stage into a new collection or add a revision filter and switch the active revision only after validation.
+Delete after successful new writes, not before. If the new run fails halfway, points not yet replaced remain available, although logical-slot IDs can expose a mix of old and new revisions. Where the application cannot tolerate mixed generations, stage into a new collection and switch an alias after validation, or use revision-specific IDs with a revision payload filter and switch the application's active revision only after validation.
 
 ## Choose Overwrite or Insert-Only Intentionally
 
 Default upsert is appropriate when a logical chunk slot is mutable: reprocessing updates its vector and payload under the same ID.
 
-For an immutable ingestion contract, Qdrant 1.17+ supports:
+For an immutable ingestion contract, Qdrant 1.17+ and `qdrant-client` 1.17+ support:
 
 ```python
 client.upsert(
@@ -220,7 +220,7 @@ A Qdrant snapshot protects broader data recovery, while the manifest makes a sou
 
 ## Limitations and Version Scope
 
-Qdrant point IDs remain uint64 or UUID; a hex digest is not automatically a UUID. The `update_mode` examples require Qdrant 1.17 or later. The example uses Python's UUIDv5 implementation defined by RFC 9562; every producer must use the same namespace, canonical serialization, and normalization rules.
+Qdrant point IDs remain uint64 or UUID; a hex digest is not automatically a UUID. The `update_mode` examples require Qdrant 1.17 or later and `qdrant-client` 1.17 or later. The example uses Python's UUIDv5 implementation defined by RFC 9562; every producer must use the same namespace, canonical serialization, and normalization rules.
 
 ## Official Documentation
 

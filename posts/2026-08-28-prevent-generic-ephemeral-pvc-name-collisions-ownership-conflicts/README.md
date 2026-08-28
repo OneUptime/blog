@@ -78,7 +78,7 @@ kubectl get pvc "$claim" -n "$namespace" \
   -o jsonpath='{range .metadata.ownerReferences[*]}{.apiVersion}{" "}{.kind}{" "}{.name}{" "}{.uid}{" controller="}{.controller}{"\n"}{end}'
 ```
 
-A valid generic ephemeral PVC has the current Pod as owner, in the same namespace, with the same name and UID. A matching name alone is not sufficient: a deleted and recreated Pod can reuse a name while having a new UID.
+A valid generic ephemeral PVC is in the same namespace as the current Pod and has a `controller: true` owner reference whose UID matches the Pod. The generated owner reference also uses API version `v1`, kind `Pod`, and the Pod's name. A matching name alone is not sufficient: a deleted and recreated Pod can reuse a name while having a new UID.
 
 Inspect the objects and events without changing them:
 
@@ -100,11 +100,11 @@ Determine its application owner and retention requirements. Do not delete it jus
 
 ### Another live Pod owns the PVC
 
-The two Pod/volume pairs derive the same string. Rename one inline volume in its workload template. For a Deployment, StatefulSet, DaemonSet, Job, or CronJob, change the controller's Pod template; do not try to patch the immutable volume specification of an existing Pod.
+The two Pod/volume pairs derive the same string. Rename one inline volume in its workload template. For a Deployment, StatefulSet, or DaemonSet, change the controller's Pod template. For a CronJob, change its job template for future Jobs; recreate a Job with an updated Pod template. Do not try to patch the immutable volume specification of an existing Pod.
 
 ### A deleted Pod's PVC is still terminating
 
-Confirm the owner UID belongs to the old Pod and inspect why garbage collection or storage cleanup is delayed. PVC protection and CSI finalizers can legitimately postpone deletion while a volume is in use or backend deletion is incomplete. Wait for supported cleanup or investigate the responsible controller and driver.
+Confirm the owner UID belongs to the old Pod and inspect why garbage collection or claim cleanup is delayed. PVC protection can legitimately postpone claim deletion while a Pod object still uses it. CSI deletion-protection finalizers on the backing PV separately postpone PV and backend deletion; they do not normally keep the PVC name occupied. Wait for supported cleanup or investigate the responsible controller and driver.
 
 Do not remove finalizers casually, replace `ownerReferences`, or attach the new Pod UID to the old claim. Changing ownership can make Kubernetes garbage collection delete data that belongs to another workload.
 
@@ -137,31 +137,31 @@ Admission policy can require approved StorageClasses, size ranges, labels, and v
 
 ## Verify a Successful Creation
 
-After deploying a canary, watch the Pod and claim:
+After deploying a canary, watch the Pod and claim in separate terminals. The collection watch for the PVC can start before the generated claim exists:
 
 ```bash
 kubectl get pod "$pod" -n "$namespace" -w
-kubectl get pvc "$claim" -n "$namespace" -w
+kubectl get pvc -n "$namespace" --field-selector "metadata.name=$claim" -w
 ```
 
 Then verify the final ownership and binding:
 
 ```bash
 kubectl get pvc "$claim" -n "$namespace" \
-  -o custom-columns=NAME:.metadata.name,PHASE:.status.phase,VOLUME:.spec.volumeName,OWNER_KIND:.metadata.ownerReferences[0].kind,OWNER_NAME:.metadata.ownerReferences[0].name,OWNER_UID:.metadata.ownerReferences[0].uid
+  -o 'custom-columns=NAME:.metadata.name,PHASE:.status.phase,VOLUME:.spec.volumeName,OWNER_KIND:.metadata.ownerReferences[0].kind,OWNER_NAME:.metadata.ownerReferences[0].name,OWNER_UID:.metadata.ownerReferences[0].uid,OWNER_CONTROLLER:.metadata.ownerReferences[0].controller'
 ```
 
-The PVC should be `Bound` when provisioning succeeds and should reference the current Pod. If the StorageClass uses `WaitForFirstConsumer`, a brief `Pending` phase is normal while the scheduler selects topology; use Pod and PVC events to distinguish that from an ownership conflict.
+The PVC should be `Bound` when provisioning succeeds and should reference the current Pod. If the StorageClass uses `WaitForFirstConsumer`, a `Pending` phase can be normal while the scheduler selects topology; use Pod and PVC events to distinguish that from an ownership conflict.
 
 ## Rollback and Recovery Cautions
 
-Changing the volume name in a controller template creates replacement Pods with newly provisioned, empty scratch volumes. Generic ephemeral storage is Pod-scoped; Kubernetes does not copy data from the conflicting claim. If data must be preserved, snapshot, clone, or copy the correctly owned PVC before deleting its Pod, subject to CSI driver support.
+Changing the volume name in a controller template creates replacement Pods with newly provisioned scratch volumes, usually empty unless the claim template or provisioner supplies initial data. Generic ephemeral storage is Pod-scoped; Kubernetes does not copy data from the conflicting claim. If data must be preserved, take a supported snapshot or make an application-level copy while the correctly owned PVC exists. CSI cloning requires a bound source PVC that is not in use, so it does not fit the normal lifecycle of a generic ephemeral PVC still attached to its owner Pod.
 
 Deleting the Pod causes garbage collection of its generated PVC. With the usual `Delete` reclaim policy, that normally also removes the backing volume. A `Retain` reclaim policy can leave the PV and backend data behind for separate administrative cleanup.
 
 ## Limitations and Version Scope
 
-This procedure covers generic ephemeral volumes backed by PVCs, not inline CSI ephemeral volumes or `emptyDir`. Admission implementations and CSI cleanup behavior vary by cluster. The authoritative identity test is the owner reference's Pod UID, not labels, annotations, a matching name, or knowledge of which controller ought to own the claim.
+This procedure covers generic ephemeral volumes backed by PVCs, not inline CSI ephemeral volumes or `emptyDir`. Admission implementations and CSI cleanup behavior vary by cluster. The authoritative identity test is that the PVC is in the same namespace and its controller owner reference's UID matches the Pod, not labels, annotations, a matching name, or knowledge of which controller ought to own the claim.
 
 ## Official Documentation
 
@@ -174,4 +174,4 @@ This procedure covers generic ephemeral volumes backed by PVCs, not inline CSI e
 
 ## Conclusion
 
-Prevent generic ephemeral PVC collisions by treating the derived claim name as part of the workload's API design. Preflight the name, reserve clear conventions, and verify the owner Pod UID. When a conflict occurs, rename or clean up through the legitimate owner lifecycle—never make an unrelated PVC appear valid by rewriting its ownership.
+Prevent generic ephemeral PVC collisions by treating the derived claim name as part of the workload's API design. Preflight the name, reserve clear conventions, and verify the controller owner reference's Pod UID. When a conflict occurs, rename or clean up through the legitimate owner lifecycle-never make an unrelated PVC appear valid by rewriting its ownership.

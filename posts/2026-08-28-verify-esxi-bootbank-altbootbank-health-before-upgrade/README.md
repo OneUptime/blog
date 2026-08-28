@@ -58,7 +58,7 @@ head -n 20 /bootbank/boot.cfg
 head -n 20 /altbootbank/boot.cfg
 ```
 
-`altbootbank` normally contains the previous image, so its contents and build references need not match the active bank. The health requirement is that it is the intended persistent bank and its files can be read—not that both banks are identical.
+`altbootbank` normally contains the previous image, so its contents and build references need not match the active bank. The health requirement is that it is the intended persistent bank and its files can be read-not that both banks are identical.
 
 ## Map the Links to Filesystems and Devices
 

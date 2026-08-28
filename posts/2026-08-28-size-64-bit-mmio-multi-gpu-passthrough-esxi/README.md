@@ -139,4 +139,4 @@ Do not remove virtual disks, regenerate the VM, or clear the guest's EFI configu
 
 ## Conclusion
 
-Size multi-GPU MMIO from the complete assigned device set, use a power-of-two window with the margin documented for the platform, and configure it only on a powered-off UEFI VM. The decisive test is a clean power-on followed by full guest enumeration and a representative workload—not merely a larger number in the VMX configuration.
+Size multi-GPU MMIO from the complete assigned device set, use a power-of-two window with the margin documented for the platform, and configure it only on a powered-off UEFI VM. The decisive test is a clean power-on followed by full guest enumeration and a representative workload-not merely a larger number in the VMX configuration.

@@ -106,7 +106,7 @@ With the default integration, expect a shape like:
 
 Do this in the same collection and environment used by the failing application. A local test collection, stale alias, or different tenant shard can otherwise produce a misleading result.
 
-If `payload` is `None`, the content was likely loaded by another pipeline or without payload. If the keys are named differently, find the code that set `content_payload_key` and `metadata_payload_key`.
+If `payload` is `None` or empty, first confirm that payload was requested, then check whether another pipeline wrote the point without the expected payload. If the keys are named differently, find the code that set `content_payload_key` and `metadata_payload_key`.
 
 ## Filter the Nested Path
 
@@ -221,7 +221,7 @@ Collections sometimes contain older root-level payloads and newer LangChain-nest
 
 1. snapshot the collection or preserve a reconstructible source;
 2. sample and count points for each known layout;
-3. create the payload index on the target path;
+3. create the payload index on the target path and, when strict mode is enabled, on every legacy path that the transition will query;
 4. update ingestion to write the target layout consistently;
 5. backfill payloads in bounded batches while preserving point IDs and vectors;
 6. temporarily query both paths with a reviewed `should` filter if zero downtime is required;

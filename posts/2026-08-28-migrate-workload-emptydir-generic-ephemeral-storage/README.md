@@ -210,7 +210,7 @@ Delete only a canary or controlled test Pod. Confirm that:
 4. the replacement volume starts with the expected empty state;
 5. the old PV and backend volume are removed under the `Delete` reclaim policy.
 
-This test proves lifecycle semantics. It does not prove that data survives replacement—it should not.
+This test proves lifecycle semantics. It does not prove that data survives replacement-it should not.
 
 ## Roll Back Safely
 

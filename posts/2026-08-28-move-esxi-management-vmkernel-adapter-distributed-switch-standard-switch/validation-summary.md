@@ -1,4 +1,4 @@
-# Validation Summary: How to Move an ESXi Management VMkernel Adapter from a Distributed Switch to a Standard Switch
+# Validation Summary: How to Move an ESXi Management VMkernel Adapter to a Standard Switch
 
 ## Status
 validated

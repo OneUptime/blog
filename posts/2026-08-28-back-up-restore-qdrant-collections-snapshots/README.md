@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Qdrant, Snapshots, Backup, Restore, Disaster Recovery, Operations
+Tags: Qdrant, Snapshot, Backup, Restore, Disaster Recovery, Operation
 
 Description: Create consistent Qdrant collection snapshots, move them off-node, restore them with the correct priority, and rehearse recovery without overlooking aliases or cluster shards.
 
@@ -67,7 +67,7 @@ Protect snapshot endpoints with authentication and network controls. Snapshots c
 
 ## Turn the Snapshot into a Backup
 
-Immediately copy the snapshot outside the Qdrant node and failure domain—for example, to versioned object storage in another account or region. Then:
+Immediately copy the snapshot outside the Qdrant node and failure domain-for example, to versioned object storage in another account or region. Then:
 
 1. compute and store a checksum;
 2. record collection name, source peer, Qdrant version, creation time, size, and encryption details;

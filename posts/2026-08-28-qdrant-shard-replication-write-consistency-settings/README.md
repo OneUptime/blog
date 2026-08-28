@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Qdrant, Distributed Systems, Sharding, Replication, Consistency
+Tags: Qdrant, Distributed System, Sharding, Replication, Consistency
 
 Description: Size Qdrant shards and replicas deliberately, then choose write ordering and read/write consistency for explicit failure tradeoffs.
 
@@ -87,7 +87,7 @@ A replication factor of two lets a shard retain another copy when one replica fa
 
 Qdrant's high-availability guidance calls for at least three voting nodes and a replication factor of at least two. Three nodes are needed so the Raft metadata consensus can retain a majority when one node fails. Raft protects cluster topology and collection structure; point writes do not pass through Raft.
 
-Replication factor can also increase read capacity because any active replica can serve reads. Qdrant has no normal primary/secondary replica split. A leader is introduced only for `medium` or `strong` write ordering to serialize writes. Self-hosted traffic must actually be distributed across peers—normally through a load balancer—to use that read capacity; Qdrant clients do not automatically load-balance requests across cluster nodes.
+Replication factor can also increase read capacity because any active replica can serve reads. Qdrant has no normal primary/secondary replica split. A leader is introduced only for `medium` or `strong` write ordering to serialize writes. Self-hosted traffic must actually be distributed across peers-normally through a load balancer-to use that read capacity; Qdrant clients do not automatically load-balance requests across cluster nodes.
 
 ## Choose the Write Consistency Factor Separately
 
