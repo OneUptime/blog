@@ -29,7 +29,6 @@
 
 ## ESXi
 
-15. How to Enable PCI Passthrough on ESXi and Diagnose Devices Stuck at `Needs Reboot`
 
 
 ## OTel
