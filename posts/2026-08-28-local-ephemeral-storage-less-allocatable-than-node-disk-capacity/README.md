@@ -14,7 +14,7 @@ A node with a “100 GB disk” should not be expected to advertise 100 GB of al
 raw device -> partition/LVM -> formatted filesystem -> Node capacity -> Node allocatable -> current free space
 ```
 
-The kubelet reports capacity for the local filesystem layout it recognizes. Node Allocatable then reserves headroom for the operating system, Kubernetes daemons, and eviction thresholds. Current free bytes change with logs, images, writable container layers, and disk-backed `emptyDir` data; they are not the same as either API value.
+The kubelet reports capacity for the local filesystem layout it recognizes. Node Allocatable then reserves headroom for the operating system, Kubernetes daemons, and applicable hard eviction thresholds. Current free bytes change with logs, images, writable container layers, and disk-backed `emptyDir` data; they are not the same as either API value.
 
 This guide targets current Linux Kubernetes nodes. Managed services can own the kubelet and filesystem configuration, so use their supported node-image or node-pool mechanism for changes.
 
@@ -112,7 +112,7 @@ The scheduler and kubelet answer different questions:
 
 - The scheduler checks whether the sum of Pod `ephemeral-storage` requests fits within Node Allocatable.
 - The kubelet measures live filesystem signals such as `nodefs.available`, `imagefs.available`, `containerfs.available`, and their free-inode equivalents.
-- When an eviction threshold is met, the kubelet first attempts node-level reclamation and can then evict Pods, setting the node's `DiskPressure` condition.
+- When a filesystem eviction threshold is met, the kubelet reports the node's `DiskPressure` condition and first attempts node-level reclamation; if reclamation does not clear the threshold, it can then evict Pods.
 
 Check the condition and recent Node events:
 
@@ -120,9 +120,7 @@ Check the condition and recent Node events:
 kubectl get node "$node" \
   -o jsonpath='{range .status.conditions[?(@.type=="DiskPressure")]}{.type}{"="}{.status}{" reason="}{.reason}{" message="}{.message}{"\n"}{end}'
 
-kubectl get events -A \
-  --field-selector involvedObject.kind=Node,involvedObject.name="$node" \
-  --sort-by=.lastTimestamp
+kubectl events -A --for "node/$node"
 ```
 
 A Pod can fit the scheduler's request accounting and later be evicted because actual writes, system logs, image growth, or another unrequested consumer exhausts a monitored filesystem. Conversely, low `df` usage does not increase the fixed allocatable value until kubelet configuration or filesystem capacity changes.
@@ -135,7 +133,7 @@ For supported layouts, kubelet measures these Pod-related consumers:
 - container logs;
 - writable container layers.
 
-An `emptyDir` with `medium: Memory` counts as container memory use instead of local ephemeral storage. A generic ephemeral PVC is accounted through PVC storage requests and storage policy; it does not increase the container's local `ephemeral-storage` request, although that container's logs and writable layer still do.
+An `emptyDir` with `medium: Memory` counts as container memory use instead of local ephemeral storage. A generic ephemeral volume is backed by an automatically created PVC and uses that PVC's `requests.storage` and StorageClass policy; it does not add to the container's local `ephemeral-storage` request, although the container's logs and writable layer still count as local ephemeral-storage usage.
 
 Define realistic requests and limits:
 
@@ -147,13 +145,13 @@ resources:
     ephemeral-storage: 6Gi
 ```
 
-If a container's writable layer and logs exceed its limit, or a Pod's aggregate container limits plus `emptyDir` use exceed the Pod-level sum, the kubelet can mark the Pod for eviction. Namespace quota for local ephemeral storage is enforced only under the documented conditions, including Pods specifying appropriate limits.
+If a container's writable layer and logs exceed its limit, or the aggregate local ephemeral-storage usage of all containers plus disk-backed `emptyDir` usage exceeds the sum of the containers' limits, the kubelet can mark the Pod for eviction. Namespace quota for local ephemeral storage is enforced only under the documented conditions, including Pods specifying appropriate limits.
 
 ## Check Measurement Accuracy
 
 The kubelet normally measures usage with periodic directory scans. Directory scanning does not account for a deleted file that remains open by a process: the filesystem still consumes its blocks, while the scan no longer sees the pathname. Compare `df` with file-level usage and investigate open deleted files using the node operating system's approved diagnostics.
 
-Kubernetes also supports project-quota-based monitoring on suitable XFS or ext4 filesystems. Current documentation marks this capability beta and disabled by default, with feature-gate, user-namespace, kernel, runtime, and mount requirements. Project quotas improve measurement accuracy; Kubernetes uses them for monitoring rather than direct quota enforcement.
+Kubernetes also supports project-quota-based monitoring of eligible disk-backed `emptyDir` volumes on suitable XFS or ext4 filesystems. Current documentation marks this capability beta and disabled by default, with feature-gate, user-namespace, kernel, runtime, and mount requirements. Project quotas improve measurement accuracy for those volumes; Kubernetes uses them for monitoring rather than direct quota enforcement.
 
 Inodes are an independent constraint. A filesystem with many free GiB can still enter `DiskPressure` when `nodefs.inodesFree`, `imagefs.inodesFree`, or `containerfs.inodesFree` crosses its threshold.
 
@@ -198,10 +196,10 @@ Filesystem discovery and `containerfs` support have evolved across Kubernetes an
 - [Local ephemeral-storage layouts, accounting, limits, and measurement](https://kubernetes.io/docs/concepts/storage/ephemeral-storage/)
 - [Reserve resources and calculate Node Allocatable](https://kubernetes.io/docs/tasks/administer-cluster/reserve-compute-resources/)
 - [Node-pressure eviction signals and filesystem layouts](https://kubernetes.io/docs/concepts/scheduling-eviction/node-pressure-eviction/)
-- [Node status capacity and allocatable fields](https://kubernetes.io/docs/reference/node/node-status/#capacity-and-allocatable)
+- [Node status capacity and allocatable fields](https://kubernetes.io/docs/reference/node/node-status/#capacity)
 - [Resource requests and limits for local ephemeral storage](https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/#local-ephemeral-storage)
-- [Resource quotas for local ephemeral storage](https://kubernetes.io/docs/concepts/policy/resource-quotas/#local-ephemeral-storage-quota)
-- [Node resource capacity tracking](https://kubernetes.io/docs/concepts/architecture/nodes/#resource-capacity-tracking)
+- [Resource quotas for local ephemeral storage](https://kubernetes.io/docs/concepts/policy/resource-quotas/#quota-for-local-ephemeral-storage)
+- [Node resource capacity tracking](https://kubernetes.io/docs/concepts/architecture/nodes/#node-capacity)
 
 ## Conclusion
 
