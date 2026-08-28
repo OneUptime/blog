@@ -10,11 +10,11 @@ Description: Inject per-container local-storage requests and limits, cap their n
 
 Kubernetes local ephemeral storage is a schedulable resource named `ephemeral-storage`. A namespace can use a `LimitRange` to inject or constrain per-container requests and limits, and a `ResourceQuota` to cap the sum declared by Pods in that namespace.
 
-Use both. The Kubernetes local-ephemeral-storage documentation notes that quota enforcement depends on Pods specifying the resource values. Defaults applied during admission close that gap for containers that omit them. These policies control declarations at API admission; kubelet still measures actual node usage and evicts Pods that exceed applicable limits or encounter node pressure.
+Use both. The Kubernetes local-ephemeral-storage documentation notes that quota enforcement depends on Pods specifying the resource values. Defaults applied during admission close that gap for containers that omit them. These policies control declarations at API admission; on supported node filesystem layouts, kubelet measures actual local-storage usage and evicts Pods that exceed applicable limits or encounter node pressure.
 
 ## Decide What the Budget Includes
 
-Disk-backed local ephemeral storage includes:
+The principal sources of per-Pod disk-backed local ephemeral storage accounted against `ephemeral-storage` limits are:
 
 - container writable layers;
 - node-level container logs;
@@ -71,7 +71,7 @@ spec:
     limits.ephemeral-storage: 80Gi
 ```
 
-The request quota caps the sum used for scheduling declarations. The limit quota caps the sum of maximum local-storage declarations admitted for Pods. This is not a live-usage pool and does not partition a physical disk per namespace.
+The request quota caps the aggregate effective requests used for scheduling. The limit quota caps the aggregate effective local-storage limits of admitted Pods. This is not a live-usage pool and does not partition a physical disk per namespace.
 
 Apply both objects and inspect their admitted form:
 
@@ -120,15 +120,15 @@ Then delete the test Pod. Use server-side dry run for workload manifests before 
 kubectl apply --dry-run=server -f deployment.yaml -o yaml
 ```
 
-Client-side dry run cannot reproduce all admission defaults and quota checks.
+Server-side dry run exercises admission for the submitted object, but dry-running a Deployment does not create its Pods. Test a representative Pod separately to verify Pod defaults and quota; client-side dry run cannot reproduce those admission behaviors.
 
 ## Understand Request and Limit Defaulting
 
-Kubernetes resource defaulting can copy a specified limit into the request when no request was provided and no admission mechanism supplied one. An explicit `defaultRequest` makes the scheduling policy visible and lets it differ from the burst limit.
+When a container specifies an `ephemeral-storage` limit but omits its request, Kubernetes copies that limit into the request; the LimitRange `defaultRequest` is not used for that resource. For a container that omits both values, an explicit `defaultRequest` makes the scheduling policy visible and lets it differ from the default limit.
 
 Choose requests from measured steady usage plus scheduling headroom. Choose limits from the maximum tolerable logs, writable layer, and shared disk-backed `emptyDir` use. Excessively low defaults produce preventable evictions; excessively high requests strand node capacity and consume namespace quota.
 
-The Pod-level local ephemeral-storage limit is derived from the sum of container limits. A shared `emptyDir` counts against that Pod total, so defaults must budget more than container logs and writable layers alone.
+For Pods with only app containers and no Pod overhead, the local ephemeral-storage request and limit are the sums of their container values. Init containers and Pod overhead use Kubernetes' effective resource aggregation rules. Shared disk-backed `emptyDir` usage counts against the effective Pod limit, so defaults must budget more than container logs and writable layers alone.
 
 ## Add Explicit emptyDir Policy
 
@@ -143,11 +143,11 @@ volumes:
 
 Use a validating or mutating admission policy if every disk-backed `emptyDir` must have a maximum. Keep that policy separate from the LimitRange so users get a clear error about the missing volume field.
 
-`sizeLimit` is not a scheduling request and does not replace `resources.requests.ephemeral-storage`. It also is not a hard filesystem quota; kubelet monitors usage and evicts after detecting an overage.
+`sizeLimit` is not a scheduling request and does not replace `resources.requests.ephemeral-storage`. For a disk-backed volume, it also is not a hard filesystem quota; when kubelet can account for the underlying local storage, it monitors usage and evicts after detecting an overage.
 
 ## Quota Generic Ephemeral Volumes Separately
 
-A user who can create a Pod with a generic ephemeral volume can indirectly create a PVC. Normal namespace storage quota still applies. For a StorageClass named `fast-scratch`, a combined policy can include:
+A user who can create a Pod with a generic ephemeral volume can indirectly create a PVC. Normal namespace storage quota still applies, but it is checked when the ephemeral volume controller later creates the PVC, not when the Pod itself is admitted. If PVC quota or a PVC LimitRange rejects that generated claim, the Pod cannot start. For a StorageClass named `fast-scratch`, a combined policy can include:
 
 ```yaml
 apiVersion: v1
@@ -167,16 +167,16 @@ Use a PVC-type LimitRange when each generated claim must also stay within a mini
 
 ## Observe Rejections and Evictions Separately
 
-Admission policy failures appear when the Pod is created:
+Pod admission policy failures are returned directly by `kubectl create` or `kubectl apply`; a rejected Pod is not stored and does not normally produce Pod events. Inspect the current quota accounting with:
 
 ```bash
-kubectl get events -n workloads --sort-by=.metadata.creationTimestamp
 kubectl describe resourcequota -n workloads
 ```
 
-Runtime overages appear as Pod eviction status and node events:
+Failures that happen after Pod admission, including generated-PVC rejections and runtime storage overages, appear in events and affected object status:
 
 ```bash
+kubectl get events -n workloads --sort-by=.metadata.creationTimestamp
 kubectl describe pod POD_NAME -n workloads
 kubectl describe node NODE_NAME
 ```
@@ -193,7 +193,7 @@ A Pod can be admitted under quota and later be evicted for exceeding its own loc
 6. Roll deployments gradually and watch Pending Pods and evictions.
 7. Tighten defaults only after observing real workloads.
 
-Existing Pods remain unchanged, but a later rollout or replacement Pod is subject to the new policy. A controller can therefore fail only when it tries to replace a previously admitted replica.
+Existing Pods remain unchanged, but a later rollout or replacement Pod is subject to the new policy. A controller can therefore encounter rejections whenever it creates a new Pod, including during a rollout, scale-up, or replacement of a previously admitted replica.
 
 ## Official Documentation
 
