@@ -124,7 +124,6 @@
 
 ## Qdrant
 
-5. Why a Qdrant Payload Filter Returns No Results When LangChain Nests Metadata
 6. How to Filter Qdrant Arrays and Nested Objects with Correct AND Semantics
 7. How to Create Qdrant Payload Indexes for Fast Filtered Vector Search
 8. How to Paginate an Entire Qdrant Collection Safely with the Scroll API
