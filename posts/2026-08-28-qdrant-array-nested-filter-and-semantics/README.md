@@ -16,7 +16,7 @@ This guide builds a reproducible example, demonstrates the false positive, and s
 
 You need:
 
-- Qdrant server 1.2 or later. Nested object filters were introduced in 1.2.
+- Qdrant server 1.4 or later. Nested object filters were introduced in 1.2, while the Boolean payload index used below requires 1.4.
 - REST access on port 6333 or a compatible Qdrant Cloud endpoint.
 - For Python, a current <code>qdrant-client</code> package compatible with your server.
 - A snapshot or another recovery plan before adapting these examples to production data.
