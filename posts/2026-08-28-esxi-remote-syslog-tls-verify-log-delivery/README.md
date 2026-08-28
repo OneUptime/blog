@@ -27,7 +27,7 @@ Decide these values before changing a host:
 
 Broadcom documents **1514** as the default ESXi SSL syslog port. A collector may instead use another port, such as 6514. ESXi 7.0 Update 3q and ESXi 8.0 Update 2b or later can create persistent dynamic firewall rules for non-default log-host ports. Earlier releases do not support an administrator-created custom firewall XML file; Broadcom says a partner-created VIB is required for a custom port. Use port 1514 when you need a design that works with the built-in syslog ruleset across older supported releases.
 
-The collector certificate should be valid for server authentication, within its validity dates, and contain the configured FQDN in its Subject Alternative Name. If the certificate has only a DNS name, configuring **ssl://192.0.2.40:1514** produces an identity mismatch even when that IP reaches the correct server. Accurate ESXi time and working DNS are therefore prerequisites for certificate validation.
+The collector certificate should be valid for server authentication, within its validity dates, and contain a Subject Alternative Name that matches the configured FQDN. If the certificate has only a DNS name, configuring **ssl://192.0.2.40:1514** produces an identity mismatch even when that IP reaches the correct server. Accurate ESXi time and working DNS are therefore prerequisites for certificate validation.
 
 ## Prepare a Safe Change
 
@@ -84,15 +84,14 @@ Broadcom also documents importing a CA certificate with **esxcli system security
 
 ## Configure TLS Remote Logging
 
-Enable certificate checking, set the FQDN-based TLS destination, and reload vmsyslogd:
+Enable certificate checking and set the FQDN-based TLS destination:
 
 ~~~bash
 esxcli system syslog config set --check-ssl-certs=true
 esxcli system syslog config set --loghost="ssl://logs.example.com:1514"
-esxcli system syslog reload
 ~~~
 
-If the host already had one or more log hosts, supply the complete intended comma-delimited list in the second command. Do not replace an existing destination accidentally.
+If the host already had one or more log hosts, supply the complete intended comma-delimited list in the second command. Do not replace an existing destination accidentally. Because certificate checking is global, every retained **ssl://** destination must present a name-matching chain that the host trusts.
 
 For the built-in SSL port, enable the outbound syslog ruleset and refresh the firewall:
 
@@ -101,9 +100,12 @@ esxcli network firewall ruleset set --ruleset-id=syslog --enabled=true
 esxcli network firewall refresh
 ~~~
 
-On ESXi 7.0 Update 3q and ESXi 8.0 Update 2b or later, a non-default port configured in the log-host URI should create a dynamic rule. Inspect rather than assume:
+If the ruleset's **Allowed All** value is false, also confirm that its allowed-IP list permits every address to which the collector FQDN resolves. Enabling the ruleset does not remove an existing destination restriction.
+
+On ESXi 7.0 Update 3q and ESXi 8.0 Update 2b or later, a non-default port configured in the log-host URI should create a dynamic rule when vmsyslogd reloads. Reload after the firewall handling above, if applicable, and then inspect rather than assume:
 
 ~~~bash
+esxcli system syslog reload
 esxcli network firewall ruleset rule list
 ~~~
 
@@ -166,14 +168,19 @@ Confirm the recovery marker on the collector.
 
 ## Roll Back Safely
 
-If the change must be abandoned, restore the exact previous log-host value and reload syslog. If there was no previous remote host, use Broadcom's reset option:
+If the change must be abandoned, restore the exact previous **Remote Host** and **Check SSL Certs** values. If there was no previous remote host, use Broadcom's reset option:
 
 ~~~bash
 esxcli system syslog config set --reset=loghost
-esxcli system syslog reload
 ~~~
 
-Restore **castore.pem.bak** only if the certificate-store change is being rolled back, no other trust change occurred after the backup, and the approved change plan calls for it. Replacing a trust store with a stale backup can remove unrelated trusted roots. Re-verify the store after restoration.
+If the built-in syslog ruleset was enabled solely for this change, restore its recorded enabled state as well. Restore **castore.pem.bak** only if the certificate-store change is being rolled back, no other trust change occurred after the backup, and the approved change plan calls for it. Replacing a trust store with a stale backup can remove unrelated trusted roots. Re-verify the store after restoration.
+
+After completing all selected rollback actions, reload syslog so that it uses the restored configuration and trust state:
+
+~~~bash
+esxcli system syslog reload
+~~~
 
 Do not make **--check-ssl-certs=false** the steady-state workaround. That retains encryption but removes server authentication, allowing ESXi to send logs to a collector it cannot authenticate.
 
