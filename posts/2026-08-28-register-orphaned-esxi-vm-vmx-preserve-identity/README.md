@@ -29,13 +29,14 @@ Record the VM's existing vCenter name, host, datastore path, instance UUID, BIOS
 
 ## Prove the VM Is Not Running Elsewhere
 
-Registering the same files on two hosts can create conflicting ownership and locks. On every plausible ESXi host, list locally registered VMs:
+Registering the same files on two hosts can create conflicting ownership and locks. On every plausible ESXi host, list both locally registered VMs and active VM processes:
 
 ```bash
 vim-cmd vmsvc/getallvms
+esxcli vm process list
 ```
 
-Search for both the VM name and its `.vmx` datastore path. Confirm in vCenter tasks and events that HA, migration, restore, replication, or backup software is not currently operating on the VM.
+Search both outputs for the VM name and its `.vmx` datastore path. The process list catches a running VMX process that may not appear in the host inventory. Confirm in vCenter tasks and events that HA, migration, restore, replication, or backup software is not currently operating on the VM.
 
 If the VM may still be running but vCenter cannot see it, connect directly to the ESXi Host Client and confirm its power state. Do not infer power state from an orphaned icon alone.
 
@@ -44,7 +45,7 @@ If the VM may still be running but vCenter cannot see it, connect directly to th
 Browse the datastore and locate the original VM directory. At minimum, identify:
 
 - the intended `.vmx` configuration file;
-- every referenced VMDK descriptor and data extent;
+- every referenced VMDK descriptor and its backing extent or storage object;
 - any active snapshot descriptor and delta files;
 - the VM's NVRAM file when present;
 - recent `vmware.log` files.
@@ -55,11 +56,14 @@ From ESXi Shell, quote the full path:
 cd '/vmfs/volumes/DATASTORE/VM_DIRECTORY'
 
 ls -lah
-grep -n -E '^(displayName|uuid\.bios|uuid\.location|ethernet[0-9]+\.generatedAddress|scsi[0-9]+:[0-9]+\.fileName)' \
+grep -n -E '^(displayName|uuid\.bios|uuid\.location|vc\.uuid|ethernet[0-9]+\.(address|addressType|generatedAddress))' \
   'VM_NAME.vmx'
+grep -n -i '\.vmdk' 'VM_NAME.vmx'
 ```
 
-Do not edit UUID or generated-address lines simply to make registration succeed. Preserve a copy of the `.vmx` before any supported repair:
+`uuid.location` is location-derived metadata, not the guest-visible BIOS UUID. It can legitimately be rewritten when the VM's host or configuration-file location changes, so record it for diagnosis but do not require it to remain unchanged.
+
+Do not edit UUID or MAC-address lines simply to make registration succeed. Preserve a copy of the `.vmx` before any supported repair:
 
 ```bash
 cp 'VM_NAME.vmx' 'VM_NAME.vmx.pre-register-backup'
@@ -69,7 +73,7 @@ If the VMX is empty, malformed, or `hostd.log` reports a parse error, stop and r
 
 ## Remove Only a Confirmed Stale Inventory Entry
 
-If vCenter still contains a stale or orphaned object and Broadcom's recovery procedure calls for removing it, select **Remove from Inventory** or **Unregister**. Never select **Delete from Disk**. Those actions are not synonyms: removing from inventory leaves datastore files in place; deleting from disk is destructive.
+If vCenter still contains a stale or orphaned object and Broadcom's recovery procedure calls for removing it, select **Remove from Inventory** in vCenter or **Unregister** in the Host Client. Never select **Delete from Disk**. Those actions are not synonyms: removing from inventory leaves datastore files in place; deleting from disk is destructive.
 
 Power the VM off before a planned unregister/re-register workflow. If a conflicting registration exists on another host, clear it through the host or vCenter that owns that inventory entry. Do not delete lock files manually.
 
@@ -87,6 +91,8 @@ Broadcom documents this vCenter workflow:
 The target host must have access to every referenced datastore and an appropriate network backing. Registering a VM that uses a distributed port group directly on an isolated standalone host can leave its NIC disconnected or mapped to an unavailable backing.
 
 For a direct ESXi Host Client workflow, open **Storage**, choose the datastore, select **Register a VM**, browse to the `.vmx`, and register it.
+
+If vCenter manages the host, normally perform the registration through the vSphere Client. Broadcom warns that bypassing vCenter to register directly on the host can cause a mismatch between the host and vCenter inventories; use host-side registration only when a scoped recovery procedure calls for it, and reconcile the inventory afterward.
 
 ## Use the CLI When the Client Is Unavailable
 
@@ -140,7 +146,7 @@ Before reconnecting production networks, compare the post-registration object wi
 - license bindings;
 - automation that stores a vCenter MoRef, instance UUID, or path.
 
-Broadcom has a specific procedure for registering a powered-off VM on another host without changing its inventory ID in supported vSphere 7.x and 8.x scenarios. Treat that as a scoped vCenter workflow, not as a universal guarantee for every remove-and-add operation or external integration.
+Broadcom has a specific procedure for registering a powered-off VM on another host without changing its inventory ID in supported vSphere 7.x and 8.x scenarios. Treat that as a scoped workflow for a VM managed by vCenter 7.x or 8.x, not as a universal guarantee for every remove-and-add operation or external integration.
 
 ## Power On in a Controlled Sequence
 
@@ -157,8 +163,9 @@ Power on the VM, then check guest disk state, networking, application consistenc
 ## Official Documentation
 
 - [Broadcom KB 315281: register a virtual machine in vCenter Server or ESXi](https://knowledge.broadcom.com/external/article/315281/register-a-virtual-machine-to-the-vcente.html)
+- [Broadcom KB 335224: add or register a VM and avoid host/vCenter inventory mismatch](https://knowledge.broadcom.com/external/article/335224/add-or-register-a-virtual-machine-vm-in.html)
 - [Broadcom KB 422311: register a VM on another ESXi host without changing its inventory ID](https://knowledge.broadcom.com/external/article/422311/register-a-virtual-machine-on-another-es.html)
-- [Broadcom KB 391738: recover inaccessible or orphaned VMs by re-registering them](https://knowledge.broadcom.com/external/article/391738/refreshing-vsan-after-a-node-loss-and-re.html)
+- [Broadcom KB 391738: recover inaccessible or orphaned VMs after a vSAN node loss](https://knowledge.broadcom.com/external/article/391738/refreshing-vsan-after-a-node-loss-and-re.html)
 - [Broadcom KB 391782: registration failure caused by invalid VMX entries](https://knowledge.broadcom.com/external/article/391782/unable-to-register-virtual-machine.html)
 - [Broadcom KB 344709: permissions, tasks, VMX corruption, and locks that disable registration](https://knowledge.broadcom.com/external/article/344709/virtual-machine-options-are-grayed-out-i.html)
 
