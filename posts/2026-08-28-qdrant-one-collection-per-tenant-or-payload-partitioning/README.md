@@ -8,7 +8,7 @@ Description: Choose between shared payload partitioning, dedicated collections, 
 
 ---
 
-The usual Qdrant multitenancy design is one collection containing many tenants, with a tenant identifier in every point's payload and in every operation's filter. A collection per tenant is appropriate when the tenant count is limited and the extra isolation or per-tenant configuration is worth the resource and operational overhead.
+The usual Qdrant multitenancy design is one collection containing many tenants, with a tenant identifier in every point's payload and a matching tenant condition in every tenant-scoped operation that accepts a filter. A collection per tenant is appropriate when the tenant count is limited and the extra isolation or per-tenant configuration is worth the resource and operational overhead.
 
 There is also a middle option: user-defined sharding. It can give a smaller number of large tenants dedicated shard groups while retaining one collection. Qdrant 1.16 and later add tiered multitenancy, which combines a shared fallback shard for small tenants with dedicated shards for tenants that grow.
 
@@ -38,7 +38,7 @@ Use TLS for any non-local connection. Do not expose the admin API key to tenant 
 
 | Layout | Best fit | Main benefit | Main cost |
 |---|---|---|---|
-| One collection with a tenant payload | Many small or similarly sized tenants | Lowest collection and shard overhead | The application must add the correct tenant value and filter to every operation |
+| One collection with a tenant payload | Many small or similarly sized tenants | Lowest collection and shard overhead | The application must enforce the correct tenant scope on every operation |
 | One collection with custom shard keys | A smaller number of large tenants | Operations can target only a tenant's shard group | Each shard group consumes resources, and every operation must carry the correct shard key |
 | One collection per tenant | A limited number of tenants needing a stronger operational boundary | Collection-scoped configuration, lifecycle, and JWT permissions | More collections, indexes, optimizers, and operational objects to manage |
 
@@ -177,22 +177,22 @@ curl -fsS -X POST \
   "$QDRANT_URL/collections/documents/points/query" \
   -H "api-key: $QDRANT_API_KEY" \
   -H 'Content-Type: application/json' \
-  -d '{
-    "query": [0.1, 0.2, 0.3],
-    "filter": {
-      "must": [
+  -d "$(jq -nc '{
+    query: [range(384) | 0.1],
+    filter: {
+      must: [
         {
-          "key": "tenant_id",
-          "match": {"value": "tenant-a"}
+          key: "tenant_id",
+          match: {value: "tenant-a"}
         }
       ]
     },
-    "limit": 10,
-    "with_payload": ["tenant_id", "text"]
-  }'
+    limit: 10,
+    with_payload: ["tenant_id", "text"]
+  }')"
 ```
 
-Use a vector with the collection's actual dimension; the short vector above is only a shape illustration.
+The generated query vector has 384 dimensions to match the example collection; replace it with a real embedding.
 
 Apply the same mandatory condition to:
 
@@ -200,6 +200,8 @@ Apply the same mandatory condition to:
 - Delete-by-filter and payload-update requests.
 - Recommendation, discovery, grouping, and multi-stage queries.
 - Any administrative export or reconciliation tool that is meant to be tenant-scoped.
+
+Point-by-ID retrieval does not accept a payload filter. When a caller supplies an ID, use Query or Scroll with both an ID condition and the tenant condition instead.
 
 Do not retrieve broad results and filter them after Qdrant returns them. That both wastes work and creates a data-exposure boundary in application memory.
 
@@ -221,6 +223,8 @@ For collection-scoped JWTs, name collections from a trusted internal tenant mapp
 
 Custom sharding is useful for a relatively small number of large tenants whose requests should touch only their own shard group:
 
+Shard-key management requires Qdrant's distributed mode, so these commands must target a cluster-enabled deployment rather than a default standalone server.
+
 ```bash
 curl -fsS -X PUT "$QDRANT_URL/collections/large_tenant_documents" \
   -H "api-key: $QDRANT_API_KEY" \
@@ -238,7 +242,7 @@ curl -fsS -X PUT \
   -d '{"shard_key": "tenant-a"}'
 ```
 
-With automatic sharding, `shard_number` is the total logical shard count. With custom sharding, it is the number of shards created for each shard key. Ten shard keys, one shard per key, and replication factor two produce twenty physical shard replicas. This is why a high-cardinality tenant key belongs in payload partitioning rather than custom sharding.
+With automatic sharding, `shard_number` is the total logical shard count. With custom sharding, it is the default number of shards created for each shard key; an individual create-shard-key request can override it with `shards_number`. Ten shard keys, one shard per key, and replication factor two produce twenty physical shard replicas. This is why a high-cardinality tenant key belongs in payload partitioning rather than custom sharding.
 
 Every custom-sharded write and query must include the correct `shard_key`. An operation that omits it can fan out to all shards. Keep the tenant payload filter too: shard routing is a performance and placement boundary, not proof that the caller is authorized. Qdrant also warns against reusing the same point ID across different shard keys even though current uniqueness enforcement is local to a shard key.
 
@@ -271,7 +275,7 @@ For custom sharding, also list shard keys and inspect collection cluster informa
 
 ## Migration and Rollback Cautions
 
-Changing between collection layouts is a data migration, not a metadata toggle. Build the destination collection with the final vector and payload indexes, copy data using stable point IDs, dual-read or compare counts and sampled queries, then switch callers deliberately. Keep the source read-only until the destination has passed correctness, performance, backup, and restore checks.
+Changing between collection layouts is a data migration, not a metadata toggle. Build the destination collection with the final vector and payload indexes, then either pause mutations or mirror them to both layouts while copying data with stable point IDs. Reconcile any changes, compare exact counts and sampled queries, then switch callers deliberately. Keep the source read-only until the destination has passed correctness, performance, backup, and restore checks.
 
 Do not delete source collections or shard keys as an immediate rollback step. Deleting either removes data. Take and test snapshots appropriate to the deployment before destructive cleanup.
 
