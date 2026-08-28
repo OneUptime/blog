@@ -124,7 +124,6 @@
 
 ## Qdrant
 
-1. Cosine, Dot Product, or Euclidean: How to Choose a Qdrant Distance Metric
 2. How to Fix “Too Many Open Files” in a Qdrant Docker or Kubernetes Deployment
 3. How to Upsert New Qdrant Points Without Recreating the Collection
 4. How to Generate Deterministic Qdrant Point IDs and Prevent Duplicate RAG Chunks
