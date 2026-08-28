@@ -29,7 +29,6 @@
 
 ## ESXi
 
-10. How to Restrict ESXi Management Services to Trusted Networks with Firewall Rulesets
 11. How to Configure iSCSI Port Binding and Round-Robin Multipathing on ESXi
 12. How to Route NFS 4.1 Traffic Through a Dedicated VMkernel Adapter on ESXi 8.0 U3+
 13. How to Remount a Disconnected NFS 4.1 Datastore Without Rebooting ESXi
