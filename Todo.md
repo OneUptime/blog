@@ -127,7 +127,6 @@
 16. One Collection per Tenant or Payload Partitioning? Designing Qdrant Multitenancy
 17. How to Enforce Tenant Isolation in Qdrant with JWT RBAC Payload Filters
 18. How to Choose Qdrant Shard, Replication, and Write-Consistency Settings
-19. How to Use the Qdrant Python gRPC Client Safely with Multiprocessing
 20. Why Qdrant Filtered Queries Time Out: Payload Indexes, exact Search, and HNSW
 
 ## SLOs
