@@ -8,7 +8,7 @@ Description: Diagnose Qdrant filtered-query timeouts by separating payload-filte
 
 ---
 
-A filtered Qdrant query can time out even when an unfiltered nearest-neighbor query is fast. The filter changes both candidate selection and the query plan. Qdrant uses payload indexes to evaluate compatible conditions and estimate how many points match, then chooses a strategy per segment: an exact scan over a small eligible set or filter-aware HNSW traversal over a larger one.
+A filtered Qdrant query can time out even when an unfiltered nearest-neighbor query is fast. The filter changes both candidate selection and the query plan. Qdrant uses payload indexes to evaluate compatible conditions and estimate how many points match, then chooses a strategy per segment: a full scan over a small eligible set or filter-aware HNSW traversal over a larger one.
 
 Three common timeout causes are:
 
@@ -148,7 +148,7 @@ The broad behavior is:
 
 - If very few points match, scanning and scoring those eligible vectors can be cheaper than entering HNSW.
 - If many points match, Qdrant can traverse HNSW while checking the filter.
-- For intermediate filters, Qdrant's filterable HNSW adds payload-aware graph edges so traversal remains connected through relevant points.
+- For intermediate filters, Qdrant's filterable HNSW adds payload-aware graph edges to improve connectivity through relevant points.
 
 The `full_scan_threshold` is based on estimated vector data size in kilobytes, not simply a count of points. Current configuration documentation notes that one kilobyte corresponds to one 256-dimensional vector for this estimate. Do not treat a planner-selected full scan as inherently wrong: over a genuinely small candidate set it is often the fastest correct plan.
 
@@ -249,7 +249,7 @@ Strict mode can set `search_allow_exact: false` so clients cannot accidentally r
 
 ## Tune HNSW Only After Indexing the Filter
 
-For approximate dense search, `hnsw_ef` controls how many neighbors the traversal considers. Higher values generally improve recall at the cost of more work and latency. Qdrant defaults the search value to the collection's `ef_construct`, and internally ensures the candidate list is at least as large as the requested result limit.
+For approximate dense search, `hnsw_ef` controls how many neighbors the traversal considers. Higher values generally improve recall at the cost of more work and latency. Qdrant defaults it to the selected vector index's effective `ef_construct` (the collection value unless overridden for a named vector) and internally ensures the candidate list is at least as large as the requested result limit.
 
 That means both an unnecessarily high `hnsw_ef` and a very large `limit` can make an approximate request expensive. Benchmark a range of `hnsw_ef` values against exact ground truth with real filter distributions. Stop increasing it when recall no longer improves materially.
 
@@ -287,7 +287,7 @@ An approximate count is useful for diagnosis without demanding a full exact coun
 
 Qdrant can search segments whose vector index has not yet been built by using a full scan. If optimization is delayed or stuck, the unindexed portion can grow and degrade latency.
 
-Do not set `indexed_only: true` as a general timeout fix. It skips segments without a completed vector index and can therefore return partial results. It is appropriate only when the application explicitly accepts eventual completeness during ingestion or optimization.
+Do not set `indexed_only: true` as a general timeout fix. It still searches small unindexed segments below the indexing threshold, but it can skip larger segments without a completed vector index and therefore return partial results. It is appropriate only when the application explicitly accepts eventual completeness during ingestion or optimization.
 
 If collection status remains grey or optimizer progress stalls, follow Qdrant's optimizer recovery guidance and investigate disk space, memory pressure, CPU saturation, and service logs before changing search accuracy settings.
 
@@ -359,4 +359,4 @@ If a query times out, it may still have consumed significant server work before 
 
 ## Conclusion
 
-Diagnose a filtered timeout by separating filter evaluation from vector search. Give every production filter a compatible payload index, verify optimizer and segment state, and let Qdrant's planner choose between a small exact scan and filter-aware HNSW. Use `exact: true` only as a controlled ground truth, tune `hnsw_ef` against measured recall, and treat timeout increases as temporary budgets rather than fixes. Once the workload is healthy, strict mode can turn future unindexed filters and accidental exact scans into immediate, diagnosable errors.
+Diagnose a filtered timeout by separating filter evaluation from vector search. Give every production filter a compatible payload index, verify optimizer and segment state, and let Qdrant's planner choose between a small full scan and filter-aware HNSW. Use `exact: true` only as a controlled ground truth, tune `hnsw_ef` against measured recall, and treat timeout increases as temporary budgets rather than fixes. Once the workload is healthy, strict mode can turn future unindexed filters and accidental exact scans into immediate, diagnosable errors.
