@@ -49,7 +49,7 @@ No file found matching /var/tmp/current-store-1
 Error: Unable to access device, please check your connection to the device.
 ~~~
 
-If the export came from vCenter or the Host Client, determine whether only **Base** was selected. Broadcom says a Base-only export excludes files including hostd.log, vmkernel.log, vpxa.log, vmkwarning.log, vmksummary.log, and VM log files by design. Re-export with the default selections before diagnosing storage.
+If the export was initiated in the vSphere Client and offered a specific-log selection, determine whether only **Base** was selected. Broadcom says a Base-only export excludes files including hostd.log, vmkernel.log, vpxa.log, vmkwarning.log, vmksummary.log, and VM log files by design. Re-export with the default selections before diagnosing storage.
 
 ## Inspect the Live Host
 
@@ -160,7 +160,7 @@ Correlating evidence includes:
 - **ScratchConfig.CurrentScratchLocation** on the affected boot device; and
 - host or out-of-band hardware alarms.
 
-Do not treat a new bundle as the primary fix. Preserve what remains through remote syslog, vCenter events, hardware-controller logs, screenshots, and datastore-resident logs. Evacuate or shut down workloads according to the storage risk. Then configure scratch on reliable persistent storage and plan replacement or reinstallation of the failing boot design.
+Do not treat a new bundle as the primary fix. Preserve what remains through remote syslog, vCenter events, hardware-controller logs, screenshots, and datastore-resident logs. Evacuate or shut down workloads according to the storage risk. Then configure scratch on reliable persistent storage, investigate and remediate the boot-device access failure, and replace or reinstall the boot device only if hardware or media failure is confirmed.
 
 If the device is physically failing, logs that were never written to another target may not be recoverable. State that gap explicitly in the incident record instead of substituting post-reboot logs.
 
@@ -203,7 +203,7 @@ After correcting the verified cause:
 
 A useful acceptance test includes at least:
 
-- hostd.log and recent rotated hostd files;
+- hostd.log and any recent rotated hostd files that exist on the live host;
 - vmkernel.log and vmkwarning.log;
 - vpxa.log on a vCenter-managed host;
 - the unique syslog marker;
@@ -229,7 +229,7 @@ Do not:
 ## Limitations and Version Scope
 
 - The shared-directory condition is documented for supported ESXi releases, while the inaccessible-OSData case is specifically documented for ESXi 8.x.
-- NFS execute-bit behavior depends on the NFS server's ACL and export implementation.
+- The NFS execute-bit exclusion case is documented for ESXi 8.x, and the behavior depends on the NFS server's ACL and export implementation.
 - **vm-support** options vary by ESXi version; verify them with **vm-support -h**.
 - A bundle records diagnostic state but does not replace a VMkernel coredump, remote syslog, vCenter events, or hardware telemetry.
 - Bundle directory names can differ; validate content and collection errors rather than relying on one literal archive path.
