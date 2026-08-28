@@ -14,7 +14,7 @@ Kubernetes recommends late binding for generic ephemeral volumes. With the defau
 
 ## Verify the Driver Can Provision the Volume
 
-Generic ephemeral volumes are stable since Kubernetes 1.23, but they still depend on a storage provisioner. The driver must support normal persistent-volume dynamic provisioning for the requested StorageClass. Support for inline CSI ephemeral volumes is a different capability and is not required here.
+Generic ephemeral volumes are stable since Kubernetes 1.23. For the dynamically provisioned workflow shown here, the driver must support normal persistent-volume dynamic provisioning for the requested StorageClass. Support for inline CSI ephemeral volumes is a different capability and is not required here.
 
 Inventory the storage API objects:
 
@@ -107,7 +107,7 @@ With `WaitForFirstConsumer`, the control-plane sequence is:
 4. A node is tentatively selected.
 5. The CSI provisioner creates a volume accessible from that topology, or Kubernetes binds an eligible pre-created PV.
 6. The PVC binds and the Pod is committed to the node.
-7. Kubelet stages and mounts the volume.
+7. Kubelet mounts the volume, staging it first when the driver supports and requires staging.
 
 The tentative selection matters. If provisioning reports that capacity is unavailable, Kubernetes can clear that choice and retry scheduling on another eligible node.
 
@@ -155,7 +155,7 @@ Do not manually create `CSIStorageCapacity` objects unless the driver documentat
 
 ## Observe Binding and Mounting
 
-Watch the Pod and generated claim together:
+In separate terminals, watch the Pod and generated claim:
 
 ```bash
 kubectl get pod render-worker -n batch --watch
@@ -175,13 +175,13 @@ pv_name=$(kubectl get pvc render-worker-scratch -n batch \
 kubectl get pv "$pv_name" -o yaml
 ```
 
-Verify the PV's node affinity or CSI topology and the Pod's assigned node are compatible. Then confirm `/scratch` is mounted with the requested filesystem and capacity inside the container.
+Verify the PV's node affinity reflects the CSI topology and is compatible with the Pod's assigned node. Then confirm `/scratch` is mounted with the expected filesystem and usable capacity inside the container.
 
 ## Preserve the Ephemeral Cleanup Contract
 
 When the Pod is deleted, Kubernetes garbage collection deletes its owned PVC. With a dynamically provisioned PV using `Delete`, the storage provisioner normally removes the backing volume. Check that behavior with the installed driver before putting sensitive or capacity-limited local storage into service.
 
-A StorageClass with `Retain` intentionally leaves storage behind and therefore needs a separate reclamation process. Force-deleting Pods, PVCs, PVs, or CSI finalizers can bypass orderly cleanup; use the driver's recovery procedure for stuck deletion.
+A StorageClass with `Retain` intentionally leaves storage behind and therefore needs a separate reclamation process. Force-deleting Pods or manually removing PVC or PV storage finalizers can bypass orderly cleanup; use the driver's recovery procedure for stuck deletion.
 
 ## Official Documentation
 
