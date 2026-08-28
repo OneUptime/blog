@@ -121,7 +121,6 @@
 
 ## Ephemeral Volumes
 
-13. How to Back Kubernetes Scratch Space with Local NVMe and Automatic Pod-Lifecycle Cleanup
 14. emptyDir sizeLimit vs ephemeral-storage Limit: Which Limit Evicts the Pod First?
 15. How to Enforce Namespace Defaults and Quotas for Kubernetes Ephemeral Storage
 16. How to Prevent Generic Ephemeral PVC Name Collisions and Ownership Conflicts
