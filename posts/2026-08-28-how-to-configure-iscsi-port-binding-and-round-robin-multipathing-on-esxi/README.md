@@ -8,11 +8,11 @@ Description: Configure supported software-iSCSI port binding on ESXi, verify red
 
 ---
 
-iSCSI port binding and Round Robin solve different parts of a multipathing design. Port binding makes the ESXi software iSCSI initiator establish sessions through specific VMkernel adapters. Round Robin is the Native Multipathing Plug-in (NMP) path selection policy applied to each discovered storage device.
+iSCSI port binding and Round Robin solve different parts of a multipathing design. Port binding makes the ESXi software iSCSI initiator establish sessions through specific VMkernel adapters. Round Robin (`VMW_PSP_RR`) is an NMP path selection policy configured per NMP-controlled storage device.
 
 A correct configuration normally has one iSCSI VMkernel adapter per physical uplink, with every VMkernel adapter pinned to a different active uplink. It is not an active/active NIC team. ESXi discovers multiple storage paths and NMP decides which eligible path carries each I/O.
 
-This guide applies to the software iSCSI adapter on ESXi 7.x and 8.x. Menu labels below reflect the current vSphere 8 client.
+This guide applies to the software iSCSI adapter on ESXi 7.x and 8.x. ESXi 7.x reached End of General Support on October 2, 2025. Menu labels below reflect the vSphere 8 client.
 
 ## Confirm That Port Binding Fits the Topology
 
@@ -21,9 +21,10 @@ Use iSCSI port binding when all of the following are true:
 - the iSCSI VMkernel adapters are in the same IP subnet and broadcast domain;
 - the adapters are on the same vSwitch;
 - each VMkernel adapter maps one-to-one to a physical NIC;
+- every configured target portal is reachable from every bound VMkernel adapter;
 - the target design is supported by the array vendor.
 
-Do not use this procedure merely because two storage NICs exist. Broadcom says not to use software-iSCSI port binding when the VMkernel adapters or target ports are in different subnets or broadcast domains. Multiple iSCSI VLANs should use separate vSwitches, and software-iSCSI multipathing must not use LACP or another link-aggregation group.
+Do not use this procedure merely because two storage NICs exist. This same-subnet procedure does not apply when the bound VMkernel adapters span different subnets or broadcast domains. vSphere 6.5 and later supports specific routed port-binding designs that use static routes or per-VMkernel gateways to reach target portals in other subnets, but those designs are outside this guide and must follow Broadcom and array-vendor guidance. VMkernel adapters on multiple iSCSI VLANs should use separate vSwitches rather than being bound together, and software-iSCSI multipathing must not use LACP or another link-aggregation group.
 
 For example, this is a suitable same-subnet design:
 
@@ -43,6 +44,7 @@ Before changing storage networking:
 - confirm that the vendor supports `VMW_PSP_RR` for the exact array personality, firmware, and LUN type;
 - confirm that the LUN is owned by VMware NMP rather than HPP or a third-party multipathing plug-in, whose policy commands and support rules differ;
 - use a maintenance window and preserve independent host-management access;
+- do not enable the Management traffic service on VMkernel adapters dedicated to iSCSI port binding;
 - record the current vSwitch, port-group, VMkernel, discovery, path, SATP, and PSP configuration;
 - make the configuration consistent on every cluster host that accesses the same LUNs;
 - confirm the MTU is identical end to end if jumbo frames are used.
@@ -71,7 +73,7 @@ In the vSphere Client, select the ESXi host and open **Configure > Networking > 
 
 Do not leave the alternate uplink in Standby. For software-iSCSI port binding, each VMkernel adapter needs one unique Active uplink and the other uplinks must be Unused.
 
-Test both source interfaces before binding them:
+Test every configured target portal from every source interface before binding them. For this single-portal example:
 
 ```bash
 vmkping -I vmk1 192.0.2.50
@@ -119,7 +121,7 @@ In the vSphere Client:
 
 1. Select the host and open **Configure > Storage > Storage Devices**.
 2. Select the exact iSCSI device by its NAA identifier.
-3. Open **Properties > Edit Multipathing**.
+3. In the **Properties** tab, scroll to **Multipathing Policies** and click **Edit Multipathing**.
 4. Select **Round Robin (VMware)** and save.
 
 The equivalent per-device ESXCLI command documented by Broadcom is:
@@ -141,11 +143,13 @@ Look for `Path Selection Policy: VMW_PSP_RR` and review `Working Paths`. This se
 
 Round Robin rotates across eligible paths, not necessarily every path displayed by ESXi. With ALUA, active-optimized paths are normally used while active-non-optimized paths remain available for failover. On an active/passive array, seeing only paths to the active controller under `Working Paths` can be expected.
 
-Do not change the Round Robin I/O switching limit from its default merely because examples on the internet use `IOPS=1`. Broadcom documents that adjustment for arrays whose vendors specifically require it. Apply the array vendor's supported setting, not a generic tuning recipe.
+Do not change the Round Robin I/O switching limit from its default merely because examples on the internet use `IOPS=1`. Broadcom documents that adjustment for environments where the storage vendor recommends or requires it. Apply the array vendor's supported setting, not a generic tuning recipe.
 
 ## Test Failure Behavior Carefully
 
 Perform a controlled path test only with the storage and network teams present and with current backups. Disable one array or switch path using the vendor-approved method, rather than pulling arbitrary cables from an active production host.
+
+Do not unmap, delete, or power off the LUN as a path-failover test.
 
 During the test, verify that:
 
