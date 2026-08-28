@@ -8,11 +8,11 @@ Description: Verify ESXi bootbank links, filesystems, capacity, boot configurati
 
 ---
 
-ESXi uses two boot banks so an update can stage a new image while retaining the previous image for rollback. An upgrade should not begin when `/bootbank` or `/altbootbank` points into `/tmp`, a bank is missing, `boot.cfg` is unreadable, a vFAT filesystem is corrupt, or the boot device is unhealthy.
+Statefully installed ESXi hosts use two boot banks so an update can stage a new image while retaining the previous image for rollback. An upgrade of such a host should not begin when `/bootbank` or `/altbootbank` points into `/tmp`, a bank is missing, `boot.cfg` is unreadable, a vFAT filesystem is corrupt, or the boot device is unhealthy.
 
 These checks are most useful before a maintenance window, not after staging has already altered a bank. The first sections are read-only. Any filesystem repair belongs in maintenance mode with a current host backup, out-of-band console access, and the exact Broadcom procedure open.
 
-This guide focuses on ESXi 7.x and 8.x. Older layouts can contain additional vFAT scratch and locker partitions, while ESXi 7.x and later normally use two vFAT boot-bank partitions. Do not classify a volume by size alone.
+This guide assumes a statefully installed ESXi 7.x or 8.x host that boots from persistent storage. Stateless or stateless-cached Auto Deploy hosts are managed through Auto Deploy and are outside this guide. Older layouts can contain additional vFAT scratch and locker partitions, while ESXi 7.x and later normally use two vFAT boot-bank partitions. Do not classify a volume by size alone.
 
 ## Establish Recovery Prerequisites
 
@@ -44,7 +44,7 @@ ls -l / | grep -E 'bootbank|altbootbank'
 Both links should resolve through `/vmfs/volumes/<UUID>` to persistent volumes. Treat any of these as a stop condition:
 
 - either link is absent or broken;
-- a link points to `/tmp/bootbank...` or `/tmp/altbootbank...`;
+- a link points anywhere under `/tmp`;
 - the target volume does not exist;
 - reading the target returns I/O errors.
 
@@ -62,7 +62,7 @@ head -n 20 /altbootbank/boot.cfg
 
 ## Map the Links to Filesystems and Devices
 
-List mounted filesystems:
+List filesystems available to the host, their mount state, and space usage:
 
 ```bash
 esxcli storage filesystem list
@@ -84,7 +84,7 @@ Then identify the actual boot device in the storage inventory:
 esxcli storage core device list | grep -E 'Display Name|Is Boot Device'
 ```
 
-The `Part of:` device and partition reported by `vmkfstools -P` must be recorded exactly. Never run a repair command against a guessed `naa.`, `mpx.`, or NVMe partition.
+The device and partition reported by `vmkfstools -P` must be recorded exactly. Never run a repair command against a guessed `naa.`, `mpx.`, or NVMe partition.
 
 Check the server's storage-controller, USB/SD, NVMe, or boot-LUN health through its hardware management interface. A clean filesystem check cannot correct failing flash media, path loss, controller errors, or a SAN zoning problem.
 
