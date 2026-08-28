@@ -21,6 +21,7 @@ Schedule a maintenance window and, where practical, evacuate or power down workl
 - Confirm working out-of-band console access through iLO, iDRAC, KVM, or equivalent. Do not treat an SSH session over the management VMkernel as a recovery path.
 - Back up the vSphere Distributed Switch configuration.
 - Verify that the vDS has at least two physical uplinks capable of carrying management traffic. The staged online workflow is not safe with a single management uplink.
+- If vSphere HA is enabled, suspend Host Monitoring for the networking maintenance because an interruption can trigger isolation or failover responses.
 - Record the management adapter name, IP mode, address, prefix/netmask, TCP/IP stack, default gateway, MTU, VLAN, enabled services, distributed port group, uplinks, and teaming policy.
 - Confirm that the physical switch port for the destination uplink carries the management VLAN and matches the required MTU.
 - Check whether the vDS uplinks participate in a LAG. A vSS cannot participate in a vDS LAG, and the upstream LACP configuration normally has to be changed before taking a member out of the LAG.
@@ -85,13 +86,13 @@ vmkping -I vmk0 <management-default-gateway>
 vmkping -I vmk0 <vcenter-server-ip>
 ```
 
-Replace `vmk0` with the actual management interface. A successful ping is necessary but not sufficient. Confirm that:
+Replace `vmk0` with the actual management interface. Where ICMP is permitted, successful pings are useful but not sufficient. Confirm that:
 
 - vCenter can reconnect to and manage the host;
 - DNS resolves the host's FQDN consistently in both directions;
 - the host's management agents remain responsive;
 - the destination uplink and physical switch port show no unexpected drops or VLAN errors;
-- HA and other cluster agents recover normally, if enabled.
+- if vSphere HA is enabled, reconfigure vSphere HA on all hosts in the cluster so it refreshes management-network information, verify the agents are healthy, and re-enable Host Monitoring.
 
 Test failover only if the vSS has two correctly configured physical uplinks. Do not remove the last known-good link merely to prove redundancy during the same change window.
 
@@ -105,21 +106,25 @@ If the entire host must leave the vDS, migrate each remaining VMkernel adapter a
 
 If the vSphere Client reports that the network change disconnected the host and automatically rolls it back, investigate the full path before retrying. Broadcom identifies VLAN, MTU, physical-switch, and teaming mismatches as common causes of network rollback.
 
-If vCenter connectivity is lost but the host console remains available, use the captured configuration to restore a management-capable Standard Switch path. Broadcom documents CLI recovery commands, but this is disruptive because the management VMkernel adapter may have to be removed and recreated. Follow the exact Broadcom KB procedure for the host version and topology rather than improvising `esxcfg-vswitch` flags.
+Automatic network rollback protects only `vmk0`; do not assume that another management-tagged VMkernel adapter is protected.
+
+If vCenter connectivity is lost but the host console remains available, use the captured configuration to restore a management-capable Standard Switch path. Broadcom documents CLI recovery commands, but this is disruptive because the management VMkernel adapter may have to be removed and recreated. Follow the applicable Broadcom recovery procedure for the host version and topology rather than improvising `esxcfg-vswitch` flags.
 
 The DCUI **Restore Standard Switch** option is a last-resort recovery action, not a routine rollback button. Broadcom warns that it removes existing vSwitch, port-group, and VMkernel information before creating a minimal standard-switch configuration. Use it only with console access, a complete configuration record, and an understood rebuild plan.
 
 ## Limitations and Version Scope
 
-The vSphere Client labels and menu locations can vary slightly between vCenter 7.x and 8.x. The staged topology and safety constraints remain the same. This procedure does not cover NSX-managed ports, vDS LAG migration, iSCSI port binding, a single-NIC host, or a host whose management path depends on a non-default TCP/IP stack. Escalate those designs to the relevant Broadcom procedure or Support.
+The command examples assume an IPv4 management network. The vSphere Client labels and menu locations can vary slightly between vCenter 7.x and 8.x. The staged topology and safety constraints remain the same. vSphere 7.0 reached End of General Support on October 2, 2025. This procedure does not cover NSX-managed ports, vDS LAG migration, iSCSI port binding, a single-NIC host, or a host whose management path depends on a non-default TCP/IP stack. Escalate those designs to the relevant Broadcom procedure or Support.
 
 ## Official Documentation
 
 - [Migrate VMs and VMkernel adapters from a vDS to a vSS (Broadcom KB 306406)](https://knowledge.broadcom.com/external/article/306406/migrate-virtual-machines-vms-and-vmkerne.html)
-- [Migrate ESXi host networking from vDS to vSS by CLI (Broadcom KB 376245)](https://knowledge.broadcom.com/external/article/376245/moving-host-from-dvs-to-standard-switch.html)
+- [Recover ESXi host connectivity when management is on a vDS (Broadcom KB 386467)](https://knowledge.broadcom.com/external/article/386467)
 - [Configure a Standard or Distributed Switch from the ESXi command line (Broadcom KB 326175)](https://knowledge.broadcom.com/external/article/326175/configuring-standard-vswitch-vss-or-virt.html)
-- [Create a vSphere Standard Switch](https://techdocs.broadcom.com/us/en/vmware-cis/vsphere/vsphere/7-0/vsphere-networking-7-0/setting-up-networking-with-vnetwork-standard-switches/create-a-vsphere-standard-switch.html)
-- [LACP support on a vSphere Distributed Switch](https://techdocs.broadcom.com/us/en/vmware-cis/vsphere/vsphere/7-0/vsphere-networking-7-0/configuring-lacp-on-a-vsphere-distrubuted-switch-in-the-vsphere-web-client.html)
+- [Create a vSphere Standard Switch](https://techdocs.broadcom.com/us/en/vmware-cis/vsphere/vsphere/8-0/vsphere-networking/setting-up-networking-with-vnetwork-standard-switches/create-a-vsphere-standard-switch.html)
+- [LACP support on a vSphere Distributed Switch](https://techdocs.broadcom.com/us/en/vmware-cis/vsphere/vsphere/8-0/vsphere-networking/configuring-lacp-on-a-vsphere-distrubuted-switch-in-the-vsphere-web-client.html)
+- [vSphere HA networking best practices](https://techdocs.broadcom.com/us/en/vmware-cis/vsphere/vsphere/8-0/vsphere-availability/creating-and-using-vsphere-ha-clusters/best-practices-for-vsphere-ha-clusters/best-practices-for-networking.html)
+- [Automatic network rollback protection for vmk0 (Broadcom KB 377465)](https://knowledge.broadcom.com/external/article/377465)
 - [Network rollback after a management-network change (Broadcom KB 415012)](https://knowledge.broadcom.com/external/article/415012)
 
 ## Conclusion
