@@ -22,14 +22,14 @@ curl --silent --show-error \
   http://localhost:6333/collections/documents/memory
 ```
 
-The response separates:
+The response reports:
 
+- total file sizes as `Disk`;
 - non-evictable heap `RAM`;
 - memory-mapped pages currently in the OS page cache as `Cached`;
-- files on `Disk`;
-- `Expected Cache` for the preferred warm working set.
+- the amount Qdrant would ideally keep cached for best performance as `Expected Cache`.
 
-Qdrant states that these estimates can undercount RAM by roughly 10–15% because allocator and third-party-library use is not fully attributed. Container RSS also includes page cache, so a process monitor can appear high after moving data to disk even when those mapped pages are evictable under pressure.
+`Disk` and `Cached` are not disjoint: cached pages are resident pages from those on-disk files. Qdrant states that these estimates can undercount RAM by roughly 10–15% because allocator and third-party-library use is not fully attributed. Process RSS reported by tools such as `top` or `htop` also includes resident file-backed memory-mapped pages, so it can appear high after moving data to disk even when those pages are reclaimable under pressure.
 
 Record peak RSS, page cache, query latency, throughput, recall, disk IOPS, and optimizer activity over a representative period.
 
@@ -138,7 +138,7 @@ Qdrant's background optimizer creates new segments, builds HNSW, and applies qua
 
 Do not size the container memory limit exactly to the steady-state dashboard estimate. An OOM kill during segment optimization can produce repeated restart loops and prevent the collection from converging.
 
-Replicas multiply the per-node data structures according to shard placement. Moving one replica's vectors cold does not reduce the total disk or cache needed across a multi-node cluster.
+Replicas multiply total storage and RAM/cache demand according to physical shard placement. Memory-tier settings are collection-wide and apply to every replica: moving vectors to `cold` does not reduce replicated disk usage, but it does remove proactive cache warming; pages read on each serving replica can still enter the OS page cache.
 
 ## Validate the Tradeoff
 
@@ -161,7 +161,7 @@ If the disk cannot serve cold random reads within the latency objective, add RAM
 - [Qdrant quantization methods and tradeoffs](https://qdrant.tech/documentation/manage-data/quantization/)
 - [Qdrant collection and vector configuration updates](https://qdrant.tech/documentation/manage-data/collections/)
 - [Qdrant database optimization FAQ](https://qdrant.tech/documentation/faq/database-optimization/)
-- [Qdrant capacity planning](https://qdrant.tech/documentation/operations/capacity-planning/)
+- [Qdrant capacity planning](https://qdrant.tech/documentation/capacity-planning/)
 
 ## Conclusion
 
