@@ -29,7 +29,6 @@
 
 ## ESXi
 
-7. How to Persist ESXi Logs and Scratch Data on Hosts That Boot from USB or SD Card
 8. How to Fix an ESXi `vm-support` Bundle That Contains an Empty `/var/run/logs` Directory
 9. How to Configure ESXi NTP and Diagnose Hosts That Refuse to Synchronize
 10. How to Restrict ESXi Management Services to Trusted Networks with Firewall Rulesets
