@@ -124,7 +124,6 @@
 
 ## Qdrant
 
-9. How to Delete Qdrant Points by Payload Filter and Wait for the Update to Finish
 10. How to Build Dense-and-Sparse Hybrid Search in Qdrant with RRF Fusion
 16. One Collection per Tenant or Payload Partitioning? Designing Qdrant Multitenancy
 17. How to Enforce Tenant Isolation in Qdrant with JWT RBAC Payload Filters
