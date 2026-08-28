@@ -10,7 +10,7 @@ Description: Confirm that a usable previous ESXi image remains, invoke supported
 
 ESXi normally retains one previous bootable image in the alternate bootbank after a supported patch, profile, VIB, Update Manager, or ISO update. If the new image fails, the supported rollback interface is the boot-time recovery prompt: press `Shift+R`, review the target build, and confirm the replacement.
 
-Do not manually copy modules between `/bootbank` and `/altbootbank`, rewrite `boot.cfg`, or repoint bootbank symlinks. Those files form a coordinated image and state set. Manual surgery can turn a recoverable host into one that requires reinstallation.
+Do not manually copy modules between `/bootbank` and `/altbootbank`, rewrite `boot.cfg`, or repoint bootbank symlinks as an improvised rollback. Those files form a coordinated image and state set. Make such changes only when an exact Broadcom procedure for the diagnosed fault, or Broadcom Support, directs them; otherwise manual surgery can turn a recoverable host into one that requires reinstallation.
 
 ## Know What Rollback Can and Cannot Do
 
@@ -50,16 +50,16 @@ grep -E '^(title|build|updated)=' /bootbank/boot.cfg
 grep -E '^(title|build|updated)=' /altbootbank/boot.cfg
 ```
 
-A useful rollback candidate has a different, known-good build in `/altbootbank`. Compare that value with the failed current build and your change record. Also capture the active software profile:
+For a failed base-image patch, a useful rollback candidate normally has a different, known-good `build=` value in `/altbootbank`. For a VIB-only change, however, both banks can have the same base build while containing different VIB states. The `updated=` value indicates update order, not the installed VIB contents, so confirm a same-build target from the exact change history. Also capture the active software profile:
 
 ```bash
 vmware -vl
 esxcli software profile get
 ```
 
-If both `boot.cfg` files report the same build, `Shift+R` cannot recover an older image. Broadcom explains that another installation or reboot-requiring VIB change can consume the one-generation rollback window.
+If both `boot.cfg` files report the same `build=`, `Shift+R` cannot recover an earlier ESXi base build; do not infer that the banks are identical from `build=` alone. Broadcom explains that another installation or reboot-requiring VIB change can consume the one-generation rollback window.
 
-If `/bootbank` or `/altbootbank` points to `/tmp`, is empty, cannot be read, or the boot device reports I/O errors, treat that as boot-media corruption. Do not populate it by copying the other directory. Preserve evidence and plan a supported reinstall on healthy media.
+If `/bootbank` or `/altbootbank` points to `/tmp`, is empty, cannot be read, or the boot device reports I/O errors, do not treat it as a valid rollback target. A `/tmp` target means the persistent bootbank was not mounted; possible causes include boot-device or path failure, delayed device discovery, a disabled driver, a boot controller in passthrough mode, and stateless deployment. Diagnose the cause with the version-specific Broadcom procedure, and do not populate a bank by copying the other directory ad hoc. Reinstall on healthy media if a valid bank cannot be recovered.
 
 ## Invoke Recovery Mode
 
