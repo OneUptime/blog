@@ -26,10 +26,10 @@ First capture logs without restarting the workload:
 docker logs --since 30m qdrant 2>&1 | grep -i 'too many open files'
 ```
 
-For Kubernetes:
+For Kubernetes, the examples assume that the Qdrant container is named `qdrant`; substitute its actual name if it differs:
 
 ```bash
-kubectl logs -n vector-db qdrant-0 --since=30m | grep -i 'too many open files'
+kubectl logs -n vector-db qdrant-0 -c qdrant --since=30m | grep -i 'too many open files'
 kubectl describe pod -n vector-db qdrant-0
 ```
 
@@ -37,30 +37,50 @@ Inspect the limit and current descriptor count inside the same container that ru
 
 ```bash
 docker exec qdrant sh -c '
-  grep "Max open files" /proc/1/limits
+  qdrant_pid=
+  for proc in /proc/[0-9]*; do
+    [ "$(cat "$proc/comm" 2>/dev/null)" = qdrant ] || continue
+    qdrant_pid=${proc##*/}
+    break
+  done
+  [ -n "$qdrant_pid" ] || {
+    echo "Qdrant process not found" >&2
+    exit 1
+  }
+  grep "Max open files" "/proc/$qdrant_pid/limits"
   printf "Open descriptors: "
-  ls -1 /proc/1/fd 2>/dev/null | wc -l
+  ls -1 "/proc/$qdrant_pid/fd" 2>/dev/null | wc -l
 '
 ```
 
 ```bash
-kubectl exec -n vector-db qdrant-0 -- sh -c '
-  grep "Max open files" /proc/1/limits
+kubectl exec -n vector-db qdrant-0 -c qdrant -- sh -c '
+  qdrant_pid=
+  for proc in /proc/[0-9]*; do
+    [ "$(cat "$proc/comm" 2>/dev/null)" = qdrant ] || continue
+    qdrant_pid=${proc##*/}
+    break
+  done
+  [ -n "$qdrant_pid" ] || {
+    echo "Qdrant process not found" >&2
+    exit 1
+  }
+  grep "Max open files" "/proc/$qdrant_pid/limits"
   printf "Open descriptors: "
-  ls -1 /proc/1/fd 2>/dev/null | wc -l
+  ls -1 "/proc/$qdrant_pid/fd" 2>/dev/null | wc -l
 '
 ```
 
-The official Qdrant image normally runs Qdrant as PID 1. If an organization-specific image uses a supervisor or wrapper as PID 1, find the Qdrant PID and inspect that process's `/proc/<pid>/limits` and `/proc/<pid>/fd` instead.
+The official Qdrant image runs an entrypoint script as PID 1 and starts the Qdrant server as a child, which is why these commands locate the server process first. Locating the PID also handles a custom supervisor or a Kubernetes Pod with a shared process namespace. If a custom image changes the binary's process name, identify the exact Qdrant PID and inspect that process's `/proc/<pid>/limits` and `/proc/<pid>/fd`.
 
-On Qdrant 1.16 or later, the metrics endpoint exposes the same capacity trend directly:
+On Qdrant 1.16 or later, the metrics endpoint exposes the same capacity trend directly. Run this where `127.0.0.1:6333` reaches that Qdrant node, such as the Docker host with the port published or after a Kubernetes port-forward:
 
 ```bash
-curl -s http://127.0.0.1:6333/metrics \
+curl -fsS http://127.0.0.1:6333/metrics \
   | grep -E '^process_(open|max)_fds '
 ```
 
-Compare `process_open_fds` with `process_max_fds`. Alert on shrinking headroom rather than waiting for equality. Also confirm the problem is per-process exhaustion and not a broader node-wide failure before changing limits.
+If Qdrant authentication is enabled, include an `api-key` or Bearer authorization header. The metric names above assume the default empty `service.metrics_prefix`; match the configured prefix if one is set. Compare `process_open_fds` with `process_max_fds`. Alert on shrinking headroom rather than waiting for equality. Also confirm the problem is per-process exhaustion and not a broader node-wide failure before changing limits.
 
 ## Record the Deployment Before Replacing Anything
 
@@ -70,7 +90,7 @@ Before remediation, record:
 - every volume and its mount path;
 - environment variables, mounted configuration, ports, networks, API keys, and cluster peer settings;
 - collection and cluster health;
-- a current snapshot or another tested recovery path;
+- a current snapshot stored outside the workload's ephemeral filesystem, or another tested recovery path;
 - replication factor and the effect of restarting one node.
 
 Never “fix” this error by deleting segment files or the storage volume. Qdrant manages segment lifecycle and the optimizer merges segments safely in the background.
@@ -110,13 +130,13 @@ services:
         hard: 10000
 ```
 
-Recreate only the Qdrant service, then inspect `/proc/1/limits` in the new container. Editing Compose without recreating the container does not change the already-running process.
+Recreate only the Qdrant service, then rerun the earlier PID-aware limit check in the new container. Editing Compose without recreating the container does not change the already-running process.
 
 The value 10,000 is Qdrant's documented example, not a universal capacity formula. Choose a controlled limit that exceeds observed demand with operational headroom and remains acceptable for the host. An unnecessarily unbounded limit can hide abnormal growth and consume node resources.
 
 ## Fix a Kubernetes Pod
 
-The stable Kubernetes Pod API historically has not offered a portable per-container `ulimit` field. Kubernetes enhancement KEP-5758 proposes such a field and targets an alpha feature for Kubernetes 1.37. Alpha availability depends on the exact Kubernetes release, feature gate, CRI, and container runtime; do not paste an alpha `securityContext.ulimits` example into a cluster that does not explicitly support it.
+Kubernetes 1.37 and earlier do not offer a per-container `ulimit` field in the Pod API. Kubernetes enhancement KEP-5758 proposes `spec.containers[*].securityContext.ulimits`, but it did not ship in Kubernetes 1.37 and remains unreleased. The proposal uses the `ContainerUlimits` feature gate on the API server and kubelet and requires CRI and container-runtime support; do not use the proposed field unless a later Kubernetes release and its runtime explicitly document support.
 
 For clusters without the supported feature, use the platform-approved mechanism that sets the limit inherited by the container process. Depending on the managed service and runtime, that can mean:
 
@@ -125,18 +145,31 @@ For clusters without the supported feature, use the platform-approved mechanism 
 - moving Qdrant to a dedicated node pool or platform that exposes supported runtime limits;
 - asking the managed Kubernetes provider to change the runtime limit.
 
-Do not claim success because an init container prints a larger `ulimit -n`: resource limits are inherited by child processes, and the Qdrant container is not a child of the init-container shell. Likewise, Pod `resources.limits`, `securityContext`, and sysctls serve different purposes unless the exact Kubernetes version implements the ulimits feature.
+Do not claim success because an init container prints a larger `ulimit -n`: resource limits are inherited by child processes, and the Qdrant container is not a child of the init-container shell. Likewise, Pod `resources.limits`, existing `securityContext` fields, and sysctls serve different purposes; none sets `RLIMIT_NOFILE` in Kubernetes 1.37 or earlier.
 
-After changing the node/runtime or approved wrapper configuration, roll the StatefulSet in a maintenance window. A replicated cluster should replace and verify one Qdrant Pod at a time. A single-replica deployment has downtime and no redundant copy during the restart, so take a snapshot first.
+After changing the node/runtime or approved wrapper configuration, roll the StatefulSet in a maintenance window. If every collection has a replication factor of at least 2 and its replicas are healthy, replace and verify one Qdrant Pod at a time. A single-node deployment or a collection with replication factor 1 can have downtime when a node hosting one of its shards restarts, so create and export all required node-local snapshots or another usable backup before restarting.
+
+The automatic commands below assume `updateStrategy: RollingUpdate`, partition `0`, `maxUnavailable: 1`, and an effective readiness probe. Confirm those settings first. `OnDelete` requires manual Pod deletion, while `maxUnavailable` greater than 1 or the alpha `Recreate` strategy can replace more than one Pod at once.
 
 ```bash
 kubectl rollout restart -n vector-db statefulset/qdrant
 kubectl rollout status -n vector-db statefulset/qdrant
-kubectl exec -n vector-db qdrant-0 -- \
-  sh -c 'grep "Max open files" /proc/1/limits'
+kubectl exec -n vector-db qdrant-0 -c qdrant -- sh -c '
+  qdrant_pid=
+  for proc in /proc/[0-9]*; do
+    [ "$(cat "$proc/comm" 2>/dev/null)" = qdrant ] || continue
+    qdrant_pid=${proc##*/}
+    break
+  done
+  [ -n "$qdrant_pid" ] || {
+    echo "Qdrant process not found" >&2
+    exit 1
+  }
+  grep "Max open files" "/proc/$qdrant_pid/limits"
+'
 ```
 
-If the official Helm chart is used, keep the change in the platform's declarative node/runtime configuration or a reviewed chart override so that upgrades and rescheduling do not silently restore the old limit. The community Helm chart itself does not make a runtime-specific workaround portable.
+The Qdrant Helm chart since chart version `qdrant-1.15.0` already runs `ulimit -n "$(ulimit -Hn)"` in its `initialize.sh`, raising the soft limit to the hard limit inherited by the container. Verify that this wrapper has not been bypassed and inspect the actual Qdrant process. If the inherited hard limit is still too low, the chart cannot raise the soft limit beyond it; use the node, runtime, or provider mechanism described above and keep that change declarative.
 
 ## Investigate Why Descriptor Use Is High
 
@@ -174,16 +207,19 @@ Do not roll back to the exhausted limit while traffic is unchanged. Either keep 
 
 ## Limitations and Version Scope
 
-The Qdrant FD metrics named here are available in Qdrant 1.16 and later. Container ulimit support in Kubernetes is version- and runtime-sensitive; KEP-5758 is an alpha-track enhancement rather than a generally portable assumption. Confirm the exact Kubernetes and CRI documentation for the deployed version. Qdrant Cloud customers do not manage container limits directly and should use Qdrant Cloud monitoring and support.
+The Qdrant FD metrics named here are available in Qdrant 1.16 and later. KEP-5758 remains unreleased as of Kubernetes 1.37; confirm the Kubernetes, CRI, and runtime documentation before using any future implementation. Qdrant Cloud customers do not manage container limits directly and should use Qdrant Cloud monitoring and support.
 
 ## Official Documentation
 
-- [Qdrant troubleshooting: Too many files open](https://qdrant.tech/documentation/operations/common-errors/)
-- [Qdrant monitoring metrics](https://qdrant.tech/documentation/operations/monitoring/)
+- [Qdrant troubleshooting: Too many files open](https://qdrant.tech/documentation/common-errors/)
+- [Qdrant monitoring metrics](https://qdrant.tech/documentation/ops-monitoring/monitoring/)
 - [Qdrant installation and persistent-storage requirements](https://qdrant.tech/documentation/installation/)
-- [Qdrant optimizer and segment merging](https://qdrant.tech/documentation/operations/optimizer/)
+- [Qdrant optimizer and segment merging](https://qdrant.tech/documentation/ops-optimization/optimizer/)
+- [Qdrant snapshots](https://qdrant.tech/documentation/operations/snapshots/)
 - [Qdrant upgrade and rolling-restart guidance](https://qdrant.tech/documentation/upgrades/)
+- [Qdrant Helm chart startup wrapper](https://github.com/qdrant/qdrant-helm/blob/main/charts/qdrant/templates/configmap.yaml)
 - [Kubernetes KEP-5758: Per-container ulimits configuration](https://github.com/kubernetes/enhancements/tree/master/keps/sig-node/5758-per-container-ulimits-configuration)
+- [Kubernetes v1.37 release notes](https://kubernetes.io/blog/2026/08/26/kubernetes-v1-37-release/)
 - [Docker Compose service `ulimits`](https://docs.docker.com/reference/compose-file/services/#ulimits)
 
 ## Conclusion
