@@ -29,7 +29,6 @@
 
 ## ESXi
 
-5. How to Replace an ESXi Host Certificate with an External CA Certificate in vSphere 8.0 U3+
 6. How to Configure ESXi Remote Syslog over TLS and Verify Log Delivery
 7. How to Persist ESXi Logs and Scratch Data on Hosts That Boot from USB or SD Card
 8. How to Fix an ESXi `vm-support` Bundle That Contains an Empty `/var/run/logs` Directory
