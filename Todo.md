@@ -124,7 +124,6 @@
 
 ## Qdrant
 
-17. How to Enforce Tenant Isolation in Qdrant with JWT RBAC Payload Filters
 18. How to Choose Qdrant Shard, Replication, and Write-Consistency Settings
 
 ## SLOs
