@@ -22,7 +22,7 @@ The simplest supported procedure is an offline clone:
 4. Identify the source disk and its controller from **Edit Settings**.
 5. Estimate destination capacity and growth headroom.
 
-Broadcom's general `vmkfstools` cloning procedure requires the VM to be shut down because an in-use virtual disk is locked. Broadcom also documents a separate snapshot-based procedure for a crash-consistent copy of one disk from a running VM. Use that only when downtime is impossible and its crash-consistency semantics are acceptable.
+Broadcom's general `vmkfstools` cloning procedure requires the VM to be shut down because an in-use virtual disk is locked. Broadcom also documents, for ESXi and vCenter 8.x, a separate snapshot-based procedure for a crash-consistent copy of one dependent disk from a running VM. In that workflow, the target disk is on its base before the temporary snapshot; create the snapshot to redirect writes, then clone the now-unlocked base descriptor, not the new active snapshot leaf. Use that only when downtime is impossible and its crash-consistency semantics are acceptable.
 
 ## Select the Descriptor, Not the Data Extent
 
@@ -55,17 +55,19 @@ The VMX identifies the disk descriptor currently attached to each virtual contro
 
 If the VM has no snapshots and is powered off, the source is normally the base descriptor, for example `app01.vmdk`.
 
-If snapshots exist, the active state is represented by the latest descriptor in that disk's chain, such as `app01-000003.vmdk`. Broadcom explicitly warns that selecting the base descriptor in this case creates an outdated clone. Use the descriptor corresponding to the current snapshot leaf, not simply the lexically highest filename across unrelated disks.
+For an offline clone, if snapshots exist, the active state is represented by the latest descriptor in that disk's chain, such as `app01-000003.vmdk`. Broadcom explicitly warns that selecting the base descriptor in this case creates an outdated clone. Use the descriptor corresponding to the current snapshot leaf, not simply the lexically highest filename across unrelated disks.
 
 Prefer consolidating or deleting snapshots through vSphere before the offline clone when the snapshot chain is healthy and the change window permits it. If you must clone a snapshot state, map the correct disk chain first and preserve all evidence. A guessed snapshot number is not a recovery procedure.
 
 ## Create a Destination Directory
 
-Choose a datastore visible to the ESXi host and create a new, empty directory:
+For a VMFS or NFS datastore visible to the ESXi host, create a new, empty directory:
 
 ```bash
 mkdir '/vmfs/volumes/DESTINATION_DATASTORE/app01-clone'
 ```
+
+For a vSAN destination, create a namespace through the vSphere datastore browser or with Broadcom's documented `osfs-mkdir` utility; plain `mkdir` at the vSAN datastore root is not supported.
 
 Use full paths and unique destination filenames. Ensure the destination can hold the currently allocated source data plus clone overhead and expected growth. Thin provisioning avoids preallocating the full logical capacity, but it does not compress used blocks and it does not make datastore overcommit safe.
 
@@ -80,7 +82,7 @@ vmkfstools -i \
   -d thin
 ```
 
-For an intentionally selected current snapshot leaf:
+For an intentionally selected current snapshot leaf on a powered-off VM:
 
 ```bash
 vmkfstools -i \
@@ -91,7 +93,7 @@ vmkfstools -i \
 
 `vmkfstools` follows the descriptor chain and creates a standalone destination disk representing that selected state. The output should reach `Clone: 100% done` without an error.
 
-Broadcom's current KB notes that VMDKs on vSAN require the documented `-W vsan` option. Confirm the exact source and destination datastore type and follow the vSAN-specific syntax for the installed ESXi release rather than adding that option to every VMFS or NFS clone.
+When the destination is vSAN, use the documented `-W vsan` option. Omit it when the destination is VMFS or NFS, including when the source is vSAN, and confirm the release-specific syntax for the installed ESXi version.
 
 ## Do Not Use `cp` as a VMDK Conversion Tool
 
@@ -101,7 +103,7 @@ Commands such as this are unsafe as a general cloning method:
 cp app01-flat.vmdk app01-clone-flat.vmdk
 ```
 
-They bypass descriptor-chain interpretation and do not explicitly create a supported destination disk format. Copying only a descriptor produces no usable data disk; copying only an extent produces no valid standalone descriptor. A sparse-aware filesystem copy also cannot decide which snapshot point the VM actually uses.
+They bypass descriptor-chain interpretation and do not explicitly create a supported destination disk format. Copying only a descriptor does not copy the disk data or create an independent disk; copying only an extent produces no valid standalone descriptor. A sparse-aware filesystem copy also cannot decide which snapshot point the VM actually uses.
 
 Use datastore-aware vSphere operations or `vmkfstools` for virtual disk cloning and conversion.
 
@@ -113,19 +115,19 @@ Inspect the new files:
 cd '/vmfs/volumes/DESTINATION_DATASTORE/app01-clone'
 
 ls -lah
-grep -n -E '^(createType|RW |ddb\.adapterType)' 'app01-clone.vmdk'
+grep -n -E '^(createType|RW |ddb\.(adapterType|thinProvisioned))' 'app01-clone.vmdk'
 ```
 
-The descriptor should identify a supported thin VMFS disk type on VMFS, and the virtual extent should have the intended logical sector count. Confirm in the datastore and VM UI that the provisioned capacity is the original logical size while consumed capacity reflects allocated data rather than the entire logical disk.
+For a thin VMFS destination, the descriptor should normally contain `createType="vmfs"`, an `RW ... VMFS` extent, and `ddb.thinProvisioned = "1"`; `createType="vmfs"` alone does not distinguish thin from thick. The virtual extent should have the intended logical sector count. Confirm in the datastore and VM UI that the provisioned capacity is the original logical size while consumed capacity reflects the blocks copied into the thin destination. A fully allocated source can still produce a thin destination whose consumed capacity equals its provisioned capacity.
 
 Then create an isolated test VM or add the disk as **Existing Hard Disk** to the intended powered-off VM. Before power-on:
 
-- match the original virtual SCSI controller type;
+- match the original virtual disk controller type unless you have verified that the guest supports the chosen alternative;
 - avoid connecting a cloned boot disk to the same networked identity as the source;
 - verify the expected partition table and filesystem from an isolated recovery environment;
 - retain the source disk and backup unchanged.
 
-Broadcom notes that a clone workflow can result in an LSI controller choice even when the source VM used VMware Paravirtual. The disk's attachment controller in the VM must match what the guest can boot and what the source used.
+Broadcom notes that cloned descriptor metadata can show LSI even when the source VM used VMware Paravirtual. The actual virtual SCSI controller is configured in **Edit Settings** or by `scsi#.virtualDev` in the VMX; use the source type or another type for which the guest has a boot driver. `ddb.adapterType` is deprecated legacy metadata and is not the authoritative VM controller setting.
 
 ## Understand What Was Not Cloned
 
@@ -148,7 +150,7 @@ If a live snapshot was created solely for cloning, remove it through Snapshot Ma
 ## Official Documentation
 
 - [Broadcom KB 343140: cloning and converting virtual disks with vmkfstools](https://knowledge.broadcom.com/external/article/343140/cloning-and-converting-virtual-machine-d.html)
-- [Broadcom KB 309366: clone a virtual disk and preserve a thin destination](https://knowledge.broadcom.com/external/article/309366)
+- [Broadcom KB 309366: verifying a snapshot chain and cloning a virtual disk from snapshots](https://knowledge.broadcom.com/external/article/309366)
 - [Broadcom KB 418614: clone one dependent VMDK from a running VM](https://knowledge.broadcom.com/external/article/418614/cloning-a-single-dependent-vmdk-from-a-r.html)
 - [Broadcom KB 308992: supported ESXi virtual disk formats](https://knowledge.broadcom.com/external/article/308992/types-of-supported-virtual-disks-on-esxi.html)
 
