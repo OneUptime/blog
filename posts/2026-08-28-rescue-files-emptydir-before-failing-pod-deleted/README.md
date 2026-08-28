@@ -54,7 +54,7 @@ If any existing container mounts the volume and stays running long enough, use i
 
 ```bash
 kubectl exec -n "$namespace" "$pod" -c "$container" -- \
-  sh -c 'du -sh /work; find /work -maxdepth 2 -type f | head -n 100'
+  sh -c 'du -sh "$1"; find "$1" -maxdepth 2 -type f | head -n 100' sh "$mount"
 ```
 
 For a small, ordinary directory, `kubectl cp` is convenient:
@@ -71,13 +71,13 @@ kubectl exec -n "$namespace" "$pod" -c "$container" -- \
   tar -C "$mount" -cf - . > "rescue-$pod.tar"
 ```
 
-Do not add `-t`; terminal allocation can alter a binary stream. Files that are actively being written can produce an inconsistent archive. If the application provides a safe quiesce or checkpoint operation, use it first. Otherwise record that the result is a crash-consistent best effort.
+Do not add `-t`; terminal allocation can alter a binary stream. Files that are actively being written can produce an inconsistent archive. If the application provides a safe quiesce or checkpoint operation, use it first. Otherwise record that the result is a best-effort live copy that may be inconsistent.
 
 ## Add an Ephemeral Container with the Volume Mounted
 
 When the application container is crash-looping or has no shell or `tar`, an ephemeral container can help because it runs inside the existing Pod. However, a basic `kubectl debug` container does not automatically mount application volumes—the official example shows `Mounts: <none>`.
 
-With a current `kubectl` that supports custom debug profiles, create a partial container specification that explicitly mounts the existing volume read-only:
+With `kubectl` 1.32 or later, which supports stable custom debug profiles, create a partial container specification that explicitly mounts the existing volume read-only:
 
 ```yaml
 # emptydir-rescuer.yaml
@@ -87,16 +87,17 @@ volumeMounts:
     readOnly: true
 ```
 
-The `name` must exactly match the `emptyDir` entry in the original Pod. Add the debug container using an image approved by your organization that contains `sh` and `tar`:
+The `name` must exactly match the `emptyDir` entry in the original Pod. Set `debug_image` to the full reference for an image approved by your organization that contains `sh` and `tar`, then add the debug container. The `baseline` profile avoids requesting debugging capabilities that this file-recovery procedure does not need:
 
 ```bash
 kubectl debug "$pod" -n "$namespace" -it \
-  --image=<approved-debug-image> \
+  --image="$debug_image" \
   --container=emptydir-rescuer \
+  --profile=baseline \
   --custom=emptydir-rescuer.yaml -- sh
 ```
 
-Inside the debug container, verify that `/rescue` contains the expected files and exit. Then stream the archive from that named container:
+Inside the debug container, verify that `/rescue` contains the expected files and leave the shell running. From another terminal, stream the archive from that named container and validate it. Exit the debug shell only after validation succeeds:
 
 ```bash
 kubectl exec -n "$namespace" "$pod" -c emptydir-rescuer -- \
@@ -105,8 +106,8 @@ kubectl exec -n "$namespace" "$pod" -c emptydir-rescuer -- \
 
 Important constraints apply:
 
-- Ephemeral containers are stable from Kubernetes 1.25, but the client and API server must support the fields and `kubectl debug` options used here.
-- The caller needs permission to update the Pod's `ephemeralcontainers` subresource and to exec into the container.
+- Ephemeral containers are stable from Kubernetes 1.25, and custom debug profiles are stable from `kubectl` 1.32. Use client and API server versions within the supported version skew.
+- The caller needs `get`, `list`, and `watch` on Pods, `patch` on `pods/ephemeralcontainers`, and `create` on `pods/attach` and `pods/exec` for the commands shown here.
 - Pod Security admission, image policy, volume permissions, SELinux, and the Pod security context still apply. Do not bypass them for convenience.
 - Ephemeral containers are never restarted automatically and cannot be changed or removed after being added.
 - Static Pods do not support ephemeral containers.
@@ -123,15 +124,23 @@ The volume identity is tied to the original Pod UID, not merely the Pod name, no
 
 If the API server cannot reach the kubelet or no allowed container can access the volume, recovery becomes a node-level forensic task. Escalate immediately to the node operator while preserving the original Pod and node.
 
-Kubelet and container-runtime storage paths are implementation details, and a node-debug Pod cannot run on an unreachable node. Do not restart the kubelet, drain the node, delete the Pod, or copy arbitrary directories from `/var/lib/kubelet` without the cluster distribution's supported procedure. Those actions can unmount or remove the remaining data.
+Kubelet and container-runtime storage paths are implementation details, and a node-debug Pod cannot run on an unreachable node. Do not drain the node or delete the Pod; those actions can unmount or remove the remaining data. Avoid restarting the kubelet or directly inspecting or copying paths such as `/var/lib/kubelet` unless the cluster distribution's supported forensic procedure calls for it.
 
 Node-level access still does not guarantee recovery. If the node or backing device has failed, an `emptyDir` has no attachable persistent-volume replica for Kubernetes to move elsewhere.
 
 ## Validate the Rescued Data
 
-Before allowing cleanup, inspect and hash the local artifact:
+Before allowing cleanup, inspect and hash the local artifact. If you streamed an archive, run:
 
 ```bash
+tar -tf "rescue-$pod.tar" | head -n 100
+sha256sum "rescue-$pod.tar"
+```
+
+If you used `kubectl cp`, first package the copied directory, then run the same archive checks:
+
+```bash
+tar -C "rescue-$pod" -cf "rescue-$pod.tar" .
 tar -tf "rescue-$pod.tar" | head -n 100
 sha256sum "rescue-$pod.tar"
 ```
@@ -147,7 +156,7 @@ If data matters after Pod deletion, `emptyDir` is the wrong sole storage locatio
 - write authoritative results to object storage, a database, or a persistent volume;
 - continuously upload checkpoints from a sidecar instead of waiting for termination;
 - expose a controlled diagnostic export endpoint;
-- use a generic ephemeral PVC when CSI snapshots or clones during the Pod lifetime are useful, while remembering that its claim is still deleted with the Pod;
+- use a generic ephemeral volume when CSI snapshots or clones during the Pod lifetime are useful, while remembering that its generated claim is still deleted with the Pod;
 - use an ordinary PVC when data must outlive the Pod.
 
 A `preStop` hook is only best-effort within the Pod's termination grace period. It does not run successfully in every node failure or force-deletion scenario, so it cannot be the only backup mechanism.
