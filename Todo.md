@@ -29,7 +29,6 @@
 
 ## ESXi
 
-2. How to Diagnose ESXi `No Space Left on Device` Errors in Ramdisks When VMFS Has Free Space
 3. How to Resolve ESXi `MissingComponentError` Without Removing Required OEM Drivers
 4. How to Verify ESXi `bootbank` and `altbootbank` Health Before an Upgrade
 5. How to Replace an ESXi Host Certificate with an External CA Certificate in vSphere 8.0 U3+
