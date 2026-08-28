@@ -19,10 +19,11 @@ This guide applies to vCenter Server and ESXi 8.0 Update 3 or later using the vS
 Prepare the change as a PKI rollout:
 
 - Confirm vCenter Server and the target host are on a supported 8.0 U3-or-later build.
-- Verify forward and reverse DNS for the exact ESXi FQDN used in vCenter. Broadcom documents import failure when the certificate identity does not match the host FQDN.
+- Verify that the host is stored in vCenter by its exact ESXi FQDN and that forward and reverse DNS resolve it correctly. Broadcom requires the certificate CN and SAN to match the host name or IP address recorded in inventory and documents import failure when they do not.
 - Confirm correct NTP time on vCenter, ESXi, the CA, and the validation workstation.
 - Obtain the enterprise root and every issuing intermediate CA certificate in Base-64 PEM form.
-- Confirm the CA template supports TLS server authentication and your organization's approved key size, signature algorithm, and lifetime. vSphere 8 rejects weak SHA-1 certificate signatures in supported security contexts.
+- Confirm the CA template preserves the ESXi-generated RSA public key and requested CN and DNS SAN, and issues an X.509 v3 certificate with Digital Signature and Key Encipherment. Use a supported RSA PKCS#1 v1.5 SHA-2 signature such as `sha256WithRSAEncryption`, not RSASSA-PSS, set the certificate start time one day before the replacement, use your organization's approved lifetime, and ensure that no certificate in the returned chain uses SHA-1.
+- Confirm the issued certificate is valid for TLS Web Server Authentication. If the host uses vSAN, vVol/VASA, or another integration in which ESXi authenticates as a TLS client, include TLS Web Client Authentication as well and follow that product's certificate guidance.
 - Back up vCenter Server according to the deployment topology and record the current ESXi certificate details.
 - Test one noncritical host first and keep out-of-band console access available in case trust or identity errors disconnect it.
 
@@ -38,7 +39,7 @@ From a trusted administrative workstation, capture what the live endpoint presen
 openssl s_client -connect esxi01.example.com:443 -servername esxi01.example.com </dev/null 2>/dev/null | openssl x509 -noout -subject -issuer -serial -dates -fingerprint -sha256 -ext subjectAltName
 ```
 
-Use the FQDN rather than an IP address unless the future certificate intentionally contains that IP address as a subject alternative name.
+Use the FQDN by which the host is stored in vCenter. If the host is stored by IP address, use Broadcom's corresponding **Generate CSR Using IP** workflow and ensure that both the certificate CN and SAN match that inventory IP.
 
 ## Trust the External CA in vCenter First
 
@@ -70,7 +71,7 @@ For the target host, open **Configure > System > Certificate**, select **Manage 
 
 Copy the complete PEM CSR, including its begin and end lines, into the approved CA enrollment workflow. Because ESXi generated this CSR, its private key remains associated with the pending request on the host.
 
-Before issuance, have the CA operator inspect the CSR and confirm the requested FQDN. Issue a TLS server certificate from the intended template using a SHA-2-family signature. Download the signed host certificate in Base-64 encoded form. Broadcom's step-by-step Microsoft CA example specifically selects the issued certificate rather than the downloaded certificate-chain bundle for this ESXi-generated-CSR import path.
+Before issuance, have the CA operator inspect the CSR and confirm the requested FQDN. Issue a TLS server certificate from the intended template and verify that the returned certificate meets the requirements above. Download the signed host certificate in Base-64 encoded form. Broadcom's step-by-step Microsoft CA example specifically selects the issued certificate rather than the downloaded certificate-chain bundle for this ESXi-generated-CSR import path.
 
 Do not generate a second CSR after the CA signs the first one. A certificate issued from one CSR will not match the private key associated with another pending request.
 
@@ -87,10 +88,10 @@ The alternate option for a CSR and key generated outside ESXi requires uploading
 
 ## Verify Trust and the Live Endpoint
 
-Refresh **Configure > System > Certificate** and confirm the new serial, issuer, dates, and fingerprint. Then repeat the live handshake from a workstation whose trust store contains the enterprise root and intermediates:
+Refresh **Configure > System > Certificate** and confirm the new serial, issuer, dates, and fingerprint. Then repeat the live handshake from a workstation whose OpenSSL trust store contains the enterprise root and intermediates:
 
 ```bash
-openssl s_client -connect esxi01.example.com:443 -servername esxi01.example.com -verify_return_error </dev/null
+openssl s_client -connect esxi01.example.com:443 -servername esxi01.example.com -verify_hostname esxi01.example.com -verify_return_error </dev/null
 ```
 
 Inspect the presented leaf again:
@@ -102,7 +103,7 @@ openssl s_client -connect esxi01.example.com:443 -servername esxi01.example.com 
 Completion requires all of the following:
 
 - the live SHA-256 fingerprint matches the newly issued certificate;
-- the SAN contains the FQDN used by vCenter and administrators;
+- the certificate CN and DNS SAN match the FQDN by which the host is stored in vCenter;
 - the current time falls within the validity interval;
 - chain validation succeeds from vCenter and representative clients;
 - the host remains connected and manageable in vCenter;
@@ -118,23 +119,26 @@ Keep the old certificate fingerprint, CA chain, vCenter backup, and console-acce
 
 ## Rollback and Recovery Cautions
 
-Changing `vpxd.certmgmt.mode` back to `vmca` and renewing a host certificate is a change of certificate architecture: Broadcom warns that a VMCA renewal overwrites a custom host certificate. Use that only as an approved rollback for the inventory, after assessing every custom-certified host.
+Do not treat changing `vpxd.certmgmt.mode` back to `vmca` and renewing a host certificate as a simple per-host rollback. Broadcom's documented custom-CA-to-VMCA mode-switch workflow removes all hosts from vCenter, removes the third-party CA root from VECS, changes the mode to `vmca`, and then adds the hosts back; it warns that other workflows can produce unpredictable behavior. Plan that as an inventory-wide certificate-architecture migration, and assess all dependencies before removing a trust root. A later VMCA renewal overwrites a custom host certificate.
 
-If the host disconnects, first check FQDN identity, time, and whether the full issuing chain exists in vCenter's trusted store. Use **Connection > Reconnect** after correcting trust. Avoid thumbprint mode as a permanent bypass; current Broadcom guidance treats it only as a troubleshooting fallback, not a supported end state for normal certificate management.
+If the host disconnects, first check FQDN identity, time, and whether the full issuing chain exists in vCenter's trusted store. Use **Connection > Reconnect** after correcting trust. Avoid thumbprint mode as a permanent bypass; vCenter 8.x marks it deprecated, it bypasses CA validity checks, and Broadcom recommends it only as a temporary troubleshooting fallback.
 
 ## Limitations and Version Scope
 
-The in-client ESXi external-CA workflow is available in vCenter 8.0 U3 and later; Broadcom KB 409674 confirms it is absent in 8.0 U2 and earlier. Button names can vary by patch. Custom certificate behavior in vSAN, NSX, VCF, Enhanced Linked Mode, and third-party integrations can add trust requirements, so validate those products before an inventory-wide rollout.
+The in-client ESXi external-CA workflow is available in vCenter 8.0 U3 and later; Broadcom KB 409674 confirms it is absent in 8.0 U2 and earlier. Button names can vary by patch. For a host in a vSAN cluster, Broadcom directs administrators to the separate vSAN-capable procedure in KB 317244 (legacy KB 56441) instead of relying solely on this generic UI workflow. Custom certificate behavior in NSX, VCF, Enhanced Linked Mode, and third-party integrations can add trust and certificate-usage requirements, so validate those products before an inventory-wide rollout.
 
 ## Official Documentation
 
 - [Replace the default ESXi certificate using the vSphere Client](https://techdocs.broadcom.com/us/en/vmware-cis/vsphere/vsphere/8-0/vsphere-security/securing-esxi-hosts/certificate-management-for-esxi-hosts/replacing-esxi-certificatea-intro/replace-the-default-certificate-using-the-vsphere-client.html)
+- [Replacing the default ESXi certificate with a custom certificate: requirements](https://techdocs.broadcom.com/us/en/vmware-cis/vsphere/vsphere/8-0/vsphere-security/securing-esxi-hosts/certificate-management-for-esxi-hosts/replacing-esxi-certificatea-intro.html)
 - [Change the ESXi certificate mode](https://techdocs.broadcom.com/us/en/vmware-cis/vsphere/vsphere/8-0/vsphere-security/securing-esxi-hosts/certificate-management-for-esxi-hosts/change-the-certificate-mode.html)
+- [ESXi certificate mode switch workflows](https://techdocs.broadcom.com/us/en/vmware-cis/vsphere/vsphere/8-0/vsphere-security/securing-esxi-hosts/certificate-management-for-esxi-hosts/certificate-mode-switches.html)
 - [Step-by-step ESXi custom certificate replacement (Broadcom KB 410036)](https://knowledge.broadcom.com/external/article/410036/replacing-the-esxi-custom-certificate-fr.html)
 - [External-CA controls are disabled until custom mode is set (Broadcom KB 383320)](https://knowledge.broadcom.com/external/article/383320/unable-to-generate-a-csr-to-replace-cust.html)
 - [Generate an ESXi CSR with custom parameters (Broadcom KB 390630)](https://knowledge.broadcom.com/external/article/390630)
 - [Add a trusted root certificate to vCenter (Broadcom KB 384966)](https://knowledge.broadcom.com/external/article/384966)
 - [ESXi certificate FQDN mismatch (Broadcom KB 397317)](https://knowledge.broadcom.com/external/article/397317/importing-custom-ssl-certificate-on-the.html)
+- [Add a custom certificate to ESXi through the CLI, including vSAN use (Broadcom KB 317244)](https://knowledge.broadcom.com/external/article/317244)
 
 ## Conclusion
 
