@@ -29,7 +29,6 @@
 
 ## ESXi
 
-14. How to Trunk VLANs to an ESXi Guest Through a Standard-Switch Port Group with VLAN ID 4095
 15. How to Enable PCI Passthrough on ESXi and Diagnose Devices Stuck at `Needs Reboot`
 
 
