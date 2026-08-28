@@ -29,7 +29,6 @@
 
 ## ESXi
 
-13. How to Remount a Disconnected NFS 4.1 Datastore Without Rebooting ESXi
 14. How to Trunk VLANs to an ESXi Guest Through a Standard-Switch Port Group with VLAN ID 4095
 15. How to Enable PCI Passthrough on ESXi and Diagnose Devices Stuck at `Needs Reboot`
 
