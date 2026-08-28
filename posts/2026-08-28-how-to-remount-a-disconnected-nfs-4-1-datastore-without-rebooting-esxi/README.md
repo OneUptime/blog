@@ -10,7 +10,7 @@ Description: Recover an NFS 4.1 datastore that remains inaccessible by safely re
 
 An NFS 4.1 datastore can remain present in ESXi with `Accessible: false` and `Mounted: false` after a storage outage, network interruption, or failed boot-time mount. When the server and network are healthy again, simply re-adding the same server does not always refresh that stale mount state.
 
-Broadcom's documented recovery is to remove the disconnected NFS 4.1 mount from ESXi and add the same export again. Removing the mount does not delete files on the NFS server, but it is still a disruptive metadata operation: every VM, ISO, scratch location, backup job, and script using the datastore must be stopped or moved first.
+Broadcom's documented recovery is to remove the disconnected NFS 4.1 mount from ESXi and add the same export again. Removing the mount does not delete files on the NFS server, but it is still a disruptive metadata operation: every VM or template registered on this host must be relocated off the datastore or unregistered after any VM is powered off, and every ISO, scratch location, backup job, and script using the datastore must be disconnected, moved, or stopped first.
 
 This runbook covers ESXi 7.0.x and 8.0.x and uses the `nfs41` ESXCLI namespace. The similar `esxcli storage nfs` commands are for NFS version 3 and are not interchangeable.
 
@@ -21,7 +21,7 @@ Use this procedure when:
 - the NFS server and export are available again;
 - another host can reach the same export, or the storage team has verified it;
 - `esxcli storage nfs41 list` shows the target volume as inaccessible and unmounted;
-- there are no active consumers on this host;
+- there are no registered objects or active consumers on this host;
 - a stale mount, rather than missing data or a storage-side rollback, is the remaining problem.
 
 Do not remove the mount if its state is still `Accessible: true`, if VMs are running from it, or if you have not identified the exact server and export. If only one host is affected, compare it with a healthy host before changing anything.
@@ -39,8 +39,8 @@ For the affected row, record at least:
 - `Volume Name`;
 - every entry under `Host(s)`;
 - `Share`;
-- `Vmknics`;
-- `Connections`;
+- `Vmknics` and `Connections`, when those columns are present;
+- `Read-Only`;
 - `Security`;
 - `Accessible` and `Mounted`.
 
@@ -62,11 +62,13 @@ A remount will fail again until the cause of the disconnect is fixed. Verify:
 - the ESXi source address remains authorized by the export policy;
 - time and Kerberos dependencies are healthy when Kerberos is used.
 
-If the datastore uses a known VMkernel adapter, test the server through that source:
+If the datastore uses a known VMkernel adapter on the default TCP/IP stack, test the server through that source:
 
 ```bash
 vmkping -I vmk2 192.0.2.50
 ```
+
+If the adapter belongs to a non-default TCP/IP stack, also specify that stack with `-S <stack-name>`; otherwise, `vmkping` uses the default stack.
 
 Inspect recent NFS messages before clearing the state:
 
@@ -81,13 +83,13 @@ After a boot-time failure, also inspect `/var/run/log/boot.log`. Save logs befor
 
 Before unmounting, check vCenter and the host for:
 
-- powered-on, suspended, or registered VMs using the datastore;
+- powered-on, suspended, or registered VMs and templates using the datastore;
 - mounted VM or content-library ISO files;
 - host scratch, core-dump, syslog, or locker locations;
 - Storage DRS, HA heartbeat, replication, backup, monitoring, or third-party scripts;
 - open datastore-browser or shell sessions.
 
-Evacuate or stop those consumers according to their product procedures. A failed removal with `Unable to Unmount filesystem: Busy` is a safety signal. Do not keep retrying or jump to a force-removal command while an owner is unknown.
+Migrate VMs and templates off the datastore or, when they cannot be relocated, power off the VMs and unregister the remaining VMs and templates. Disconnect or reconfigure the other consumers according to their product procedures. Powering off a VM alone does not remove its registration. A failed removal with `Unable to Unmount filesystem: Busy` is a safety signal. Do not keep retrying or jump to a force-removal command while an owner is unknown.
 
 ## Remove the Disconnected NFS 4.1 Mount
 
@@ -113,7 +115,7 @@ If removal reports that the filesystem is busy, stop. Find and release the remai
 
 ## Re-add the Same Export
 
-For a single-server, unbound `AUTH_SYS` mount, use the Broadcom-documented form:
+For a single-server, unbound, read/write `AUTH_SYS` mount with the default connection count, use the Broadcom-documented form:
 
 ```bash
 esxcli storage nfs41 add \
@@ -122,7 +124,7 @@ esxcli storage nfs41 add \
   -v NFS41-Data
 ```
 
-On ESXi 8.0 Update 3 or later, if the recorded mount was bound to a specific VMkernel adapter, preserve that mapping with the documented `-I <server>:<vmk>` form instead:
+On ESXi 8.0 Update 3 or later, preserve a recorded VMkernel binding by replacing `-H` with the documented `-I <server>:<vmk>` form; this example keeps the other assumptions above:
 
 ```bash
 esxcli storage nfs41 add \
@@ -131,9 +133,9 @@ esxcli storage nfs41 add \
   -v NFS41-Data
 ```
 
-Use one form or the other according to the captured configuration. Do not silently change the datastore label, export path, security mode, endpoint set, binding, or connection count during an incident. A different label can leave VMs pointing to the old datastore identity, and a wrong export can expose unrelated data under a familiar-looking name.
+Use one form or the other according to the captured configuration. Do not silently change the datastore label, export path, access mode, security mode, endpoint set, binding, or connection count during an incident. A different label changes the local datastore path and can leave configuration or inventory references pointing to the old name, and a wrong export can expose unrelated data under a familiar-looking name.
 
-For Kerberos or a multi-endpoint NFS 4.1 mount, consult the current NFS datastore documentation and the storage vendor's procedure for the required ESXCLI parameters. The short examples above are not complete templates for those configurations.
+If the recorded mount was read-only, include the documented `-r` flag. For Kerberos, a multi-endpoint NFS 4.1 mount, or a non-default connection count, consult the current NFS datastore documentation and the storage vendor's procedure for the required ESXCLI parameters. The short examples above are not complete templates for those configurations.
 
 ## Verify Recovery Before Returning Workloads
 
@@ -144,15 +146,15 @@ esxcli storage nfs41 list
 esxcli storage filesystem list
 ```
 
-The intended NFS 4.1 row should show `Accessible: true` and `Mounted: true`, with the same server, share, security, and VMkernel mapping recorded before removal.
+The intended NFS 4.1 row should show `Accessible: true` and `Mounted: true`, with the same server, share, access mode, security, connection count, and VMkernel mapping recorded before removal.
 
 Then verify in the vSphere Client:
 
 1. Refresh **Storage > Datastores** and open the datastore browser.
 2. Confirm a known directory and file are present.
-3. Confirm previously registered VMs no longer show as inaccessible.
-4. If an inventory entry remains stale, refresh it before unregistering anything.
-5. Perform a controlled read/write test only if the change plan and storage owner allow it.
+3. Re-register any VMs or templates that were unregistered for the removal, then confirm that they no longer show as inaccessible.
+4. If a datastore or other inventory entry remains stale, refresh it before making further inventory changes.
+5. For a read/write datastore, perform a controlled read/write test only if the change plan and storage owner allow it.
 
 Monitor the logs while returning workloads:
 
@@ -181,11 +183,11 @@ Generate a support bundle before rebooting or making additional low-level change
 
 Broadcom documents an ESXi 8.x case where the NFS 4.1 mount is attempted before its physical network is ready. The mount times out and remains unavailable because the ESXi 8.x NFS 4.1 client in that scenario does not perform the automatic retry added in ESX 9.0. A manual remove and add restores service, but it does not fix the network initialization delay.
 
-Investigate link negotiation, LAG readiness, physical NIC speed, switch convergence, DNS, and export availability during boot. Upgrade to a fixed release when a Broadcom KB identifies the host build as affected. Do not automate repeated remove/add operations as a substitute for fixing the underlying path.
+Investigate link negotiation, LAG readiness, physical NIC speed, switch convergence, DNS, and export availability during boot. Where Broadcom KB 416172 applies, upgrading to ESX 9.0 adds the NFS 4.1 retry mechanism, but the underlying network issue must still be investigated. Do not automate repeated remove/add operations as a substitute for fixing the underlying path.
 
 ## Official Documentation
 
-- [Remounting a disconnected NFS datastore from the ESXi command line](https://knowledge.broadcom.com/external/article/344470)
+- [Troubleshoot and Remove Inaccessible NFS Datastores - VMware vSphere](https://knowledge.broadcom.com/external/article/344470)
 - [NFS 4.1 datastore fails to remount after ESXi Host reboot on ESXi 8.x](https://knowledge.broadcom.com/external/article/416172)
 - [NFS 4.1 Datastores using Custom NFS TCP/IP Stack become inaccessible after upgrading to ESXi 8.0.2](https://knowledge.broadcom.com/external/article/380337)
 - [NFS shares do not automatically remount after a reboot or an upgrade](https://knowledge.broadcom.com/external/article/397252)
