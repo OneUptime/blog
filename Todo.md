@@ -29,7 +29,6 @@
 
 ## ESXi
 
-8. How to Fix an ESXi `vm-support` Bundle That Contains an Empty `/var/run/logs` Directory
 9. How to Configure ESXi NTP and Diagnose Hosts That Refuse to Synchronize
 10. How to Restrict ESXi Management Services to Trusted Networks with Firewall Rulesets
 11. How to Configure iSCSI Port Binding and Round-Robin Multipathing on ESXi
