@@ -29,7 +29,6 @@
 
 ## ESXi
 
-1. How to Move an ESXi Management VMkernel Adapter from a Distributed Switch to a Standard Switch
 2. How to Diagnose ESXi `No Space Left on Device` Errors in Ramdisks When VMFS Has Free Space
 3. How to Resolve ESXi `MissingComponentError` Without Removing Required OEM Drivers
 4. How to Verify ESXi `bootbank` and `altbootbank` Health Before an Upgrade
