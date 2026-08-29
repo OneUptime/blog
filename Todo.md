@@ -130,7 +130,6 @@
 
 ## MFA
 
-1. How to Generate, Hash, Consume, and Rotate Single-Use MFA Recovery Codes
 2. Why You Cannot Hash a TOTP Secret—and How to Encrypt It Safely at Rest
 3. How to Handle TOTP Clock Drift Without Making the Acceptance Window Unsafe
 4. How to Block Reuse of a TOTP Code During Its 30-Second Validity Window
