@@ -133,7 +133,6 @@
 
 ## Postgres HA
 
-9. How to Configure HAProxy Health Checks Against Patroni's Primary and Replica Endpoints
 10. Why Does Patroni's HAProxy Health Check Return 503? Diagnosing REST API Role and Leader State
 11. How to Give Applications One Stable PostgreSQL Endpoint with HAProxy and Keepalived
 12. Where Should PgBouncer Sit in a Patroni Stack: Before or After HAProxy?
