@@ -127,7 +127,6 @@
 
 ## SLOs
 
-18. Why histogram_quantile Is the Wrong PromQL for a Threshold-Based Latency SLO
 19. How to Keep Low-Traffic Burn-Rate Alerts from Paging on a Single Failed Request
 20. How to Count Retries, Synthetic Checks, and Load-Balancer Results in an Availability SLI
 
