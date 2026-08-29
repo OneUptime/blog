@@ -130,7 +130,6 @@
 
 ## MFA
 
-7. How to Secure MFA Factor Changes Against Session Hijacking
 8. How to Design Lost-Device MFA Recovery Without Turning Support into an Authentication Bypass
 9. How to Build a Revocable “Trust This Browser” Cookie for MFA
 10. How to Require Step-Up MFA Only for Sensitive Actions and APIs
