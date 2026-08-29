@@ -8,7 +8,7 @@ Description: Preserve every failed event while adding evidence, impact, and rout
 
 ---
 
-At low traffic, a single failure can produce an enormous burn rate. With 10 requests per hour and a 99.9% SLO, one failed request creates a 10% hourly error rate: `0.10 / 0.001 = 100x` burn, consuming `1 / (10 x 24 x 30 x 0.001) = 13.9%` of the nominal 30-day request budget. The linked Google SRE Workbook currently prints `1,000x` for this example, but its burn-rate definition and 13.9% result imply `100x`. The example still shows why low-volume paging needs special treatment.
+At low traffic, a single failure can produce an enormous burn rate. With 10 requests per hour and a 99.9% SLO, one failed request creates a 10% hourly error rate: `0.10 / 0.001 = 100x` burn, consuming `1 / (10 x 24 x 30 x 0.001) = 13.9%` of the nominal 30-day error budget, assuming traffic remains at 10 requests per hour. The linked Google SRE Workbook currently prints `1,000x` for this example, but its burn-rate definition and 13.9% result imply `100x`. The example still shows why low-volume paging needs special treatment.
 
 The solution is not to erase the event. Separate SLO accounting from paging and choose a response policy that reflects evidence and business impact.
 
@@ -41,7 +41,7 @@ and on (service)
 )
 ```
 
-PromQL comparisons filter by default, and `and on (service)` keeps the burn result only where a matching volume condition exists. Apply `increase()` to each counter before summing so resets remain detectable.
+PromQL comparisons filter by default, and `and on (service)` keeps the burn result only where a matching volume condition exists. Apply `increase()` to each counter before summing so resets remain detectable. Initialize every expected label set, including `result="bad"`, at zero and have Prometheus scrape it before traffic starts; otherwise, `increase()` cannot recover an increment that occurred before the series's first sample. `increase()` also extrapolates to the range boundaries, so `100` is an estimated window volume rather than an exact event count.
 
 The value `100` is an example, not a statistical law. Derive it from how many bad logical outcomes justify a page, detection time, normal traffic, and the cost of delay. A minimum-volume rule can suppress pages indefinitely during a total demand outage, so pair it with traffic, telemetry, and synthetic alerts.
 
@@ -65,13 +65,13 @@ Google SRE recommends several options for low-traffic services:
 
 Keep synthetic outcomes in their own SLI. Mixing successful probes into real-user traffic can hide the one real failure. Synthetic checks should exercise realistic DNS, authentication, data, dependencies, and geography, and should page only for a tested actionable failure pattern.
 
-Combine operations only when they serve the same user promise or share a failure domain. Pooling an unrelated busy endpoint merely dilutes the quiet service's errors.
+Combine operations only when they contribute to the same meaningful higher-level function, preferably with a shared failure domain. Pooling an unrelated busy endpoint merely dilutes the quiet service's errors.
 
 ## Monitor the Conditions That Gates Hide
 
 Add separate rules for:
 
-- missing request counters with `absent_over_time()`;
+- missing request counters for each known service and label set with `absent_over_time()`;
 - failing scrape targets through `up`;
 - expected traffic absent during supported periods;
 - synthetic journey failure;
@@ -90,6 +90,7 @@ Server attempts are often too granular. If the product transparently retries saf
 - [Google SRE Workbook: Multiwindow, Multi-Burn-Rate Alerts](https://sre.google/workbook/alerting-on-slos/#6-multiwindow-multi-burn-rate-alerts)
 - [Prometheus operators: comparisons and logical `and`](https://prometheus.io/docs/prometheus/latest/querying/operators/)
 - [Prometheus query functions: `increase()`](https://prometheus.io/docs/prometheus/latest/querying/functions/)
+- [Prometheus instrumentation: avoiding missing metrics](https://prometheus.io/docs/practices/instrumentation/#avoid-missing-metrics)
 
 ## Conclusion
 
