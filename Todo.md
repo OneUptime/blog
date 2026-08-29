@@ -127,7 +127,6 @@
 
 ## SLOs
 
-7. Rolling vs Calendar-Aligned SLO Windows: Which One Should Drive Operations?
 8. When Does a Rolling Error Budget Recover After an Incident?
 9. 14, 28, or 30 Days? How to Choose an SLO Evaluation Window
 10. How to Write Outcome-Based SLOs for Batch Jobs, Queues, and Async Pipelines
