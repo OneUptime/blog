@@ -10,7 +10,7 @@ Description: Count histogram observations at the latency threshold to calculate 
 
 `histogram_quantile()` answers, “What latency value is at this rank?” A threshold-based latency SLO asks, “What fraction of requests were no slower than this fixed value?” Those are inverse questions.
 
-For an SLO such as “95% of requests complete within 300 ms,” calculate good observations at 300 ms divided by all observations. This directly produces the good-event ratio and its bad-event error budget.
+For an SLO such as “95% of requests complete within 300 ms,” calculate good observations at 300 ms divided by all observations. This directly produces the good-event ratio and, by complement, the bad-event ratio used to calculate error-budget burn.
 
 ## Compare the Queries
 
@@ -89,7 +89,7 @@ The threshold ratio also aggregates cleanly across instances and regions by summ
 
 ## Keep Populations Consistent
 
-Decide whether failed requests enter the latency denominator. A common design gives failures to an availability SLO and calculates latency among successful eligible outcomes. Another treats any failure as not meeting the latency promise. Either can work, but the histogram numerator and total counter must use identical status, route, tenant, and eligibility filters.
+Decide whether failed requests enter the latency denominator. A common design gives failures to an availability SLO and calculates latency among successful eligible outcomes. Another treats any failure as not meeting the latency promise. Either can work, but the numerator and denominator must describe the same route, tenant, and eligibility population. For latency among successful outcomes, filter both to successes. If every failure is bad, exclude failures from the good-event numerator but include them in the denominator.
 
 Test no traffic, counter resets, mixed bucket layouts, native-histogram migration, and values exactly at 300 ms. Keep missing data distinct from success.
 
