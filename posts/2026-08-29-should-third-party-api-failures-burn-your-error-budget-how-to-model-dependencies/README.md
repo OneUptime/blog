@@ -8,13 +8,13 @@ Description: Count failed user outcomes regardless of fault while using separate
 
 ---
 
-If a payment provider fails and your customer cannot check out, the checkout SLO should record a bad outcome. The user experienced a failed promise; the provider's ownership does not make the checkout usable.
+If a payment provider fails and your customer cannot check out, the checkout SLI should classify the journey as bad, consuming the checkout SLO's error budget. The user experienced a failed promise; the provider's ownership does not make the checkout usable.
 
-That does not mean every provider error belongs in every service SLO. Separate **compliance**, which follows the user outcome, from **attribution**, which explains why it happened and who should act.
+That does not mean every provider error should be classified as bad by every service SLI. Separate **compliance**, which follows the user outcome, from **attribution**, which explains why it happened and who should act.
 
 ## Use Two Layers of Measurement
 
-### User-Outcome SLO
+### User-Outcome SLI
 
 Measure at the boundary where the product promise is fulfilled:
 
@@ -22,7 +22,7 @@ Measure at the boundary where the product promise is fulfilled:
 good checkout journeys / eligible checkout journeys
 ```
 
-If a hard dependency prevents completion within the promised deadline, the event is bad whether the cause is application code, a cloud service, a bank API, DNS, or a network path. Excluding external causes turns the SLO into a measure of blame rather than reliability.
+If a hard dependency prevents completion within the promised deadline, the event is bad whether the cause is application code, a cloud service, a bank API, DNS, or a network path. Excluding external causes turns the SLI into a measure of blame rather than reliability.
 
 ### Dependency and Component SLIs
 
@@ -43,10 +43,10 @@ For every third party, identify:
 
 - **Hard dependency:** the journey cannot succeed without it.
 - **Soft dependency:** stale data, cached state, deferred work, or a reduced feature can preserve the promised outcome.
-- **Optional enhancement:** failure removes a nonessential feature but not the SLO's promise.
+- **Optional enhancement:** failure removes a nonessential feature but not the defined outcome.
 - **Control-plane dependency:** needed for change or recovery but not every request.
 
-Only impact that breaks the defined outcome burns that outcome's budget. A recommendation API outage should not burn the product-view SLO if the page intentionally falls back to a valid view without recommendations. It may burn a separate recommendation-quality SLO.
+Only impact that breaks the defined outcome burns that outcome's budget. A recommendation API outage should not count as bad in the product-view SLI if the page intentionally falls back to a valid view without recommendations. It may count as bad in a separate recommendation-quality SLI and consume that SLO's error budget.
 
 ## Model Risk Before Production
 
@@ -62,7 +62,7 @@ Two independent, truly redundant choices that both can satisfy the same outcome 
 A_redundant = 1 - (1 - A_primary) x (1 - A_fallback)
 ```
 
-These formulas are design estimates, not SLO measurements. Independence often fails because providers share regions, networks, credentials, DNS, data, quotas, or your failover code. Public SLAs also have definitions and exclusions that differ from your user promise. Measure the end-to-end journey and test failover.
+These formulas are design estimates, not substitutes for end-to-end SLI measurements. Independence often fails because providers share regions, networks, credentials, DNS, data, quotas, or your failover code. Public SLAs also have definitions and exclusions that differ from your user promise. Measure the end-to-end journey and test failover.
 
 Build a budget allocation for planning:
 
@@ -81,9 +81,9 @@ Document these cases:
 
 - Provider failure prevents an eligible journey: **bad**.
 - Your circuit breaker rejects while the provider is unhealthy: **bad** if the promised journey still fails; the breaker limits damage but does not create success.
-- Fallback returns an outcome users consider acceptable: **good** for the main SLO, with a degraded-mode metric.
+- Fallback returns an outcome users consider acceptable: **good** for the main SLI, with a degraded-mode metric.
 - Provider rejects an invalid user request: usually **ineligible** or a correctly handled response, depending on the product definition.
-- Provider throttles traffic that is within your promised supported load: **bad**.
+- Provider throttling causes an eligible journey within your promised supported load to fail or miss its deadline: **bad**.
 - Traffic exceeds a published customer quota: usually **ineligible**, provided the quota is enforced and visible consistently.
 - Async work succeeds within the promised deadline after a transient provider error: **good** for the logical journey; attempts remain diagnostic.
 
