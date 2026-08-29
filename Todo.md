@@ -127,7 +127,6 @@
 
 ## SLOs
 
-20. How to Count Retries, Synthetic Checks, and Load-Balancer Results in an Availability SLI
 
 ## MFA
 
