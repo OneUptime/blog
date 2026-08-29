@@ -69,7 +69,7 @@ Do not log verifiers for any recovery credential. Hashes of six-digit OTPs and s
 
 Useful context includes actor type, target subject, factor type and opaque ID, policy branch, outcome/reason category, authentication method/age, service, tenant, request trace, server time, and before/after security epoch.
 
-IP address, precise location, user agent, device name, and support evidence are personal data. Collect only what investigation and policy justify, restrict access, coarsen where possible, and set a retention schedule. Never let a mutable client-supplied device label become trusted attribution.
+IP address, precise location, user agent, device name, and support evidence can be personal data or otherwise privacy-sensitive. Collect only what investigation and policy justify, restrict access, coarsen where possible, and set a retention schedule. Never let a mutable client-supplied device label become trusted attribution.
 
 For failure events, avoid account enumeration in public responses while retaining a protected reason such as `invalid_code`, `replay`, `expired_transaction`, or `throttled`. Control access to detailed reasons because they can reveal factor inventory and attack strategy.
 
@@ -77,7 +77,7 @@ For failure events, avoid account enumeration in public responses while retainin
 
 Send events over authenticated encrypted transport to centralized storage. Give the application append-only write authority, not permission to alter or delete history. Restrict readers by role, record audit-log access, synchronize clocks, and monitor ingestion gaps, schema failures, queue backlog, and dropped events.
 
-Use storage immutability, signatures/hash chaining, or platform write-once controls when the risk and compliance model require tamper evidence. These controls do not replace access control or backups. Document retention, legal holds, and secure deletion for expired personal data.
+Use storage immutability, digital signatures with protected signing keys, hash chains whose heads are periodically signed or anchored outside the writable log store, or platform write-once controls when the risk and compliance model require tamper evidence. These controls do not replace access control or backups. Document retention, legal holds, and secure deletion for expired personal data.
 
 Security-critical state changes should not succeed silently if required audit durability fails. Choose and document which events block the operation, which use a durable local outbox, and how duplicates are deduplicated. An outbox transaction can commit the factor change and its event intent together, then deliver at least once.
 
