@@ -26,7 +26,7 @@ Google SRE's implementation example prefers load-balancer metrics over server lo
 
 ## Count Retries at the Promised Boundary
 
-If a client makes one logical call, transparently retries twice, and succeeds within the deadline, the user experienced one good outcome—not two bad attempts and one good request. Emit:
+If a client makes one logical call, transparently retries twice, and succeeds within the deadline, the user experienced one good outcome—not two bad attempts and one good request. Conceptually increment these counters (pseudocode):
 
 ```text
 logical_outcomes_total{result="good"} += 1
@@ -49,12 +49,12 @@ Count the response the edge actually delivered. A backend that logs success afte
 Do not add application request totals to edge totals. Reconcile them:
 
 ```text
-edge eligible requests
-- application-correlated requests
-= edge-only or unclassified requests
+eligible edge request IDs
+- distinct eligible edge request IDs correlated to one or more application attempts
+= edge-only or unclassified request IDs
 ```
 
-Alert on an unexpected reconciliation gap and classify it. It can reveal gateway failures, telemetry loss, retries between layers, or inconsistent eligibility filters.
+Alert on an unexpected reconciliation gap and classify it. Separately flag multiple application attempts correlated to one edge request. Together, these signals can reveal gateway failures, telemetry loss, retries between layers, or inconsistent eligibility filters.
 
 ## Keep Synthetic Checks Separate
 
@@ -77,20 +77,20 @@ Disagreement is valuable evidence. Real red/synthetic green suggests coverage ga
 
 ## Build a Canonical Outcome Counter
 
-Where feasible, have an edge or journey evaluator emit one aggregate event after final classification:
+Where feasible, have an edge or journey evaluator increment one counter after final classification. A bounded label schema can look like this (pseudocode):
 
 ```text
 availability_outcomes_total{
-  service,
-  operation_class,
-  customer_tier,
+  service="<bounded service>",
+  operation_class="<bounded operation class>",
+  customer_tier="<bounded tier>",
   eligible="true",
-  result="good|bad",
-  reason="application|gateway|timeout|dependency|quota"
-}
+  result="<good or bad>",
+  reason="<none or bounded failure reason>"
+} += 1
 ```
 
-Keep labels bounded. The SLI divides `result="good"` by all eligible outcomes. Attempt, synthetic, application, and reconciliation metrics remain adjacent diagnostics.
+Keep labels bounded. Use `reason="none"` for good outcomes and a reviewed set such as `application`, `gateway`, `timeout`, `dependency`, or `quota` for bad outcomes. The SLI divides `result="good"` by all eligible outcomes over the SLO window. Attempt, synthetic, application, and reconciliation metrics remain adjacent diagnostics.
 
 If no single system sees the full journey, join durable edge/client events offline and export aggregate results. A false single-source certainty is worse than a clearly disclosed proxy.
 
