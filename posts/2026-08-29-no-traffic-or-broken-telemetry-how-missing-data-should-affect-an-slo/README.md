@@ -8,7 +8,7 @@ Description: Preserve unknown SLO state, distinguish idle traffic from collectio
 
 ---
 
-No traffic and no telemetry can both produce an empty SLO graph, but they mean different things. An idle request-based service has a known denominator of zero. Broken telemetry means the denominator itself is unknown. Neither condition should be silently converted to 100% success.
+No traffic and no telemetry can both produce an empty SLO graph, but they mean different things. With a healthy, initialized request counter, no traffic produces an observed denominator of zero. Broken telemetry means the denominator itself is unknown. Neither condition should be silently converted to 100% success.
 
 Model SLO status as at least `compliant`, `noncompliant`, `idle/no observation`, and `unknown`.
 
@@ -17,24 +17,24 @@ Model SLO status as at least `compliant`, `noncompliant`, `idle/no observation`,
 | Request counter | Collection health | State | SLO treatment |
 |---|---|---|---|
 | Present and increasing | Healthy | Traffic | Calculate good / total |
-| Present and unchanged | Healthy | Idle | No request observation |
+| Present with no observed increase | Healthy | No observed traffic; potentially idle | No request observation |
 | Missing | Failing or unknown | Unknown | Alert on telemetry; do not infer success |
 | Partially missing | Degraded | Biased/unknown | Investigate numerator and denominator coverage |
 
-A counter initialized at zero and scraped regularly proves something different from a time series that vanished. Prometheus client-library guidance recommends initializing metrics where practical; this makes zero observable.
+A counter initialized at zero and scraped regularly establishes an observed zero, which is different from a time series that vanished. Prometheus client-library guidance recommends initializing metrics where practical; this makes zero observable.
 
 ## Do Not Coerce Absence in the SLI Query
 
 Avoid patterns such as:
 
 ```promql
-# Dangerous: missing observations become perfect service.
-(good / total) or vector(1)
+# Dangerous: a completely absent aggregate ratio falls back to perfect service.
+(sum(good) / sum(total)) or vector(1)
 ```
 
-Using `or vector(0)` is equally misleading in the other direction. Let the ratio be empty or undefined when evidence is insufficient, and render that state deliberately in the SLO system.
+Using `or vector(0)` is equally misleading in the other direction. PromQL's `or` is a label-set union, not a general no-data operator: for this unlabeled aggregate it supplies the fallback only when the ratio is absent. With present numerator and denominator series, enough range samples, and no increments, the ratio below is `0 / 0`, which remains `NaN`. Preserve either no-evidence state and render it deliberately in the SLO system.
 
-Calculate good and total from the same event family when possible so missing labels affect both consistently:
+Calculate good and total from the same event family when possible to reduce instrumentation drift. Initialize and monitor every expected result label set because selective loss can still empty or bias the ratio:
 
 ```promql
 sum(rate(api_requests_total{service="orders",eligible="true",result="good"}[5m]))
@@ -46,29 +46,31 @@ At zero observations, do not page from the ratio. Evaluate traffic expectation a
 
 ## Detect Collection Failure Explicitly
 
-Prometheus provides `absent_over_time()` for a series that has no samples in a range:
+Prometheus provides `absent_over_time()` to detect when no series matched by a selector has samples in a range:
 
 ```promql
 absent_over_time(api_requests_total{service="orders"}[10m])
 ```
 
-For scrape targets, distinguish a present target that has failed every scrape from a target series that disappeared:
+This returns a 1-valued result only when the entire selector has no samples. It does not identify one missing label set while another matching series remains; select each expected series explicitly or compare against an inventory for that case.
+
+For a specifically expected scrape target, distinguish a window containing one or more `up` samples that are all failed scrapes from a window containing no `up` samples:
 
 ```promql
-max_over_time(up{job="orders-api"}[10m]) == 0
+max_over_time(up{job="orders-api",instance="orders-api-1:8080"}[10m]) == 0
 ```
 
 ```promql
-absent_over_time(up{job="orders-api"}[10m])
+absent_over_time(up{job="orders-api",instance="orders-api-1:8080"}[10m])
 ```
 
-A present request counter with no events can identify idleness:
+A counter with no observed increase can support an idle classification after current presence and coverage are verified:
 
 ```promql
 sum(increase(api_requests_total{service="orders",eligible="true"}[30m])) == 0
 ```
 
-That last expression is meaningful only if the expected counter series is known to exist. Pair it with the telemetry checks.
+That last expression is meaningful only if all expected counter series are known to exist and have enough samples for `increase()`. Pair it with the telemetry checks.
 
 Also monitor rule evaluation and remote-write health. Prometheus notes that a slow rule group can skip evaluations and leave gaps in recording-rule output. A healthy target does not prove that the SLO pipeline, long-term store, or dashboard received its samples.
 
@@ -97,7 +99,7 @@ Do not multiply an incomplete SLI by its coverage and call the result availabili
 
 ## Encode a No-Data Policy
 
-Store the expected metric series, maximum staleness, idle behavior, fallback evidence source, owner, and escalation in the SLO definition. OpenSLO includes an `alertWhenNoData` policy field, and Grafana Alerting represents No Data separately from Normal and Alerting. Whichever tool you use, test the behavior before an outage.
+Store the expected metric series, maximum staleness, idle behavior, fallback evidence source, owner, and escalation in the SLO definition. OpenSLO includes a boolean `spec.alertWhenNoData` field on `AlertPolicy`, and Grafana-managed alert rules represent No Data separately from Normal and Alerting. Whichever tool you use, test the behavior before an outage.
 
 ## References
 
@@ -109,4 +111,4 @@ Store the expected metric series, maximum staleness, idle behavior, fallback evi
 
 ## Conclusion
 
-Known zero traffic is an idle observation boundary; missing telemetry is unknown evidence. Keep both out of the success ratio, alert on collection independently, recover from durable sources when possible, and make no-data policy an explicit part of the SLO.
+Zero observed traffic from healthy, fully covered counters is an idle observation boundary; missing telemetry is unknown evidence. Keep both out of the success ratio, alert on collection independently, recover from durable sources when possible, and make no-data policy an explicit part of the SLO.
