@@ -130,7 +130,6 @@
 
 ## MFA
 
-19. One Shared TOTP Secret or One Credential per Device? Designing Multi-Device MFA
 20. How to Audit MFA Enrollment and Recovery Events Without Logging Secrets
 
 ## Postgres HA
