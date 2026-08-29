@@ -62,8 +62,7 @@ For OAuth-protected APIs, RFC 9470 defines a `401` challenge using `insufficient
 
 ```http
 HTTP/1.1 401 Unauthorized
-WWW-Authenticate: Bearer error="insufficient_user_authentication",
-  acr_values="urn:example:aal:phishing-resistant", max_age="300"
+WWW-Authenticate: Bearer error="insufficient_user_authentication", acr_values="urn:example:aal:phishing-resistant", max_age="300"
 ```
 
 The client can obtain a token meeting the requirement from the authorization server. The resource server must still validate that the returned token actually satisfies policy; an authorization server may fail to meet a requested context.
