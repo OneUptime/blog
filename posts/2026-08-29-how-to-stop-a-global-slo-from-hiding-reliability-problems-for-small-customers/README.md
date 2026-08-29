@@ -50,6 +50,8 @@ sum by (customer_tier) (
 )
 ```
 
+Initialize the expected `sli_result="good"` series to zero for each bounded cohort. Otherwise, a cohort with eligible failures but no good series can disappear during vector matching instead of returning `0`; treat a zero eligible-event denominator as no data.
+
 Apply the same good/eligible definition to numerator and denominator. A cohort change is an SLO change; version and review it.
 
 ### Customer Reliability Floor
@@ -110,4 +112,4 @@ Google SRE recommends grading interaction importance and bucketing requests when
 
 ## Conclusion
 
-Preserve the global request-weighted truth, but add a few risk-based cohort objectives and a properly qualified customer reliability floor. Use durable per-customer analysis instead of unbounded metric labels or statistically meaningless ratio averages.
+Preserve the global request-weighted truth, but add a few risk-based cohort objectives and a properly qualified customer reliability floor. Use durable per-customer analysis instead of unbounded metric labels or noisy, unqualified customer-ratio averages.
