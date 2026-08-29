@@ -130,7 +130,6 @@
 
 ## MFA
 
-16. How to Test MFA Flows End to End Without Hard-Coding Production Bypasses
 17. How to Represent Pre-MFA and Fully Authenticated Sessions Safely in JWT Claims
 18. How to Revoke Sessions and Trusted Devices After MFA Recovery or Factor Replacement
 19. One Shared TOTP Secret or One Credential per Device? Designing Multi-Device MFA
