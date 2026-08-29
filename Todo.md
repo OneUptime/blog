@@ -130,7 +130,6 @@
 
 ## MFA
 
-13. How to Stop MFA Push-Fatigue Attacks with Number Matching and Login Context
 14. Is Email OTP Really a Second Factor? How to Keep Authentication Channels Independent
 15. How to Authenticate CI/CD and Service Accounts When Human Users Must Use MFA
 16. How to Test MFA Flows End to End Without Hard-Coding Production Bypasses
