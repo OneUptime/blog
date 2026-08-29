@@ -10,7 +10,7 @@ Description: Diagnose Patroni 503 health-check responses by separating expected 
 
 An HTTP `503` from a Patroni role endpoint usually means the endpoint is working exactly as designed: Patroni answered the request, but this node does not currently satisfy the requested role.
 
-For a three-node cluster checked with `/primary`, two nodes should return `503` all the time. Only the PostgreSQL primary whose Patroni process holds the leader lock returns `200`. The alert condition is usually **zero eligible primary backends**, not “any check returned 503.”
+For a normal three-node cluster checked with `/primary`, two nodes should return `503` most of the time. The member that Patroni currently treats as leader returns `200`; under normal operation, that is the writable PostgreSQL primary. The alert condition is usually **zero eligible primary backends**, not “any check returned 503.”
 
 The diagnosis starts by preserving three facts:
 
@@ -24,20 +24,22 @@ Patroni's current REST API uses these conditions:
 
 | Endpoint | `200` condition | Why it returns `503` |
 | --- | --- | --- |
-| `/`, `/primary`, `/read-write` | PostgreSQL is running as primary **and** this member holds the leader lock | Replica, no lock, PostgreSQL not in primary state, or transition |
-| `/leader` | This Patroni member holds the leader lock | Lock belongs elsewhere or cluster is unlocked |
+| `/`, `/primary`, `/read-write` | In a normal cluster, Patroni's local leader state is current; normally this is the writable primary | Not the local leader, standby-cluster topology, or transition |
+| `/leader` | Patroni's local leader state is current; normally it owns the DCS leader lock, or it is continuing under active failsafe | Local leader state belongs elsewhere or has expired |
 | `/standby-leader` | Member is the elected leader of a Patroni standby cluster | Wrong standby-cluster role |
 | `/replica` | State is `running`, role is replica, and `noloadbalance` is not set | Primary, stopped/starting replica, or read-drain tag |
-| `/replica?lag=64MB` | Replica conditions plus lag below threshold | Role/state/tag failure or excessive lag |
+| `/replica?lag=64MB` | Replica conditions plus replay lag that does not exceed the threshold | Role/state/tag failure or excessive replay lag |
 | `/replica?tag_region=eu-west` | Replica conditions plus matching `region` tag | Tag missing/different or base replica failure |
-| `/synchronous` or `/sync` | Node is a synchronous standby | Async/primary/other role |
-| `/quorum` | Node is listed as a quorum node in primary `synchronous_standby_names` | Not currently a quorum standby |
-| `/asynchronous` or `/async` | Node is an asynchronous standby | Sync/primary/other role |
+| `/synchronous` or `/sync` | Base replica conditions plus synchronous-standby classification | Base replica failure or a different replication class |
+| `/quorum` | Base replica conditions plus listing as a quorum node in primary `synchronous_standby_names` | Base replica failure or not currently a quorum standby |
+| `/asynchronous` or `/async` | Base replica conditions plus asynchronous-standby classification | Base replica failure or sync/quorum classification |
 | `/health` | PostgreSQL is up and running | PostgreSQL is not running |
-| `/liveness` | Patroni HA loop ran recently | Last loop is older than `ttl` on primary or `2 * ttl` on replica |
-| `/readiness` | Leader, or a running/replicating replica within the allowed lag | Startup, replay/receive lag, or no suitable state |
+| `/liveness` | Cluster is paused, or the Patroni HA loop ran recently | Outside pause mode, the last loop is older than `ttl` on a running primary or `2 * ttl` on another member |
+| `/readiness?lag=<max-lag>&mode=apply\|write` | Leader, or PostgreSQL is running and streaming within the selected lag limit; defaults are `maximum_lag_on_failover` and `apply` | Startup, non-streaming replication, insufficient DCS/WAL-receiver information without failsafe, or excessive apply/write lag |
 
-Leader endpoint checks deliberately ignore user-defined tag query parameters. Replica checks honor `noloadbalance`, lag, and `tag_...` filters.
+Patroni's documentation describes `/primary` as requiring a running primary with the leader lock, but the current implementation does not independently test PostgreSQL `state` or `role` after Patroni considers itself leader. During failures, pair `/primary` with `/health` or inspect `/patroni` to distinguish retained leader state from a running database.
+
+Leader, primary, and standby-leader endpoint checks deliberately ignore user-defined tag query parameters. Replica-family checks honor `noloadbalance`, lag, and `tag_...` filters.
 
 Do not replace `/primary` with `/health` to eliminate 503s. `/health` can return `200` on a replica and would send writes to the wrong role.
 
@@ -70,7 +72,7 @@ Repeat for every server. If TLS is configured, use the same CA, client certifica
 
 HAProxy logs make this distinction visible:
 
-- `Layer7 wrong status, code: 503` means Patroni responded but did not qualify the node.
+- `Layer7 wrong status, code: 503` means HAProxy received `503` from the configured check target, which did not satisfy `http-check expect status 200`. When port `8008` connects directly to Patroni, this is Patroni's role rejection.
 - `Connection refused`, `Layer4 timeout`, or SSL alerts mean HAProxy did not obtain the Patroni role response.
 
 ## Read Patroni's monitoring document
@@ -79,7 +81,7 @@ HAProxy logs make this distinction visible:
 
 ```bash
 curl --silent http://10.40.0.11:8008/patroni \
-  | jq '{state,role,timeline,xlog,dcs_last_seen,cluster_unlocked,failsafe_mode_is_active,tags,patroni}'
+  | jq '{state,role,timeline,xlog,dcs_last_seen,cluster_unlocked,failsafe_mode_is_active,tags,database_system_identifier,patroni}'
 ```
 
 Typical healthy primary fields resemble:
@@ -90,6 +92,7 @@ Typical healthy primary fields resemble:
   "role": "primary",
   "timeline": 12,
   "dcs_last_seen": 1787991000,
+  "database_system_identifier": "7268616322854375442",
   "patroni": {
     "scope": "prod-ha",
     "name": "pg2"
@@ -101,15 +104,16 @@ Interpret combinations instead of reading only `role`:
 
 | `/health` | `/leader` | `/primary` | Interpretation |
 | --- | --- | --- | --- |
-| `200` | `200` | `200` | Normal primary holding the lock |
+| `200` | `200` | `200` | Normal-cluster leader with PostgreSQL running; confirm `role` during a transition |
 | `200` | `503` | `503` | PostgreSQL runs, but this node is not leader; often a healthy replica |
-| `503` | `200` | `503` | Patroni holds the lock but PostgreSQL is not currently up as a normal primary; investigate immediately |
-| `200` | `200` | `503` | Lock holder is not running PostgreSQL as a normal primary (possible transition or standby-leader topology) |
+| `503` | `200` | `200` | Normal-cluster leader state remains current, but PostgreSQL is not running; investigate immediately |
+| `503` | `200` | `503` | Standby-cluster leader or pause/configuration edge with PostgreSQL down |
+| `200` | `200` | `503` | Usually a running standby-cluster leader; verify the configured topology |
 | `503` | `503` | `503` | PostgreSQL down and node not leader |
 
-For `/replica`, inspect `state`, `role`, `tags.noloadbalance`, `xlog.received_location`, `xlog.replayed_location`, and the query's lag/tag limits.
+For `/replica`, inspect `state`, `role`, `tags.noloadbalance`, `xlog.received_location`, `xlog.replayed_location`, and the query's lag/tag limits. Its `lag` filter uses replayed/apply location.
 
-`dcs_last_seen` is a Unix timestamp showing recent successful DCS communication. `cluster_unlocked: true` means no leader lock appears in the local cluster view. `failsafe_mode_is_active: true` explains the special state during a DCS failsafe event; confirm it across members rather than assuming ordinary DCS leadership.
+`dcs_last_seen` is a Unix timestamp showing recent successful DCS communication. `cluster_unlocked: true` means no leader lock appears in the local DCS view, but it can coexist with an existing primary continuing under DCS failsafe while all known members acknowledge it through Patroni's REST API. `failsafe_mode_is_active` can differ transiently between members, so check the primary's value and Patroni logs as well as the other members.
 
 ## Compare the whole cluster view
 
@@ -131,7 +135,7 @@ Check:
 - Tags do not intentionally drain a member
 - Cluster is not unexpectedly paused
 
-If one server has a different `scope`, it belongs to a different Patroni DCS namespace even if the PostgreSQL port and data look related. Never make HAProxy combine different scopes into one write backend.
+If one server has a different `scope`, it belongs to a different Patroni cluster and DCS key prefix even when the configured DCS `namespace` is the same. Patroni forms the DCS path from both `namespace` and `scope`. Never make HAProxy combine different scopes into one write backend.
 
 ## Diagnose all-primary-503 incidents
 
@@ -139,7 +143,7 @@ When every `/primary` check returns `503`, work in safety order.
 
 ### 1. No leader lock
 
-`patronictl list` shows no leader or `/patroni` contains `cluster_unlocked`. Check etcd quorum:
+`patronictl list` shows no leader or `/patroni` contains `cluster_unlocked`. First rule out an active DCS failsafe or pause-mode edge, then check etcd quorum:
 
 ```bash
 etcdctl \
@@ -157,7 +161,7 @@ etcdctl \
   endpoint status --cluster --write-out=table
 ```
 
-Restore DCS quorum/network latency first. Patroni demoting a database-healthy primary after it cannot renew the lock is split-brain protection. Do not force HAProxy to route around it.
+If these checks show quorum loss or excessive network latency, restore that first; otherwise inspect Patroni logs and candidate eligibility. When failsafe is disabled or its all-members check fails, Patroni demoting a database-healthy primary after it cannot renew the lock is split-brain protection. Do not force HAProxy to route around it.
 
 ### 2. PostgreSQL failed to start or is changing role
 
@@ -207,7 +211,7 @@ Common explanations:
 - The node is now primary, so replica rejection is correct.
 - PostgreSQL role is replica but Patroni state is `starting`, `stopped`, or otherwise not `running`.
 - `noloadbalance: true` intentionally drained the member.
-- Receive or replay lag exceeds the `lag` query.
+- Replay/apply lag exceeds the `/replica` or `/async` `lag` query. Receive lag is selected only by `/readiness?mode=write`.
 - A `tag_` query requires a missing or different member tag.
 - The endpoint asks for `/sync`, `/quorum`, or `/async` and the standby's current replication class differs.
 
@@ -221,27 +225,27 @@ With:
 default-server inter 2s fall 3 rise 2
 ```
 
-HAProxy needs three consecutive failed checks to mark a server down and two successes to mark it up. With two-second intervals, detection takes roughly four to six seconds from the onset of a persistent failure, depending on where it lands between checks and how long each check takes. Patroni's default leader-lock TTL is commonly 30 seconds, with a ten-second HA loop. These are different clocks.
+HAProxy needs three consecutive failed checks to mark a server down and two successes to mark it up. With two-second intervals, an immediately completed failure such as HTTP `503` usually takes roughly four to six seconds from onset to mark the server down, depending on where it lands between checks. Connection or response timeouts can take longer and depend on the configured check timeouts. Patroni's default leader-lock TTL is commonly 30 seconds, with a ten-second HA loop. These are different clocks.
 
 Too many `fall` checks can keep the old route eligible longer after Patroni begins returning `503`; too many `rise` checks extend the outage after a safe new primary appears. Too few can flap on transient transport loss. Measure the entire failover and set values that honor both safety and application retry behavior. The endpoint's role assertion—not aggressive timing—is what makes the route safe.
 
-Existing TCP connections are not reevaluated by health checks. HAProxy applies backend changes to new connections; PgBouncer may retain server connections until they break or are recycled. Include connection-pool behavior in the incident timeline.
+By default, existing TCP connections are not reevaluated or terminated by health checks, and HAProxy applies backend availability changes to new connections. The optional `on-marked-down shutdown-sessions` action instead terminates existing streams to a server when it is marked down. PgBouncer may retain server connections until they break or are recycled. Include connection-pool behavior in the incident timeline.
 
 ## Failure modes and safe remediation
 
 | Finding | Correct action | Unsafe shortcut |
 | --- | --- | --- |
 | Two of three `/primary` checks are `503` | None; this is normal | Alerting on every 503 |
-| All `/primary` checks are `503`, no DCS leader | Restore DCS quorum and let Patroni elect | Accept `/health` as writable |
-| `/leader=200`, `/primary=503` | Repair/observe the lock holder's PostgreSQL role | Route writes to `/leader` |
+| All `/primary` checks are `503`, no DCS leader | Verify DCS health and candidate eligibility; restore quorum if lost, then let Patroni elect | Accept `/health` as writable |
+| `/leader=200`, `/primary=503` | Confirm standby-cluster or pause state; in a normal cluster, investigate the topology/state mismatch | Route writes to `/leader` |
 | Replica exceeds lag query | Fix lag or route reads elsewhere | Remove limit without consistency review |
-| Patroni direct check is `200`, HAProxy still marks down | Fix loaded config, transport identity, or stale runtime state | Change Patroni role |
+| Patroni direct check is `200`, HAProxy still marks down | Allow for the `rise` threshold, then compare the loaded check target, transport identity, and runtime state | Change Patroni role |
 | Direct request times out | Fix REST bind/firewall/network/TLS | Treat it as a role 503 |
 | More than one `/primary=200` | Remove write traffic and investigate DCS scope/fencing immediately | Round-robin between them |
 
 If a recent HAProxy edit caused the problem, restore the last known-good file, validate it, and reload one proxy at a time. Re-test the exact endpoint from each proxy before reopening traffic. A proxy rollback does not roll back a Patroni role change.
 
-If the cluster has no safe leader, application write unavailability is preferable to guessing. Any manual promotion requires a positively fenced former primary, a selected authoritative timeline, and explicit acceptance of possible data loss.
+If the cluster has no safe leader, application write unavailability is preferable to guessing. In a no-leader or partitioned recovery, force a manual promotion only after positively fencing the former primary, selecting the authoritative candidate from timeline history and WAL positions, and explicitly accepting possible data loss.
 
 ## References
 
