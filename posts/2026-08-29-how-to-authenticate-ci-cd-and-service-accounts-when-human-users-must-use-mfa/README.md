@@ -8,15 +8,15 @@ Description: Authenticate non-human workloads with attested identity and short-l
 
 ---
 
-A build runner cannot responsibly type a TOTP code or approve a push. Giving it a human user's refresh token, a shared “MFA-exempt” password, or a seed copied from an authenticator defeats both attribution and factor independence.
+A build runner cannot responsibly type a TOTP code or approve a push. Giving it a human user's refresh token or a shared “MFA-exempt” password defeats attribution; storing a copied TOTP seed alongside another authenticator for the same human account also defeats factor independence.
 
-Human MFA answers “which person is present and what authenticators did they use?” Workload authentication answers “which code is running in which trusted environment?” Model those as distinct principal types with distinct controls.
+Human MFA answers “which user account is authenticating and what authenticators did the claimant prove control of?” Workload authentication answers “which workload is making this request and what execution context did the trusted issuer attest?” Model those as distinct principal types with distinct controls.
 
 ## Prefer Federated Workload Identity
 
 Modern CI systems can issue a short-lived signed OIDC token describing a job. A cloud or deployment security-token service validates that token and exchanges it for a narrowly scoped, short-lived credential. The pipeline stores no long-lived cloud secret.
 
-Pin validation to all relevant claims:
+Validate standard token properties and constrain trust using all relevant claims:
 
 - exact trusted issuer and audience;
 - repository or project identity;
@@ -27,7 +27,7 @@ Pin validation to all relevant claims:
 
 Do not accept any token from a trusted CI issuer merely because its signature is valid. An overly broad subject pattern can let an untrusted repository or pull request assume production access. Keep pull-request jobs from forks away from deployment identity and secrets.
 
-For long-running services, use platform workload identity, mutually authenticated TLS, or a system such as SPIFFE/SPIRE. SPIFFE assigns a workload a verifiable identity document (SVID); short-lived certificates and keys are delivered through a local Workload API and rotated automatically. Authorization still maps the workload identity to least privilege.
+For long-running services, use platform workload identity, mutually authenticated TLS, or a system such as SPIFFE/SPIRE. SPIRE attests workloads and issues SPIFFE Verifiable Identity Documents (SVIDs); for X.509-SVIDs, short-lived certificates and their private keys are delivered through a local Workload API and rotated automatically. Authorization still maps the workload identity to least privilege.
 
 ## Separate Human Approval from Workload Authentication
 
@@ -44,13 +44,13 @@ authorize_deploy(
 )
 ```
 
-This preserves attribution: the audit trail can show who approved and which workload executed. A generic “MFA passed” flag without artifact and environment binding is replayable authorization.
+This preserves attribution: the audit trail can show who approved and which workload executed. A generic “MFA passed” flag without artifact and environment binding can be replayed or applied to the wrong release.
 
 ## Scope and Rotate Machine Credentials
 
 Issue credentials just in time, with the smallest audience, permissions, and lifetime. Use separate identities for build, test, package publication, staging, and production. A production deployer normally does not need source-control administration or broad secret-read access.
 
-Prefer proof-of-possession mechanisms where supported, such as mTLS-bound OAuth tokens, to reduce bearer-token replay. Protect CI logs, artifacts, caches, process lists, and debug traces; a five-minute token can still be damaging during those five minutes.
+Prefer proof-of-possession mechanisms where supported, such as mutual-TLS certificate-bound OAuth access tokens, to reduce replay of stolen access tokens. Protect CI logs, artifacts, caches, process lists, and debug traces; a five-minute token can still be damaging during those five minutes.
 
 When federation is impossible and a static secret is temporarily necessary:
 
