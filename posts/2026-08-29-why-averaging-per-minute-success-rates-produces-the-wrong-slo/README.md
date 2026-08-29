@@ -8,7 +8,7 @@ Description: Calculate a request-based SLO from total good and eligible events i
 
 ---
 
-A request-based SLO asks what fraction of eligible requests were good. Averaging a success percentage calculated separately for every minute answers a different question: what fraction of minutes had a high average success rate. The two calculations agree only when every minute has the same traffic.
+A request-based SLO asks what fraction of eligible requests were good. Averaging a success percentage calculated separately for every minute answers a different question: what is the unweighted mean of the per-minute success rates. Equal traffic in every minute guarantees that this mean equals the request-based SLI. With uneven traffic, the two can still coincide—for example, when every minute has the same success rate—but they generally differ.
 
 ## See the Weighting Error
 
@@ -35,7 +35,7 @@ For an occurrence-based SLO, add good events across the whole compliance window 
 SLI = sum(good events) / sum(eligible events)
 ```
 
-With Prometheus counters, a 28-day query can be written as:
+With Prometheus counters, assuming the query backend retains the full compliance window, a 28-day query can be written as:
 
 ```promql
 sum(
@@ -54,7 +54,7 @@ sum(
 )
 ```
 
-For a short-window rate or recording rule, apply `rate()` to each counter before summing so counter resets are detected per series:
+For a short-window error ratio, including one used in a recording rule, apply `rate()` to each counter before summing so counter resets are detected per series:
 
 ```promql
 sum(rate(http_requests_total{service="checkout",sli_eligible="true",sli_result="bad"}[5m]))
@@ -66,13 +66,13 @@ Do not calculate `avg_over_time()` over a previously recorded success-ratio seri
 
 ## When Equal-Weight Minutes Are Correct
 
-Equal-weight minutes are valid when a minute is deliberately the unit of the promise. For example:
+Giving each evaluated minute equal weight is valid when a minute is deliberately the unit of the promise. For example:
 
 > At least 99% of one-minute periods will have a request success rate of 99.9% or better.
 
-That is a time-slice or windows-based SLO. It limits how many bad minutes users experience and can be useful when sustained degradation matters more than the exact number of failed requests. It also has different behavior:
+That is a time-slice or windows-based SLO. Evaluate it by classifying each minute as good or bad against the 99.9% threshold, then dividing the number of good minutes by the number of evaluated minutes; do not average the raw minute-level success percentages. It limits how many bad minutes users experience and can be useful when sustained degradation matters more than the exact number of failed requests. It also has different behavior:
 
-- A minute with 10,000 failures consumes the same budget as a minute that misses its threshold by one request.
+- A bad minute containing 10,000 failures consumes the same budget as a minute that misses its threshold by one request.
 - A busy minute and a quiet minute have equal weight.
 - The definition must say whether an idle minute is good, excluded, or unknown.
 
@@ -98,4 +98,4 @@ Before adopting a query, replay a small fixture with deliberately uneven traffic
 
 ## Conclusion
 
-The unit in an SLO definition determines the weighting. For a request-based objective, retain counts, sum all good and eligible requests, and divide once. Average minute ratios only when the explicit promise is about the fraction of good minutes.
+The unit in an SLO definition determines the weighting. For a request-based objective, retain counts, sum all good and eligible requests, and divide once. For a windows-based objective, classify each minute against the stated goodness threshold and divide good minutes by evaluated minutes; do not merely average the per-minute request ratios.
