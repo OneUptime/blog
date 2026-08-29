@@ -14,7 +14,7 @@ In this design:
 
 - Patroni runs beside PostgreSQL on `pg1`, `pg2`, and `pg3`. It bootstraps replicas, maintains the leader lock, and promotes or demotes PostgreSQL.
 - A three-member etcd cluster stores Patroni's dynamic configuration and leader state. A majority of two members is required.
-- HAProxy checks each Patroni REST API and forwards PostgreSQL connections only to nodes whose current role matches the requested service.
+- HAProxy checks each Patroni REST API and sends new PostgreSQL connections to nodes whose role matches the requested service according to the most recent health check.
 
 The example co-locates one etcd member with each database node to keep the walkthrough compact. Co-location is acceptable only when CPU, memory, and disk I/O are isolated. For a busy production database, place etcd on separate failure domains with fast dedicated storage. Run at least two HAProxy instances behind redundant DNS, a virtual IP, or a platform load balancer; one HAProxy process would otherwise be a new single point of failure.
 
@@ -34,7 +34,7 @@ Before starting:
 
 1. Install the same supported PostgreSQL major release and the matching `pg_rewind` binary on all three database nodes.
 2. Install the same Patroni and etcd release on their respective nodes. Use Patroni's `etcd3` dependency, not the incompatible etcd v2 API.
-3. Permit etcd peer traffic on `2380`, authenticated etcd client traffic on `2379`, Patroni REST traffic on `8008`, and PostgreSQL traffic on `5432` only between the systems that need them.
+3. Permit etcd peer traffic on `2380`, etcd client traffic on `2379`, Patroni REST traffic on `8008`, and PostgreSQL traffic on `5432` only between the systems that need them.
 4. Synchronize clocks, configure host-level fencing or a watchdog, and provision backups independently of replication.
 5. Put passwords and TLS keys in a restricted secret source readable by the Patroni service account and its administrators. The literal passwords below are placeholders, not production values.
 
@@ -56,7 +56,7 @@ initial-cluster-token: patroni-prod-01
 initial-cluster-state: new
 ```
 
-Use the same file on `pg2` and `pg3`, changing `name` and both node-specific addresses. Start all three members with the configuration file:
+Use the same file on `pg2` and `pg3`, changing `name` and the local IP address in `listen-peer-urls`, `initial-advertise-peer-urls`, `listen-client-urls`, and `advertise-client-urls`. Keep `initial-cluster` and `initial-cluster-token` identical on all three members. Start all three members with the configuration file:
 
 ```bash
 etcd --config-file=/etc/etcd/etcd.yml
@@ -64,7 +64,7 @@ etcd --config-file=/etc/etcd/etcd.yml
 
 When etcd uses `--config-file`, its documentation states that command-line flags and environment variables are ignored. Do not try to override individual file values in the service unit.
 
-This clear-text configuration is suitable only for a protected lab network. In production, use HTTPS peer and client URLs, issue separate peer/client certificates, require client certificate authentication, and configure Patroni with the CA and client credentials.
+This clear-text configuration is suitable only for a protected lab network. In production, use HTTPS peer and client URLs and separate peer/client credentials. Configure etcd client mTLS with `client-cert-auth`, `trusted-ca-file`, `cert-file`, and `key-file`, and peer mTLS with `peer-client-cert-auth`, `peer-trusted-ca-file`, `peer-cert-file`, and `peer-key-file`. Configure Patroni's `etcd3` section with `protocol: https`, `cacert`, `cert`, and `key`.
 
 Verify membership and quorum from an administrative host:
 
@@ -180,7 +180,7 @@ loop_wait + 2 * retry_timeout <= ttl
 10        + 2 * 10            <= 30
 ```
 
-`data-checksums` and `wal_log_hints=on` each make page changes visible to `pg_rewind`; enabling both before bootstrap is a practical defense against later configuration drift. `full_page_writes` must remain on. The rewind account is created with the required permissions by Patroni on PostgreSQL 11 and newer.
+`pg_rewind` requires the target cluster to have either data checksums enabled or `wal_log_hints=on`; `full_page_writes` must also remain on. When checksums are enabled, PostgreSQL always WAL-logs hint-bit updates and ignores `wal_log_hints`, so configuring both is redundant while checksums remain enabled. The rewind account is created with the required permissions by Patroni on PostgreSQL 11 and newer.
 
 The `bootstrap.dcs` section is consumed only when the cluster is first initialized. After that, edit cluster-wide values with `patronictl edit-config` or the Patroni REST configuration endpoint, not by changing `bootstrap.dcs` in local files.
 
@@ -283,11 +283,13 @@ systemctl reload haproxy
 
 The `30m` client/server values are illustrative inactivity timeouts, not query-duration limits. Size them from legitimate idle-session and long-query behavior; an unexplained `30s` database timeout can terminate quiet persistent sessions or a query that produces no network traffic. Enforce SQL execution limits with PostgreSQL/application policy rather than an accidentally short proxy inactivity timer.
 
-Connect applications to the redundant write endpoint on port `5000`. Use port `5001` only for queries that tolerate replica lag and read-only transaction semantics. Clients must retry a whole transaction after a disconnect; neither HAProxy nor Patroni can safely replay an interrupted transaction.
+HAProxy selects a backend when a new TCP connection is established; it does not migrate existing sessions. Connect applications to the redundant write endpoint on port `5000`. Use port `5001` only for queries that tolerate replica lag and read-only transaction semantics. A session opened against a replica can remain connected after that replica is promoted and can then start read-write transactions, so enforce read-only application access with PostgreSQL privileges rather than treating port `5001` as an authorization boundary.
+
+After a disconnect, clients must reconnect and cannot resume an open transaction. Retry the whole transaction only when its outcome is known to be uncommitted, or use idempotency or deduplication for an unknown commit outcome; neither HAProxy nor Patroni can safely replay it.
 
 ## Prove health and failover behavior
 
-Before accepting production traffic, test from the same network path applications use:
+Before accepting production traffic, use a previously provisioned application login to test from the same network path applications use. The command below assumes that the `app` login role can connect to the `postgres` database:
 
 ```bash
 psql "host=database-write.example.net port=5000 dbname=postgres user=app sslmode=verify-full sslrootcert=/etc/postgresql/tls/ca.pem" \
@@ -304,7 +306,7 @@ patronictl -c /etc/patroni/patroni.yml switchover prod-ha \
 Then verify all of the following:
 
 - `patronictl list` shows exactly one leader and two replicas.
-- `/primary` moved to `pg2`, and HAProxy's write endpoint reaches `pg2`.
+- `/primary` moved to `pg2`, and a fresh connection through HAProxy's write endpoint reaches `pg2`.
 - The former primary becomes a streaming replica rather than remaining writable.
 - etcd still has a healthy majority and Patroni logs show normal leader-lock renewal.
 - Monitoring alerts on replication lag, etcd leader changes, watchdog activation, HAProxy backend count, backup freshness, and timeline changes.
@@ -314,8 +316,8 @@ Then verify all of the following:
 | Symptom | Likely cause | Safe response |
 | --- | --- | --- |
 | All `/primary` checks return `503` | No Patroni leader, DCS unavailable, or PostgreSQL is not running as primary | Restore DCS quorum and inspect `patronictl list`; do not manually promote a random node |
-| One etcd member is down | Quorum still exists, but no further member failure is tolerable | Replace the failed member using etcd runtime membership procedures |
-| Two etcd members are down | etcd has lost quorum and cannot update the leader key | Restore quorum; allow Patroni to demote rather than bypassing its safety checks |
+| One etcd member is down | Quorum still exists, but no further member failure is tolerable | Recover or restart it if the failure is transient. If it is permanently failed, remove the old member first, add the replacement, and start it with `initial-cluster-state: existing` |
+| Two etcd members are down | etcd has lost quorum and cannot update the leader key | Restart or recover one original member to regain quorum. If two members are permanently lost, restore a new cluster from a verified snapshot with `etcdutl`; runtime membership changes cannot repair lost quorum |
 | A former primary has divergent WAL | It accepted writes on an older timeline | Keep it fenced and let Patroni use `pg_rewind`, or reinitialize it from a fresh base backup |
 | Both HAProxy nodes are unavailable | The database may be healthy but has no client route | Recover a proxy or use a documented break-glass direct connection to the confirmed Patroni leader |
 | A required watchdog cannot arm | Device, permissions, or driver is wrong | Fix the watchdog on a replica first; do not weaken fencing during an incident |
