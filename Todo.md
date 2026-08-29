@@ -971,6 +971,26 @@
 18. How to Tag Docker Images from Drone Branch, Commit, and Git Tag Events Safely
 19. How to Reach Service Containers from Drone Steps: Hostnames, Ports, Health Checks, and Networks
 20. How to Prevent Secrets from Reaching Untrusted Drone Pull Requests and Forks
+21. How to Generate Reusable Drone Pipelines with Jsonnet and Validate the Rendered YAML
+22. How to Build a Drone Configuration Extension for Organization-Wide Pipeline Defaults
+23. How to Validate and Reject Unsafe Drone Pipelines with an Admission Extension
+24. How to Enforce Kubernetes Namespace, Service Account, and Resource Policies for Drone Builds
+25. How to Isolate Drone Kubernetes Runner Workloads by Repository and Trust Level
+26. How to Set CPU and Memory Requests Without Starving Multi-Step Drone Kubernetes Pipelines
+27. How to Source Drone Secrets from HashiCorp Vault Without Storing Long-Lived Tokens in Repositories
+28. How to Write a Custom Drone Plugin and Map Settings to `PLUGIN_*` Environment Variables
+29. How to Evaluate and Deploy Drone's Beta High-Availability Mode with PostgreSQL, Redis, and a Load Balancer
+30. How to Upgrade Drone Server and Runners Without Stranding In-Flight Builds
+31. How to Back Up and Restore Drone's Database Without Breaking Repository and Build Metadata
+32. How to Monitor Drone Queue Depth and Running Jobs with the Built-In Prometheus Metrics
+33. How to Rotate Drone's RPC Secret Across Servers and Runners with a Controlled Maintenance Window
+34. How to Roll Back a Drone Deployment with Rollback Events and the Original Build Metadata
+35. How to Prevent an Older Drone Build from Deploying After a Newer Commit
+36. How to Serialize Drone Production Deployments While Keeping Test Pipelines Parallel
+37. How to Convert Local Schedules to Drone's UTC Cron Expressions Without Triggering Push-Only Steps
+38. How to Fan Out Drone Test Shards and Fan In Coverage and Test Reports
+39. How to Preserve Drone Test Reports and Build Artifacts After Ephemeral Workspaces Disappear
+40. How to Build Change-Aware Drone Pipelines for Large Monorepos Without Running Every Service
 
 ## gRPC
 
@@ -5806,3 +5826,210 @@
 18. How to Bound Kafka Connect Queue Memory for Large CDC Transactions and Preserve Transaction IDs for Reassembly
 19. How to Capture Keyless-Table Updates and Deletes in CDC—and Know When Deterministic Sink Application Is Impossible
 20. How to Migrate a Debezium Connector Between Kafka Connect Clusters While Preserving Offsets
+
+## Sovereign Cloud
+
+1. How to Build a Sovereign Cloud Requirements Matrix Across Data, Operations, Technology, and Legal Jurisdiction
+2. How to Translate Sovereignty Requirements into Tiered Controls for Each Data Classification
+3. How to Build a Sovereign Cloud Service Catalog That Excludes Unsupported Global Services
+4. How to Choose Between Sovereign Public Cloud, Partner-Operated Dedicated Cloud, and On-Premises Infrastructure
+5. How to Identify Control-Plane Metadata That Can Leave a Sovereign Cloud Region
+6. How to Map Provider, Sovereign Partner, and Customer Responsibilities for Sovereign Cloud Controls
+7. How to Add Sovereign Controls to an Existing Azure Landing Zone
+8. How to Deploy an Azure Sovereign Landing Zone with Terraform
+9. How to Track Sovereign Policy Exceptions by Owner, Age, and Residual Risk
+10. How to Apply AWS Control Tower Digital Sovereignty Controls Across Enrolled OUs and Accounts
+11. How to Design a Tiered Sovereign Key Strategy Across Azure Key Vault, Managed HSM, and External Key Management
+12. How to Keep External Key Management from Becoming a Sovereign Cloud Single Point of Failure
+13. How to Restrict Cloud Provider Administrators and Support Staff by Jurisdiction
+14. How to Require Customer Approval for Provider Support Access to Sovereign Workloads
+15. How to Design Sovereign IAM with Just-in-Time Access and Phishing-Resistant MFA
+16. How to Keep CI/CD Artifacts, Container Images, and Secrets Inside Approved Jurisdictions
+17. How to Use Attestation-Based Secure Key Release for Approved Confidential Workloads
+18. How to Operate Sovereign Kubernetes Without Leaking Data Through Shared Control-Plane Services
+19. How to Design DNS, PKI, and Time Dependencies for a Disconnected Sovereign Cloud
+20. How to Evaluate Foreign-Jurisdiction Exposure When Cloud Data Never Leaves the Country
+
+## Metaflow
+
+1. How to Set Up Metaflow Locally with a Metadata Service and UI
+2. How to Deploy Metaflow Infrastructure on AWS with Terraform
+3. How to Run a Metaflow Step on AWS Batch
+4. How to Run a Metaflow Step on Kubernetes
+5. How to Request CPU, Memory, GPUs, Kubernetes Disk, and AWS Batch Fargate Ephemeral Storage in Metaflow
+6. How to Parallelize Large Workloads with Metaflow foreach Without Overloading the Scheduler
+7. How to Join Metaflow foreach Branches and Aggregate Artifacts Safely
+8. How to Pass Large Datasets Between Metaflow Steps with `metaflow.S3`
+9. How to Choose Between Metaflow's `uv`, `@pypi`, and `@conda` Environments and Understand Snapshotting Tradeoffs
+10. How to Package Native and Private Python Dependencies for Remote Metaflow Tasks
+11. How to Access AWS Secrets Manager, Azure Key Vault, or Google Cloud Secret Manager from Metaflow
+12. How to Combine `@retry`, `@catch`, and `@timeout` in Metaflow and Use `@exit_hook` on Local Runs and Argo Workflows
+13. How to Resume a Failed Metaflow Run Without Recomputing Successful Steps
+14. How to Checkpoint Long-Running Metaflow Training Jobs With the Experimental `metaflow-checkpoint` Extension
+15. How to Debug a Remote Metaflow Task from Logs and Stored Artifacts
+16. How to Inspect Metaflow Runs, Tasks, Tags, and Artifacts from a Notebook
+17. How to Schedule Metaflow Flows with Argo Workflows
+18. How to Deploy Metaflow Flows to AWS Step Functions and Schedule Them With EventBridge
+19. How to Deploy Metaflow Flows from GitHub Actions with the Deployer API
+20. How to Choose Among Metaflow's Argo Workflows, Step Functions, Airflow, and Extension-Based Kubeflow Integrations
+
+## SOC 2
+
+1. How to Prove Your Risk Register Was Reviewed Throughout a SOC 2 Type II Audit Period
+2. How to Document Risk Acceptance with Owners, Expiry Dates, and Compensating Controls for SOC 2
+3. How to Build a Risk-Tiered Vendor Review Workflow for SOC 2
+4. How to Monitor Subprocessors for Security Changes Between Annual SOC 2 Reviews
+5. How to Review Firewall Rules and Preserve Remediation Evidence for SOC 2
+6. How to Inventory Service Accounts and Assign Accountable Owners for SOC 2
+7. How to Document Secure Disposal of Retired Devices and Storage Media for SOC 2
+8. How to Document Security Awareness Training and Phishing Exercises for SOC 2
+9. How to Reconcile Cloud, SaaS, and Device Inventories for SOC 2
+10. How to Prove Corporate Endpoint Encryption, EDR Health, and Patch Enforcement for SOC 2
+11. How to Document Manual Database Changes Outside CI/CD for SOC 2
+12. How to Prove Security Alerts Were Investigated Within SOC 2 Policy SLAs
+13. How to Prove Vulnerabilities Were Remediated Within SOC 2 Policy Deadlines
+14. How to Prove Employees Acknowledged the Current Security Policies for SOC 2
+15. How to Test Contractual and Policy-Based Customer Incident-Notification Deadlines for SOC 2
+16. How to Test Queues, Retries, and Batch Jobs When Processing Integrity Is in Scope for SOC 2
+17. How to Document Annual Policy Reviews When No Policy Text Changed for SOC 2
+18. How to Preserve SOC 2 Control Ownership When a Key Employee Leaves
+19. How to Prove Management Reviews Security Metrics and Risk Decisions for SOC 2
+20. How to Prove Backup Failures Generate Tickets and Reach an Owner for SOC 2
+
+## Supabase
+
+1. How to Debug Supabase RLS When `auth.uid()` Is NULL or Queries Return No Rows
+2. How to Secure Supabase Storage Uploads With Ownership and Folder Policies on `storage.objects`
+3. How to Implement Team Roles With Supabase Custom Claims and RLS Without Trusting Client Metadata
+4. How to Preserve Caller RLS in a Supabase Edge Function Instead of Using `service_role`
+5. How to Use Separate User-Scoped and `service_role` Supabase Clients Without Session Leakage
+6. How to Refresh Supabase SSR Cookies Safely in Next.js Proxy or Legacy Middleware
+7. How to Fix Supabase OAuth Redirects That Work Locally but Lose the Session in Production
+8. How to Choose Between `getClaims()`, `getUser()`, and `getSession()` in Supabase Server Code
+9. How to Create Public Profiles From `auth.users` Without Breaking Supabase Sign-Ups
+10. How to Configure Supabase Magic-Link and Password-Reset Redirects Across Local, Preview, and Production Environments
+11. How to Baseline a Hosted Supabase Project for Local Development With `db pull`, `db reset`, and a Clean Migration History
+12. How to Transfer a Supabase Project Between Organizations and Verify Database, Storage, Auth, and Edge Function State
+13. How to Repair a Supabase Migration History Mismatch Without Dropping Production Data
+14. How to Promote Supabase Schema, RLS, Storage Policy, and Trigger Changes Across Development, Staging, and Production
+15. How to Generate Supabase TypeScript Types and Detect Schema Drift in CI
+16. How to Troubleshoot Supabase Realtime When `postgres_changes` Receives No Events
+17. How to Authorize Private Supabase Realtime Channels With RLS on `realtime.messages`
+18. How to Run Atomic Multi-Table Transactions Through Supabase Database Functions
+19. How to Schedule Supabase Edge Functions With Cron and `pg_net`
+20. How to Verify Stripe Webhook Signatures in a Supabase Edge Function
+
+## Zot
+
+1. How to Deploy Zot on Kubernetes With the Official Helm Chart and Persistent Storage
+2. How to Build an Eventually Consistent Active-Active Zot Registry With Independent Storage, Bidirectional Sync, and Path-Based Routing
+3. How to Combine Zot htpasswd Authentication With Repository-Path Access Policies
+4. How to Connect Zot to LDAP and Map Directory Groups to Repository Permissions
+5. How to Configure GitHub, GitLab, or Dex Login for the Zot Web UI
+6. How to Authenticate Kubernetes and CI Workloads to Zot With OIDC Instead of Static Passwords
+7. How to Require Mutual TLS for Machine-to-Machine Access to Zot
+8. How to Offload Zot Blob Downloads to Signed Object-Storage URLs With `redirectBlobURL`
+9. How to Split Zot Repositories Across Multiple Storage Backends With `subPaths`
+10. How to Schedule Zot Garbage Collection in an Off-Peak UTC `gcTimeWindow`
+11. How to Test Zot Retention With `verify-feature retention` Without Mistaking Garbage Collection for a Full Dry Run
+12. How to Protect Untagged Digest-Only Cache Entries With Zot `keepUntagged` Retention Rules
+13. How to Detect Registry Bit Rot With Zot Scrubbing and Trace the Damaged Blob
+14. How to Mirror Selected Repositories and Tags Into Zot on a Schedule
+15. How to Troubleshoot Zot When On-Demand Pulls Work but Scheduled Mirroring Does Not
+16. How to Mirror Amazon ECR Into Zot With the ECR Credential Helper Instead of Static Passwords
+17. How to Mirror Only Signed Images in Zot While Preserving Digests and Signature Referrers
+18. How to Query Zot for Affected and Fixed Images With `zli cve` and the GraphQL Search API
+19. How to Diagnose Skopeo Copy Failures When Zot Converts Docker Manifests to OCI
+20. How to Diagnose Slow or Stalled Zot Image Pulls With Trace Logs and Prometheus Metrics
+
+## AWS Organizations
+
+1. How to Migrate a Standalone AWS Account Into an Organization Without Breaking Existing Workloads
+2. How to Move an AWS Account Directly Between Organizations Without a Standalone Gap
+3. How to Evaluate Inherited SCPs Before Moving an AWS Account Into a New OU
+4. How to Remove a Member Account When AWS Organizations Says It Cannot Leave
+5. How to Close AWS Organizations Member Accounts Without Hitting the Rolling 30-Day Closure Quota
+6. How to Update AWS Organizations Member Account Names, Root Emails, and Alternate Contacts Centrally
+7. How to Automate AWS Account Creation and Reliably Wait for `CreateAccount` to Finish
+8. How to Debug IAM Identity Center Assignments That Work in One AWS Account but Not Another
+9. How to Switch Between AWS Organization Accounts From the CLI With AssumeRole Profiles
+10. How to Troubleshoot StackSet Auto-Deployment Failures After Moving an AWS Account Into an OU
+11. How to Find Which SCP Caused an Explicit Deny for an AWS Member-Account Administrator or Root User
+12. How to Test SCP Changes Safely Before Rolling Them Out Across Production Accounts
+13. How to Debug an SCP Region Deny That Breaks IAM, Route 53, or Other Global Services
+14. How to Quarantine a Compromised AWS Member Account Without Blocking Incident Responders
+15. How to Block AWS Member Accounts From Leaving or Closing While Preserving an Approval Path
+16. How to Centralize Root Access for AWS Member Accounts While Keeping Root Credentials Disabled
+17. How to Deny Long-Term Root Credentials in an SCP Without Blocking Task-Scoped `sts:AssumeRoot` Sessions
+18. How to Protect Organization-Wide CloudTrail Logs From Tampering by AWS Member Accounts
+19. How to Alert on AWS Organizations Account, OU, and Policy Changes With CloudTrail Events in `us-east-1`
+20. How to Inventory Nested AWS OUs, Accounts, and Attached Policies With the CLI
+
+## SRE
+
+1. How to Validate an SLI Query Against Raw Request Events Before Trusting Its Error Budget
+2. How to Detect SLI Drift After Instrumentation, Routing, or Schema Changes
+3. How to Test Burn-Rate Alerts by Injecting Synthetic SLO Failures
+4. How to Reconcile Client-Side and Server-Side SLIs When They Report Different Reliability
+5. How to Migrate an SLI to a New Metric Source Without Resetting the Error Budget
+6. How to Set SLO Eligibility Rules for Synthetic, Admin, and Replay Traffic Without Hiding Failures
+7. How to Keep SLOs Comparable Across API Versions with Different Success Semantics
+8. How to Set a Pager Budget and Escalate When an On-Call Shift Exceeds It
+9. How to Onboard Engineers into On-Call with Shadow, Reverse-Shadow, and Certification Shifts
+10. How to Calculate Minimum On-Call Staffing from Page Volume, Incident Duration, and Leave Coverage
+11. How to Detect On-Call Cognitive Overload Using After-Hours Interruptions and Recovery Time
+12. How to Attribute Error-Budget Burn to a Feature Flag Without Treating Correlation as Causation
+13. How to Build Redundant Out-of-Band Incident Communications for Identity, Chat, and Network Failures
+14. How to Rehearse Incident Response When the Observability Platform Itself Is Down
+15. How to Verify a Toil Automation Reduced Manual Work Without Shifting It to Another Team
+16. How to Introduce an Interrupt-Shield Rotation That Protects SRE Project Work
+17. How to Audit On-Call Schedule Fairness Across Nights, Weekends, and Holidays
+18. How to Measure SRE Team Health Without Ranking Individual Engineers
+19. How to Canary Configuration Changes Without Letting Shared State Corrupt the Control Group
+20. How to Exit an SRE Engagement and Return Production Ownership to a Service Team
+
+## Telemetry Retention
+
+1. How to Choose Different Retention Windows for Logs, Metrics, and Traces from Query History
+2. How to Build a Telemetry Retention Registry with Owners, Purpose, Legal Basis, and Review Dates
+3. How to Preserve Trace-to-Log Correlation When Logs and Traces Expire on Different Schedules
+4. How to Prevent Buffered or Late-Arriving Telemetry from Expiring Before It Becomes Queryable
+5. How to Separate Telemetry Retention Policies from Per-Tenant Ingestion and Storage Quotas
+6. How to Determine Which Loki Retention Rule Wins Across Global, Tenant, and Stream Overrides
+7. How to Align Loki Retention with S3 or GCS Lifecycle Rules Without Deleting Data Early
+8. How to Set Global and Per-Tenant Trace Retention in Grafana Tempo
+9. How to Route Tail-Sampled Errors and Slow Traces to a Longer-Retention Backend
+10. How to Verify Prometheus Has Actually Deleted Expired Blocks After a Retention Change
+11. How to Move Long-Term Prometheus Metrics to Thanos or Grafana Mimir Without Retention Gaps
+12. How to Delete a Specific Prometheus Time Series Without Wiping the Entire TSDB
+13. How to Choose Between Elasticsearch ILM and Data Stream Lifecycle for Telemetry Retention
+14. How to Diagnose an Elasticsearch Retention Policy Stuck in an ILM Phase
+15. How to Implement Legal Holds Without Disabling Normal Telemetry Expiration
+16. How to Implement Cryptographic Erasure for Immutable Telemetry Archives with Per-Tenant Keys
+17. How to Detect Telemetry Retention Drift Across Environments and Tenant Overrides
+18. How to Measure Telemetry Deletion Lag and Alert When a Backend Breaches Policy
+19. How to Test Telemetry Deletion End to End and Produce Audit Evidence
+20. How to Roll Out a Shorter Retention Policy Without Overloading Compactors or Delete Workers
+
+## Savings Plans
+
+1. How to Choose Database Savings Plans vs RDS Reserved Instances for a Mixed Database Fleet
+2. How to Size a Database Savings Plans Commitment Across RDS, DynamoDB, ElastiCache, and OpenSearch
+3. How to Verify Which Database Instance Generations and Serverless Usage Are Savings Plans Eligible
+4. How to Migrate from Expiring RDS Reserved Instances to Database Savings Plans Without Double Coverage
+5. How to Keep Database Savings Plans Utilized During an RDS-to-DynamoDB or Aurora Migration
+6. How to Measure Database Savings Plans Coverage for Provisioned and Serverless Workloads
+7. How to Model a Custom Savings Plans Purchase with Savings Plans Purchase Analyzer Before Committing
+8. How to Queue a Savings Plan Renewal at the Existing Plan's Exact Expiration Time
+9. How to Grant Savings Plans Reporting Access Without Granting Purchase Permissions
+10. How to Create Savings Plans Budgets for Utilization and Coverage Plus Separate Expiration Alerts
+11. How to Identify Which EC2 Instances Consumed a Savings Plan Using CUR and Hourly Cost Explorer
+12. How to Calculate Effective Savings Against On-Demand Rates from Savings Plans CUR Line Items
+13. How to Reconcile the 48-Hour Savings Plans Reporting Lag Before Acting on Coverage Alerts
+14. How to Find Account-Level Coverage Gaps When Organization-Wide Utilization Looks Healthy
+15. How to Model Savings Plans Group-Sharing Changes in AWS Bill Scenarios Before Rollout
+16. How to Audit Newly Eligible Database Services Against an Existing Database Savings Plan
+17. How to Consolidate AWS Organizations Without Stranding or Leaking Savings Plans Discounts
+18. How to Preserve Compute Savings Plans Utilization During an EC2-to-Fargate or Lambda Migration
+19. How to Exclude Ineligible Software, EKS Control Plane, and Dedicated Instance Fees from Commitment Models
+20. How to Automate Savings Plans Inventory, Utilization, Coverage, and Expiration Reports with AWS APIs
