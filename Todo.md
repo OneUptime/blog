@@ -133,7 +133,6 @@
 
 ## Postgres HA
 
-1. How to Build a Three-Node PostgreSQL HA Cluster with Patroni, etcd, and HAProxy
 2. Patroni, PgBouncer, and HAProxy: Which Layer Handles Failover, Pooling, and Traffic Routing?
 3. How to Size and Place an etcd Quorum for a Patroni Cluster Without Creating a New Single Point of Failure
 4. Why Does Patroni Demote a Healthy Primary When etcd Is Unavailable? Configuring DCS Failsafe Mode
