@@ -130,7 +130,6 @@
 
 ## MFA
 
-20. How to Audit MFA Enrollment and Recovery Events Without Logging Secrets
 
 ## Postgres HA
 
