@@ -133,7 +133,6 @@
 
 ## Postgres HA
 
-5. How to Prevent PostgreSQL Split Brain with Patroni Leader Locks, Watchdog Fencing, and Quorum
 6. Patroni Switchover vs Failover: How to Move the Primary Safely for Planned Maintenance
 7. How to Rejoin the Old PostgreSQL Primary After Patroni Failover with `pg_rewind`
 8. Why Does `pg_rewind` Fail After a Patroni Failover? Checking Checksums, WAL, and Timeline History
