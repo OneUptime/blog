@@ -127,7 +127,6 @@
 
 ## SLOs
 
-5. Which HTTP Status Codes Belong in an Availability SLI? Handling 4xx, 5xx, and Cancellations
 6. Should Planned Maintenance Count Against an SLO? A Decision Framework
 7. Rolling vs Calendar-Aligned SLO Windows: Which One Should Drive Operations?
 8. When Does a Rolling Error Budget Recover After an Incident?
