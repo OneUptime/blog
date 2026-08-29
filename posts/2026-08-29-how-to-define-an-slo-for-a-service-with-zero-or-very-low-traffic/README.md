@@ -34,7 +34,7 @@ An SLO view should distinguish:
 | Idle | Zero | Present and fresh | No request-based observation |
 | Unknown | Unknown | Missing or stale | Monitoring failure; do not infer compliance |
 
-Never use `or vector(1)` to turn an empty ratio into success. It makes an instrumentation outage look exactly like a perfectly reliable idle service.
+Never use `or vector(1)` as an empty-vector fallback for a fully aggregated ratio. Missing instrumentation can also produce an empty vector, so this fallback can report a telemetry outage as 100% reliability.
 
 Expose numerator and denominator beside the ratio. A dashboard can display `N/A (0 requests)` when the known denominator is zero and `UNKNOWN (telemetry missing)` when counters or scrapes are absent.
 
@@ -64,23 +64,23 @@ Synthetic coverage also has limits: probes may bypass customer DNS, authenticati
 
 ### Change the Product or Target
 
-Retries, queued completion, idempotency, and graceful degradation can reduce the impact of an individual attempt failure. Measure the logical outcome after those mechanisms. If one logical failure is tolerable but a 99.9% target pages on every event, the target and response policy disagree; choose a realistic target or use a ticket rather than pretending the event did not happen.
+Retries, queued completion, idempotency, and graceful degradation can reduce the impact of an individual attempt failure. Measure the logical outcome after those mechanisms. If one logical failure is tolerable but alerting against a 99.9% target pages on every failure, the target and response policy disagree; choose a realistic target or use a ticket rather than pretending the event did not happen.
 
 ## Monitor Telemetry and Traffic Independently
 
-Prometheus can detect a missing counter series:
+Initialize known labeled counter series to zero so idle telemetry remains present. Prometheus can then detect when no samples for the selected eligible counter were observed in a window:
 
 ```promql
-absent_over_time(http_requests_total{service="recovery-api"}[10m])
+absent_over_time(http_requests_total{service="recovery-api",sli_eligible="true"}[10m])
 ```
 
-It can separately identify a scrape target that exists but is failing:
+It can separately identify targets for which every recorded scrape in the last 10 minutes failed:
 
 ```promql
 max_over_time(up{job="recovery-api"}[10m]) == 0
 ```
 
-A present counter with no increase may mean legitimate idleness:
+With freshness checked separately, a counter with no observed increase may mean legitimate idleness:
 
 ```promql
 sum(increase(http_requests_total{service="recovery-api",sli_eligible="true"}[1h])) == 0
@@ -92,7 +92,7 @@ Route the first two conditions as telemetry or platform incidents. Route the thi
 
 A complete low-traffic definition might say:
 
-> Over a rolling 28 days, at least 99% of eligible password-recovery journeys initiated by a customer will complete within 10 minutes. A period with zero initiated journeys is reported as no observation. Separately, at least 99.5% of five-minute synthetic checks during supported hours must complete successfully.
+> Over a rolling 28 days, at least 99% of eligible password-recovery journeys initiated by a customer will complete within 10 minutes. A period with zero initiated journeys is reported as no observation. Separately, over the same rolling 28 days, at least 99.5% of synthetic checks scheduled every five minutes during supported hours must complete successfully.
 
 This definition states the event, deadline, window, idle behavior, and independent coverage signal. Also specify the minimum event count at which product reports should compare cohorts or declare a trend.
 
