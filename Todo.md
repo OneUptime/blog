@@ -133,7 +133,6 @@
 
 ## Postgres HA
 
-3. How to Size and Place an etcd Quorum for a Patroni Cluster Without Creating a New Single Point of Failure
 4. Why Does Patroni Demote a Healthy Primary When etcd Is Unavailable? Configuring DCS Failsafe Mode
 5. How to Prevent PostgreSQL Split Brain with Patroni Leader Locks, Watchdog Fencing, and Quorum
 6. Patroni Switchover vs Failover: How to Move the Primary Safely for Planned Maintenance
