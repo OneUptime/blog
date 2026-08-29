@@ -8,7 +8,7 @@ Description: Slow online MFA guessing with layered account-aware limits, bounded
 
 ---
 
-Six decimal digits provide only one million possible values, and a TOTP acceptance window can make several values valid at once. MFA codes therefore depend on strict online throttling. A hard rule such as “ten failures locks the account until support unlocks it,” however, lets anyone who knows a username deny service to that user.
+Six decimal digits provide only one million possible values, and a TOTP acceptance window can make several values valid at once. MFA codes therefore depend on strict online throttling. A hard rule such as “ten failures locks the account until support unlocks it,” however, can let anyone who can submit MFA attempts for a known account deny service to that user.
 
 The goal is not unlimited availability or permanent lockout. It is to make guessing uneconomic, constrain distributed attacks, preserve a legitimate recovery path, and detect abuse.
 
@@ -24,35 +24,41 @@ Useful layers include:
 - network and device limits to suppress broad credential-stuffing traffic;
 - global circuit breakers that protect the verifier and messaging providers.
 
-NIST SP 800-63B-4 sets 100 consecutive failed attempts as an upper bound before an authenticator is disabled and explicitly permits lower limits. It also permits techniques such as increasing wait periods, bot challenges, and risk-based controls. Treat 100 as a ceiling for conforming deployments, not a recommended product default.
+When an authenticator type requires its general throttling rule, as short OTP outputs do, NIST SP 800-63B-4 limits consecutive failures using a specific authenticator on one subscriber account to no more than 100 before that authenticator is disabled and explicitly permits lower limits. It also permits techniques such as increasing wait periods, bot challenges, and risk-based controls. Treat 100 as a ceiling for conforming deployments, not a recommended product default.
 
 ## Prefer Bounded Backoff to Permanent Lockout
 
 An example policy might allow a few immediate attempts, then impose progressively longer waits with a maximum delay. Exact numbers require a threat model, code length, accepted TOTP window, user population, and recovery capability.
 
 ```text
-state = load_authoritative_attempt_state(account, factor)
+with atomic_authoritative_attempt(account, factor):
+    state = load_authoritative_attempt_state(account, factor)
 
-if now < state.next_allowed_at:
-    return generic_failure_with_retry_after()
+    if now < state.next_allowed_at:
+        return generic_failure()
 
-if !verify_once(submitted_code):
-    state.failures += 1
-    state.next_allowed_at = now + bounded_backoff(state.failures)
-    atomic_save(state)
-    return generic_failure()
+    match = verify_unused_code(submitted_code, state)
+    if match is none:
+        state.failures += 1
+        state.next_allowed_at = now + bounded_backoff(state.failures)
+        save(state)
+        return generic_failure()
 
-atomic_clear_or_decay(state)
+    mark_code_used(state, match)
+    clear_or_decay(state)
+    consume_authentication_transaction()
+    save(state)
+
 complete_authentication()
 ```
 
-Make check, failure increment, and next-allowed calculation atomic. Otherwise parallel requests can all pass an old limit. Do not perform expensive Argon2 or KMS operations before a cheap authoritative throttle check when the request can be rejected safely.
+Run the entire read, throttle check, verification, and state update as one serialized transaction per account and factor in shared authoritative storage, or atomically reserve an admitted attempt before verification. An atomic save after verification is not enough: parallel requests can all pass an old limit. On success, atomically record the matched TOTP counter or other one-time code and the MFA transaction as consumed before issuing a session, so a parallel replay cannot authenticate twice. Do not perform expensive Argon2 or KMS operations before a cheap authoritative throttle check when the request can be rejected safely.
 
 Avoid precise public counters such as “two attempts remain,” which help attackers tune activity. A coarse `Retry-After` may improve legitimate behavior, but invalid account, invalid code, replay, and throttled states should not become an enumeration oracle.
 
 ## Define What Resets the Budget
 
-A successful verification of the factor can clear or decay its failures. Merely supplying the correct password should not erase MFA failures: an attacker with a stolen password could use that to obtain unlimited OTP guesses.
+A successful authentication using the factor can clear or decay its failures. Merely supplying the correct password should not erase MFA failures: an attacker with a stolen password could use that to obtain unlimited OTP guesses.
 
 Do not let creation of a new pre-MFA session reset the account-wide budget. Bind transaction-level bursts to a broader account/factor counter. Expiring the short challenge stops replay of that challenge but does not forgive the underlying attack history.
 
@@ -60,13 +66,13 @@ Recovery and alternate factors need their own budgets and a shared risk view. Ot
 
 ## Make Lockout Safe When Disablement Is Required
 
-For high-assurance or standards-driven environments, the failure ceiling may require disabling an authenticator. Under NIST SP 800-63B-4, a disabled authenticator must be rebound before it can be used again; if excessive attempts involved more than one authenticator, all involved authenticators must be disabled. This does not necessarily disable the identity or untouched authenticators, so preserve a separately secured recovery route or another enrolled factor. Notify the owner without including submitted codes.
+For deployments following NIST's general throttling rule, reaching the failure ceiling requires disabling the authenticator. Under NIST SP 800-63B-4, a disabled authenticator must be rebound before it can be used again; if excessive attempts involved more than one authenticator, all involved authenticators must be disabled. This does not necessarily disable the identity or untouched authenticators, so preserve a separately secured recovery route or another enrolled factor that is sufficient for the required assurance level. Notify the owner without including submitted codes.
 
 Support must not bypass the limit on request. Any administrative recovery should follow documented identity verification, separation of duties for high-value accounts, and an audit trail. Attackers often create the denial of service precisely to pressure support into a weak exception.
 
 ## Threat Model and Failure Modes
 
-Defend against brute force from one source, distributed low-and-slow guessing, parallel races, username-based lockout attacks, cost exhaustion of SMS/push providers, and compromised passwords used to reset budgets. Common failures are IP-only limiting, permanent account lockout after a tiny public threshold, counters stored on one node, resetting on password success, treating each accepted TOTP counter as a separate attempt, and allowing each new challenge a fresh global budget.
+Defend against brute force from one source, distributed low-and-slow guessing, parallel races, username-based lockout attacks, cost exhaustion of SMS/push providers, and compromised passwords used to reset budgets. Common failures are IP-only limiting, permanent account lockout after a tiny public threshold, counters stored on one node, resetting on password success, treating each accepted TOTP counter as a separate attempt, and allowing each new challenge a fresh account/factor budget.
 
 Remember that each submitted code is one attempt even if the verifier checks several permitted time counters internally.
 
