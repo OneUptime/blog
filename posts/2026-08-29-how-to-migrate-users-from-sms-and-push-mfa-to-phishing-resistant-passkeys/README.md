@@ -16,7 +16,7 @@ Migration is more than adding a “Create passkey” button. The old factor stil
 
 A passkey is a discoverable FIDO credential. It may be device-bound or synchronized through a credential manager. Both use RP-scoped public-key authentication, but synchronization, device management, and recovery have different risks.
 
-If the service expects a multi-factor cryptographic authentication event, request and verify WebAuthn user verification rather than user presence alone. Record backup eligibility and backup state as signals, and decide whether privileged enterprise users require managed, device-bound authenticators or attestation under a documented privacy-aware policy.
+If the service expects a multi-factor cryptographic authentication event, request and verify WebAuthn user verification rather than user presence alone. Record backup eligibility and backup state as signals. Decide whether privileged enterprise users require managed or device-bound authenticators, and whether attestation, where available, is needed to verify permitted authenticator characteristics under a documented privacy-aware policy.
 
 Inventory browser, operating-system, embedded-webview, shared-device, accessibility, and account-recovery constraints. Do not strand a population whose environment cannot complete WebAuthn. Hardware security keys can cover users without a suitable platform authenticator.
 
@@ -26,14 +26,14 @@ The legacy factor temporarily authorizes a stronger credential, so protect this 
 
 1. require a recent successful legacy MFA event, not just a remembered session;
 2. reject enrollment after recovery or on high-risk context without additional review;
-3. create a short-lived WebAuthn registration challenge bound to user and session;
-4. validate challenge, origin, RP ID hash, type, algorithm, credential uniqueness, and required user verification;
+3. create a short-lived, server-generated random WebAuthn registration challenge of at least 16 bytes, bound to the user and session;
+4. validate the complete registration response according to the WebAuthn RP registration procedure, including type, challenge, expected origin and any cross-origin context, RP ID hash, applicable user presence, required user verification, backup-flag consistency, an offered public-key algorithm, credential ID length and uniqueness, and the attestation statement and policy;
 5. perform a passkey authentication test before marking migration complete;
-6. notify the owner through an established channel.
+6. notify the owner through an established channel independent of the binding transaction.
 
 For high-value accounts, use a cooling-off period or retain heightened monitoring before the new credential can change recovery settings. This contains an attacker who has just compromised SMS or pushed a user into approving enrollment.
 
-Use conditional mediation or autofill where supported so users discover passkeys naturally at sign-in. Keep a visible “use another method” path during transition, but label methods accurately and avoid nudging users back to the weakest option by default.
+Use conditional mediation with WebAuthn-enabled autofill where supported so users discover passkeys naturally at sign-in. Keep a visible “use another method” path during transition, but label methods accurately and avoid nudging users back to the weakest option by default.
 
 ## Run a Measured Coexistence Phase
 
@@ -48,7 +48,7 @@ Track capability and outcomes without collecting unnecessary biometric or attest
 
 Segment policy. Administrators and users with sensitive access can move first with security-key or managed-passkey support. Consumer cohorts may need a longer coexistence window. Publish a timeline and give users a way to enroll a second passkey before disabling fallback.
 
-Do not classify every failed WebAuthn ceremony as unsupported; cancellation, UV failure, RP misconfiguration, and browser policy need different handling. Keep server errors generic but make client guidance actionable.
+Do not classify every failed WebAuthn ceremony as unsupported. Use reliable exception categories where available, but remember that cancellation, timeout, UV failure, and client-specific policy failures may share `NotAllowedError` and cannot always be distinguished. Keep server errors generic but make client guidance actionable.
 
 ## Retire Downgrade Paths Deliberately
 
@@ -56,12 +56,12 @@ Once a user has demonstrated reliable passkey use and a recovery path, change po
 
 - remove the old factor after explicit confirmation;
 - retain it temporarily for low-risk login but never factor changes or sensitive step-up;
-- allow it only inside a formal delayed recovery process;
+- allow it only as one input to a formal, risk-assessed recovery process that may impose a delay;
 - disable it entirely for privileged roles.
 
 Do not offer “SMS instead” after a passkey challenge merely because an attacker caused it to fail. The server, not the client, decides allowed fallback based on account state and risk.
 
-Redesign recovery at the same time. Encourage multiple passkeys or security keys and issue saved recovery codes. Understand the credential manager's own account-recovery model for synchronized passkeys, but do not assume it replaces the service's authenticator lifecycle and revocation controls.
+Redesign recovery at the same time. Encourage multiple passkeys or security keys. If you issue saved recovery codes, require users to store them offline and use them only as one component of a risk-appropriate recovery process; saved recovery codes are not phishing-resistant. Understand the credential manager's own account-recovery model for synchronized passkeys, but do not assume it replaces the service's authenticator lifecycle and revocation controls.
 
 ## Threat Model and Failure Modes
 
@@ -91,4 +91,4 @@ Passkeys resist RP-origin phishing; they do not fix compromised endpoints, broke
 
 ## Conclusion
 
-Use the legacy factor only as a controlled bridge to a fully validated passkey, observe a finite coexistence period, and then remove weak methods from high-risk actions and recovery. The migration succeeds when the stronger credential—not an invisible SMS or push fallback—defines the account's real assurance.
+Use the legacy factor only as a controlled bridge to a fully validated passkey, observe a finite coexistence period, and then remove weak methods as direct paths to high-risk actions or account recovery. The migration succeeds when the stronger credential—not an invisible SMS or push fallback—defines the account's real assurance.
