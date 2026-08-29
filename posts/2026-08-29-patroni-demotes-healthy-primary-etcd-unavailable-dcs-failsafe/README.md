@@ -12,24 +12,24 @@ A PostgreSQL primary can answer queries perfectly while Patroni decides to demot
 
 Patroni permits a normal PostgreSQL node to remain primary only while it can renew the cluster's leader lock in the distributed configuration store (DCS). If etcd becomes unreachable, the node cannot tell whether etcd is down everywhere or whether it alone is isolated while another partition still has quorum. In the second case, another Patroni member could acquire the expired lock and promote. Demoting the old primary before lock expiry prevents two writable timelines.
 
-DCS failsafe mode offers a bounded alternative. It lets the existing primary continue during certain DCS failures only when it can contact every known Patroni member and all of them acknowledge it as the current primary.
+DCS failsafe mode offers a bounded alternative. It lets the existing primary continue during certain DCS failures only when it can contact every other member in the last valid failsafe topology and each returns `Accepted`, agreeing that the primary may continue.
 
 ## Separate database health from leadership authority
 
 These observations answer different questions:
 
 ```bash
-# Is PostgreSQL accepting connections on this host?
+# Is PostgreSQL up and running on this host?
 curl --include http://10.40.0.11:8008/health
 
-# Is this node primary and does its Patroni process hold the leader lock?
+# Is this node primary and does Patroni currently consider it the leader?
 curl --include http://10.40.0.11:8008/primary
 
 # What does the current DCS-backed cluster view show?
 patronictl -c /etc/patroni/patroni.yml list prod-ha
 ```
 
-`/health` returns `200` when PostgreSQL is up, regardless of role. `/primary` returns `200` only when PostgreSQL is primary and the local Patroni member holds the leader lock. A node can therefore be database-healthy but deliberately read-only after DCS loss.
+`/health` returns `200` when PostgreSQL is up, regardless of role. `/primary` returns `200` when PostgreSQL is primary and Patroni currently considers the local member the leader. Normally that corresponds to a live DCS leader lock; during active DCS failsafe mode, Patroni refreshes its local leadership status after successful all-member checks even though it cannot confirm the lock in the DCS. A node can therefore be database-healthy but deliberately read-only after DCS loss.
 
 Patroni's `retry_timeout` absorbs short DCS or network disturbances. With the default dynamic values, problems shorter than ten seconds normally do not cause demotion:
 
@@ -53,13 +53,13 @@ When failsafe mode is enabled, the current leader maintains a permanent `/failsa
 
 If renewing the leader lock fails for a reason other than a compare/version/value mismatch:
 
-1. The existing primary reads its last known failsafe topology.
-2. It sends `POST /failsafe` to every member in that topology.
-3. Each reachable replica uses that request as evidence that the old primary is still alive and caches the evidence for `ttl` seconds.
-4. The primary may remain writable only if every listed member acknowledges it.
-5. If any member does not respond, the primary demotes.
+1. The existing primary uses its last known failsafe topology.
+2. It sends `POST /failsafe` to every other member in that topology.
+3. A reachable member rejects the request if its own PostgreSQL is already running as primary. Otherwise it returns `Accepted` and caches the caller-supplied leader information for `ttl` seconds.
+4. The primary may remain writable only if every other listed member returns `Accepted`.
+5. If any other member does not respond or rejects the request, the primary demotes.
 
-The requirement is **all Patroni members**, not a Patroni-node majority. DCS voters and Patroni database members may be placed in different failure domains; a majority calculation from the primary's limited network view could authorize the losing side of a partition. Requiring every known database member closes that ambiguity.
+The requirement is **all members recorded in the failsafe topology**, not a Patroni-node majority. DCS voters and Patroni database members may be placed in different failure domains; a majority calculation from the primary's limited network view could authorize the losing side of a partition. Requiring every recorded member closes that ambiguity.
 
 Failsafe mode does not activate when the leader-lock update fails because its stored version/value no longer matches. That conflict is evidence that leadership state changed, so continuing would be unsafe.
 
@@ -152,17 +152,17 @@ SELECT pg_is_in_recovery(),
        pg_current_wal_lsn();
 ```
 
-Only a confirmed primary can call `pg_current_wal_lsn()`. Run the read-only checks on replicas separately.
+`pg_current_wal_lsn()` cannot be executed during recovery, and it does not prove that the node holds Patroni's leader lock. Run `pg_is_in_recovery()` and the read-only check separately on replicas.
 
 ## Know what failsafe mode does not solve
 
 DCS failsafe mode is not:
 
 - An etcd replacement. Patroni cannot make normal membership/configuration changes or complete arbitrary leader elections indefinitely without the DCS.
-- Permission to operate with an unreachable database member. One missing acknowledgement forces demotion.
+- Permission to operate when a member's Patroni REST API is unreachable or rejects the request. One missing or rejected acknowledgement forces demotion.
 - A way to keep writes available after the current primary itself fails. With DCS down, replicas cannot safely establish new leadership.
 - Protection from a manually promoted PostgreSQL server outside Patroni.
-- A substitute for watchdog fencing. A paused Patroni process or stuck host may not execute its demotion path; a watchdog provides an independent reset deadline.
+- A substitute for watchdog fencing. A suspended Patroni process or paused VM may not execute its demotion path; a watchdog provides an independent reset deadline.
 - Evidence that HAProxy should use `/health` for writes. Continue checking `/primary` or `/read-write`.
 
 During a DCS outage, membership is effectively frozen to the failsafe topology. A newly created replica not present in `/failsafe` cannot become leader. A terminated member still matters to the primary's every-cycle reachability test, and its absence causes demotion.
@@ -173,12 +173,12 @@ Collect evidence before changing timeouts:
 
 1. Inspect Patroni logs around the last successful leader-lock update and look for DCS timeouts, compare failures, or failed `POST /failsafe` acknowledgements.
 2. Check each etcd endpoint directly with `etcdctl endpoint health --cluster` and `endpoint status --cluster --write-out=table`.
-3. Test every REST `connect_address` from the former primary, including TLS name validation and network policy.
+3. Check every REST `connect_address` from the former primary, including network policy, peer Basic-auth credentials, and any required client-certificate handshake.
 4. Compare `patronictl show-config` with local YAML. Confirm `failsafe_mode: true` is effective dynamic configuration.
 5. Look for a stale or newly added Patroni member in `patronictl list` and the DCS membership keys.
 6. Confirm the failure was not a genuine leader-key conflict. Failsafe correctly refuses to override one.
 
-Common causes include a REST firewall that allowed HAProxy but not node-to-node requests, a certificate that lacks the advertised address, DNS used by `connect_address` becoming unavailable with etcd, or a decommissioned member still present when the outage began.
+Common causes include a REST firewall that allowed HAProxy but not node-to-node requests, inconsistent peer Basic-auth credentials, a missing, expired, or untrusted client certificate configured through `ctl.certfile` when REST client-certificate validation is required, DNS used by `connect_address` becoming unavailable with etcd, or a decommissioned member still present when the outage began.
 
 ## Rollback and incident recovery
 
@@ -189,7 +189,7 @@ patronictl -c /etc/patroni/patroni.yml edit-config prod-ha \
   --set failsafe_mode=false --force
 ```
 
-Verify the value on every member through `/config` or `show-config`. Disabling it restores the normal rule: failure to renew the leader lock causes primary demotion before the lock can expire.
+Verify the global DCS value through `/config` or `show-config`. To confirm that every Patroni process has consumed the change, query `/metrics` on each member and check that `patroni_failsafe_mode_enabled` is `0`. Disabling it restores the normal rule: failure to renew the leader lock causes primary demotion before the lock can expire.
 
 If the cluster is already in a DCS outage, do not attempt to “roll back” by editing three local files—the effective configuration is stored in the unavailable DCS. Restore etcd quorum and network reachability. If all nodes are replicas afterward, let Patroni perform a normal election once DCS is consistent.
 
