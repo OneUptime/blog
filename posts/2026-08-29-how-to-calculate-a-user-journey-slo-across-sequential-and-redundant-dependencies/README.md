@@ -10,7 +10,7 @@ Description: Use dependency math for design bounds, then measure the correlated 
 
 For independent components used in sequence, multiply availabilities. For independent redundant alternatives, multiply failure probabilities and subtract from one. Those formulas are useful architecture estimates—but they are rarely an adequate production SLI because real failures and failover mechanisms are correlated.
 
-The production user-journey SLO should count observed logical outcomes at the journey boundary.
+The SLI underlying the production user-journey SLO should count observed logical outcomes at the journey boundary.
 
 ## Sequential Dependencies
 
@@ -72,7 +72,7 @@ good journeys / eligible journey starts
 
 A primary failure followed by successful fallback within the deadline is one good journey. A primary and secondary failure is one bad journey, not two. Record attempts and causes for diagnostics, but do not multiply user impact.
 
-An aggregate metric can look like:
+A rolling five-minute SLI query can look like:
 
 ```promql
 sum(rate(journey_outcomes_total{journey="checkout",result="good"}[5m]))
@@ -80,7 +80,7 @@ sum(rate(journey_outcomes_total{journey="checkout",result="good"}[5m]))
 sum(rate(journey_outcomes_total{journey="checkout"}[5m]))
 ```
 
-This query measures the system—including correlation and failover—as users encountered it. Ensure the denominator comes from durable starts so journeys that time out or disappear are later classified as bad.
+This query measures finalized outcomes—including correlation and failover—as users encountered them. Persist every eligible journey start and reconcile it into exactly one terminal `journey_outcomes_total` outcome: emit at completion, or emit `result="bad"` once its deadline passes without a terminal outcome. The denominator then counts finalized eligible journeys.
 
 ## Allocate Component Risk Without Turning It into Compliance
 
@@ -109,7 +109,7 @@ Compare predicted and observed journey outcomes. Update correlation and failover
 - Do not multiply scores from different periods, populations, or failure definitions.
 - Do not assume retries are independent when they hit the same unhealthy system.
 - Do not add provider SLA service credits to your error budget.
-- Do not call active/active redundant if both paths share a hard control plane.
+- Do not treat active/active paths as independent redundancy if both share a hard control-plane dependency.
 - Do not substitute the worst component SLO for an end-to-end measurement; it can miss integration failures.
 
 ## References
@@ -121,4 +121,4 @@ Compare predicted and observed journey outcomes. Update correlation and failover
 
 ## Conclusion
 
-Multiply independent sequential availability and combine independent redundant failure probabilities only as design estimates. For operations, count the final journey once; that measurement automatically includes real correlation, retries, fallback, and integration behavior.
+Multiply independent sequential availability and combine independent redundant failure probabilities only as design estimates. For operations, count the final journey once; when every eligible start is eventually classified, that measurement captures real correlation, retries, fallback, and integration behavior.
