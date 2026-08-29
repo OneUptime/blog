@@ -130,7 +130,6 @@
 
 ## MFA
 
-6. How to Verify TOTP Enrollment Before Enforcing MFA on the Next Login
 7. How to Secure MFA Factor Changes Against Session Hijacking
 8. How to Design Lost-Device MFA Recovery Without Turning Support into an Authentication Bypass
 9. How to Build a Revocable “Trust This Browser” Cookie for MFA
