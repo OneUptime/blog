@@ -4,30 +4,31 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: TOTP, MFA, Encryption, Key Management, Secrets Management
 
-Description: Explain why TOTP verification needs the original shared secret and protect that secret with authenticated envelope encryption, narrow access, and safe rotation.
+Description: Explain why TOTP verification cannot use a password-style hash and protect its shared key with authenticated envelope encryption, narrow access, and safe rotation.
 
 ---
 
-A password verifier can compare a stored hash with a hash derived from a submitted password. TOTP works differently: the user submits a short output, while the server independently computes candidate outputs from a long-lived shared secret and the current time step. That computation needs the original secret.
+A password verifier can compare a stored hash with a hash derived from a submitted password. TOTP works differently: the user submits a short output, while the server independently computes candidate outputs from a long-lived shared secret and the current time step. That computation needs the shared HMAC key, key-equivalent secret material, or access to a protected service that can compute with it.
 
-Hashing the TOTP secret and using the hash as a replacement key does not solve the problem. The authenticator app still holds the original key, so the two sides would compute different HMAC values. Provisioning the hash as the key merely makes that hash the new shared secret, which still has to be recoverable by the verifier.
+Hashing the TOTP secret and storing that digest as if it were a password verifier does not solve the problem. Substituting an arbitrary digest for the enrolled key generally changes the HMAC outputs. For an HMAC key longer than the hash function's block size, HMAC itself first hashes the key, so that digest can be key-equivalent; it can generate valid codes and must be protected like the key. Provisioning any transformed value as the key likewise makes that value the shared secret, which must remain available to the verifier or a protected cryptographic service.
 
-## Why TOTP Verification Is Reversible-Secret Work
+## Why TOTP Verification Requires Secret-Key Work
 
 RFC 6238 derives a moving counter from Unix time and applies HOTP from RFC 4226:
 
 ```text
 counter = floor((unix_time - T0) / step)
-otp = truncate(HMAC(shared_secret, counter)) mod 10^digits
+mac = HMAC(shared_secret, uint64_be(counter))
+otp = zero_pad(dynamic_truncate(mac) mod 10^digits, digits)
 ```
 
-The usual step is 30 seconds. To validate a submitted code, the verifier decrypts the enrolled secret, calculates the expected output for the permitted counter or counters, compares safely, and then discards the plaintext from memory as soon as practical.
+The usual step is 30 seconds. To validate a submitted code, the verifier obtains use of the enrolled secret, calculates the expected output for the permitted counter or counters, compares safely, rejects an OTP that has already been accepted during its validity period, applies rate limiting, and then discards any plaintext copy from memory as soon as practical.
 
-This is a fundamental limitation of symmetric OTP, not an argument for storing plaintext. Public-key authenticators such as WebAuthn avoid a shared verifier secret: the service stores a public key and the authenticator retains the private key.
+This is a fundamental limitation of symmetric OTP, not an argument for storing plaintext. Public-key authentication with WebAuthn avoids a shared verifier secret: the service stores a public key and the authenticator retains the private key.
 
 ## Use Authenticated Envelope Encryption
 
-Encrypt each TOTP secret with an authenticated-encryption algorithm from a maintained cryptographic library, such as AES-GCM or ChaCha20-Poly1305 where supported by organizational policy. Authentication is essential; encryption without integrity can permit undetected modification. A deployment claiming NIST conformance must select approved cryptography; cryptography used by federal AAL2 verifier implementations also requires FIPS 140 Level 1 validation, so do not assume every otherwise sound AEAD is permitted by that profile.
+Encrypt each TOTP secret with an authenticated-encryption algorithm from a maintained cryptographic library, such as AES-GCM or ChaCha20-Poly1305 where supported by organizational policy. Authentication is essential; encryption without integrity can permit undetected modification. A deployment following NIST SP 800-63B-4 must use approved cryptography where the publication requires it. Although cryptography used by federal AAL2 verifiers generally requires FIPS 140 Level 1 validation, the publication expressly exempts OTP authenticators and verifiers from FIPS 140 validation. Other policies or regulatory profiles may still require a validated module, so do not assume every otherwise sound AEAD is permitted by your deployment's profile.
 
 With envelope encryption:
 
@@ -46,11 +47,11 @@ aad = canonical_encode({
 ciphertext = AEAD_Encrypt(dek, unique_nonce, totp_secret, aad)
 ```
 
-Associated data prevents a valid ciphertext row from being copied to another user or purpose. It need not be secret, but its encoding must be stable. A nonce must never repeat with the same AEAD key; let a vetted library or KMS generate and enforce it.
+Associated data, when reconstructed from trusted record identity rather than copied with the ciphertext, prevents a valid ciphertext row from being copied to another user or purpose. It need not be secret, but its encoding must be stable. A nonce must never repeat with the same AEAD key. Prefer a high-level library or KMS API that manages nonces internally; if the API accepts a caller-supplied nonce, follow its documented uniqueness construction.
 
 ## Separate Keys from Data
 
-Database encryption alone is not sufficient when the application can transparently read the same database and key. Keep KEKs in a KMS or HSM with access granted only to the TOTP verification and enrollment workloads. Separate production and non-production keys, tenants where the threat model calls for it, and encryption purposes.
+Database encryption alone is not sufficient when the application can transparently read the same database and key. Keep KEKs in a KMS or HSM, and grant enrollment, verification, and tightly controlled rotation workloads only the operations each needs. Separate production and non-production keys, tenants where the threat model calls for it, and encryption purposes.
 
 Log KMS authorization decisions and unusual decrypt volume, but never log plaintext, QR provisioning URIs, DEKs, OTP submissions, or full ciphertext records. Disable core dumps or protect them appropriately, avoid placing secrets in immutable language strings, and keep decrypted bytes within the smallest possible scope.
 
@@ -64,7 +65,7 @@ KEK rotation and TOTP-factor rotation are different operations:
 - **DEK or algorithm rotation** decrypts and re-encrypts the secret under a new DEK and nonce.
 - **Factor rotation** creates a new random TOTP secret, verifies enrollment, and invalidates the old authenticator.
 
-Store key and schema versions so reads can decrypt old rows during a controlled migration. Write new rows only with the current version, migrate in bounded batches, verify counts, and retire an old KEK only after all ciphertext and recoverable backups have passed the retention boundary.
+Store key and schema versions so reads can decrypt old rows during a controlled migration. Write new rows only with the current version, migrate in bounded batches, verify counts, and stop using an old KEK for new wraps when it is rotated. Destroy the old KEK or remove unwrap access only after every active DEK has been rewrapped and every recoverable backup that still depends on it has been migrated or passed its retention boundary.
 
 Do not rotate a user's TOTP secret invisibly: their authenticator would no longer match. Factor rotation requires user enrollment and proof of the new factor.
 
@@ -72,14 +73,14 @@ Do not rotate a user's TOTP secret invisibly: their authenticator would no longe
 
 Envelope encryption primarily limits database-only compromise and narrows which workloads can recover secrets. It does not protect against a fully compromised verifier process while it is authorized to decrypt. Reduce that exposure with workload identity, least privilege, rate limits, monitoring, short-lived KMS credentials, and isolation of verification code.
 
-Frequent failures include static nonces, unauthenticated AES-CBC, a KEK in the same database or environment file, one global application key with unrestricted decrypt permission, associated data that can change unexpectedly, plaintext secrets in observability systems, and retiring keys before backups age out.
+Frequent failures include reusing a nonce with the same key, unauthenticated AES-CBC, a KEK in the same database or environment file, one global application key with unrestricted decrypt permission, associated data that can change unexpectedly, plaintext secrets in observability systems, and retiring keys before backups age out.
 
 ## Rollout and Test Checklist
 
 - Generate TOTP secrets with a CSPRNG and meet applicable minimum key strength.
 - Use a maintained AEAD and a unique nonce for every encryption under a key.
 - Bind tenant, user, factor, purpose, and schema version as associated data.
-- Restrict KMS decrypt to the enrollment and verification workloads.
+- Restrict KMS operations to enrollment, verification, and tightly controlled rotation workloads, granting only the operations each needs.
 - Test row-swapping, modified ciphertext, and modified associated data all fail closed.
 - Verify logs, traces, errors, dumps, and analytics contain no secret material.
 - Rehearse rewrapping, rollback, backup restore, and old-key retirement.
@@ -96,4 +97,4 @@ Frequent failures include static nonces, unauthenticated AES-CBC, a KEK in the s
 
 ## Conclusion
 
-The verifier must recover a TOTP shared secret because validation recomputes HMAC outputs. Protect that unavoidable capability with authenticated envelope encryption, contextual binding, KMS-enforced least privilege, disciplined memory and logging practices, and a tested versioned rotation process.
+TOTP verification must have access to the shared key or an equivalent protected computation capability because validation recomputes HMAC outputs. Protect that unavoidable capability with authenticated envelope encryption, contextual binding, KMS-enforced least privilege, disciplined memory and logging practices, and a tested versioned rotation process.
