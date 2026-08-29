@@ -22,7 +22,7 @@ etcd uses Raft and requires a strict majority of configured voting members. For 
 | 2 | 2 | 0 | Avoid; it costs another host without improving tolerance |
 | 3 | 2 | 1 | Normal minimum for production |
 | 4 | 3 | 1 | No more tolerance than three, with more failure surface |
-| 5 | 3 | 2 | Use when two simultaneous member/failure-domain losses must be tolerated |
+| 5 | 3 | 2 | Use when two simultaneous voting-member losses must be tolerated |
 | 7 | 4 | 3 | Rare; more write latency and operational cost |
 
 An odd count is efficient because adding one member to an odd-sized cluster increases the quorum without increasing tolerated failures. A three-member cluster should be the default, not a two-member “pair.” Choose five only when the stated failure model justifies the extra latency, machines, and maintenance complexity.
@@ -88,7 +88,7 @@ etcd3:
 
 Use the `etcd3` section for the v3 API. etcd v2 and v3 keys are not mutually visible, so changing an established Patroni cluster from `etcd` to `etcd3` is not an in-place protocol toggle.
 
-If a load balancer or etcd gateway is required, it must itself be redundant and must not hide all direct endpoints behind one address or one zone. A network policy that permits only one Patroni-to-etcd path recreates the same single point of failure.
+If a load balancer or etcd gateway is required, its instances, network paths, and failure-domain placement must be redundant. A single stable URL or virtual IP is acceptable only when the service behind it is genuinely highly available. A network policy that permits only one Patroni-to-etcd path recreates the same single point of failure.
 
 ## Bootstrap members with one identical cluster map
 
@@ -141,7 +141,7 @@ Faster etcd elections do not override Patroni's leader-lock safety window.
 
 ## Verify health and performance
 
-Run checks through the same TLS and network path Patroni uses:
+Run checks against the same endpoints and through the same network path Patroni uses, using administrator credentials that trust the same etcd CA. The separate admin certificate below does not validate Patroni's own client identity or RBAC permissions:
 
 ```bash
 ETCD_ENDPOINTS=https://10.50.1.11:2379,https://10.50.2.11:2379,https://10.50.3.11:2379
@@ -165,14 +165,15 @@ etcdctl --endpoints=https://10.50.1.11:2379 \
   member list --write-out=table
 ```
 
-The status table should show every configured member, a single leader, matching cluster IDs, and small differences in applied indexes. Monitor the official metrics endpoint, especially:
+Together, the status and membership tables should account for every configured member; the status output should show a single leader and only small differences in applied indexes. Monitor the official metrics endpoint, especially:
 
 - `etcd_disk_wal_fsync_duration_seconds`
 - `etcd_disk_backend_commit_duration_seconds`
 - `etcd_server_proposals_pending`
 - `etcd_server_proposals_failed_total`
 - `etcd_network_peer_sent_failures_total`
-- Leader changes and `has_leader`
+- `etcd_server_leader_changes_seen_total`
+- `etcd_server_has_leader`
 
 Rising pending proposals, slow WAL fsyncs, or frequent leader changes are capacity and stability warnings even if `endpoint health` happens to pass.
 
@@ -196,21 +197,21 @@ With a three-member cluster and one permanent failure, two live members still fo
 2. Identify the dead member by ID with `etcdctl member list`.
 3. Remove the dead member while the two survivors still have quorum.
 4. Add the replacement with its final peer URL as a non-voting learner: `etcdctl member add etcd-d --peer-urls=https://10.50.3.12:2380 --learner`.
-5. Start the replacement using the exact `ETCD_INITIAL_CLUSTER` and `ETCD_INITIAL_CLUSTER_STATE=existing` values printed by `member add`.
+5. Start the replacement with the exact `ETCD_NAME`, `ETCD_INITIAL_CLUSTER`, and `ETCD_INITIAL_CLUSTER_STATE=existing` values printed by `member add` (or their YAML-key equivalents), plus local listen/advertise and TLS settings matching the final peer URL.
 6. Wait for its Raft log to catch up and verify endpoint status.
 7. Promote the caught-up learner with `etcdctl member promote <member-id>`, then verify that all three voting members are healthy before other maintenance.
 
-Adding as a learner keeps it out of quorum until etcd confirms it is caught up; promote requests fail safely while it is too far behind. Add only one replacement at a time. Do not add a fourth **voting** member before removing an unreachable voter: a four-voter cluster requires three votes, so a replacement that fails to start can strand the two survivors without quorum. Do not use `--force-new-cluster` as routine repair—it can discard the consensus history and create conflicting clusters.
+Adding as a learner keeps it out of quorum until etcd confirms it is caught up; promote requests fail safely while it is too far behind. Add only one replacement at a time. Do not add a fourth **voting** member before removing an unreachable voter. With `strict-reconfig-check` enabled by default, etcd rejects a change that would leave fewer started voters than the new quorum. If that check has been disabled, four voters require three votes, so a replacement that fails to start can strand the two survivors. Do not use `--force-new-cluster` as routine repair: it overwrites membership to form a one-member cluster while retaining application data and is strongly discouraged because it panics if other members from the previous cluster are still alive; use the documented snapshot-restore procedure for disaster recovery.
 
 ## Failure modes and recovery
 
 | Failure mode | Result | Recovery focus |
 | --- | --- | --- |
 | One of three members fails | Quorum remains, no additional failure tolerated | Replace promptly using runtime membership changes |
-| Two of three members fail | No quorum; consistent reads/writes requiring consensus stop | Recover a member with its intact data, or follow tested snapshot disaster recovery |
+| Two of three members fail | No quorum; writes and linearizable reads stop | Recover a member with its intact data, or follow tested snapshot disaster recovery |
 | One zone contains two of three members | Loss of that zone removes quorum | Change placement or formally accept the asymmetric objective |
 | Slow shared disk causes missed heartbeats | Leader churn and DCS request timeouts | Isolate/fix storage; do not mask it only with larger timeouts |
-| Patroni lists one proxy URL | Proxy or its network becomes the DCS SPOF | Configure all direct endpoints or a genuinely redundant gateway |
+| Patroni uses one non-redundant proxy or network path | The proxy or path becomes the DCS SPOF | Configure all direct endpoints or a genuinely redundant gateway |
 | Member restored from an unrelated snapshot | Cluster ID/index conflicts or stale state | Stop it and use documented member replacement; never merge clusters |
 
 If etcd loses quorum, Patroni may demote the PostgreSQL primary because it cannot renew the leader lock. That is a safety response, not proof that PostgreSQL itself is corrupt. Restore DCS quorum first, then let Patroni re-establish one leader. Do not bypass the DCS by manually promoting a replica unless the old primary is positively fenced and a separate disaster-recovery decision has accepted the consequences.
