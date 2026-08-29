@@ -12,13 +12,15 @@ HAProxy should not decide that a PostgreSQL server is writable merely because po
 
 Patroni exposes role-aware HTTP endpoints on its REST port. HAProxy can carry PostgreSQL's TCP protocol to port `5432` while checking the same server's Patroni endpoint on port `8008`.
 
-The safe write signal is:
+During normal, unpaused cluster operation, the safe write signal is:
 
 ```text
 GET /primary -> HTTP 200 only when PostgreSQL is primary and Patroni owns the leader lock
 ```
 
 All other nodes normally return `503` for that check.
+
+Pause mode is an exception: when DCS cluster data is unavailable, Patroni derives `/primary`, `/leader`, and `/standby-leader` status from the local PostgreSQL role without confirming a leader lock. Do not rely on these endpoints for split-brain protection in that exceptional maintenance state.
 
 ## Choose the endpoint for each service
 
@@ -29,13 +31,13 @@ Patroni's endpoints express eligibility, not generic process liveness:
 | `/primary` or `/read-write` | PostgreSQL is primary and this member holds the leader lock | Writes |
 | `/leader` | Member holds the lock, without requiring PostgreSQL to be a normal primary | Monitoring, not normal write routing |
 | `/replica` | PostgreSQL state is `running`, role is replica, and `noloadbalance` is not set | Read replicas |
-| `/replica?lag=64MB` | Replica conditions hold and DCS-derived lag is below `64MB` | Lag-bounded reads |
+| `/replica?lag=64MB` | Replica conditions hold and computed replay lag does not exceed `64MB` | Lag-bounded reads |
 | `/synchronous` or `/sync` | Node is a synchronous standby | Reads requiring a sync standby |
 | `/quorum` | Node is listed as a quorum member in `synchronous_standby_names` | Quorum-mode read selection |
 | `/asynchronous` or `/async` | Node is an asynchronous standby | Explicit async read pool |
 | `/read-only` | Eligible replica conditions, also including the primary | Reads that may use the primary |
 | `/health` | PostgreSQL is running, regardless of role | Monitoring only |
-| `/liveness` | Patroni's HA loop ran recently | Patroni process monitoring |
+| `/liveness` | Patroni is paused, or its HA loop ran within the role-specific liveness window | Patroni process monitoring |
 
 For a normal PostgreSQL cluster, do not use `/leader` or `/health` for write traffic. In a Patroni standby cluster, the elected node is a `standby-leader`; use `/standby-leader` for that topology rather than pretending it is a writable primary.
 
@@ -93,7 +95,7 @@ backend patroni_primary
     http-check connect port 8008
     http-check send meth GET uri /primary ver HTTP/1.1 hdr Host patroni
     http-check expect status 200
-    default-server inter 2s fall 3 rise 2
+    default-server inter 2s fall 3 rise 2 init-state fully-down
     server pg1 10.40.0.11:5432 check
     server pg2 10.40.0.12:5432 check
     server pg3 10.40.0.13:5432 check
@@ -109,7 +111,7 @@ backend patroni_replicas
     http-check connect port 8008
     http-check send meth GET uri /replica?lag=64MB ver HTTP/1.1 hdr Host patroni
     http-check expect status 200
-    default-server inter 2s fall 3 rise 2
+    default-server inter 2s fall 3 rise 2 init-state fully-down
     server pg1 10.40.0.11:5432 check
     server pg2 10.40.0.12:5432 check
     server pg3 10.40.0.13:5432 check
@@ -120,6 +122,8 @@ There are two ports on every `server` line's path:
 - `10.40.0.11:5432` is the destination for accepted PostgreSQL client connections.
 - `http-check connect port 8008` overrides the port for the HTTP health-check connection only.
 
+`init-state fully-down` (HAProxy 3.1 and later) keeps each server out of rotation at process start until it passes the configured `rise` threshold. Without it, HAProxy can optimistically route traffic before the first role check finishes.
+
 `option httpchk` starts an HTTP check ruleset. `http-check send` makes an explicit HTTP/1.1 GET with a Host header, and `http-check expect status 200` rejects every non-200 response. This avoids relying on HAProxy's broader default HTTP success range.
 
 Keep the frontend/backend in `mode tcp`; HAProxy must not parse or terminate the PostgreSQL application protocol. The health check is HTTP even though carried within a TCP-mode backend.
@@ -128,7 +132,7 @@ The `30m` client/server settings are illustrative inactivity timeouts. Choose th
 
 ## Set a meaningful replica lag threshold
 
-`/replica?lag=<max-lag>` accepts integer bytes or human-readable values such as `64MB` or `1GB`. Patroni compares the replica position with the leader WAL position cached in DCS for performance.
+`/replica?lag=<max-lag>` accepts integer bytes or human-readable values such as `64MB` or `1GB`. The lag test is inclusive: exactly the configured maximum still passes. Current Patroni compares the replica's replayed LSN with the greater of the last leader LSN known through DCS and the local WAL receiver's latest end LSN.
 
 Choose a threshold from application consistency requirements, not server capacity. For example:
 
@@ -157,14 +161,14 @@ Patroni also lets a replica endpoint require user-defined tags with `tag_`-prefi
 
 The examples use clear-text HTTP only for a protected internal network. In production:
 
-- Restrict Patroni REST listeners with firewalls and Patroni allowlist settings.
+- Use firewalls or network policy to restrict access to Patroni REST listeners; Patroni's allowlist settings restrict unsafe methods, not health-check GET/HEAD requests.
 - Use TLS with certificate verification when checks cross untrusted networks.
-- Issue certificates whose names match the addresses HAProxy uses.
-- Configure HAProxy's check-side SSL/SNI/CA options according to the installed HAProxy release; validate each server independently.
+- Issue certificates whose SANs match the SNI name or `verifyhost` value HAProxy verifies.
+- Configure HAProxy's check-side `ssl`, `verify required`, `ca-file`, and explicit or per-server SNI/`verifyhost` options according to the installed HAProxy release; validate each server independently. With an explicit `http-check connect` rule, HAProxy 3.4 does not derive check SNI from the HTTP Host header.
 - For PostgreSQL TLS passed through HAProxy, give every possible backend a certificate valid for the routed database service name and have libpq use `sslmode=verify-full` with the issuing CA.
 - Keep unsafe Patroni REST methods authenticated. Health-check GET/HEAD requests do not need permission to mutate cluster state.
 
-Do not solve a TLS name error with `verify none`. If the same backend uses different per-server DNS names, use certificates with appropriate SANs or per-server check/SNI configuration.
+Do not solve a TLS name error with `verify none`. If the same backend uses different per-server DNS names, use certificates with appropriate SANs and matching per-server `check-sni`/`verifyhost` configuration.
 
 ## Validate and deploy without dropping connections
 
@@ -189,7 +193,7 @@ printf 'show stat\n' | socat - UNIX-CONNECT:/run/haproxy/admin.sock \
   | awk -F, '$1 == "patroni_primary" || $1 == "patroni_replicas" {print $1, $2, $18, $37}'
 ```
 
-Also inspect HAProxy logs for `Layer7 wrong status, code: 503` versus connection timeouts. A 503 proves HAProxy reached Patroni and Patroni rejected role eligibility; a Layer 4/timeout failure points to listening address, firewall, routing, or TLS.
+Also inspect HAProxy logs for `Layer7 wrong status, code: 503` versus transport or TLS failures. A 503 proves HAProxy reached Patroni and Patroni rejected role eligibility; Layer 4 failures point to the listening address or port, firewall, or routing, while Layer 6 failures point to TLS negotiation or certificate verification.
 
 ## Verify end to end
 
@@ -203,7 +207,7 @@ psql "host=postgres-read.internal port=5001 dbname=postgres user=monitor sslmode
   -c "SELECT inet_server_addr(), pg_is_in_recovery(), current_setting('transaction_read_only');"
 ```
 
-The write listener must return `pg_is_in_recovery() = false` and `transaction_read_only = off`. The replica listener should return `pg_is_in_recovery() = true`.
+The write listener should return `pg_is_in_recovery() = false`; for a session intended to write, `transaction_read_only` should also be `off`. The replica listener should return `pg_is_in_recovery() = true`.
 
 Perform a planned Patroni switchover in staging:
 
@@ -212,7 +216,7 @@ patronictl -c /etc/patroni/patroni.yml switchover prod-ha \
   --leader pg1 --candidate pg2 --scheduled now --force
 ```
 
-Verify the write backend briefly has zero eligible servers during transition, then exactly one new server. Existing sessions may fail; HAProxy routes only new TCP connections. Applications must reconnect and retry complete transactions safely.
+Verify the old write server transitions down and the new server transitions up, eventually leaving exactly one eligible server. Because the `fall` and `rise` thresholds debounce staggered checks, HAProxy may transiently show zero or both servers as eligible. Existing sessions may fail; HAProxy routes only new TCP connections. Applications must reconnect and retry complete transactions safely.
 
 ## Failure modes and rollback
 
@@ -238,4 +242,4 @@ Never make a role endpoint “healthy” by broadening `http-check expect` to in
 - [HAProxy health-check tutorial](https://www.haproxy.com/documentation/haproxy-configuration-tutorials/reliability/health-checks/)
 - [PostgreSQL hot standby](https://www.postgresql.org/docs/current/hot-standby.html)
 - [PostgreSQL monitoring statistics](https://www.postgresql.org/docs/current/monitoring-stats.html)
-- [PostgreSQL SSL/TLS support](https://www.postgresql.org/docs/current/ssl-tcp.html)
+- [PostgreSQL libpq SSL/TLS support](https://www.postgresql.org/docs/current/libpq-ssl.html)
