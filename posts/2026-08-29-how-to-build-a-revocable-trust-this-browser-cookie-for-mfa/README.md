@@ -10,7 +10,7 @@ Description: Implement a trusted-browser token as a random, server-tracked, revo
 
 “Trust this browser” normally means that after the password succeeds, possession of a long-lived browser token can suppress a routine MFA prompt. That token is a credential. It is not proof that the same physical device is present, not an account-recovery code, and not automatically sufficient for an assurance level defined by NIST.
 
-NIST SP 800-63B-4 is stricter: browser cookies do not satisfy the physical-authenticator requirement except as short-term secrets for session maintenance, not authentication. A long-lived remembered-browser token therefore must not be counted as a NIST MFA factor or used to claim AAL2.
+NIST SP 800-63B-4 is stricter: browser cookies do not satisfy the physical-authenticator requirement; they are suitable only as short-term secrets for session maintenance, not as authenticators. NIST permits one narrow AAL2 reauthentication case: after the inactivity timeout but before the overall timeout, a password or biometric comparison may be used in conjunction with the existing session secret. A long-lived remembered-browser token therefore must not be counted as a NIST MFA factor or used to establish a new AAL2 session.
 
 If an attacker steals it, they receive the same bypass until it expires or is revoked. Make that risk explicit before deciding the feature belongs in the threat model.
 
@@ -60,17 +60,17 @@ Evaluate the token only after the primary authenticator succeeds and against the
 - an account and tenant policy that still permits trusted browsers;
 - no recovery, factor replacement, password reset, or high-risk signal requiring full MFA.
 
-On success, establish a new normal session and rotate its identifier. Do not upgrade an anonymous session in place. Record that the session used a trusted-browser credential rather than an interactive second-factor ceremony so later authorization can distinguish them.
+On success, establish a new session at no higher assurance than the current authentication event and rotate its identifier. Do not upgrade an anonymous session in place or label a password-plus-trust-cookie login as AAL2. Record that the session used a trusted-browser credential rather than an interactive second-factor ceremony so later authorization can distinguish them.
 
-IP address and exact user-agent binding are unreliable and can lock out legitimate users or leak tracking data. Treat large context changes as risk signals, not cryptographic proof. If the service needs device-bound phishing-resistant authentication, use WebAuthn rather than increasingly elaborate cookie fingerprinting.
+IP address and exact user-agent binding are unreliable and can lock out legitimate users or leak tracking data. Treat large context changes as risk signals, not cryptographic proof. If the service needs phishing-resistant authentication, use WebAuthn; if it also requires device binding, enforce an appropriate backup-eligibility and attestation policy rather than assuming every WebAuthn credential is device-bound.
 
 ## Make Revocation Real
 
 Give users a list of trusted browsers with coarse name, creation time, and last use, plus controls to revoke one or all. Revoke tokens on account recovery, factor replacement, suspected compromise, administrative policy changes, and optionally password changes. Incrementing a per-account factor generation invalidates every row immediately even if cleanup is asynchronous.
 
-Server-side state is what makes targeted revocation possible. A purely self-contained long-lived token remains usable until expiry unless every request also checks a denylist or security epoch.
+Server-side state is what makes targeted revocation possible. A purely self-contained long-lived token remains usable until expiry unless each token presentation is checked against a denylist or security epoch.
 
-Always require interactive step-up for factor changes, recovery settings, payment destinations, API-key creation, privilege changes, and similarly sensitive actions. A trust token that suppresses those checks quietly becomes the account's strongest authenticator.
+Always require interactive MFA step-up for factor changes, recovery settings, payment destinations, API-key creation, privilege changes, and similarly sensitive actions. A trust token that suppresses those checks quietly becomes the account's strongest authenticator.
 
 ## Threat Model and Failure Modes
 
@@ -94,7 +94,7 @@ Defend against cookie theft through XSS, malware, logs, backups, subdomain compr
 - [NIST SP 800-63B-4: Session Management](https://pages.nist.gov/800-63-4/sp800-63b/session/)
 - [NIST SP 800-63B-4: Session Cookies](https://pages.nist.gov/800-63-4/sp800-63b/session/#sesscookies)
 - [RFC 6265: HTTP State Management Mechanism](https://datatracker.ietf.org/doc/html/rfc6265)
-- [IETF RFC6265bis-22: SameSite and Cookie Name Prefixes](https://datatracker.ietf.org/doc/html/draft-ietf-httpbis-rfc6265bis-22)
+- [IETF draft-ietf-httpbis-rfc6265bis-22: SameSite and Cookie Name Prefixes](https://datatracker.ietf.org/doc/html/draft-ietf-httpbis-rfc6265bis-22)
 - [OWASP Session Management Cheat Sheet](https://cheatsheetseries.owasp.org/cheatsheets/Session_Management_Cheat_Sheet.html)
 - [OWASP Multifactor Authentication Cheat Sheet](https://cheatsheetseries.owasp.org/cheatsheets/Multifactor_Authentication_Cheat_Sheet.html)
 
