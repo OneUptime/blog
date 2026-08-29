@@ -130,7 +130,6 @@
 
 ## MFA
 
-14. Is Email OTP Really a Second Factor? How to Keep Authentication Channels Independent
 15. How to Authenticate CI/CD and Service Accounts When Human Users Must Use MFA
 16. How to Test MFA Flows End to End Without Hard-Coding Production Bypasses
 17. How to Represent Pre-MFA and Fully Authenticated Sessions Safely in JWT Claims
