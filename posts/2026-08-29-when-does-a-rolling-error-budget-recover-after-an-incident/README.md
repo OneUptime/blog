@@ -22,7 +22,7 @@ remaining budget  = allowed bad events - B
 Teams use “recovered” for at least three states:
 
 - **The service is healthy:** the current error rate returned to normal.
-- **The burn alert resolved:** its short and long lookback windows no longer exceed thresholds.
+- **The burn alert resolved:** its configured alert expression is no longer true; for a paired short/long condition joined by `AND`, either condition becoming false clears that pair.
 - **The SLO is back in budget:** current rolling-window bad events are within the allowed amount.
 - **The incident is fully aged out:** none of its bad events remain in the window.
 
