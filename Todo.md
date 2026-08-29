@@ -130,7 +130,6 @@
 
 ## MFA
 
-4. How to Block Reuse of a TOTP Code During Its 30-Second Validity Window
 5. How to Rate-Limit MFA Code Attempts Without Creating an Account-Lockout DoS
 6. How to Verify TOTP Enrollment Before Enforcing MFA on the Next Login
 7. How to Secure MFA Factor Changes Against Session Hijacking
