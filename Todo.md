@@ -130,7 +130,6 @@
 
 ## MFA
 
-17. How to Represent Pre-MFA and Fully Authenticated Sessions Safely in JWT Claims
 18. How to Revoke Sessions and Trusted Devices After MFA Recovery or Factor Replacement
 19. One Shared TOTP Secret or One Credential per Device? Designing Multi-Device MFA
 20. How to Audit MFA Enrollment and Recovery Events Without Logging Secrets
