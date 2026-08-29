@@ -127,7 +127,6 @@
 
 ## SLOs
 
-8. When Does a Rolling Error Budget Recover After an Incident?
 9. 14, 28, or 30 Days? How to Choose an SLO Evaluation Window
 10. How to Write Outcome-Based SLOs for Batch Jobs, Queues, and Async Pipelines
 11. End-to-End Journey SLOs vs Service SLOs: Where Should You Measure Reliability?
