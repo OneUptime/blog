@@ -10,7 +10,7 @@ Description: Decide maintenance eligibility from the user promise and prevent pl
 
 For an always-on user-facing service, planned maintenance normally counts against the SLO. Users lose the outcome whether an interruption was scheduled or accidental. Planning changes who knew and how the team responds; it does not make the service available.
 
-Excluding maintenance can be legitimate when the service promise explicitly excludes that time. The decision must be made before the work, reflected in the denominator, and visible to users and operators.
+Excluding maintenance can be legitimate when the service promise explicitly excludes that time. The decision must be made before the work, reflected explicitly in the SLI eligibility rules and compliance calculation, and visible to users and operators.
 
 ## Begin with the Service Promise
 
@@ -54,7 +54,7 @@ If exclusions are part of the promise, store a versioned policy with:
 - behavior for an overrun;
 - which SLOs and alerts are affected.
 
-Tooling such as CloudWatch and Grafana SLO can represent exclusion or maintenance windows, but the product feature does not decide whether an exclusion is honest. Preserve raw SLI telemetry during the window and report both included and excluded impact. Never delete samples or stop scraping to manufacture an exclusion; missing telemetry is unknown, not maintenance.
+Tooling such as CloudWatch and Grafana SLO can represent exclusion or maintenance windows, but the product feature does not decide whether an exclusion is honest. Preserve source telemetry during the window and report both included and excluded impact. Never delete source samples or stop scraping to manufacture an exclusion; unexplained missing source telemetry is unknown, not evidence of maintenance.
 
 ## Budget Maintenance Before Approval
 
