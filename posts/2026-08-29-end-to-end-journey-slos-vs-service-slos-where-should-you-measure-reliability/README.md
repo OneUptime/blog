@@ -8,7 +8,7 @@ Description: Use journey SLOs to govern user outcomes and service SLOs to locali
 
 ---
 
-Measure reliability at both levels, but give them different jobs. An end-to-end journey SLO decides whether users received the promised outcome. Service SLOs identify which component needs attention and whether internal consumers can safely depend on it.
+Measure reliability at both levels, but give them different jobs. An end-to-end journey SLI measures whether users received the promised outcome; its SLO sets the acceptable proportion over a defined compliance window. Service SLIs help identify which component needs attention, while service SLOs define what internal consumers can safely depend on.
 
 If every microservice dashboard is green while customers cannot complete checkout, the service-level view is incomplete. If a checkout SLO is red but provides no component evidence, incident response is slow. The layers are complementary.
 
@@ -22,11 +22,11 @@ A journey is a user-meaningful task such as signing in, submitting an order, res
 eligible journeys completed correctly and on time / eligible journeys started
 ```
 
-Measure at the client, edge, or correlated business-event layer when possible. This captures gateways, dependencies, retries, asynchronous stages, and failures before the application server receives a request.
+Use the outermost source or combination of sources that can observe the journey. Depending on the instrumentation, this can capture gateways, dependencies, retries, asynchronous stages, and failures before the application server receives a request.
 
 ### Service SLO
 
-A service SLO describes the promise one service makes to its supported consumers:
+A service SLO sets a target for the consumer-facing promise one service makes to its supported consumers. Its SLI might be:
 
 ```text
 eligible inventory RPCs returning a valid result within 100 ms / eligible inventory RPCs
@@ -42,9 +42,9 @@ Consider checkout:
 Browser -> API edge -> Cart -> Inventory -> Payment -> Order store -> Confirmation
 ```
 
-The product SLO might require 99.9% of eligible submissions to produce a durable confirmation within five seconds. A payment timeout that prevents confirmation is bad even if the checkout application returned a polished error page. That top-level budget should control decisions such as release freezes and cross-team reliability investment.
+The product SLO might require that, over a defined compliance window, 99.9% of eligible submissions produce a durable confirmation within five seconds. A payment timeout that prevents confirmation is bad even if the checkout application returned a polished error page. That top-level budget should control decisions such as release freezes and cross-team reliability investment.
 
-Component objectives—payment-adapter availability, order-store latency, inventory correctness—help attribute the loss and protect internal consumers. Do not “correct” the journey result because a dependency caused it.
+Component SLIs—payment-adapter availability, order-store latency, inventory correctness—help attribute the loss; their SLOs define the reliability internal consumers can expect. Do not “correct” the journey result because a dependency caused it.
 
 ## Choose a Real Measurement Boundary
 
@@ -52,10 +52,10 @@ Measurement gets less user-representative as it moves inward:
 
 | Source | Captures | Misses |
 |---|---|---|
-| Browser or mobile instrumentation | Full client experience | Users that block telemetry; instrumentation failure |
+| Browser or mobile instrumentation | Instrumented client experience, including client-side rendering | Failures before instrumentation loads; blocked, lost, or incomplete telemetry |
 | Public edge or load balancer | Requests reaching the edge, gateway failures | DNS, some TLS/client rendering failures |
 | Application server | Rich business context | Requests lost before the process |
-| Synthetic journey | Proactive coverage with no traffic | Real identities, devices, data, and all user paths |
+| Synthetic journey | Proactive coverage without real-user traffic | Real identities, devices, data, and all user paths |
 
 Start with the best available source, label it as a proxy, and compare it with support tickets and incidents. Google SRE recommends moving measurement closer to users when an SLI misses real impact.
 
@@ -69,7 +69,7 @@ journey_completed(id, completed_at, correctness)
 journey_cancelled(id, reason)
 ```
 
-An independent evaluator classifies each eligible start exactly once after completion or deadline. Keep the ID out of Prometheus labels; export aggregate counters such as `journey_outcomes_total{journey="checkout",result="good|bad",reason="payment|inventory|timeout"}`.
+A deduplicating, idempotent evaluator assigns one final outcome to each eligible start after completion or deadline. Keep the ID out of Prometheus labels; export aggregate counters with bounded labels, such as `journey_outcomes_total{journey="checkout",result="bad",reason="payment"}`.
 
 Retries and redundant calls remain component attempts. They should not inflate the journey denominator.
 
@@ -78,7 +78,7 @@ Retries and redundant calls remain component attempts. They should not inflate t
 - Page on rapid journey-budget burn when users need immediate intervention.
 - Use component symptoms and dependency signals to route diagnosis, not to create duplicate pages for the same incident.
 - Create tickets for slow component degradation that threatens future journey reliability.
-- Alert separately on missing journey telemetry; no data is not a green outcome.
+- Alert separately on a journey-telemetry heartbeat or freshness signal; no data is not a green outcome.
 - Keep infrastructure alerts only when an operator can act before user impact or when the failure has safety consequences.
 
 A journey page should link to a dependency map, component SLIs, recent changes, and the event-class breakdown. It should not notify every team by default; one responder coordinates and escalates to the component owner indicated by evidence.
@@ -92,10 +92,10 @@ Keep a small set of critical journey SLOs and only the component SLOs that prote
 ## References
 
 - [Google SRE Workbook: Modeling User Journeys](https://sre.google/workbook/implementing-slos/#modeling-user-journeys)
-- [Google SRE Book: Define SLOs Like a User](https://sre.google/sre-book/service-best-practices/#define-slos-like-a-user)
+- [Google SRE Book: Define SLOs Like a User](https://sre.google/sre-book/service-best-practices/)
 - [Google Cloud Observability: SLI specifications and implementations](https://docs.cloud.google.com/stackdriver/docs/solutions/slo-monitoring/sli-metrics/overview)
 - [Prometheus instrumentation guidance](https://prometheus.io/docs/practices/instrumentation/)
 
 ## Conclusion
 
-Let end-to-end journeys tell you whether the product kept its promise, and let service SLOs explain and contain component risk. Govern reliability from the outer outcome while preserving the inner evidence needed to act.
+Let end-to-end journey SLIs tell you whether the product kept its promise, and let service SLIs explain component risk while service SLOs define the reliability consumers can expect. Govern reliability from the outer outcome while preserving the inner evidence needed to act.
