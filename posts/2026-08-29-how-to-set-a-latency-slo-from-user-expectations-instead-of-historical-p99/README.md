@@ -10,7 +10,7 @@ Description: Turn a user-visible deadline into a latency SLO, then use historica
 
 Yesterday's p99 describes the system you already have. It does not tell you when users abandon a task, miss a business deadline, or stop trusting the product. A latency SLO should begin with those consequences and work backward to a measurable event and threshold.
 
-Historical latency is still useful, but as evidence about feasibility and cost—not as the source of user expectations.
+Historical latency is still useful, primarily as evidence about feasibility and cost—not as a substitute for direct evidence of user expectations.
 
 ## Define the Interaction Before the Number
 
@@ -22,7 +22,7 @@ Write down five things:
 4. **Deadline:** the point after which the outcome has materially less value.
 5. **Eligible population:** operation, payload class, geography, client type, and supported load.
 
-Measure as close to the user as practical. Server duration omits DNS, connection setup, queues, gateways, response transfer, and browser work. If server telemetry is the only immediate option, call it a proxy and plan how to validate its correlation with client experience.
+Measure as close to the user as practical. Server-side duration can omit DNS, connection setup, queueing and gateway work before its start point, network transfer after its end point, and browser work. If server telemetry is the only immediate option, call it a proxy and plan how to validate its correlation with client experience.
 
 ## Find Thresholds from Consequences
 
@@ -44,21 +44,21 @@ A practical SLO states the proportion of eligible outcomes that finish within a 
 
 Multiple grades capture both typical and tail experience without reducing the entire distribution to an average. The slower threshold can protect against severe outliers while the faster threshold represents the normal interaction.
 
-For a classic Prometheus histogram with an exact `0.4`-second bucket, calculate the threshold ratio directly:
+For classic Prometheus histograms with a `0.4`-second bucket on every time series being aggregated, calculate the rolling 28-day threshold ratio directly:
 
 ```promql
 sum(
-  rate(checkout_duration_seconds_bucket{le="0.4",outcome="success"}[5m])
+  rate(checkout_duration_seconds_bucket{le="0.4",outcome="success"}[28d])
 )
 /
 sum(
-  rate(checkout_duration_seconds_count{outcome="success"}[5m])
+  rate(checkout_duration_seconds_count{outcome="success"}[28d])
 )
 ```
 
 Failed requests need an explicit policy. Commonly, availability counts them as bad and latency evaluates successful outcomes only; alternatively, treat failures as not satisfying the latency promise so one SLO captures both. State the choice because it changes the denominator.
 
-For a threshold-based SLO, a bucket boundary at the threshold provides an exact classic-histogram count. `histogram_quantile()` answers the inverse question—what duration corresponds to a chosen rank—and interpolates within buckets. It is useful for exploration, but it is not the direct numerator for “requests no slower than 400 ms.”
+For a threshold-based SLO, a matching bucket boundary on every included classic histogram directly counts observations at or below the threshold without interpolation. `histogram_quantile()` estimates the inverse question—what duration corresponds to a chosen rank—and interpolates within buckets when needed. It is useful for exploration, but it is not the direct numerator for “requests no slower than 400 ms.”
 
 ## Use History as a Feasibility Test
 
