@@ -90,7 +90,7 @@ An empty log is a review input, not automatic proof of uselessness: a stable ser
 
 ## References
 
-- [Google SRE Book: Choosing Targets and Control Measures](https://sre.google/sre-book/service-level-objectives/#objectives-in-practice)
+- [Google SRE Book: Choosing Targets and Control Measures](https://sre.google/sre-book/service-level-objectives/#objectives-in-practice-o8squl)
 - [Google SRE Workbook: Continuous Improvement of SLO Targets](https://sre.google/workbook/implementing-slos/#continuous-improvement-of-slo-targets)
 - [Google SRE Workbook: Documenting the SLO and Error Budget Policy](https://sre.google/workbook/implementing-slos/#documenting-the-slo-and-error-budget-policy)
 
