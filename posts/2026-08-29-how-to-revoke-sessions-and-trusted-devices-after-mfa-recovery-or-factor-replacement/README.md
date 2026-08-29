@@ -26,6 +26,8 @@ Revocation cannot cover credentials the identity system does not know about. Mod
 
 Do not confuse a trusted-browser token with a recovery code or an ordinary session cookie. It may be a separate long-lived credential that suppresses MFA and therefore needs an explicit revocation path.
 
+Under NIST SP 800-63B-4, cookies and similar “remember my browser” features cannot replace authentication except for the limited AAL2 reauthentication case in which the inactivity limit has expired but the overall timeout has not.
+
 ## Use a Security Epoch
 
 Maintain a monotonically increasing `security_epoch` or `factor_generation` on the account. Bind every newly issued session, refresh family, trusted-browser record, and sensitive action grant to the current value.
@@ -50,19 +52,21 @@ Use a transaction or durable workflow with idempotent stages:
 3. increment the security epoch and invalidate the old factor;
 4. revoke sessions, refresh families, trusted devices, and pending grants;
 5. activate the verified replacement factor;
-6. issue a new narrowly authorized session if policy permits;
+6. issue a short-lived, narrowly authorized recovery-completion session if policy permits, without treating it as authenticated at the account's normal AAL;
 7. commit audit evidence and send notifications.
 
-If the new factor must be verified before cutover, do that while it is pending, then perform steps 3–5 atomically. Never disable the only old factor before proving the replacement unless the formal recovery policy has already supplied equivalent proof.
+If the new factor must be verified before cutover, do that while it is pending, then perform steps 3–5 atomically.
 
-The session conducting recovery should not simply survive the epoch change as a normal fully authenticated session. Exchange it for a new session with explicit post-recovery restrictions, short lifetime, and step-up requirements for dangerous actions.
+For routine renewal of an uncompromised authenticator, bind and successfully use the replacement before invalidating the old one. If the old authenticator is lost or suspected of compromise, suspend or invalidate it promptly, then use the formal recovery process to establish the replacement.
+
+The session conducting recovery should not simply survive the epoch change as a normal fully authenticated session. Exchange it for a short-lived, narrowly authorized recovery-completion session, then require authentication with the replacement authenticator before issuing a normal authenticated session.
 
 ## Handle JWTs and OAuth Tokens
 
 Self-contained JWT access tokens cannot be recalled by changing their contents. Use short expiry plus one or more of:
 
 - an online check of `sid` and security epoch;
-- token introspection at the resource server;
+- token introspection by the resource server;
 - a bounded denylist for compromised `jti` values;
 - sender-constrained tokens to limit replay.
 
@@ -85,7 +89,7 @@ Defend against persistent stolen sessions, refresh-token replay, trusted-device 
 - Inventory every credential and pending transaction tied to account authority.
 - Bind sessions, refresh families, trusted devices, and grants to a security epoch.
 - Increment the epoch and activate/invalidate factors in a safe atomic transition.
-- Exchange the recovery transaction for a new restricted session.
+- Exchange the recovery transaction for a restricted recovery-completion session, then require authentication before a normal session.
 - Use short JWT lifetime plus online epoch/session enforcement where required.
 - Revoke OAuth token families and separately address RP/application sessions.
 - Test races, cache loss, event duplication, partitions, and regional failover.
@@ -102,4 +106,4 @@ Defend against persistent stolen sessions, refresh-token replay, trusted-device 
 
 ## Conclusion
 
-Recovery and factor replacement must advance an account-wide security epoch, not merely swap one authenticator row. Invalidate every credential that could preserve old authority, enforce the transition online where risk demands it, and monitor revocation until all dependent systems converge.
+Recovery and replacement of a lost or compromised factor must trigger account-wide invalidation of credentials that could preserve old authority—using a security epoch or an equivalent mechanism—not merely swap one authenticator row. Enforce the transition online where risk demands it, and monitor revocation until all dependent systems converge.
