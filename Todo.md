@@ -133,7 +133,6 @@
 
 ## Postgres HA
 
-7. How to Rejoin the Old PostgreSQL Primary After Patroni Failover with `pg_rewind`
 8. Why Does `pg_rewind` Fail After a Patroni Failover? Checking Checksums, WAL, and Timeline History
 9. How to Configure HAProxy Health Checks Against Patroni's Primary and Replica Endpoints
 10. Why Does Patroni's HAProxy Health Check Return 503? Diagnosing REST API Role and Leader State
