@@ -130,7 +130,6 @@
 
 ## MFA
 
-9. How to Build a Revocable “Trust This Browser” Cookie for MFA
 10. How to Require Step-Up MFA Only for Sensitive Actions and APIs
 11. How to Enroll Multiple WebAuthn Security Keys Without Weakening Account Recovery
 12. How to Migrate Users from SMS and Push MFA to Phishing-Resistant Passkeys
