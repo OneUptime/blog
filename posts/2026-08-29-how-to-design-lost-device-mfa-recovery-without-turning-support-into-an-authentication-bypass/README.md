@@ -8,7 +8,7 @@ Description: Recover accounts after device loss through prearranged, risk-based 
 
 ---
 
-Account recovery is another authentication ceremony, usually invoked when the strongest normal evidence is missing. If a support agent can remove MFA after checking easily researched facts, the support desk becomes a lower-assurance login endpoint for every account.
+Account recovery is a separate, authentication-like ceremony, usually invoked when the strongest normal evidence is missing. If a support agent can remove MFA after checking easily researched facts, the support desk becomes a lower-assurance login endpoint for every account.
 
 Design recovery before launch, make its assurance explicit, and give support a deterministic workflow rather than discretion to “make an exception.”
 
@@ -19,11 +19,11 @@ Encourage users to bind more than one independent authenticator. Two WebAuthn ke
 Keep terminology precise:
 
 - a **saved recovery code** is provided in advance for the subscriber to retain;
-- an **issued recovery code** is delivered when recovery is requested through an established address or channel under the applicable policy;
-- a **recovery contact** is a prearranged person or address used by the recovery process;
+- an **issued recovery code** is sent during recovery to a claimant-chosen, previously established recovery address under the applicable policy;
+- a **recovery contact** is a prearranged trusted associate whose address receives an issued recovery code for the subscriber;
 - a browser session or “trusted device” cookie is not automatically any of these.
 
-For services claiming NIST SP 800-63B-4 conformance, implement the recovery combinations required for the account's assurance level. At AAL2, the final publication requires either two recovery codes obtained through different recovery methods, one recovery code plus a bound single-factor authenticator, or repeated identity proofing for an identity-proofed account. Apply the publication's exact definitions and applicability; do not relabel two emails as two independent methods.
+For services claiming NIST SP 800-63B-4 conformance, implement the recovery combinations required by the account's identity assurance level (IAL) and maximum AAL. For an account that can authenticate at a maximum of AAL2, the final publication requires either two recovery codes obtained through different recovery methods, one recovery code plus a bound single-factor authenticator, or repeated identity proofing for an identity-proofed account. Apply the publication's exact definitions and applicability; do not relabel two emails as two independent methods.
 
 ## Make Recovery a State Machine
 
@@ -31,13 +31,13 @@ A recovery request should create an opaque case and short-lived transaction, not
 
 ```text
 requested -> evidence_pending -> risk_review -> approved
-          -> replacement_factor_pending -> completed
-          -> denied | expired | cancelled
+approved -> replacement_factor_pending -> completed
+any nonterminal state -> denied | expired | cancelled
 ```
 
 Bind evidence and decisions to the case. Limit attempts across cases, accounts, networks, and recovery methods. Use generic public responses so the endpoint does not disclose whether an account exists or which factors it has.
 
-After sufficient proof, issue a constrained recovery session that can enroll and verify a replacement factor. It should not read data, change payment destinations, create API keys, or perform administrative actions. On completion, rotate the factor generation, revoke affected sessions and trusted devices, invalidate unused recovery transactions, and notify the owner.
+After sufficient proof, issue a constrained recovery session that can enroll and verify a replacement factor. It should not read data, change payment destinations, create API keys, or perform administrative actions. Once a loss report has been authenticated under policy, promptly suspend or invalidate the affected authenticator rather than waiting for recovery to finish. On completion, invalidate any suspended authenticator being replaced, revoke affected sessions and trusted devices, invalidate unused recovery transactions, and notify the owner.
 
 ## Constrain Support
 
@@ -57,7 +57,7 @@ Knowledge of account data may show familiarity, but it is not control of a bound
 
 ## Notify Without Creating a New Bypass
 
-NIST requires notification after account recovery. Notify established destinations promptly at request, material state changes, and completion where policy permits. Include time, service, broad location/device context, and a safe route to report fraud; omit evidence values and clickable links that themselves authorize recovery.
+NIST requires every account-recovery event to cause a notification to the subscriber or their designee at the stored notification addresses specified by Section 4.6. Consider additional notices at request and material state changes. Include time, service, broad location/device context, and a safe route to report fraud; omit evidence values and clickable links that themselves authorize recovery.
 
 A “deny this recovery” link can be useful only if it is an additional signal. An attacker who controls the mailbox should not be able to complete or permanently block recovery solely through that link.
 
@@ -77,7 +77,7 @@ Recovery can introduce privacy and accessibility risk. Collect only evidence jus
 - Give support least privilege and explicit, auditable decision rules.
 - Require separation of duties or delay for privileged and high-value accounts.
 - Constrain approved recovery to replacement-factor enrollment only.
-- Revoke affected sessions, trusted devices, and pending transactions on completion.
+- Invalidate the replaced authenticator and revoke affected sessions, trusted devices, and pending transactions on completion.
 - Red-team social engineering, mailbox takeover, insider abuse, and race conditions.
 
 ## References
