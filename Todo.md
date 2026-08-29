@@ -133,7 +133,6 @@
 
 ## Postgres HA
 
-4. Why Does Patroni Demote a Healthy Primary When etcd Is Unavailable? Configuring DCS Failsafe Mode
 5. How to Prevent PostgreSQL Split Brain with Patroni Leader Locks, Watchdog Fencing, and Quorum
 6. Patroni Switchover vs Failover: How to Move the Primary Safely for Planned Maintenance
 7. How to Rejoin the Old PostgreSQL Primary After Patroni Failover with `pg_rewind`
