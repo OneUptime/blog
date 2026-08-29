@@ -130,7 +130,6 @@
 
 ## MFA
 
-8. How to Design Lost-Device MFA Recovery Without Turning Support into an Authentication Bypass
 9. How to Build a Revocable “Trust This Browser” Cookie for MFA
 10. How to Require Step-Up MFA Only for Sensitive Actions and APIs
 11. How to Enroll Multiple WebAuthn Security Keys Without Weakening Account Recovery
