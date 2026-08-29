@@ -14,19 +14,25 @@ Treat enrollment as a state machine: create a pending factor, deliver its provis
 
 ## Authorize Enrollment First
 
-Start enrollment from an authenticated, TLS-protected session. If the account already has MFA, require a recent proof with an existing factor; an old session cookie alone should not authorize adding a new authenticator. Protect browser endpoints against CSRF and bind the transaction to the current user, session, and intended action.
+Start enrollment from a recently reauthenticated, TLS-protected session. When binding an additional authenticator, require authentication at the lower of the account's maximum currently available assurance level and the maximum level at which the new authenticator will be used; an old session cookie alone should not authorize adding a new authenticator. Protect browser endpoints against CSRF and bind the transaction to the current user, session, and intended action.
 
 Create a cryptographically random TOTP secret that meets the selected algorithm's security requirements. Store it with authenticated encryption and status `pending`, plus an opaque transaction ID, creation time, expiry, and configuration:
 
 ```text
 factor_id: random opaque identifier
+transaction_id: random opaque identifier
+user_id: owning account
+session_binding: server-side reference to the current session
+purpose: totp_enrollment
 status: pending
 secret_ciphertext: AEAD-encrypted secret
 algorithm: SHA1 | SHA256 | SHA512
 digits: 6 or 8
 period_seconds: 30
+created_at: creation time
 expires_at: short enrollment deadline
 attempt_count: 0
+last_accepted_step: null
 ```
 
 RFC 6238 supports HMAC-SHA-1, HMAC-SHA-256, and HMAC-SHA-512. Do not silently provision one algorithm while verifying another. In practice, authenticator-app interoperability must be tested before changing from widely supported defaults.
@@ -45,31 +51,60 @@ Ask the user for a code from the newly configured authenticator. Validate only a
 
 ```text
 BEGIN
-pending = lock_factor(transaction.factor_id)
+pending = lock_current_enrollment(
+    current_user,
+    "totp_enrollment",
+    submitted_transaction_id
+)
 require pending.user_id == current_user
+require pending.transaction_id == submitted_transaction_id
+require pending.purpose == "totp_enrollment"
 require pending.status == "pending" and now < pending.expires_at
-require transaction.session_id == current_session
+require pending.session_binding == current_session_binding
+require pending.attempt_count < enrollment_attempt_limit
 
-matched_step = verify_totp_once(pending.secret, submitted_code)
-require matched_step is valid and matched_step > pending.last_accepted_step
+matched_step = verify_totp_once(
+    decrypt_aead(pending.secret_ciphertext),
+    pending.algorithm,
+    pending.digits,
+    pending.period_seconds,
+    submitted_code
+)
+fresh_match = matched_step is valid and (
+    pending.last_accepted_step is null
+    or matched_step > pending.last_accepted_step
+)
+
+UPDATE factor
+SET attempt_count = attempt_count + 1
+WHERE id = pending.factor_id AND status = "pending"
+require exactly one factor row was updated
+
+if not fresh_match:
+    COMMIT
+    return invalid_code
 
 UPDATE factor
 SET status = "active",
     verified_at = now,
     last_accepted_step = matched_step
-WHERE id = pending.id AND status = "pending"
+WHERE id = pending.factor_id AND status = "pending"
+require exactly one factor row was updated
 
-UPDATE account SET factor_generation = factor_generation + 1
+UPDATE account
+SET factor_generation = factor_generation + 1
+WHERE id = pending.user_id
+require exactly one account row was updated
 COMMIT
 ```
 
-The transition must be compare-and-swap or transactionally locked so concurrent submissions cannot activate twice or overwrite another enrollment. Record the matched counter as consumed: the proof used to enroll must not also authenticate a later login during the same 30-second step.
+Creation, replacement, and activation must serialize on the same per-user, per-purpose enrollment slot, or use an equivalent current-generation or uniqueness constraint, so two different pending transactions cannot both activate. The factor transition must also be compare-and-swap or transactionally locked so concurrent submissions cannot activate it twice. Record the matched time-step counter as consumed, and have every later verification of that factor atomically reject counters at or below `last_accepted_step` and advance it on success. The proof used to enroll must not also authenticate a later login while its matched step remains in the verifier's acceptance window.
 
-Only after commit should policy report the factor as active. Rotate the web session identifier after this privilege/security-state change. If this is the first MFA factor, issue recovery codes through their own one-time display flow and ask the user to acknowledge safe storage before finishing.
+Only after commit should policy report the factor as active. Rotate the web session identifier after this privilege/security-state change. After activation, notify the user through a previously established channel independent of the enrollment transaction, with a way to report and revoke an unrecognized factor. If this is the first MFA factor, issue cryptographically random, single-use recovery codes with at least 64 random bits each through their own one-time display flow, store only hashes, rate-limit verification, and ask the user to acknowledge secure offline storage before finishing.
 
 ## Design Failure and Resume Behavior
 
-An invalid code leaves the factor pending and consumes an attempt. Do not regenerate the secret for every typo; the app would continue using the previous QR secret. When the transaction expires or the user explicitly restarts, invalidate the old pending secret and display a newly generated one.
+An invalid code leaves the factor pending and commits the attempt increment before returning an error. Keep an account-scoped throttle across refreshes and replacement transactions so restarting enrollment cannot reset the guessing limit. Do not regenerate the secret for every typo; the app would continue using the previous QR secret. When the transaction expires or the user explicitly restarts, invalidate the old pending secret and display a newly generated one.
 
 A server crash between activation and the response should be recoverable by transaction status. Reloading the page can report that the factor is active after fresh authorization, but must never redisplay its secret. A user who abandons setup remains on the previous authentication policy.
 
