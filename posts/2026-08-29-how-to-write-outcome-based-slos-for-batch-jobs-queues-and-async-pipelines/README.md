@@ -32,7 +32,7 @@ Did the outcome arrive before it lost value?
 
 > 99% of eligible daily settlement runs publish by 06:00 UTC over a rolling 28 days.
 
-> 99.9% of accepted notification commands reach a terminal state within 10 minutes.
+> 99.9% of accepted notification commands reach a successful terminal state within 10 minutes.
 
 ### Completeness or Coverage
 
@@ -64,15 +64,11 @@ completed_at
 verification_result
 ```
 
-After the deadline, an independent evaluator assigns each eligible promise exactly one SLO result:
+At each deadline, an independent evaluator first marks promises matching a predeclared eligibility rule as `excluded`. It assigns each remaining promise exactly one immutable SLO result: `good` if the applicable promised outcome is correct, complete, on time, and durable where promised; otherwise `bad`.
 
-- `good`: correct, complete, and on time;
-- `late`: completed after the deadline;
-- `failed`: reached a terminal failure or dead-letter state;
-- `missing`: no qualifying outcome by the deadline;
-- `excluded`: matched a predeclared eligibility rule.
+Keep `late`, `failed`, and `missing` as diagnostic reasons. A promise that is `missing` at its deadline may later become `late`, but its SLO result remains `bad`.
 
-Export bounded counters from this evaluator, for example `async_promises_total{journey="settlement",sli_result="good|bad"}`. Keep detailed IDs in logs or a database, not metric labels.
+Export monotonic counters with a bounded set of label values, for example `async_promises_total{journey="settlement",sli_result="good"}` and `async_promises_total{journey="settlement",sli_result="bad"}`. Increment exactly one result series per eligible promise. Keep detailed IDs in logs or a database, not metric labels.
 
 ## Handle Retries and Queues Correctly
 
@@ -123,4 +119,4 @@ Define the deadline clock precisely: event time, acceptance time, scheduled time
 
 ## Conclusion
 
-Count durable logical promises and evaluate whether each became correct, complete, and timely. Use worker and queue metrics to explain risk, but use an independent ledger so never-started and silently missing work still consumes the budget it owes users.
+Count logical promises and evaluate whether each became correct, complete, timely, and durable where promised. Use worker and queue metrics to explain risk, but use an independent ledger so never-started and silently missing work still consumes the budget it owes users.
