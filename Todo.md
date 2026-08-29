@@ -127,7 +127,6 @@
 
 ## SLOs
 
-2. How to Define an SLO for a Service with Zero or Very Low Traffic
 3. How to Set a Latency SLO from User Expectations Instead of Historical P99
 4. Should Third-Party API Failures Burn Your Error Budget? How to Model Dependencies
 5. Which HTTP Status Codes Belong in an Availability SLI? Handling 4xx, 5xx, and Cancellations
