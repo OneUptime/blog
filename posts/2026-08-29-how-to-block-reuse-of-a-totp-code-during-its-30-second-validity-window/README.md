@@ -14,26 +14,32 @@ RFC 6238 requires a verifier to accept a successfully validated OTP only once. T
 
 ## Persist a High-Water Mark per Factor
 
-For every TOTP credential, store `last_accepted_step`. During verification, calculate each permitted candidate counter, but skip counters at or below that high-water mark.
+For every TOTP credential, store `last_accepted_step`. During verification, calculate each permitted candidate counter, but skip counters at or below that high-water mark. Treat a null value as "no previous acceptance," or initialize the field to a non-null sentinel below every valid counter. This example uses RFC 6238's defaults of `T0 = 0` and a 30-second time step.
 
 ```text
-server_step = floor(unix_time / 30)
+step_size = 30
+t0 = 0
+server_step = floor((unix_time - t0) / step_size)
 candidates = [server_step, server_step - 1, server_step + 1]
 
-matched_step = null
+matching_steps = []
 for step in candidates:
-    if step > factor.last_accepted_step and
+    if (factor.last_accepted_step is null or
+        step > factor.last_accepted_step) and
        constant_time_equal(totp(factor.secret, step), submitted_code):
-        matched_step = step
-        break
+        matching_steps.append(step)
 
-if matched_step is null:
+if matching_steps is empty:
     reject()
+
+matched_step = max(matching_steps)
 ```
+
+Evaluate every eligible counter and consume the greatest match. Truncated outputs can rarely match at more than one counter in the accepted window; stopping at the first match could let the same digits be accepted again against a higher matching counter.
 
 Use the exact window and drift policy selected for the service. Storing the submitted digits or their hash is the wrong replay key: the same digits can occur at different counters, and the verifier already knows which counter produced the match.
 
-For multiple TOTP enrollments, keep the high-water mark on each credential. Do not let enrollment of a second device reset the first device's replay history.
+For multiple independently seeded TOTP enrollments, keep the high-water mark on each credential. Devices that share or synchronize one seed are one logical credential and must share that mark. Treat a credential ID as an immutable binding to its seed, so factor replacement creates a new ID rather than changing the seed in place. Do not let enrollment of a second device reset the first device's replay history.
 
 ## Make Acceptance Atomic
 
@@ -45,18 +51,18 @@ SET last_accepted_step = :matched_step,
     last_used_at = CURRENT_TIMESTAMP
 WHERE id = :factor_id
   AND status = 'active'
-  AND last_accepted_step < :matched_step;
+  AND (last_accepted_step IS NULL OR last_accepted_step < :matched_step);
 ```
 
 Authentication succeeds only if exactly one row changed. Create the fully authenticated session in the same transaction, or use a transactionally coupled state machine so a crash cannot consume the code without a recoverable outcome.
 
-All verifier instances and regions must coordinate through authoritative strongly consistent state for this decision. A process-local cache, eventually replicated read model, or sticky load balancer does not prevent two nodes from accepting the same counter.
+All verifier instances and regions must coordinate through one authoritative, durable, linearizable conditional update for this decision. A process-local cache, eventually replicated read model, or sticky load balancer does not prevent two nodes from accepting the same counter.
 
-If cross-region consistency is unavailable, route a factor deterministically to one authoritative region or use another architecture that provides a single atomic decision point. Document the availability tradeoff; accepting replay during a partition is not a safe fallback.
+If cross-region linearizability is unavailable, route a factor deterministically to one authoritative region and fence failover so a partition cannot create two authorities, or use another architecture that provides a single atomic decision point. Document the availability tradeoff; accepting replay during a partition is not a safe fallback.
 
 ## Separate Retry Idempotency from OTP Reuse
 
-A client may retry because the first response was lost after the server succeeded. Give the MFA challenge an opaque ID and accept an idempotency key. Bind both to the account, pre-authenticated session, intended login, and short expiry.
+A client may retry because the first response was lost after the server succeeded. Give the MFA challenge an opaque ID and accept an idempotency key. Bind both to the exact logical TOTP credential, account, pre-authenticated session, intended login, and short expiry. Atomically reserve the challenge and idempotency-key result with the counter transition, and reject reuse of the key for a different request.
 
 On an exact retry, return the result already created for that transaction without running the OTP as a new authentication. The resulting session token should not be stored in plaintext merely to support retries; store a safe result reference or encrypted response using the same controls as other credentials.
 
@@ -70,26 +76,26 @@ This can briefly inconvenience a user whose authenticator clock is ahead. Solve 
 
 ## Threat Model and Failure Modes
 
-Defend against real-time interception followed by replay, duplicate browser submissions, parallel requests, retries after timeouts, compromised application nodes, and replication lag. Frequent mistakes include storing “last code,” updating after issuing a session, using a non-atomic read/write pair, tracking replay only in memory, resetting state on failure, and accepting an older counter after a newer one.
+Defend against real-time interception followed by replay, duplicate browser submissions, parallel requests, retries after timeouts, application-node crashes or restarts, and replication lag. Frequent mistakes include storing “last code,” updating after issuing a session, using a non-atomic read/write pair, tracking replay only in memory, lowering committed replay state after a downstream failure, and accepting an older counter after a newer one.
 
-Replay protection does not prevent a phishing proxy from winning the race and consuming the code first. Phishing-resistant WebAuthn authenticates the relying-party origin and should be preferred for high-risk use.
+Replay protection does not prevent a phishing proxy from winning the race and consuming the code first. Phishing-resistant WebAuthn binds assertions to the relying party's RP ID and requires the server to validate the client origin; it should be preferred for high-risk use.
 
 ## Rollout and Test Checklist
 
 - Store a monotonic accepted counter for each TOTP credential.
 - Use one atomic conditional transition to consume the matched counter.
-- Test hundreds of concurrent submissions yield exactly one authentication result.
+- Test that hundreds of concurrent submissions of the same code against one credential yield exactly one new authentication result.
 - Repeat the test across nodes and regions, including failover and partitions.
 - Verify an accepted future counter blocks all lower counters afterward.
 - Test lost responses through transaction-bound idempotent retries.
 - Keep invalid, expired, replayed, and unknown-factor responses indistinguishable.
-- Confirm rate limits charge parallel and replayed attempts.
+- Confirm rate limits charge parallel and non-idempotent replay attempts; an exact successful idempotent retry is not a new failed OTP attempt.
 
 ## References
 
-- [RFC 6238: TOTP Security Considerations](https://datatracker.ietf.org/doc/html/rfc6238#section-5.2)
-- [RFC 6238: Security Considerations](https://datatracker.ietf.org/doc/html/rfc6238#section-7)
-- [RFC 4226: HOTP Verification](https://datatracker.ietf.org/doc/html/rfc4226#section-7.3)
+- [RFC 6238: Validation and Time-Step Size](https://datatracker.ietf.org/doc/html/rfc6238#section-5.2)
+- [RFC 6238: Resynchronization](https://datatracker.ietf.org/doc/html/rfc6238#section-6)
+- [RFC 4226: Throttling at the Server](https://datatracker.ietf.org/doc/html/rfc4226#section-7.3)
 - [NIST SP 800-63B-4: Replay Resistance](https://pages.nist.gov/800-63-4/sp800-63b/authenticators/#replay)
 - [OWASP Multifactor Authentication Cheat Sheet](https://cheatsheetseries.owasp.org/cheatsheets/Multifactor_Authentication_Cheat_Sheet.html)
 
