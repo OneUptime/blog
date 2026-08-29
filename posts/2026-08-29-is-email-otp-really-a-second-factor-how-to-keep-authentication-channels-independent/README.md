@@ -8,7 +8,7 @@ Description: Evaluate email codes by the authenticator and channel they actually
 
 ---
 
-An extra screen is not necessarily an extra authentication factor. Email OTP proves that the claimant can read a mailbox at that moment; it does not prove possession of a particular device, and mailbox access may depend on the same password, browser session, recovery address, and endpoint already involved in the primary login.
+An extra screen is not necessarily an extra authentication factor. Email OTP demonstrates that the claimant can obtain a code sent to an email address at that moment; it does not prove possession of a particular device, and obtaining the code may depend on the same password, browser session, recovery address, and endpoint already involved in the primary login.
 
 For systems following NIST SP 800-63B-4, the answer is unambiguous: email must not be used for out-of-band authentication. The final publication cites password-only mailbox access, interception at intermediate servers, and rerouting attacks. Email codes may still be used for address confirmation or as specifically defined recovery artifacts, but those are not an email authentication factor.
 
@@ -19,20 +19,20 @@ Ask what evidence each step verifies and how an attacker could obtain it:
 | Step | Underlying evidence | Correlation risk |
 | --- | --- | --- |
 | Service password | Knowledge of a password | Reused for mailbox |
-| Email OTP | Access to current mailbox session | Same browser or compromised endpoint |
+| Email OTP | Ability to obtain a code sent to the registered email address | Same browser or compromised endpoint |
 | SMS code | Control of phone route/SIM | Same phone and telecom recovery |
 | TOTP | Shared secret in authenticator | May be synced into same password vault |
-| WebAuthn with UV | RP-bound private key plus local verification | Credential-manager account recovery |
+| WebAuthn with UV | RP-bound private key plus local verification | Sync-fabric or credential-manager account recovery, if the credential is syncable |
 
-Using the same physical phone is not automatically disqualifying—NIST permits separate channels terminating on one device when information does not flow between them without claimant participation. The important question is whether compromise of one mechanism predictably compromises the other.
+Using the same physical phone is not automatically disqualifying—NIST permits an out-of-band secondary channel to terminate on the same device as the primary channel when the device does not leak information between them without claimant participation. The important question is whether compromise of one mechanism predictably compromises the other.
 
 Email commonly fails that test. A password manager may autofill both service and mailbox passwords on one compromised browser; an existing mailbox session may need no fresh proof; and service password recovery may already route through that mailbox.
 
 ## Do Not Overstate Email Assurance
 
-If a low-risk service uses email OTP for address ownership, bot friction, or a transition flow, name it accurately in code, UX, audit events, and policy. Do not set `amr` or an `mfa=true` claim that downstream APIs interpret as possession of an independent authenticator. Do not use it to satisfy a phishing-resistant or NIST AAL2 requirement.
+If a low-risk service uses email OTP for address ownership, bot friction, or a transition flow, name it accurately in code, UX, audit events, and policy. Do not include `mfa` in the `amr` array—or set a custom `mfa=true` claim—when downstream APIs would interpret that as possession of an independent authenticator. Do not use it to satisfy a phishing-resistant or NIST AAL2 requirement.
 
-Keep high-impact actions—factor changes, payout changes, recovery settings, privileged access, and API-key creation—behind a bound TOTP, out-of-band authenticator meeting the applicable requirements, or preferably WebAuthn.
+Keep high-impact actions—factor changes, payout changes, recovery settings, privileged access, and API-key creation—behind recent authentication at the required assurance level, such as a password plus a bound TOTP or conforming out-of-band authenticator, or preferably properly configured WebAuthn with required user verification.
 
 If email is the only feasible interim mechanism, document risk acceptance and a migration date. Security architecture should not silently inherit a temporary product compromise forever.
 
@@ -54,7 +54,7 @@ Changing the mailbox used for codes must itself require strong recent authentica
 
 ## Design for Channel Independence
 
-Prefer an authenticator with a different trust root and attack path. WebAuthn uses an RP-scoped key and local user verification. A separately managed physical security key is stronger against browser-password and mailbox compromise. TOTP avoids email routing but remains phishable and requires protection of a shared secret.
+Prefer an authenticator with a different trust root and attack path. WebAuthn configured to require and verify user verification uses an RP-scoped key and local user verification. A separately managed physical security key is stronger against browser-password and mailbox compromise. TOTP avoids email routing but remains phishable and requires protection of a shared secret.
 
 Map recovery dependencies. If the passkey's sync account recovers through the same email, and the application also recovers through that mailbox, the independence may be weaker than the login diagram suggests. Encourage more than one authenticator and a separately stored saved recovery code.
 

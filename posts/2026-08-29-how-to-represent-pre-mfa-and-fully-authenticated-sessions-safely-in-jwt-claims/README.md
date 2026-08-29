@@ -46,7 +46,7 @@ The MFA completion service should also check authoritative transaction state: pa
 
 ## Issue a New Token After MFA
 
-JWTs are immutable. Do not “upgrade” client-side state or keep the same token after MFA. Consume the pre-authentication transaction, rotate the session identifier, and issue a new token with the normal resource audience and trusted authentication context:
+A signed JWT cannot be modified without invalidating its signature. Do not “upgrade” client-side state or keep the same token after MFA. Consume the pre-authentication transaction, rotate the session identifier, and issue a new token with the normal resource audience and trusted authentication context:
 
 ```json
 {
@@ -73,13 +73,13 @@ Avoid a bare boolean. `mfa=true` cannot express phishing resistance, user verifi
 RFC 8725 recommends explicit typing and mutually exclusive validation rules for different JWT kinds. At every consumer:
 
 - allow-list the expected signature algorithm; never derive it from untrusted input;
-- validate signature, issuer, audience, expiry, not-before, and token type;
+- validate signature, issuer, audience, expiry, any present or profile-required not-before claim, and token type;
 - bind issuer to its keys and reject untrusted key URLs or `kid` injection;
 - use different audiences and preferably different keys for pre-auth and access tokens;
 - reject claims that are missing, malformed, duplicated, or outside the local profile;
 - keep ID tokens, access tokens, pre-auth tokens, password-reset tokens, and action grants non-substitutable.
 
-A signature provides integrity and issuer authentication, not confidentiality. Never put TOTP secrets, OTPs, recovery codes, sensitive PII, or browser fingerprints into JWT claims. Anyone holding an ordinary signed JWT can generally decode its payload.
+After successful verification with a key bound to the expected issuer, a signature provides integrity and authenticates the signer, not confidentiality. Never put TOTP secrets, OTPs, recovery codes, sensitive PII, or browser fingerprints into JWT claims. Anyone holding an ordinary signed JWT can generally decode its payload.
 
 ## Preserve Revocation and Freshness
 
@@ -87,7 +87,7 @@ Short JWT lifetimes reduce but do not eliminate the revocation gap. Check a live
 
 Refresh tokens are higher-value credentials. Store and rotate them through a server-tracked family; never issue one to a pre-MFA flow. Refreshing a fully authenticated token preserves the original `auth_time` unless the user actively reauthenticates.
 
-For OAuth step-up, RFC 9470 lets a resource server request a stronger `acr` or a smaller `max_age`. Validate the new access token rather than assuming the authorization server honored the request.
+For OAuth step-up, RFC 9470 lets a resource server challenge for acceptable authentication contexts with `acr_values` and/or more recent active authentication with `max_age`. Validate the resulting access token and verify that its authentication context and time meet the resource server's requirements rather than assuming the authorization server honored the request.
 
 ## Threat Model and Failure Modes
 
