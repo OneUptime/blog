@@ -130,7 +130,6 @@
 
 ## MFA
 
-15. How to Authenticate CI/CD and Service Accounts When Human Users Must Use MFA
 16. How to Test MFA Flows End to End Without Hard-Coding Production Bypasses
 17. How to Represent Pre-MFA and Fully Authenticated Sessions Safely in JWT Claims
 18. How to Revoke Sessions and Trusted Devices After MFA Recovery or Factor Replacement
