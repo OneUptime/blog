@@ -34,7 +34,7 @@ Do not put unsupported, malformed, abusive, health-check, or internal control tr
 |---|---|---|
 | `1xx` | Not a final outcome | Was a final response observed? |
 | `2xx` | Good | Did the body and durable action actually satisfy the operation? |
-| `3xx` | Good only when intended | Did the client successfully follow it, or enter an unexpected loop? |
+| `3xx` | Good only when intended | For redirects, did the client follow successfully or enter an unexpected loop? For `304`, was cache revalidation intended? |
 | `4xx` | Contract-specific | Was the request invalid, outside quota, or rejected because the service failed? |
 | `5xx` | Bad for eligible requests | Did a gateway generate it before the application observed the request? |
 | No HTTP response | Often bad | Did DNS, TLS, connection, or timeout failure prevent the outcome? |
@@ -44,7 +44,7 @@ RFC 9110 defines `2xx` as successful receipt, understanding, and acceptance, `4x
 ## Classify Important 4xx Cases
 
 - `400` for malformed syntax: normally ineligible. Track it for abuse and client quality, not server availability.
-- `401` or `403`: normally a correct response to missing authorization. If valid sessions are rejected because your identity dependency failed, the user outcome is bad even though the wire status is `401`.
+- `401` is normally correct when the request lacks valid authentication credentials; `403` is normally correct when the server understands the request but refuses to fulfill it. If valid sessions are rejected because your identity dependency failed, the user outcome is bad even though the wire status is `401`.
 - `404`: good when absence is the correct answer; bad when routing or deployment lost a resource that should exist.
 - `408`: investigate the measurement point. An incomplete upload from a client is different from a server that stopped reading within its promised limit.
 - `409` or `412`: often a valid concurrency/precondition outcome, but product-specific.
@@ -65,6 +65,8 @@ sum(rate(http_server_requests_total{
 }[5m]))
 ```
 
+Initialize the expected bounded label combinations, including the eligible/good series, to zero; otherwise an all-bad interval can produce no data rather than an SLI of zero.
+
 Keep `sli_reason` to a controlled vocabulary. Do not label metrics with raw URLs, user IDs, or arbitrary error messages.
 
 ## Treat Async Acceptance Carefully
@@ -73,17 +75,17 @@ Keep `sli_reason` to a controlled vocabulary. Do not label metrics with raw URLs
 
 ## Handle Cancellations and Deadlines by Cause
 
-A cancellation is not automatically a client fault. gRPC documents `CANCELLED` as typically caller initiated, while `DEADLINE_EXCEEDED` means the deadline expired before completion; deadline expiry can also appear as server-side cancellation.
+A cancellation is not automatically a client fault. gRPC documents `CANCELLED` as typically caller initiated. A client whose deadline expires receives `DEADLINE_EXCEEDED`; the operation may still have completed successfully, while an in-progress server-side call is cancelled when that deadline passes.
 
-Use client and server timestamps or cancellation reasons:
+Correlate client-side outcomes and deadlines with server-side timestamps; gRPC does not send the client's cancellation reason to the server:
 
 - User navigated away before a reasonable deadline: usually ineligible.
 - Client set an impossible deadline outside the supported contract: ineligible.
 - Client abandoned because the service exceeded its promised latency: bad.
-- Proxy emitted a client-closed code after an upstream stall: bad at the journey layer.
-- Server completed after the caller's deadline: bad even if server logs later show success.
+- Proxy recorded a vendor-specific client-closed code after an upstream stall: bad at the journey layer.
+- Caller did not observe successful completion before its supported deadline: bad even if server logs later show success.
 
-Measure at the load balancer or client when possible so transport failures and requests that never reach the application are visible. Reconcile edge and application counts; a large unexplained difference is a telemetry defect.
+Measure at the client when possible; otherwise use the load balancer to expose downstream transport failures and requests that never reach the application. A load balancer cannot observe attempts that fail before reaching it. Reconcile edge and application counts; a large unexplained difference is a telemetry defect.
 
 ## Test the Policy
 
@@ -95,6 +97,7 @@ Create fixtures for every eligible status and failure path, including gateway-ge
 - [Google SRE Workbook: API and HTTP server availability](https://sre.google/workbook/implementing-slos/)
 - [gRPC status codes](https://grpc.io/docs/guides/status-codes/)
 - [gRPC deadlines](https://grpc.io/docs/guides/deadlines/)
+- [gRPC cancellation](https://grpc.io/docs/guides/cancellation/)
 
 ## Conclusion
 
