@@ -125,4 +125,4 @@ cq.execute();
 
 ## Summary
 
-Redis is the pragmatic, low-ops IMDG for most applications. Apache Geode is the right choice for Java-centric enterprise systems that need distributed OQL queries, continuous queries, and write-behind database integration at scale. If your team operates outside the Java ecosystem or does not need distributed query execution, Redis's simplicity and ecosystem breadth win convincingly.
+Redis is the pragmatic, low-ops IMDG for most applications. Apache Geode is the right choice for enterprise systems that need distributed OQL queries, continuous queries, and write-behind database integration at scale. If your team operates outside the Java ecosystem or does not need distributed query execution, Redis's simplicity and ecosystem breadth win convincingly.
