@@ -1,4 +1,4 @@
-# Should Third-Party API Failures Burn Your Error Budget? How to Model Dependencies
+# Should Third-Party Failures Burn Your Error Budget? Modeling Dependencies
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

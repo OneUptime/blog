@@ -1,4 +1,4 @@
-# Why Does Patroni's HAProxy Health Check Return 503? Diagnosing REST API Role and Leader State
+# Why Patroni's HAProxy Health Check Returns 503
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
@@ -227,7 +227,7 @@ default-server inter 2s fall 3 rise 2
 
 HAProxy needs three consecutive failed checks to mark a server down and two successes to mark it up. With two-second intervals, an immediately completed failure such as HTTP `503` usually takes roughly four to six seconds from onset to mark the server down, depending on where it lands between checks. Connection or response timeouts can take longer and depend on the configured check timeouts. Patroni's default leader-lock TTL is commonly 30 seconds, with a ten-second HA loop. These are different clocks.
 
-Too many `fall` checks can keep the old route eligible longer after Patroni begins returning `503`; too many `rise` checks extend the outage after a safe new primary appears. Too few can flap on transient transport loss. Measure the entire failover and set values that honor both safety and application retry behavior. The endpoint's role assertion—not aggressive timing—is what makes the route safe.
+Too many `fall` checks can keep the old route eligible longer after Patroni begins returning `503`; too many `rise` checks extend the outage after a safe new primary appears. Too few can flap on transient transport loss. Measure the entire failover and set values that honor both safety and application retry behavior. The endpoint's role assertion-not aggressive timing-is what makes the route safe.
 
 By default, existing TCP connections are not reevaluated or terminated by health checks, and HAProxy applies backend availability changes to new connections. The optional `on-marked-down shutdown-sessions` action instead terminates existing streams to a server when it is marked down. PgBouncer may retain server connections until they break or are recycled. Include connection-pool behavior in the incident timeline.
 

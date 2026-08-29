@@ -1,4 +1,4 @@
-# How to Size and Place an etcd Quorum for a Patroni Cluster Without Creating a New Single Point of Failure
+# Sizing and Placing an etcd Quorum for a Patroni Cluster
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
@@ -122,7 +122,7 @@ Use unique certificates with appropriate address identities and protect private 
 
 ## Tune from measured latency
 
-etcd defaults to a `100ms` heartbeat interval and `1000ms` election timeout. These normally work on a low-latency LAN. For slower networks, official etcd guidance is to keep the heartbeat interval around the maximum average member round-trip time—roughly `0.5x` to `1.5x`—and set the election timeout to at least ten times the round-trip time. Use the same values on every member.
+etcd defaults to a `100ms` heartbeat interval and `1000ms` election timeout. These normally work on a low-latency LAN. For slower networks, official etcd guidance is to keep the heartbeat interval around the maximum average member round-trip time-roughly `0.5x` to `1.5x`-and set the election timeout to at least ten times the round-trip time. Use the same values on every member.
 
 For example, if sustained cross-zone testing shows a maximum average RTT near `70ms` but occasional storage/network variation is higher, a starting point might remain:
 
@@ -187,7 +187,7 @@ In an isolated staging environment, remove one failure domain at a time and veri
 4. Restoring the member does not create a new cluster ID or duplicate member.
 5. A second member loss causes DCS writes to stop safely; it must not create two PostgreSQL primaries.
 
-Do not perform a destructive quorum test first in production. A network partition test must account for both directions and the paths between Patroni REST APIs, PostgreSQL nodes, and etcd members—not only ICMP reachability.
+Do not perform a destructive quorum test first in production. A network partition test must account for both directions and the paths between Patroni REST APIs, PostgreSQL nodes, and etcd members-not only ICMP reachability.
 
 ## Replace a failed member safely
 

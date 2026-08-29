@@ -8,7 +8,7 @@ Description: Use dependency math for design bounds, then measure the correlated 
 
 ---
 
-For independent components used in sequence, multiply availabilities. For independent redundant alternatives, multiply failure probabilities and subtract from one. Those formulas are useful architecture estimates—but they are rarely an adequate production SLI because real failures and failover mechanisms are correlated.
+For independent components used in sequence, multiply availabilities. For independent redundant alternatives, multiply failure probabilities and subtract from one. Those formulas are useful architecture estimates-but they are rarely an adequate production SLI because real failures and failover mechanisms are correlated.
 
 The SLI underlying the production user-journey SLO should count observed logical outcomes at the journey boundary.
 
@@ -80,7 +80,7 @@ sum(rate(journey_outcomes_total{journey="checkout",result="good"}[5m]))
 sum(rate(journey_outcomes_total{journey="checkout"}[5m]))
 ```
 
-This query measures finalized outcomes—including correlation and failover—as users encountered them. Persist every eligible journey start and reconcile it into exactly one terminal `journey_outcomes_total` outcome: emit at completion, or emit `result="bad"` once its deadline passes without a terminal outcome. The denominator then counts finalized eligible journeys.
+This query measures finalized outcomes-including correlation and failover-as users encountered them. Persist every eligible journey start and reconcile it into exactly one terminal `journey_outcomes_total` outcome: emit at completion, or emit `result="bad"` once its deadline passes without a terminal outcome. The denominator then counts finalized eligible journeys.
 
 ## Allocate Component Risk Without Turning It into Compliance
 

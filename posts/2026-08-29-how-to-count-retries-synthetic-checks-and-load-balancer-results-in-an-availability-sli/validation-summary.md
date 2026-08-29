@@ -1,4 +1,4 @@
-# Validation Summary: How to Count Retries, Synthetic Checks, and Load-Balancer Results in an Availability SLI
+# Validation Summary: Counting Retries, Synthetic Checks, and Load-Balancer Results in an SLI
 
 ## Status
 validated

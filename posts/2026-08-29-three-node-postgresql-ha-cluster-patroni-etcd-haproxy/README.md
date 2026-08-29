@@ -38,7 +38,7 @@ Before starting:
 4. Synchronize clocks, configure host-level fencing or a watchdog, and provision backups independently of replication.
 5. Put passwords and TLS keys in a restricted secret source readable by the Patroni service account and its administrators. The literal passwords below are placeholders, not production values.
 
-Stop and disable any distribution-managed standalone PostgreSQL service. For a new cluster, point Patroni at an empty, correctly owned data directory; some packages initialize a default cluster during installation. Never erase a pre-existing data directory to satisfy this prerequisite—use Patroni's documented conversion or replica-creation procedure instead.
+Stop and disable any distribution-managed standalone PostgreSQL service. For a new cluster, point Patroni at an empty, correctly owned data directory; some packages initialize a default cluster during installation. Never erase a pre-existing data directory to satisfy this prerequisite-use Patroni's documented conversion or replica-creation procedure instead.
 
 ## Bootstrap the etcd quorum
 

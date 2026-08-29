@@ -10,7 +10,7 @@ Description: Measure whether promised async outcomes are correct, complete, and 
 
 CPU, queue depth, worker uptime, and job duration help diagnose an asynchronous system. They are usually poor SLOs because users do not consume worker health; they consume a report, delivered message, transformed record, or fresh dataset.
 
-An outcome-based SLO counts promises made and promises fulfilled by a deadline—even when a job never starts and therefore emits no worker metric.
+An outcome-based SLO counts promises made and promises fulfilled by a deadline-even when a job never starts and therefore emits no worker metric.
 
 ## Choose the Promise Unit
 

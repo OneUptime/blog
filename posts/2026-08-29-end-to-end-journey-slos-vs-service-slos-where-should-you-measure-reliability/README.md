@@ -44,7 +44,7 @@ Browser -> API edge -> Cart -> Inventory -> Payment -> Order store -> Confirmati
 
 The product SLO might require that, over a defined compliance window, 99.9% of eligible submissions produce a durable confirmation within five seconds. A payment timeout that prevents confirmation is bad even if the checkout application returned a polished error page. That top-level budget should control decisions such as release freezes and cross-team reliability investment.
 
-Component SLIs—payment-adapter availability, order-store latency, inventory correctness—help attribute the loss; their SLOs define the reliability internal consumers can expect. Do not “correct” the journey result because a dependency caused it.
+Component SLIs-payment-adapter availability, order-store latency, inventory correctness-help attribute the loss; their SLOs define the reliability internal consumers can expect. Do not “correct” the journey result because a dependency caused it.
 
 ## Choose a Real Measurement Boundary
 

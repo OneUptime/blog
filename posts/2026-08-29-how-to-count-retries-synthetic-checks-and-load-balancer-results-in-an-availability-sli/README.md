@@ -1,4 +1,4 @@
-# How to Count Retries, Synthetic Checks, and Load-Balancer Results in an Availability SLI
+# Counting Retries, Synthetic Checks, and Load-Balancer Results in an SLI
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
@@ -26,7 +26,7 @@ Google SRE's implementation example prefers load-balancer metrics over server lo
 
 ## Count Retries at the Promised Boundary
 
-If a client makes one logical call, transparently retries twice, and succeeds within the deadline, the user experienced one good outcome—not two bad attempts and one good request. Conceptually increment these counters (pseudocode):
+If a client makes one logical call, transparently retries twice, and succeeds within the deadline, the user experienced one good outcome-not two bad attempts and one good request. Conceptually increment these counters (pseudocode):
 
 ```text
 logical_outcomes_total{result="good"} += 1
@@ -107,4 +107,4 @@ Test a successful first attempt, successful retry, exhausted retry, client cance
 
 ## Conclusion
 
-Count the event your user was promised exactly once. Let load-balancer data provide a strong edge proxy, retries explain resilience, and synthetic checks provide independent coverage—without merging their incompatible denominators.
+Count the event your user was promised exactly once. Let load-balancer data provide a strong edge proxy, retries explain resilience, and synthetic checks provide independent coverage-without merging their incompatible denominators.

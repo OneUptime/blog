@@ -81,7 +81,7 @@ Use defense in depth:
 - make startup fail closed when sandbox endpoints or fixture credentials appear in production;
 - monitor production for test issuer, audience, tenant, or account identifiers.
 
-A feature flag is not sufficient if a compromised administrator can enable a universal bypass. If an emergency access mechanism is required, design it as audited, expiring, independently approved break glass—not test code.
+A feature flag is not sufficient if a compromised administrator can enable a universal bypass. If an emergency access mechanism is required, design it as audited, expiring, independently approved break glass-not test code.
 
 ## Threat Model and Failure Modes
 

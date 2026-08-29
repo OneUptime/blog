@@ -1,4 +1,4 @@
-# Validation Summary: Is Email OTP Really a Second Factor? How to Keep Authentication Channels Independent
+# Validation Summary: Is Email OTP a Second Factor? Keeping Authentication Channels Independent
 
 ## Status
 

@@ -1,4 +1,4 @@
-# Is Email OTP Really a Second Factor? How to Keep Authentication Channels Independent
+# Is Email OTP a Second Factor? Keeping Authentication Channels Independent
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
@@ -24,15 +24,15 @@ Ask what evidence each step verifies and how an attacker could obtain it:
 | TOTP | Shared secret in authenticator | May be synced into same password vault |
 | WebAuthn with UV | RP-bound private key plus local verification | Sync-fabric or credential-manager account recovery, if the credential is syncable |
 
-Using the same physical phone is not automatically disqualifying—NIST permits an out-of-band secondary channel to terminate on the same device as the primary channel when the device does not leak information between them without claimant participation. The important question is whether compromise of one mechanism predictably compromises the other.
+Using the same physical phone is not automatically disqualifying-NIST permits an out-of-band secondary channel to terminate on the same device as the primary channel when the device does not leak information between them without claimant participation. The important question is whether compromise of one mechanism predictably compromises the other.
 
 Email commonly fails that test. A password manager may autofill both service and mailbox passwords on one compromised browser; an existing mailbox session may need no fresh proof; and service password recovery may already route through that mailbox.
 
 ## Do Not Overstate Email Assurance
 
-If a low-risk service uses email OTP for address ownership, bot friction, or a transition flow, name it accurately in code, UX, audit events, and policy. Do not include `mfa` in the `amr` array—or set a custom `mfa=true` claim—when downstream APIs would interpret that as possession of an independent authenticator. Do not use it to satisfy a phishing-resistant or NIST AAL2 requirement.
+If a low-risk service uses email OTP for address ownership, bot friction, or a transition flow, name it accurately in code, UX, audit events, and policy. Do not include `mfa` in the `amr` array-or set a custom `mfa=true` claim-when downstream APIs would interpret that as possession of an independent authenticator. Do not use it to satisfy a phishing-resistant or NIST AAL2 requirement.
 
-Keep high-impact actions—factor changes, payout changes, recovery settings, privileged access, and API-key creation—behind recent authentication at the required assurance level, such as a password plus a bound TOTP or conforming out-of-band authenticator, or preferably properly configured WebAuthn with required user verification.
+Keep high-impact actions-factor changes, payout changes, recovery settings, privileged access, and API-key creation-behind recent authentication at the required assurance level, such as a password plus a bound TOTP or conforming out-of-band authenticator, or preferably properly configured WebAuthn with required user verification.
 
 If email is the only feasible interim mechanism, document risk acceptance and a migration date. Security architecture should not silently inherit a temporary product compromise forever.
 

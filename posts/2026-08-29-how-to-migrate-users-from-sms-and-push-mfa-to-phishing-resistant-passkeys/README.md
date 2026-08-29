@@ -91,4 +91,4 @@ Passkeys resist RP-origin phishing; they do not fix compromised endpoints, broke
 
 ## Conclusion
 
-Use the legacy factor only as a controlled bridge to a fully validated passkey, observe a finite coexistence period, and then remove weak methods as direct paths to high-risk actions or account recovery. The migration succeeds when the stronger credential—not an invisible SMS or push fallback—defines the account's real assurance.
+Use the legacy factor only as a controlled bridge to a fully validated passkey, observe a finite coexistence period, and then remove weak methods as direct paths to high-risk actions or account recovery. The migration succeeds when the stronger credential-not an invisible SMS or push fallback-defines the account's real assurance.

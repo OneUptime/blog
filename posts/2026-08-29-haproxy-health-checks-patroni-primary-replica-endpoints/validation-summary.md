@@ -1,4 +1,4 @@
-# Validation Summary: How to Configure HAProxy Health Checks Against Patroni's Primary and Replica Endpoints
+# Validation Summary: HAProxy Health Checks for Patroni Primary and Replica Endpoints
 
 ## Status
 

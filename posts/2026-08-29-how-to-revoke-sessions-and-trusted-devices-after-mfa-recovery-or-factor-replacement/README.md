@@ -1,4 +1,4 @@
-# How to Revoke Sessions and Trusted Devices After MFA Recovery or Factor Replacement
+# Revoking Sessions and Trusted Devices After MFA Recovery
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
@@ -106,4 +106,4 @@ Defend against persistent stolen sessions, refresh-token replay, trusted-device 
 
 ## Conclusion
 
-Recovery and replacement of a lost or compromised factor must trigger account-wide invalidation of credentials that could preserve old authority—using a security epoch or an equivalent mechanism—not merely swap one authenticator row. Enforce the transition online where risk demands it, and monitor revocation until all dependent systems converge.
+Recovery and replacement of a lost or compromised factor must trigger account-wide invalidation of credentials that could preserve old authority-using a security epoch or an equivalent mechanism-not merely swap one authenticator row. Enforce the transition online where risk demands it, and monitor revocation until all dependent systems converge.

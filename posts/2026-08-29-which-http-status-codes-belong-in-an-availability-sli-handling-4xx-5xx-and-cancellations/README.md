@@ -1,4 +1,4 @@
-# Which HTTP Status Codes Belong in an Availability SLI? Handling 4xx, 5xx, and Cancellations
+# Which HTTP Status Codes Belong in an Availability SLI?
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

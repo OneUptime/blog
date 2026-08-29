@@ -92,4 +92,4 @@ This keeps the primary SLO aligned with user experience while preserving legitim
 
 ## Conclusion
 
-Count planned maintenance whenever it breaks an always-on promise. Exclude time only through a prospective, explicit, reviewable service definition—and keep the raw user impact visible even when a contract calculates compliance differently.
+Count planned maintenance whenever it breaks an always-on promise. Exclude time only through a prospective, explicit, reviewable service definition-and keep the raw user impact visible even when a contract calculates compliance differently.

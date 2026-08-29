@@ -1,4 +1,4 @@
-# Validation Summary: Why Does Patroni Demote a Healthy Primary When etcd Is Unavailable? Configuring DCS Failsafe Mode
+# Validation Summary: Why Patroni Demotes a Primary When etcd Is Unavailable
 
 ## Status
 

@@ -209,7 +209,7 @@ patronictl -c /etc/patroni/patroni.yml reinit prod-ha pg1 \
   --from-leader --wait --force
 ```
 
-`reinit` destroys and recreates the replica's PostgreSQL data directory. Confirm the member named `pg1` is a replica—not the current leader—and obtain explicit destructive-operation approval in the operational runbook. A fresh base backup takes longer and uses more network/storage than rewind but is the safe fallback.
+`reinit` destroys and recreates the replica's PostgreSQL data directory. Confirm the member named `pg1` is a replica-not the current leader-and obtain explicit destructive-operation approval in the operational runbook. A fresh base backup takes longer and uses more network/storage than rewind but is the safe fallback.
 
 ## Failure modes and recovery
 

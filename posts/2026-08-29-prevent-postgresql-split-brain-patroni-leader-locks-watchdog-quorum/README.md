@@ -1,4 +1,4 @@
-# How to Prevent PostgreSQL Split Brain with Patroni Leader Locks, Watchdog Fencing, and Quorum
+# Preventing PostgreSQL Split Brain with Patroni
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
@@ -220,7 +220,7 @@ SELECT pg_is_in_recovery(), current_setting('transaction_read_only');
 
 A normally writable primary reports `false` and `off`; hot-standby replicas report `true` and `on`.
 
-Confirm Patroni logs state that the watchdog was activated on the leader. Monitor watchdog availability on replicas too—a device discovered only during an incident is too late.
+Confirm Patroni logs state that the watchdog was activated on the leader. Monitor watchdog availability on replicas too-a device discovered only during an incident is too late.
 
 ## Test failures without inventing split brain
 

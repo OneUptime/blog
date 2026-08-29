@@ -93,4 +93,4 @@ Defend against session hijackers adding a key, registration CSRF, origin/RP conf
 
 ## Conclusion
 
-Multiple WebAuthn keys provide resilient authentication when each is a separately validated credential and factor changes require recent trusted proof. Preserve that assurance after loss with remaining-key management or formal recovery—not a lower-assurance support shortcut.
+Multiple WebAuthn keys provide resilient authentication when each is a separately validated credential and factor changes require recent trusted proof. Preserve that assurance after loss with remaining-key management or formal recovery-not a lower-assurance support shortcut.

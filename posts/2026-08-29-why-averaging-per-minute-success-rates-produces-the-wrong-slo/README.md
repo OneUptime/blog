@@ -8,7 +8,7 @@ Description: Calculate a request-based SLO from total good and eligible events i
 
 ---
 
-A request-based SLO asks what fraction of eligible requests were good. Averaging a success percentage calculated separately for every minute answers a different question: what is the unweighted mean of the per-minute success rates. Equal traffic in every minute guarantees that this mean equals the request-based SLI. With uneven traffic, the two can still coincide—for example, when every minute has the same success rate—but they generally differ.
+A request-based SLO asks what fraction of eligible requests were good. Averaging a success percentage calculated separately for every minute answers a different question: what is the unweighted mean of the per-minute success rates. Equal traffic in every minute guarantees that this mean equals the request-based SLI. With uneven traffic, the two can still coincide-for example, when every minute has the same success rate-but they generally differ.
 
 ## See the Weighting Error
 

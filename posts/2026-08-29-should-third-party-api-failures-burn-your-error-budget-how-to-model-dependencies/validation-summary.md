@@ -1,4 +1,4 @@
-# Validation Summary: Should Third-Party API Failures Burn Your Error Budget? How to Model Dependencies
+# Validation Summary: Should Third-Party Failures Burn Your Error Budget? Modeling Dependencies
 
 ## Status
 

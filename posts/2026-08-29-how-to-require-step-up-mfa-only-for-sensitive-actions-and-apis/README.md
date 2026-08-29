@@ -24,7 +24,7 @@ Classify actions by impact and specify the required authentication strength, all
 | Change payout destination | Recent phishing-resistant proof plus transaction confirmation |
 | Create administrator API key | Recent phishing-resistant proof and privileged role |
 
-Exact rules depend on the threat model. Evaluate risk signals—new device, recovery, impossible travel, compromised-session alert—as reasons to strengthen or deny an action, not as replacements for baseline policy.
+Exact rules depend on the threat model. Evaluate risk signals-new device, recovery, impossible travel, compromised-session alert-as reasons to strengthen or deny an action, not as replacements for baseline policy.
 
 Centralize policy so web, mobile, GraphQL, REST, and internal gateways cannot drift. Deny by default when authentication context is missing or unrecognized.
 

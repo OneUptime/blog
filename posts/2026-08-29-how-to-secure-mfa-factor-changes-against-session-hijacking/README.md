@@ -34,7 +34,7 @@ Create an opaque, single-use transaction bound to the user, renewed current sess
 
 Display the concrete action in the trusted reauthentication or confirmation UI: “Add a security key,” “Replace authenticator app,” or “Remove key ending in …”. Do not use one generic MFA approval that an attacker can repurpose. A transaction for adding a factor must not authorize removing every other factor.
 
-Require another fresh proof when security context changes between initiation and commit—for example, a password reset, recovery event, suspicious login, role escalation, or a concurrent factor change. A per-account `factor_generation` or security epoch makes stale transactions easy to reject.
+Require another fresh proof when security context changes between initiation and commit-for example, a password reset, recovery event, suspicious login, role escalation, or a concurrent factor change. A per-account `factor_generation` or security epoch makes stale transactions easy to reject.
 
 ## Avoid Unsafe Replacement Gaps
 

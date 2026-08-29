@@ -43,7 +43,7 @@ Use 28 days for continuous operational policy, especially when weekday and weeke
 
 Use rolling 30 days when compatibility with a mature SLO system or established organizational policy outweighs the traffic-mix drawback. Do not claim it is a calendar month.
 
-Use a calendar month when the actual consequence—such as a service credit—resets on that boundary. Maintain a rolling operational view so a boundary does not erase recent risk.
+Use a calendar month when the actual consequence-such as a service credit-resets on that boundary. Maintain a rolling operational view so a boundary does not erase recent risk.
 
 ## Recalibrate Burn Alerts
 

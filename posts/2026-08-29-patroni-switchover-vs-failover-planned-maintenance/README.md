@@ -1,4 +1,4 @@
-# Patroni Switchover vs Failover: How to Move the Primary Safely for Planned Maintenance
+# Patroni Switchover vs Failover for Planned Maintenance
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
@@ -14,17 +14,17 @@ The commands are not synonyms:
 
 | Operation | Intended cluster state | Candidate | Data-safety behavior |
 | --- | --- | --- | --- |
-| `patronictl switchover` | Healthy, with a current leader | Required by current `patronictl`; REST API can let eligible nodes race | Validates the current leader and candidate; normal lag/timeline/synchronous checks apply |
-| `patronictl failover` | Unhealthy, commonly no leader | Required | Can promote an explicitly chosen node even when lag, timeline, or synchronous eligibility would block an automatic failover |
+| `patronictl switchover` | Healthy, with a current leader | Optional; specify one for a deterministic move, or omit it to let eligible nodes race | Validates the current leader and promotion target; normal lag/timeline/synchronous checks apply |
+| `patronictl failover` | Unhealthy, commonly no leader | Required | Omits synchronous-member eligibility; with no leader, an explicitly chosen node can also bypass lag and timeline checks |
 
-Patroni allows a manual failover command against a healthy cluster, but its official documentation recommends switchover in that case. A forced failover can lose data if the chosen replica is behind.
+Patroni allows a manual failover command against a healthy cluster, but its official documentation recommends switchover in that case. A manual failover can lose data if the chosen replica is behind.
 
 ## What a safe switchover does
 
 For an immediate switchover from `pg1` to `pg2`, Patroni:
 
 1. Confirms `pg1` is the current leader named in the request.
-2. Checks that `pg2` is reachable, not tagged `nofailover`, has a functional required watchdog, and is an eligible healthy standby.
+2. Checks that `pg2` is reachable, is not excluded by `nofailover: true` or `failover_priority <= 0`, has a functional required watchdog, and is an eligible healthy standby.
 3. In a healthy cluster, enforces `maximum_lag_on_failover`; when `check_timeline` is enabled, rejects a candidate on an older known timeline.
 4. In synchronous mode, requires a valid synchronous candidate according to the switchover rules.
 5. Demotes/stops the old primary and promotes the candidate.
@@ -53,7 +53,7 @@ Require all of the following before a routine switchover:
 - Exactly one leader and at least one `streaming` replica.
 - No unplanned restarts, pending reinitializations, DCS instability, or unresolved backup alert.
 - Candidate Patroni API and PostgreSQL are reachable.
-- Candidate has no `nofailover: true` tag and its required watchdog is armed/usable.
+- Candidate is not excluded by `nofailover: true` or `failover_priority <= 0`, and any required watchdog is usable and can be activated.
 - Candidate is on the current timeline and below the accepted lag limit.
 - Synchronous-mode candidate is listed appropriately for the configured mode.
 - HAProxy and application retry paths have been tested.
@@ -73,7 +73,7 @@ FROM pg_stat_replication
 ORDER BY application_name;
 ```
 
-Choose a replica with `state = 'streaming'`, the expected `sync_state`, and minimal replay lag. Patroni's list is the authority for candidate eligibility; the SQL view supplies additional evidence.
+Choose a replica with `state = 'streaming'`, the expected `sync_state`, and minimal replay lag. Patroni's server-side switchover checks are authoritative; `patronictl list` and the SQL view supply preflight evidence.
 
 Check for long transactions and sessions that will make the interruption expensive:
 
@@ -197,7 +197,7 @@ patronictl -c /etc/patroni/patroni.yml failover prod-ha \
   --force
 ```
 
-Before doing this, positively fence the former primary and compare candidate WAL positions. Patroni's manual failover deliberately permits an operator to choose a node even when it exceeds `maximum_lag_on_failover`, is not in the synchronous DCS key, or has an older timeline than the last known cluster timeline. That escape hatch is why failover can lose committed transactions.
+Before doing this, positively fence the former primary and compare candidate WAL positions. In a cluster without a leader, Patroni's manual failover deliberately permits an operator to choose a node even when it exceeds `maximum_lag_on_failover`, is not in the synchronous DCS key, or has an older timeline than the last known cluster timeline. That escape hatch is why failover can lose committed transactions.
 
 Current Patroni `failover` requires `--candidate` and no longer accepts the deprecated `--leader` option. If the cluster is healthy, return to `switchover`.
 
@@ -208,7 +208,7 @@ Current Patroni `failover` requires `--candidate` and no longer accepts the depr
 | Candidate rejected | Lag, timeline, tag, watchdog, synchronous eligibility, or reachability check failed | Fix the candidate or choose another; do not force PostgreSQL promotion |
 | Command reports leader mismatch | Leadership changed after preflight | Re-list the cluster and restart the decision process |
 | No write backend briefly | Expected role-transition interval or failed promotion | Wait only within the runbook budget; inspect Patroni and DCS if exceeded |
-| Old primary does not become a replica | Diverged timeline, rewind prerequisite/WAL failure, or maintenance shutdown | Keep it fenced; use Patroni rewind or `reinit` |
+| Old primary does not become a replica | Diverged timeline, rewind prerequisite/WAL failure, or maintenance shutdown | Keep it fenced; allow Patroni's configured automatic `pg_rewind` recovery, or use `reinit` |
 | Applications report uncertain commits | Connection dropped around transaction commit | Reconcile using application idempotency keys/business records before retrying |
 | Scheduled operation is no longer wanted | Pending DCS event remains | Use `patronictl flush ... switchover --force` |
 

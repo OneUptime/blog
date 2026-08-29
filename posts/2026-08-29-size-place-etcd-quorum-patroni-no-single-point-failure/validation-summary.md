@@ -1,4 +1,4 @@
-# Validation Summary: How to Size and Place an etcd Quorum for a Patroni Cluster Without Creating a New Single Point of Failure
+# Validation Summary: Sizing and Placing an etcd Quorum for a Patroni Cluster
 
 ## Status
 

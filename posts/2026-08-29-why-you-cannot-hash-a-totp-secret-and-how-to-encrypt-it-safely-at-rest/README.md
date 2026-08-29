@@ -1,4 +1,4 @@
-# Why You Cannot Hash a TOTP Secret—and How to Encrypt It Safely at Rest
+# Why You Cannot Hash a TOTP Secret-and How to Encrypt It Safely at Rest
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

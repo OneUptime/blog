@@ -1,4 +1,4 @@
-# Why Does Patroni Demote a Healthy Primary When etcd Is Unavailable? Configuring DCS Failsafe Mode
+# Why Patroni Demotes a Primary When etcd Is Unavailable
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
@@ -191,7 +191,7 @@ patronictl -c /etc/patroni/patroni.yml edit-config prod-ha \
 
 Verify the global DCS value through `/config` or `show-config`. To confirm that every Patroni process has consumed the change, query `/metrics` on each member and check that `patroni_failsafe_mode_enabled` is `0`. Disabling it restores the normal rule: failure to renew the leader lock causes primary demotion before the lock can expire.
 
-If the cluster is already in a DCS outage, do not attempt to “roll back” by editing three local files—the effective configuration is stored in the unavailable DCS. Restore etcd quorum and network reachability. If all nodes are replicas afterward, let Patroni perform a normal election once DCS is consistent.
+If the cluster is already in a DCS outage, do not attempt to “roll back” by editing three local files-the effective configuration is stored in the unavailable DCS. Restore etcd quorum and network reachability. If all nodes are replicas afterward, let Patroni perform a normal election once DCS is consistent.
 
 Before any forced manual promotion, positively fence the former primary at the power, storage, or network layer and determine the most advanced safe replica. A manual disaster-recovery promotion is a separate decision that may lose transactions; failsafe mode does not make that shortcut safe.
 

@@ -1,4 +1,4 @@
-# Validation Summary: Which HTTP Status Codes Belong in an Availability SLI? Handling 4xx, 5xx, and Cancellations
+# Validation Summary: Which HTTP Status Codes Belong in an Availability SLI?
 
 ## Status
 

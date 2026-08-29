@@ -1,4 +1,4 @@
-# How to Design Lost-Device MFA Recovery Without Turning Support into an Authentication Bypass
+# Lost-Device MFA Recovery Without a Support Authentication Bypass
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

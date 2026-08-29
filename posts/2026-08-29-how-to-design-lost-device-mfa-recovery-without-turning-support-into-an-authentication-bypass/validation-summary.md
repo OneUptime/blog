@@ -1,4 +1,4 @@
-# Validation Summary: How to Design Lost-Device MFA Recovery Without Turning Support into an Authentication Bypass
+# Validation Summary: Lost-Device MFA Recovery Without a Support Authentication Bypass
 
 ## Status
 

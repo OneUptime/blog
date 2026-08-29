@@ -1,4 +1,4 @@
-# Validation Summary: How to Revoke Sessions and Trusted Devices After MFA Recovery or Factor Replacement
+# Validation Summary: Revoking Sessions and Trusted Devices After MFA Recovery
 
 ## Status
 validated

@@ -63,7 +63,7 @@ Use a written review outcome:
 - **Convert:** retain as a KPI, diagnostic, or aspirational objective without budget enforcement.
 - **Retire:** no unique user promise, contractual need, or decision remains.
 
-Google SRE recommends checking that known incidents and support tickets correlate with budget loss, refining SLIs that miss user impact, and reviewing new SLOs frequently—often monthly—before reducing the cadence as they mature.
+Google SRE recommends checking that known incidents and support tickets correlate with budget loss, refining SLIs that miss user impact, and reviewing new SLOs frequently-often monthly-before reducing the cadence as they mature.
 
 ## Retire Safely
 

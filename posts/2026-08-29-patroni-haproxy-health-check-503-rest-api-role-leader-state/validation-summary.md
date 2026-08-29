@@ -1,4 +1,4 @@
-# Validation Summary: Why Does Patroni's HAProxy Health Check Return 503? Diagnosing REST API Role and Leader State
+# Validation Summary: Why Patroni's HAProxy Health Check Returns 503
 
 ## Status
 validated

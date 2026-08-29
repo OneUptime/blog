@@ -10,7 +10,7 @@ Description: Turn a user-visible deadline into a latency SLO, then use historica
 
 Yesterday's p99 describes the system you already have. It does not tell you when users abandon a task, miss a business deadline, or stop trusting the product. A latency SLO should begin with those consequences and work backward to a measurable event and threshold.
 
-Historical latency is still useful, primarily as evidence about feasibility and cost—not as a substitute for direct evidence of user expectations.
+Historical latency is still useful, primarily as evidence about feasibility and cost-not as a substitute for direct evidence of user expectations.
 
 ## Define the Interaction Before the Number
 
@@ -58,7 +58,7 @@ sum(
 
 Failed requests need an explicit policy. Commonly, availability counts them as bad and latency evaluates successful outcomes only; alternatively, treat failures as not satisfying the latency promise so one SLO captures both. State the choice because it changes the denominator.
 
-For a threshold-based SLO, a matching bucket boundary on every included classic histogram directly counts observations at or below the threshold without interpolation. `histogram_quantile()` estimates the inverse question—what duration corresponds to a chosen rank—and interpolates within buckets when needed. It is useful for exploration, but it is not the direct numerator for “requests no slower than 400 ms.”
+For a threshold-based SLO, a matching bucket boundary on every included classic histogram directly counts observations at or below the threshold without interpolation. `histogram_quantile()` estimates the inverse question-what duration corresponds to a chosen rank-and interpolates within buckets when needed. It is useful for exploration, but it is not the direct numerator for “requests no slower than 400 ms.”
 
 ## Use History as a Feasibility Test
 

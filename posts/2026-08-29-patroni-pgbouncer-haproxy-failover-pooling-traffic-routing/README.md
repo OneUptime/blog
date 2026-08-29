@@ -1,4 +1,4 @@
-# Patroni, PgBouncer, and HAProxy: Which Layer Handles Failover, Pooling, and Traffic Routing?
+# Patroni, PgBouncer, and HAProxy: Failover, Pooling, and Routing
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
@@ -24,10 +24,10 @@ etcd or another supported distributed configuration store sits underneath Patron
 
 During a failover:
 
-1. Patroni notices that the leader lock is absent or the primary is unhealthy.
-2. An eligible replica wins the leader race and PostgreSQL is promoted on a new timeline.
-3. The promoted node's Patroni endpoint begins returning `200` for `/primary`; the other nodes return `503` for that endpoint.
-4. HAProxy removes the old server and sends new write connections to the new primary.
+1. The leader lock expires or is released after Patroni can no longer keep the primary healthy. A PostgreSQL-process crash alone may instead be restarted on the same node for up to `primary_start_timeout`.
+2. An eligible replica wins the leader race, acquires the lock, and starts PostgreSQL promotion; a completed promotion creates a new timeline.
+3. In Patroni 4.1.5, the winning node's `/primary` endpoint begins returning `200` from Patroni's leader state, so it is a role-routing signal rather than proof that PostgreSQL has finished promotion.
+4. After the configured `fall` and `rise` thresholds, HAProxy removes the old server and sends new write connections to the selected leader.
 5. PgBouncer discards or eventually recycles server connections that were attached to the old primary. Applications reconnect and retry complete transactions whose outcome is known to be safe to retry.
 
 Existing TCP sessions do not teleport between database servers. If a connection breaks during promotion, only the application knows whether its transaction is idempotent and whether an ambiguous commit must be checked before retrying.
@@ -54,13 +54,13 @@ backend write_poolers
     http-check send meth GET uri /primary ver HTTP/1.1 hdr Host patroni
     http-check expect status 200
     http-check connect port 6432
-    default-server inter 2s fall 3 rise 2
+    default-server inter 2s fall 3 rise 2 on-marked-down shutdown-sessions
     server pg1-pool 10.40.0.11:6432 check
     server pg2-pool 10.40.0.12:6432 check
     server pg3-pool 10.40.0.13:6432 check
 ```
 
-The final `http-check connect` starts a second connection and fails the sequence when PgBouncer is not listening. It is only a TCP-listener check; retain an end-to-end SQL probe through HAProxy and PgBouncer to detect authentication, pool exhaustion, or a broken local database path. Without this second step, a healthy Patroni API can leave a dead PgBouncer backend marked up.
+The final `http-check connect` starts a second connection and fails the sequence when PgBouncer is not listening. When the backend reaches `DOWN`, `on-marked-down shutdown-sessions` terminates existing streams to that node; without it, HAProxy would stop only new connections and a client could remain pinned to a pooler whose local PostgreSQL no longer has the selected role. The listener check is only a TCP check; retain an end-to-end SQL probe through HAProxy and PgBouncer to detect authentication, pool exhaustion, an incomplete promotion, or a broken local database path. Without the listener step, a healthy Patroni API can leave a dead PgBouncer backend marked up.
 
 Each local PgBouncer has a fixed local destination:
 
@@ -94,7 +94,7 @@ Advantages:
 Trade-offs:
 
 - Every database node needs a configured and monitored pooler.
-- A failover drops connections to the old node's pooler. This is explicit and usually safer than silently retaining sessions to the demoted database.
+- When HAProxy marks the old node down after the configured failure threshold, `on-marked-down shutdown-sessions` drops connections to that node's pooler. This is explicit and usually safer than silently retaining sessions to a database that no longer has the selected role.
 - Pool limits are per PgBouncer instance. Size the aggregate possible connections against PostgreSQL `max_connections`.
 
 ### Pattern B: a central PgBouncer connects through HAProxy
@@ -116,7 +116,7 @@ If this pattern is used:
 
 - Run more than one PgBouncer and HAProxy instance; do not replace a database single point of failure with a pooler or proxy single point of failure.
 - Keep `server_login_retry` short enough for the desired recovery time without creating a retry storm.
-- Use `RECONNECT` during a controlled role change if idle server connections need to be closed when released.
+- After downstream HAProxy changes routing, `RECONNECT` marks open server connections for closure. Idle ones can close immediately and active ones close when released, but replacement connections can be opened immediately, so old and new destinations may coexist temporarily. Use `PAUSE` for a controlled write switchover that must move all server connections together.
 - Understand that `server_lifetime` closes only unused server connections older than the limit; it is not an HA election mechanism.
 
 ## Select the PgBouncer pooling mode by application semantics
@@ -129,23 +129,23 @@ PgBouncer offers three modes:
 | `transaction` | At transaction end | Efficient, but session state cannot be assumed to stay on one backend |
 | `statement` | At statement end | Disallows multi-statement transactions and is rarely appropriate for general applications |
 
-Transaction pooling requires application review. Session-level `SET`, `LISTEN`, SQL `PREPARE`, session advisory locks, and persistent temporary-table state are among the features that do not behave like a dedicated session. Protocol-level prepared plans require PgBouncer's `max_prepared_statements` support. Choose session pooling if the application cannot honor these constraints.
+Transaction pooling requires application review. Session-level `SET`, `LISTEN`, SQL `PREPARE`, session advisory locks, and persistent temporary-table state are among the features that do not behave like a dedicated session. Protocol-level prepared plans require `max_prepared_statements` to be nonzero. Choose session pooling if the application cannot honor these constraints.
 
-Always give every transaction an explicit boundary. A transaction left open consumes one server connection in transaction pooling and may block maintenance or failover cleanup.
+Ensure every explicit transaction reaches `COMMIT` or `ROLLBACK`. A transaction left open consumes one server connection in transaction pooling and may block maintenance or failover cleanup.
 
 ## Use Patroni endpoints as role selectors
 
-Patroni's REST API has deliberately strict status semantics:
+Patroni documents these REST API status semantics:
 
-| Endpoint | Returns `200` when |
+| Endpoint | Documented `200` condition |
 | --- | --- |
 | `/primary` or `/read-write` | PostgreSQL is running as primary and this Patroni member holds the leader lock |
 | `/leader` | This member holds the leader lock, regardless of whether PostgreSQL is currently primary or standby-leader |
 | `/replica` | PostgreSQL is running as a replica and `noloadbalance` is not set |
-| `/replica?lag=64MB` | The replica conditions hold and its DCS-derived lag is below the threshold |
+| `/replica?lag=64MB` | The replica conditions hold and its calculated lag does not exceed the threshold |
 | `/health` | PostgreSQL is up, without asserting its role |
 
-For a write backend, use `/primary`, not `/health`. A healthy replica should never pass a write check. For read traffic, use `/replica` with an application-appropriate lag limit. A `503` from a role endpoint usually means “healthy node, wrong role” rather than “REST API is broken.”
+For a write backend, use `/primary`, not `/health`. A healthy replica should never pass a write check. For read traffic, use `/replica` with an application-appropriate lag limit. In Patroni 4.1.5, `/primary` is implemented from Patroni's leader state and does not independently check `pg_is_in_recovery()`, so treat it as a role-routing signal rather than end-to-end proof that PostgreSQL is writable. A `503` means that the endpoint's role, state, tag, or lag conditions were not met; it does not by itself mean that the REST API is broken.
 
 ## Configure separate service endpoints
 
@@ -169,7 +169,7 @@ backend write_poolers
     http-check send meth GET uri /primary ver HTTP/1.1 hdr Host patroni
     http-check expect status 200
     http-check connect port 6432
-    default-server inter 2s fall 3 rise 2
+    default-server inter 2s fall 3 rise 2 on-marked-down shutdown-sessions
     server pg1 10.40.0.11:6432 check
     server pg2 10.40.0.12:6432 check
     server pg3 10.40.0.13:6432 check
@@ -185,7 +185,7 @@ backend replica_poolers
     http-check send meth GET uri /replica?lag=64MB ver HTTP/1.1 hdr Host patroni
     http-check expect status 200
     http-check connect port 6432
-    default-server inter 2s fall 3 rise 2
+    default-server inter 2s fall 3 rise 2 on-marked-down shutdown-sessions
     server pg1 10.40.0.11:6432 check
     server pg2 10.40.0.12:6432 check
     server pg3 10.40.0.13:6432 check
@@ -227,9 +227,9 @@ Monitor at least:
 
 | Failure | What the layers do | Operator response |
 | --- | --- | --- |
-| PostgreSQL primary crashes | Patroni elects/promotes; HAProxy follows `/primary`; PgBouncer opens new server connections | Confirm one leader, then investigate and rejoin the old primary |
+| PostgreSQL primary process crashes | Patroni may first attempt local recovery for `primary_start_timeout`; if it releases or loses the leader lock, an eligible replica can promote, HAProxy follows `/primary`, and PgBouncer opens new server connections | Confirm whether Patroni recovered the original primary or elected a new writer; verify exactly one writer and rejoin the old primary if needed |
 | HAProxy cannot reach Patroni REST | It marks that backend down even if PostgreSQL port `5432` is open | Restore REST network/TLS access; never replace `/primary` with a TCP-only check |
-| PgBouncer has old idle server connections | Connections may still point at the demoted node until released or broken | Use `RECONNECT` when appropriate and verify new server connections reach the leader |
+| PgBouncer retains server connections to the old backend | Idle connections remain attached until closed by `RECONNECT`, an applicable idle/lifetime timeout, a changed target, or a broken connection; active connections also wait for release unless broken | Use `RECONNECT` for gradual replacement, or `PAUSE` when a controlled write switchover must move all connections together; verify new connections reach the leader |
 | Transaction pool breaks session state | Application assumed a dedicated backend | Change the application or use session pooling |
 | One central PgBouncer fails | Clients lose the pooling endpoint | Run redundant poolers with independent health checks and service discovery |
 | Clients see errors during failover | Existing sessions were interrupted | Retry complete, idempotent transactions with bounded backoff; inspect ambiguous commits |
@@ -242,6 +242,8 @@ Never fix routing by manually promoting PostgreSQL or by configuring PgBouncer w
 
 - [Patroni REST API](https://patroni.readthedocs.io/en/latest/rest_api.html)
 - [Patroni documentation](https://patroni.readthedocs.io/en/latest/README.html)
+- [Patroni dynamic configuration](https://patroni.readthedocs.io/en/latest/dynamic_configuration.html)
+- [Patroni 4.1.5 REST API implementation](https://github.com/patroni/patroni/blob/v4.1.5/patroni/api.py#L343-L365)
 - [PgBouncer features and pooling modes](https://www.pgbouncer.org/features.html)
 - [PgBouncer configuration](https://www.pgbouncer.org/config.html)
 - [PgBouncer administration commands](https://www.pgbouncer.org/usage.html)

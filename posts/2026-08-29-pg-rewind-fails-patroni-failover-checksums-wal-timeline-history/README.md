@@ -1,4 +1,4 @@
-# Why Does `pg_rewind` Fail After a Patroni Failover? Checking Checksums, WAL, and Timeline History
+# Why `pg_rewind` Fails After a Patroni Failover
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
@@ -10,7 +10,7 @@ Description: Diagnose Patroni pg_rewind failures by checking page-change trackin
 
 `pg_rewind` is fast because it does not copy every database block. It identifies where the former primary's timeline diverged, scans that target branch's WAL to learn which blocks changed, and copies the authoritative versions from the new primary.
 
-That design explains most failures. Rewind cannot proceed if PostgreSQL did not record enough page-change information, the target no longer has WAL back to the divergence checkpoint, timeline history cannot be followed, or the source/target are not compatible copies of the same cluster.
+That design explains most failures. Rewind cannot proceed if PostgreSQL did not record enough page-change information, the target no longer has WAL back to the last checkpoint before divergence, timeline history cannot be followed, or the source/target are not compatible copies of the same cluster.
 
 Do not “fix” a rewind error by starting the former primary. Keep the target fenced, stop Patroni while gathering offline evidence, and decide between restoring prerequisites and taking a fresh base backup.
 
@@ -18,7 +18,7 @@ Do not “fix” a rewind error by starting the former primary. Keep the target 
 
 After failover:
 
-- **Source:** the current Patroni leader/new PostgreSQL primary—the timeline to preserve.
+- **Source:** the current Patroni leader/new PostgreSQL primary-the timeline to preserve.
 - **Target:** the old primary that must be transformed into a replica.
 
 Confirm from a healthy member:
@@ -33,6 +33,8 @@ Then make sure the target cannot receive client writes. Stop its Patroni service
 ```bash
 systemctl stop patroni
 ```
+
+Verify that the PostgreSQL postmaster is actually stopped. In Patroni pause mode, stopping Patroni deliberately leaves PostgreSQL running; if it is still running, shut down the target cleanly with the approved service-account procedure before continuing.
 
 Do not stop the current leader. Preserve Patroni and PostgreSQL logs, `pg_controldata` output, archive errors, and the exact `pg_rewind` stderr before retrying.
 
@@ -56,12 +58,12 @@ On the stopped target, use the `pg_controldata` from the same PostgreSQL major v
 
 The rules are:
 
-1. The target must have had either data checksums enabled when initialized **or** `wal_log_hints=on` while it generated the WAL being examined.
-2. `full_page_writes` must be `on`.
+1. The target must have had either data checksums enabled **or** `wal_log_hints=on` while it generated the WAL interval that rewind must examine.
+2. `full_page_writes` must also have been `on` while that WAL was generated.
 3. Source and target must have the same database system identifier, PostgreSQL major version, and compatible machine architecture/build.
-4. The target must be stopped cleanly for rewind. Current `pg_rewind` normally tries single-user crash recovery if it was not cleanly shut down; missing libraries/configuration can make that preliminary recovery fail.
+4. The target must be stopped cleanly for rewind. In a non-dry-run operation, current `pg_rewind` normally tries single-user crash recovery if it was not cleanly shut down; missing libraries/configuration can make that preliminary recovery fail. A dry run does not perform this recovery and instead reports the unclean state.
 
-PostgreSQL 18 may initialize new clusters with checksums by default, but older clusters and upgraded data directories may not have them. Always inspect the actual target. Turning `wal_log_hints` on **after** divergence cannot reconstruct the missing historic page-change evidence, and enabling checksums later does not retroactively repair an already-ineligible branch.
+PostgreSQL 18 initializes new clusters with checksums by default unless `initdb --no-data-checksums` is used, but older clusters and upgraded data directories may not have them. Always inspect the actual target. Turning `wal_log_hints` on **after** divergence cannot reconstruct the missing historic page-change evidence, and enabling checksums later does not retroactively repair an already-ineligible branch.
 
 Patroni performs a similar eligibility check using `pg_controldata`. In dynamic configuration, verify:
 
@@ -80,10 +82,10 @@ A typical failure sequence is:
 
 1. `pg1` loses contact but remains active briefly.
 2. `pg2` promotes on a new timeline.
-3. `pg1` stays offline long enough that the target's old WAL is recycled or removed.
+3. `pg1` continues generating enough WAL after divergence for the needed target-branch WAL to be recycled, or an operator/tool removes it before rewind.
 4. Rewind cannot scan the target branch back to the fork checkpoint.
 
-Inventory the target WAL without modifying it:
+Inventory the target's WAL-related files without modifying them:
 
 ```bash
 find /var/lib/postgresql/18/main/pg_wal -maxdepth 1 -type f \
@@ -91,7 +93,7 @@ find /var/lib/postgresql/18/main/pg_wal -maxdepth 1 -type f \
   -print | sort
 ```
 
-If archived target WAL exists, configure and test the target's `restore_command`. Current `pg_rewind` can retrieve missing target segments with:
+If archived target WAL exists, configure and test the target's `restore_command`. Run manual `pg_rewind` commands as the PostgreSQL service account, not root; `restore_command` inherits the invoking operating-system identity. Current `pg_rewind` can retrieve missing target segments with:
 
 ```bash
 /usr/lib/postgresql/18/bin/pg_rewind \
@@ -102,7 +104,7 @@ If archived target WAL exists, configure and test the target's `restore_command`
   --source-server='host=pg2.internal port=5432 dbname=postgres user=rewind_user sslmode=verify-full sslrootcert=/etc/patroni/tls/postgres-ca.pem'
 ```
 
-`--restore-target-wal` invokes the `restore_command` defined in the target configuration. If Patroni generates configuration outside `PGDATA`, pass the correct main file with `--config-file` in a manual diagnostic. Test archive retrieval using a non-destructive archive command/runbook before assuming it works.
+`--restore-target-wal` invokes the `restore_command` defined in the target configuration. If Patroni generates configuration outside `PGDATA`, pass the correct main file with `--config-file` in a manual diagnostic. Even with `--dry-run`, this option can execute `restore_command` and populate missing segments in the target's `pg_wal`; preserve the inventory first and use a snapshot or copy if zero target writes are required. Test archive retrieval using a non-destructive archive command/runbook before assuming it works.
 
 Do not copy guessed WAL files from the new primary into the target. The segment name includes a timeline, and rewind specifically needs records from the target branch or a common ancestor. Use the verified archive and exact error message.
 
@@ -122,13 +124,13 @@ Inspect history files without editing them:
 find /var/lib/postgresql/18/main/pg_wal -maxdepth 1 -name '*.history' -type f -print
 ```
 
-If history files are archived, verify retrieval for the new timeline too. PostgreSQL recommends archiving timeline history files because they are small and needed to navigate recovery across failovers.
+If a required target `.history` file exists only in the archive, restore that exact file into the target's `pg_wal` with the verified archive procedure before running rewind. `--restore-target-wal` retrieves missing WAL segments during the scan; it does not fetch timeline history files. PostgreSQL recommends archiving timeline history files because they are small and needed to navigate recovery across failovers.
 
 Timeline-related failures commonly mean:
 
 - The source and target are unrelated clusters despite similar names.
 - A needed history file or WAL segment is missing from local storage and archive.
-- The candidate previously followed a different fork and `check_timeline` was not enabled.
+- An older-timeline member was promoted, for example while `check_timeline` was disabled; that setting compares timeline numbers, not branch ancestry.
 - The source changed again during diagnosis because another failover occurred.
 
 Re-run `patronictl list` immediately before any approved rewind. The source must still be the current leader.
@@ -158,11 +160,11 @@ psql 'host=pg2.internal port=5432 dbname=postgres user=rewind_user sslmode=verif
 
 Expect `false` from the current source primary. Put the password in a protected `PGPASSFILE` or secret agent, not the command line. For an existing role, apply the exact function grants from that PostgreSQL major version's official `pg_rewind` notes; signatures can differ, so do not blindly copy grants from an older blog post.
 
-If Patroni's REST or PostgreSQL certificate uses a DNS name, connecting by raw IP with `sslmode=verify-full` will fail unless the certificate contains that IP identity. Fix identity and routing rather than disabling verification in production.
+If the PostgreSQL server certificate uses a DNS name, connecting by raw IP with `sslmode=verify-full` will fail unless the certificate contains that IP identity. Fix identity and routing rather than disabling verification in production.
 
 ## Check target files, tablespaces, and configuration
 
-`pg_rewind` must write the target data directory and every target tablespace. It can fail immediately on read-only files, mismatched ownership, broken symlinks, full filesystems, or source/target paths that map external TLS keys into `PGDATA`.
+`pg_rewind` must write the target data directory and every target tablespace. It can fail on read-only files, mismatched ownership, broken symlinks, full filesystems, or source/target paths that map external TLS keys into `PGDATA`.
 
 Check without changing ownership recursively:
 
@@ -173,11 +175,13 @@ df -i /var/lib/postgresql/18/main
 find /var/lib/postgresql/18/main/pg_tblspc -maxdepth 1 -type l -ls
 ```
 
+Repeat the space and inode checks for a separately mounted `pg_wal` and each resolved tablespace target; the `find` command only inventories the symlinks.
+
 Use the PostgreSQL service account consistently. Correct the specific bad mount or file; a broad recursive `chown` can damage security-sensitive keys or tablespace layouts.
 
 Remember that `pg_rewind` copies configuration files found in the data directory from the source. PostgreSQL warns that source configuration may not be correct for the target host. Patroni normally regenerates managed settings, but external configuration, tablespace paths, certificates, and archive credentials still need post-rewind review.
 
-## Run a safe dry-run and classify the result
+## Run a controlled dry-run and classify the result
 
 With Patroni stopped and the target fenced:
 
@@ -201,7 +205,7 @@ Interpret the broad error class:
 | Timeline history/ancestor error | Histories do not connect or metadata is missing | Verify source identity and archived history; do not force |
 | System identifier/version mismatch | Source is not a compatible copy | Select the correct source or take a new base backup |
 | Permission/authentication error | Source catalog files cannot be read or target cannot be written | Fix least-privilege access and rerun the dry run |
-| Target not cleanly shut down | Preliminary crash recovery could not complete | Fix target config/libraries and complete safe shutdown, or reinitialize |
+| Target not cleanly shut down | A dry run found an unclean state, or preliminary crash recovery in a real run could not complete | Fix target config/libraries and complete safe shutdown, or reinitialize |
 | Source changed/unavailable | Leadership or network changed during the operation | Re-list Patroni and restart the decision process |
 
 Do not use `--no-ensure-shutdown` to bypass an unclean target unless a PostgreSQL expert has separately completed crash recovery. The option makes `pg_rewind` error rather than repairing shutdown state; it does not make an unsafe target safe.

@@ -1,4 +1,4 @@
-# Validation Summary: How to Prevent PostgreSQL Split Brain with Patroni Leader Locks, Watchdog Fencing, and Quorum
+# Validation Summary: Preventing PostgreSQL Split Brain with Patroni
 
 ## Status
 validated

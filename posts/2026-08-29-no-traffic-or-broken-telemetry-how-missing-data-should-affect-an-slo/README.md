@@ -81,7 +81,7 @@ There is no universal honest way to label unknown user outcomes as good or bad. 
 1. Recover events from an independent, auditable source such as edge logs or a durable request ledger.
 2. Backfill or restate the report with provenance and a revision marker if policy permits.
 3. If outcomes cannot be recovered, mark the interval unknown and disclose coverage.
-4. Apply an operational consequence—telemetry incident, release block, or manual review—based on risk.
+4. Apply an operational consequence-telemetry incident, release block, or manual review-based on risk.
 
 For an external SLA, the contract may define missing-data treatment. Keep that calculation separate from the internal truth if it defaults unknown time to success. For an internal SLO, a policy can be conservative without falsifying the numerator: for example, block risky releases while SLI coverage is unknown.
 
