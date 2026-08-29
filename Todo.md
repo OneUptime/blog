@@ -127,7 +127,6 @@
 
 ## SLOs
 
-4. Should Third-Party API Failures Burn Your Error Budget? How to Model Dependencies
 5. Which HTTP Status Codes Belong in an Availability SLI? Handling 4xx, 5xx, and Cancellations
 6. Should Planned Maintenance Count Against an SLO? A Decision Framework
 7. Rolling vs Calendar-Aligned SLO Windows: Which One Should Drive Operations?
