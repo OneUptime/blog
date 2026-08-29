@@ -8,7 +8,7 @@ Description: Test real MFA state transitions with isolated test identities, virt
 
 ---
 
-MFA is difficult to automate because codes change, authenticators hold secrets, push requires another device, and WebAuthn invokes browser and platform APIs. A hidden header such as `X-Skip-MFA`, a universal OTP, or a production account excluded from MFA makes tests easy by deleting the control they are supposed to test.
+MFA is difficult to automate because codes change, authenticators hold secrets, push uses a separate authenticator channel, and WebAuthn invokes browser and platform APIs. A hidden header such as `X-Skip-MFA`, a universal OTP, or a production account excluded from MFA makes tests easy by deleting the control they are supposed to test.
 
 The safe approach is to make authenticators testable at system boundaries while keeping the production state machine and authorization decisions unchanged.
 
@@ -49,7 +49,7 @@ Create test identities through supported admin fixtures or a test-only provision
 
 Do not query production databases for secrets or add an API that returns active TOTP secrets. A test fixture may seed an encrypted known secret in an isolated database, but production deployment checks must prove that fixture endpoints, keys, and accounts do not exist.
 
-For WebAuthn, use browser automation's virtual authenticator support. It performs actual create/get ceremonies and lets tests add or remove virtual credentials, require user verification, and exercise counters. The server must still validate challenge, origin, RP ID, signature, and flags.
+For WebAuthn, use browser automation's virtual authenticator support. It performs actual create/get ceremonies and lets tests add or remove virtual credentials, simulate successful or failed user verification, and exercise signature counters. The server must still validate challenge, origin, RP ID hash, required authenticator-data flags, and attestation or assertion signatures as applicable.
 
 For push, SMS, and email, use the provider's official sandbox or a local adapter implementing the same narrow delivery interface. Tests inspect the sandbox mailbox/queue, not application logs. Contract tests should verify the production adapter maps requests and provider responses correctly without sending to real users.
 
@@ -58,13 +58,13 @@ For push, SMS, and email, use the provider's official sandbox or a local adapter
 Cover more than the happy path:
 
 - pending factors cannot authenticate;
-- wrong, expired, future, and replayed OTPs fail;
-- concurrent use yields exactly one success;
+- wrong, expired, replayed, and future OTPs beyond the permitted clock-skew window fail;
+- concurrent submissions of the same valid OTP yield exactly one success;
 - resend invalidates previous email/SMS transactions where policy requires;
-- push approval is bound to one browser transaction;
+- push approval flows transfer a one-time challenge from the primary channel to the authenticator and bind the approval to one authentication transaction;
 - recovery sessions cannot call ordinary APIs;
 - pre-MFA JWTs fail at fully authenticated endpoints;
-- factor replacement revokes sessions and trusted devices;
+- factor replacement revokes the old factor and, after recovery or suspected compromise, sessions and trusted-device grants;
 - direct API calls cannot bypass frontend step-up;
 - throttles persist across new challenges and cluster nodes.
 
