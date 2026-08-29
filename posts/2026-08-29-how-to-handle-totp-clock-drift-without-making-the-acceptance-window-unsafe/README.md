@@ -8,7 +8,7 @@ Description: Handle real TOTP clock skew with synchronized servers, a deliberate
 
 ---
 
-TOTP converts time into a counter. If an authenticator and verifier disagree about time, they can calculate different counters from the same secret. The tempting fix is to accept many counters before and after “now,” but every extra counter gives an online attacker another valid code for each attempt.
+TOTP converts time into a counter. If an authenticator and verifier disagree about time, they can calculate different counters from the same secret. The tempting fix is to accept many counters before and after “now,” but every extra counter normally gives an online attacker another valid code for each attempt.
 
 RFC 6238 recommends a 30-second time step and at most one time step for network delay. That is protocol guidance, not permission to grow a window until every broken clock works.
 
@@ -20,21 +20,25 @@ Authenticator phones normally synchronize time through the platform. When a user
 
 ## Define the Window Explicitly
 
-Let `C = floor((now - T0) / 30)`. Begin by validating `C`. If product evidence shows boundary failures, a window such as `C-1, C, C+1` is common, but it triples the set of codes accepted at a moment. Use the smallest range justified by measured conditions and your assurance requirements.
+Let `C = floor((now - T0) / 30)`. Begin by validating `C`. Accepting `C-1` addresses measured boundary delay; if evidence also justifies a future step for small clock skew, a window such as `C-1, C, C+1` is common, but it normally triples the set of codes accepted at a moment. Use the smallest range justified by measured conditions and your assurance requirements.
 
 ```text
 candidate_steps = ordered_unique([C, C - 1, C + 1])
+matched_steps = []
 
 for step in candidate_steps:
     if step <= factor.last_accepted_step:
         continue
     if constant_time_equal(totp(secret, step), submitted_code):
-        accept_atomically(step)
+        matched_steps.append(step)
+
+if matched_steps:
+    accept_if_newer_atomically(max(matched_steps))
 ```
 
-The example includes replay state because widening a window without one-time enforcement lets a captured code be reused. Ordering is a product decision: checking current first favors the normal case. If an unlikely numeric collision matches more than one unconsumed step, choose and record one deterministic counter and never accept counters at or below it later.
+The example includes replay state because widening a window without one-time enforcement lets a captured code be reused. `accept_if_newer_atomically` must recheck and advance the persisted high-water mark in one operation, and only the request that wins that update may succeed. If an unlikely numeric collision matches more than one unconsumed step, record the greatest matching counter, return one success, and do not update drift from the ambiguous match; this prevents the same value from being accepted again through another counter in the active window.
 
-Do not expose which counter matched to the client. Apply one rate-limit charge to the submitted code, not one charge per internal counter comparison, while recognizing that the wider window increases the success probability of each guess.
+Do not expose which counter matched to the client. Apply one rate-limit charge per submitted verification request, not one charge per internal counter comparison, while recognizing that the wider window increases the success probability of each guess.
 
 ## Use Bounded Per-Factor Drift Carefully
 
@@ -78,7 +82,7 @@ TOTP is not phishing-resistant. A perfectly tuned window cannot stop a real-time
 
 - [RFC 6238: TOTP, Validation and Time-Step Size](https://datatracker.ietf.org/doc/html/rfc6238#section-5.2)
 - [RFC 6238: Resynchronization](https://datatracker.ietf.org/doc/html/rfc6238#section-6)
-- [RFC 4226: HOTP Security Considerations](https://datatracker.ietf.org/doc/html/rfc4226#section-7)
+- [RFC 4226: HOTP Security Considerations](https://datatracker.ietf.org/doc/html/rfc4226#section-6)
 - [NIST SP 800-63B-4: OTP Authenticators](https://pages.nist.gov/800-63-4/sp800-63b/authenticators/)
 - [OWASP Multifactor Authentication Cheat Sheet](https://cheatsheetseries.owasp.org/cheatsheets/Multifactor_Authentication_Cheat_Sheet.html)
 
