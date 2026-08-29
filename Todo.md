@@ -127,7 +127,6 @@
 
 ## SLOs
 
-15. Who Owns an SLO That Spans Multiple Teams? Designing Alerts and Escalation
 16. How to Review and Retire SLOs That Never Trigger an Engineering Decision
 17. No Traffic or Broken Telemetry? How Missing Data Should Affect an SLO
 18. Why histogram_quantile Is the Wrong PromQL for a Threshold-Based Latency SLO
