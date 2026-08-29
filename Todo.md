@@ -127,7 +127,6 @@
 
 ## SLOs
 
-10. How to Write Outcome-Based SLOs for Batch Jobs, Queues, and Async Pipelines
 11. End-to-End Journey SLOs vs Service SLOs: Where Should You Measure Reliability?
 12. How to Calculate a User-Journey SLO Across Sequential and Redundant Dependencies
 13. How to Stop a Global SLO from Hiding Reliability Problems for Small Customers
