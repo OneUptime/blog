@@ -127,7 +127,6 @@
 
 ## SLOs
 
-12. How to Calculate a User-Journey SLO Across Sequential and Redundant Dependencies
 13. How to Stop a Global SLO from Hiding Reliability Problems for Small Customers
 14. How to Manage SLO Definitions as Code Without Letting Dashboards Drift
 15. Who Owns an SLO That Spans Multiple Teams? Designing Alerts and Escalation
