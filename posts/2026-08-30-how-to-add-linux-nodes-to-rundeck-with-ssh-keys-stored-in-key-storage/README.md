@@ -18,11 +18,11 @@ Create or choose a narrowly privileged account such as `rundeck` or `deploy`. Ge
 ssh-keygen -t ed25519 -f ./rundeck-prod -C "rundeck-prod" -N ''
 ```
 
-Install only `rundeck-prod.pub` on the target:
+On the target, use root privileges to install only `rundeck-prod.pub`:
 
 ```bash
-install -d -m 700 -o deploy -g deploy /home/deploy/.ssh
-install -m 600 -o deploy -g deploy rundeck-prod.pub \
+sudo install -d -m 700 -o deploy -g deploy /home/deploy/.ssh
+sudo install -m 600 -o deploy -g deploy rundeck-prod.pub \
   /home/deploy/.ssh/authorized_keys
 ```
 
@@ -31,14 +31,17 @@ If `authorized_keys` already exists, append the public-key line instead of overw
 Before involving Rundeck, test that the network route, account, and key work from the same host or execution environment that will run the job:
 
 ```bash
-ssh -i ./rundeck-prod -o BatchMode=yes deploy@app01.example.net id
+ssh -i ./rundeck-prod -o IdentitiesOnly=yes -o BatchMode=yes \
+  deploy@app01.example.net id
 ```
+
+Because `BatchMode=yes` disables host-key confirmation prompts, first verify the target's host key in the `known_hosts` file used by that execution identity.
 
 For an Enterprise Runner, test from the Runner's network context, not merely from the Automation Server.
 
 ## Store the Private Key
 
-Open the project, then go to **Project Settings > Key Storage**. Create a key of type **Private Key**, paste or upload `rundeck-prod`, and place it under a project-specific path. A useful logical path is:
+Open the project, then go to **Project Settings > Key Storage**. Create a key of type **Private Key**, paste or upload `rundeck-prod`, and place it under a project-specific path. The examples below assume the project is named `Operations`; replace that segment with the project's exact name. A useful logical path is:
 
 ```text
 keys/project/Operations/ssh/rundeck-prod
@@ -113,8 +116,8 @@ Common failures have distinct meanings:
 
 - `No matched nodes` is an inventory or filter problem, before SSH starts.
 - `Connection refused` or timeout points to DNS, routing, firewall, port, or sshd.
-- `Auth fail` points to the username, trusted public key, selected private key, or passphrase.
-- `SSH key file does not exist` means the executor resolved a filesystem `ssh-keypath`; confirm the intended storage-path setting is present and recognized.
+- `Auth fail` points broadly to SSH authentication; check the username, trusted public key and its permissions, selected private key, passphrase, SSH server policy, and executor/key-algorithm compatibility.
+- `SSH Keyfile does not exist` (from the JSch executor) means it resolved a filesystem `ssh-keypath`; confirm the intended storage-path setting is present and recognized.
 
 ## Conclusion
 
