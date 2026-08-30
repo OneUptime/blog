@@ -133,7 +133,6 @@
 
 ## Postgres HA
 
-16. How to Set `maximum_lag_on_failover` So Patroni Does Not Promote a Stale Replica
 17. How to Pause Patroni for Maintenance Without Triggering an Accidental Failover
 18. How to Test PostgreSQL HA Safely: Primary Crash, Network Partition, DCS Loss, and Proxy Failure
 19. How to Design Patroni Across Two Data Centers Without Losing Quorum or Promoting Both Sides
