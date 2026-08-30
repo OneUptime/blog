@@ -75,7 +75,7 @@ For a general replica pool, put all members in the backend and let the same endp
 
 ## Understand `failover_priority`
 
-Current Patroni also supports a numeric `failover_priority` tag. Higher values are preferred when candidates have received or replayed the same amount of WAL; a candidate further ahead in WAL is still preferred regardless of priority. A value of zero or less prevents leadership, similarly to `nofailover: true`.
+Current Patroni also supports a numeric `failover_priority` tag. Higher values are preferred when candidates have received or replayed the same amount of WAL; a candidate further ahead in WAL is still preferred regardless of priority. Use a value of zero to prevent leadership, similarly to `nofailover: true`. Although Patroni's runtime treats negative values as non-promotable too, Patroni 4.1.5's configuration validator rejects them.
 
 Use one mechanism, not both. Patroni's current configuration reference warns to provide only `nofailover` or `failover_priority`:
 
@@ -86,6 +86,8 @@ tags:
 ```
 
 `nofailover: true` is clearest when eligibility is binary. `failover_priority` is useful when several eligible nodes need a preference order. Treat it as a tie preference, not a way to promote a stale replica ahead of a healthier one.
+
+`failover_priority: 0` still makes a node non-promotable, but positive priority ordering currently does not work with quorum-based synchronous replication.
 
 ## Prove both sides of the policy
 
@@ -98,7 +100,7 @@ psql "host=postgres-reporting.example.net dbname=app user=app_read" \
   -c "SELECT inet_server_addr(), pg_is_in_recovery(), current_setting('transaction_read_only');"
 ```
 
-Expect HTTP `200`, `pg_is_in_recovery() = true`, and a read-only transaction default for the read role.
+Expect HTTP `200`, `pg_is_in_recovery() = true`, and `current_setting('transaction_read_only') = 'on'`.
 
 Then test promotion exclusion during a planned exercise. Patroni documents several candidate checks: the node must be reachable through its API, must not have `nofailover`, must satisfy a required watchdog, and for a healthy switchover or automatic failover must meet lag and optional timeline checks. A candidate-explicit switchover targeting this member should be rejected while the tag is set.
 
@@ -114,7 +116,7 @@ Also avoid these common mistakes:
 - Assuming `nofailover` makes the server read-only. PostgreSQL recovery state and privileges enforce that; the tag controls Patroni elections.
 - Leaving a delayed replica in a read pool without disclosing its delay. A lag threshold may remove it, but consumers still need an explicit consistency contract.
 - Using a non-promotable node as the only replica. If the primary fails, the cluster correctly has no automatic candidate.
-- Editing `bootstrap.dcs` to change a local tag. Bootstrap settings are consumed when the cluster is created; tags belong in the member file or supported environment variables.
+- Editing `bootstrap.dcs` to change a local tag. Bootstrap settings are consumed when the cluster is created; tags belong in the member file or, for an environment-only deployment, the whole-configuration `PATRONI_CONFIGURATION` variable.
 
 ## Monitor the invariant
 
@@ -123,7 +125,7 @@ Alert on two counts:
 1. There must be at least one healthy eligible promotion candidate besides the primary.
 2. Every excluded replica intended for reads must remain a running replica within its read lag objective.
 
-Check `pg_stat_wal_receiver` on the replica and `pg_stat_replication` on the primary. A `/replica` result is a routing signal, not a complete replication-quality dashboard.
+Check `pg_stat_wal_receiver` on the replica and `pg_stat_replication` on its direct upstream, which is usually the primary. A `/replica` result is a routing signal, not a complete replication-quality dashboard.
 
 ## Official Documentation
 
