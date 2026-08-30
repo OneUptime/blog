@@ -26,9 +26,9 @@ Before rollout, confirm:
 
 Use an immutable Beyla version or image digest in production. The `latest` tag below follows the official quickstart shape, but it makes rollouts non-reproducible.
 
-## Grant metadata-only Kubernetes API access
+## Grant read-only Kubernetes API access for discovery and metadata
 
-Beyla does not need write access to Kubernetes objects for metadata decoration. Create a dedicated account with the list/watch permissions in Grafana's manual deployment guide:
+Beyla does not need write access to Kubernetes objects for Kubernetes-based discovery or metadata decoration. Create a dedicated account with the list/watch permissions in Grafana's manual deployment guide:
 
 ```yaml
 apiVersion: v1
@@ -68,7 +68,7 @@ roleRef:
   name: beyla-metadata
 ```
 
-If Kubernetes metadata is not needed, disable the decorator and omit this API access. Do not silently grant broad default cluster roles.
+If neither Kubernetes metadata decoration nor Kubernetes-based discovery selectors are needed, disable the decorator, use non-Kubernetes selectors such as `open_ports` or `exe_path`, and omit this API access. Do not silently grant broad default cluster roles.
 
 ## Select workloads and control routes
 
@@ -118,6 +118,8 @@ spec:
     spec:
       serviceAccountName: beyla
       hostPID: true
+      nodeSelector:
+        kubernetes.io/os: linux
       containers:
         - name: beyla
           image: grafana/beyla:latest
@@ -129,7 +131,7 @@ spec:
             - name: BEYLA_CONFIG_PATH
               value: /config/beyla-config.yml
             - name: OTEL_EXPORTER_OTLP_ENDPOINT
-              value: http://grafana-alloy.monitoring.svc.cluster.local:4318
+              value: http://grafana-alloy.monitoring:4318
           volumeMounts:
             - name: config
               mountPath: /config
@@ -144,9 +146,9 @@ spec:
           emptyDir: {}
 ```
 
-YAML structure is significant. Confirm that `serviceAccountName`, `hostPID`, containers, and volumes are all under `spec.template.spec`, and include `kubectl apply --dry-run=server` in review.
+YAML structure is significant. Confirm that `serviceAccountName`, `hostPID`, `nodeSelector`, containers, and volumes are all under `spec.template.spec`, and include `kubectl apply --dry-run=server -f beyla.yaml` in review.
 
-For local OTLP, no secret is needed. For a managed endpoint, put authorization headers in a Kubernetes Secret and reference it with `valueFrom`; never put API keys in the ConfigMap. Confirm whether the endpoint expects OTLP/HTTP (`4318` and a URL) or OTLP/gRPC (`4317` and protocol-specific configuration).
+For the unauthenticated in-cluster OTLP endpoint shown, no secret is needed. For a managed endpoint, put authorization headers in a Kubernetes Secret and reference it with `valueFrom`; never put API keys in the ConfigMap. Beyla infers OTLP/HTTP (`http/protobuf`) for ports ending in `4318` and OTLP/gRPC (`grpc`) for ports ending in `4317`. For other ports, set `OTEL_EXPORTER_OTLP_PROTOCOL` or the corresponding signal-specific protocol variable explicitly.
 
 `hostNetwork: true` is not required merely to discover application processes. Grafana documents it for features that must see host network packets, including particular distributed trace-context propagation and network-flow scenarios. Add it only when the enabled feature requires it, then use `dnsPolicy: ClusterFirstWithHostNet` and review the larger network exposure.
 
@@ -156,7 +158,7 @@ Apply to a test node pool first with a `nodeSelector` or node affinity. Then ins
 
 ```bash
 kubectl -n beyla get daemonset,pods -o wide
-kubectl -n beyla logs daemonset/beyla --tail=200
+kubectl -n beyla logs daemonset/beyla --all-pods=true --tail=200
 kubectl auth can-i --as=system:serviceaccount:beyla:beyla list pods --all-namespaces
 ```
 
@@ -166,7 +168,7 @@ If there is no telemetry, work in order:
 
 1. Does the Beyla Pod run on the same node as a matching target?
 2. Does service discovery log the target process?
-3. Are eBPF capability, AppArmor, seccomp, or `perf_event_paranoid` denials present?
+3. In a capability-based deployment, are required-capability, AppArmor, seccomp, or `perf_event_paranoid` denials present?
 4. Does local trace printing show requests?
 5. Can the Pod resolve and connect to the OTLP endpoint?
 6. Does the collector exporter report sent or failed spans?
@@ -177,7 +179,7 @@ Metrics appearing does not prove traces are exported; the signals can follow sep
 
 Privileged mode is convenient for the first controlled deployment but grants much more access than most production policies allow. Grafana documents a non-privileged root container with a configuration-dependent set of Linux capabilities such as `BPF`, `PERFMON`, `SYS_PTRACE`, `DAC_READ_SEARCH`, and `CHECKPOINT_RESTORE`; network and library-level features add others. Kernels earlier than 5.11 may also require `SYS_RESOURCE` for locked memory.
 
-Move to that documented least-privilege profile for the exact enabled features, enforce capability checks with `BEYLA_ENFORCE_SYS_CAPS=1`, and validate on every node image. Keep RBAC read-only, restrict collector egress with NetworkPolicy, set resource requests/limits from measured load, and monitor the agent's own errors and resource use.
+Move to that documented least-privilege profile for the exact enabled features, enforce capability checks with `BEYLA_ENFORCE_SYS_CAPS=1`, and validate on every node image. Keep RBAC read-only and, when Beyla uses the Pod network and the cluster CNI enforces NetworkPolicy, restrict Beyla egress to the OTLP collector plus required DNS and Kubernetes API endpoints. If `hostNetwork` is enabled, use a CNI or host-firewall mechanism with documented support for host-network traffic. Set resource requests/limits from measured load, and monitor the agent's own errors and resource use.
 
 ## Official Documentation
 
