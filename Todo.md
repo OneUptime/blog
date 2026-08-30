@@ -136,7 +136,6 @@
 
 ## Grafana Beyla
 
-18. How to Use Beyla Network Flow Metrics to Map Kubernetes Service-to-Service Traffic
 19. How to Reduce Beyla CPU and Memory Usage with Narrower Discovery, Filters, and Trace Sampling
 20. Beyla or OpenTelemetry Auto-Instrumentation: How to Choose for HTTP, gRPC, Database, and Messaging Workloads
 
