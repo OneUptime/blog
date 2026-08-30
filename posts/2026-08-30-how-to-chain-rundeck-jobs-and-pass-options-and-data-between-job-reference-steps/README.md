@@ -20,7 +20,7 @@ Create a fourth job, `Release/Orchestrate`, that contains the three Job Referenc
 
 ## Pass Parent Options into a Reference
 
-Give the parent an enforced plain option named `environment`. Give `Deploy` and `Verify` plain options with the same name. In the Job Reference argument field, use the same syntax as Rundeck's `run` command:
+Give the parent a required plain option named `environment`, configure its allowed environments, and enable **Enforced from values**. Give `Deploy` and `Verify` plain options with the same name. In the Job Reference argument field, use the same syntax as Rundeck's `run` command:
 
 ```text
 -environment ${option.environment}
@@ -108,15 +108,15 @@ The reference can also override the child job's node filter and dispatch setting
 
 ## Handle Failure and Data Availability
 
-Job References are synchronous workflow steps: the parent proceeds only after the referenced workflow succeeds according to its step/error-handling configuration. A failed Build should stop the sequence before `${export.release_id}` is consumed.
+A Workflow-Step Job Reference waits for the referenced workflow to finish. If it fails, the reference step fails. With the parent's default **Stop at the failed step** setting and no recovering error handler, a failed Build stops the sequence before `${export.release_id}` is consumed. **Run remaining steps before failing** or a recovering error handler can allow later references to run, so do not enable those behaviors on this path.
 
-Do not provide a plausible default release ID that could deploy the wrong artifact. Make the child option required and add a precondition that the exported value matches your immutable ID format. Log the release ID and environment for audit, but never log Secure options.
+Do not provide a plausible default release ID that could deploy the wrong artifact. Make the child option required and configure its **Match Regular Expression** restriction to accept only your immutable ID format. Log the release ID and environment for audit, but never log Secure options.
 
-Be aware that the Retry setting on a referenced job is not honored when it is invoked as a Job Reference. Put retry behavior at the parent execution or unstable operation, and make every repeated step idempotent.
+Be aware that the Retry setting on a referenced job is not honored when it is invoked as a Job Reference. Configure job-level Retry on the directly invoked top-level orchestration job, or put operation-specific retry around the unstable operation, and make every repeated step idempotent.
 
 ## Cross-Project and Runner Caveats
 
-References can target jobs in another project when authorization permits. Runner selection then matters. Current Rundeck documentation states that with automatic selection, the parent project's Runner selection governs the reference; with manual selection, selection is made per job and the referenced project's configuration is honored. Test this explicitly before using server-local paths or credentials across projects.
+References can target jobs in another project when authorization permits. If you use Enterprise Runners, which are available in Runbook Automation commercial products, Runner selection then matters. Current Rundeck documentation states that with automatic selection, the parent project's Runner selection governs the reference; with manual selection, selection is made per job and the referenced project's configuration is honored. Test this explicitly before using server-local paths or credentials across projects.
 
 Version exported variable names as a small interface: document option names/types, export group keys, permitted formats, and failure semantics. Changing `release_id` to `artifact` is an API change for every parent job.
 
@@ -131,4 +131,3 @@ Pass inputs to Job References with `-name ${option.name}`, capture output using 
 - [Job Variables Reference](https://docs.rundeck.com/docs/manual/jobs/job-variables.html)
 - [Key Value Data Log Filter](https://docs.rundeck.com/docs/manual/log-filters/key-value-data.html)
 - [Rundeck Job Options and Job References](https://docs.rundeck.com/docs/manual/jobs/job-options.html)
-
