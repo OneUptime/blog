@@ -8,18 +8,18 @@ Description: Build precise Grafana Beyla discovery rules with Kubernetes metadat
 
 ---
 
-Beyla can instrument a single process selected by `BEYLA_OPEN_PORT` or `BEYLA_AUTO_TARGET_EXE`, but a node usually hosts many unrelated workloads. The YAML `discovery.instrument` list is the safer production interface: it supports multiple selectors, Kubernetes metadata, exclusions, and signal-specific export choices.
+Beyla can instrument one process or a group of related processes selected by `BEYLA_OPEN_PORT` or `BEYLA_AUTO_TARGET_EXE`, but a node usually hosts many unrelated workloads. The YAML `discovery.instrument` list is the safer production interface: it supports multiple selectors, Kubernetes metadata, exclusions, and signal-specific export choices.
 
 The most important rule is simple:
 
-- Fields inside one list entry are combined with **AND**.
-- Separate list entries are combined with **OR**.
+- Selector fields inside one list entry are combined with **AND**.
+- A process is selected if it matches any list entry (**OR**).
 
 Misunderstanding that rule either instruments nothing or instruments far more than intended.
 
 ## Select by namespace and Pod label
 
-Enable Kubernetes metadata and grant Beyla's ServiceAccount `list` and `watch` access to Pods and ReplicaSets. Then combine a namespace with a label in one entry:
+Enable Kubernetes metadata and grant Beyla's ServiceAccount the documented `list` and `watch` access to Pods, Services, Nodes, and ReplicaSets. Then combine a namespace with a label in one entry:
 
 ```yaml
 attributes:
@@ -33,7 +33,7 @@ discovery:
         observability.example.com/beyla: "enabled"
 ```
 
-This instruments only Pods that satisfy both conditions. Selector values use glob matching, so a rule can cover a namespace family:
+This instruments only processes in Pods that satisfy both conditions. The namespace and label values use glob matching, so a rule can cover a namespace family:
 
 ```yaml
 discovery:
@@ -59,7 +59,7 @@ discovery:
 
 These are two OR alternatives. The second entry uses AND: both the Java executable and its command arguments must match. A broad pattern such as `*java*` can attach to every JVM on a node, including build tools and observability services, so add arguments or Kubernetes metadata to narrow it.
 
-For container-only process discovery, add `containers_only: true`. This is useful on nodes that also run host services:
+For container-only process discovery, add `containers_only: true`. This is useful on nodes that also run host services. Beyla ignores this option if it lacks permission to inspect process network namespaces:
 
 ```yaml
 discovery:
@@ -93,7 +93,7 @@ In Kubernetes, internal container ports and process identities are usually more 
 
 ## Combine strategies deliberately
 
-This example instruments two independently selected service groups and exports different signals:
+This example instruments two independently selected service groups and, when the corresponding exporters are configured, exports different signals:
 
 ```yaml
 attributes:
@@ -117,7 +117,7 @@ discovery:
         observability.example.com/beyla: "disabled"
 ```
 
-The exclusion list uses the same selector format and wins over inclusion. It is additive to Beyla's built-in exclusions for Beyla, Alloy, OpenTelemetry Collector executables, and several observability or system namespaces.
+If a process matches more than one inclusion entry, the later matching entry overrides earlier `exports` settings. The exclusion list uses the same selector format and wins over inclusion. It is additive to Beyla's default exclusions for Beyla, Alloy, OpenTelemetry Collector executables, and several observability or system namespaces.
 
 ## Preview discovery with survey mode
 
@@ -141,11 +141,11 @@ Scrape the endpoint and inspect the discovered targets. After reviewing it, move
 Enable debug logging temporarily and inspect Beyla's logs while starting one known target:
 
 ```bash
-kubectl -n observability logs daemonset/beyla --since=10m | \
+kubectl -n observability logs daemonset/beyla --all-pods=true --since=10m | \
   grep -Ei 'discover|instrument|checkout'
 ```
 
-Then send traffic and query `target_info` or the relevant RED metric grouped by service and instance. Check every OR branch independently, including the exclusion path. Avoid validating only one replica: metadata availability and process paths can differ across nodes.
+Then send traffic and query `target_info` or the relevant RED metric grouped by service and per-process instance. When scraping Beyla's Prometheus endpoint directly, configure the scraper with `honor_labels: true`; otherwise Prometheus replaces Beyla's `instance` label with the scrape target. Check every OR branch independently, including the exclusion path. Avoid validating only one replica: metadata availability and process paths can differ across nodes.
 
 ## Conclusion
 
