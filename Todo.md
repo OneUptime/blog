@@ -139,7 +139,6 @@
 
 ## Rundeck
 
-15. Why Doesn't Rundeck Retry a Failed Job Reference? Designing Retries at the Right Level
 16. How to Call a Remediation Job from a Rundeck Step Error Handler Without Hiding the Failure
 17. How to Prevent Overlapping Rundeck Executions for Long-Running Scheduled Jobs
 18. How to Put Rundeck Behind an HTTPS Reverse Proxy Without Broken Redirects or Exposed Port 4440
