@@ -4,13 +4,13 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Rundeck, Access Control, RBAC, Security, YAML
 
-Description: Grant a Rundeck group access to one project, selected jobs, and only the nodes those jobs require using application- and project-context ACL rules.
+Description: Grant a Rundeck group access to one project and selected jobs, with execution limited to only the nodes those jobs require, using application- and project-context ACL rules.
 
 ---
 
 Rundeck authorization has two contexts. The **application** context controls whether a user can see and enter a project. The **project** context controls what the user can do to jobs, nodes, events, and other resources inside it. A least-privilege execution role normally needs rules in both contexts.
 
-The example below lets the group `release-operators` run one job, `Production/Maintenance/Restart API`, in the `Operations` project. It does not grant job editing, ad-hoc commands, project configuration, schedule changes, or access to every production node.
+The example below lets the group `release-operators` run one job, `Production/Maintenance/Restart API`, in the `Operations` project. It does not grant job editing, ad-hoc commands, project configuration, schedule changes, or execution access to every production node.
 
 ## Define the Application-Context Rule
 
@@ -29,7 +29,7 @@ by:
   group: release-operators
 ```
 
-This does not authorize actions inside `Operations`; it only grants application-level project visibility. Avoid `name: '.*'` when the role is meant for one project.
+This does not authorize actions inside `Operations`; it only grants application-level project visibility. Avoid a `match` rule with `name: '.*'` when the role is meant for one project; under `equals`, `.*` would be a literal project name.
 
 ## Define the Project-Context Rule
 
@@ -44,24 +44,26 @@ for:
     - equals:
         group: Production/Maintenance
         name: Restart API
-      allow: [view, run, view_history]
+      allow: [view, run]
   node:
     - contains:
         tags: [production, api]
       allow: [read, run]
   resource:
     - equals:
-        kind: event
+        kind: node
       allow: [read]
 by:
   group: release-operators
 ```
 
-`view` lets the operator view the job without granting its workflow definition; `run` authorizes execution; and `view_history` permits access to that job's execution history. Add job `read` only if the user needs to inspect/download the definition. The node rule is needed for a node-dispatched job. With both tags in one `contains` rule, a node must carry both `production` and `api`.
+`view` lets the operator view the job and its executions without granting its workflow definition; `run` authorizes execution. The separate job action `view_history` is useful as a history-only permission but is redundant here because `view` already includes execution visibility. Add job `read` only if the user needs to inspect or download the definition.
 
-Generic event `read` and job-specific `view_history` are not required to start the job, but current ACL examples use both for execution-history visibility. Remove `view_history` from the job action list and remove the event rule if that visibility is outside the role.
+The generic node-resource `read` rule opens node-list and node-filter-preview endpoints; the filtered `node` rule determines which individual nodes the operator can read and run against. The specific node rule is needed for a node-dispatched job. With both tags in one `contains` rule, a node must carry both `production` and `api`.
 
-Store the two documents together as, for example, `release-operators.aclpolicy` through the supported ACL management interface. On filesystem-backed open-source installations, system policy files commonly live in `/etc/rundeck` for package installs or `$RDECK_BASE/etc` for launcher installs. Project ACL storage and commercial ACL features can change where policies are managed; use the UI/API appropriate to the deployment.
+The policy intentionally omits generic event `read`. A `resource` rule for `kind: event` grants access to project-wide history events, not only the selected job. Add it only if the role should also read the project's Activity/history data.
+
+Store the two documents together as a system ACL policy, for example as `release-operators.aclpolicy` in the system policy directory or through the System ACL API. If you use Project ACL storage, split them: keep the application-context document in a system policy and store only the project-context document under `Operations`. On self-managed installations using filesystem policies, the default directory is `/etc/rundeck` for RPM/DEB packages or `$RDECK_BASE/etc` for launcher/WAR installs. The graphical ACL policy editor is a commercial feature, so use the filesystem or ACL APIs where that editor is unavailable.
 
 ## Match the Job Precisely
 
@@ -108,23 +110,23 @@ Create a test user that receives only `release-operators`, then verify:
 - `Operations` appears, but unrelated projects do not.
 - The approved job is visible and runnable.
 - Other jobs are absent or unauthorized.
-- The job sees only nodes with both approved tags.
+- Node selectors return only nodes with both approved tags, and execution on other nodes is unauthorized.
 - Job edit, delete, schedule toggle, ad-hoc command, and project configuration actions are unavailable.
-- Execution history visibility matches the event rule.
+- The approved job's executions are visible through its job view, but project-wide Activity/history access is unavailable.
 
-Test through both the GUI and an API token for that user if automation will call the job. API tokens inherit the effective user's authorization; an endpoint does not bypass ACLs.
+Test through both the GUI and an API token for that user if automation will call the job. API calls are checked against the token's effective username and stored authorization roles. A user token carries the owner's username and a subset of the owner's roles; an authorized service token can carry a different username or roles. An API endpoint does not bypass ACLs.
 
-Rundeck policies are evaluated together. Another policy for the same group, a broad mapped role, or a username-specific rule may grant additional rights. Search all applicable policies before concluding this file is the user's complete permission set. Likewise, an explicit deny elsewhere can explain an unexpected refusal.
+Rundeck policies are evaluated together. Another policy for the same group, a broad mapped role, or a username-specific rule may grant additional rights. Search all applicable policies before concluding this file is the user's complete permission set. Allows are additive, but any matching explicit deny takes precedence and can explain an unexpected refusal.
 
 ## Account for Key Storage
 
-Key Storage has separate `storage` authorization; job `run` does not itself grant storage access. If the selected executor or plugin requires the caller's roles to have storage `read`, scope it to the exact project key hierarchy and test that execution path. Be aware that storage `read` authorizes listing and reading matching entries, so do not copy an administrator policy's broad storage rule into a run-only role.
+Key Storage has separate `storage` authorization; job `run` does not itself grant direct storage access. A job can use referenced private keys or passwords internally without granting the operator storage `read`. Grant narrowly scoped storage `read` only when the operator must browse or read the path, or when a plugin explicitly documents a caller-role check, and test that execution path. Storage `read` permits listing matching paths and reading accessible entry metadata or data, but private-key and password contents cannot be retrieved directly through the standard API. Do not copy an administrator policy's broad storage rule into a run-only role.
 
-Keep the webhook or service account used for automated execution separate from human groups. Give it the same narrow job/node rights and short-lived API tokens where possible.
+For a webhook, configure a dedicated assumed user and roles with the same narrow job/node rights, and protect the endpoint with its webhook Authorization String. For direct API automation, use a dedicated user or controlled service token with narrow stored roles and a bounded lifetime.
 
 ## Conclusion
 
-A complete run-only role needs application `project: read`, project-level permission on exact jobs, and node `read/run` only for intended targets. Avoid generic job-resource and ad-hoc permissions, test with a clean user, and audit every other policy that applies to the group. Least privilege is the union of effective policies, not just the smallest file you wrote.
+For this UI- and API-tested node-dispatched example, a complete run-only role needs application `project: read`, project-level permission on exact jobs, generic node-resource `read` for node-list endpoints, and specific node `read/run` only for intended targets. Avoid generic job-resource, event, and ad-hoc permissions unless they are required, test with a clean user, and audit every other policy that applies to the group. Effective authorization is the aggregate of every matching policy: allows are additive, and any matching deny overrides an allow.
 
 ## Official Documentation
 
