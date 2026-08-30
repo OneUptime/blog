@@ -18,14 +18,14 @@ Use the same checks for every scenario:
 
 | Invariant | Evidence |
 | --- | --- |
-| At most one writable PostgreSQL node | Direct `pg_is_in_recovery()` and `transaction_read_only` query on every member |
-| One Patroni leader | `patronictl list`, DCS leader key, and Patroni REST state |
+| At most one writable PostgreSQL node | Repeated, near-simultaneous `pg_is_in_recovery()` checks on every member; `transaction_read_only` as a session-level cross-check |
+| At most one Patroni leader; exactly one after recovery | Direct Patroni REST state on every member; `patronictl list` and the DCS leader key when DCS is reachable |
 | Stable endpoint routes correctly | Fresh SQL connections through HAProxy/VIP or load balancer |
 | Committed operations are accounted for | Workload sequence table with durable unique operation IDs |
 | Recovery is bounded | Timestamped fault, detection, promotion, route, and application recovery events |
 | Rejoined node is safe | Current timeline, streaming state, lag, and read/write role |
 
-Generate a low-rate canary workload whose transactions insert a unique operation ID and commit timestamp. Record client acknowledgements separately. After each fault, reconcile acknowledged IDs against the promoted database. This detects loss, duplication, and ambiguous commits more reliably than a dashboard screenshot.
+Generate a low-rate canary workload whose transactions insert an operation ID that is stable across retries and enforced by a unique constraint, plus an attempt timestamp. Record every attempted ID and its client outcome separately. After each fault, reconcile all attempted IDs against the promoted database and verify that every acknowledged ID is present. This detects acknowledged-data loss, resolves unknown outcomes, and prevents duplicate retries more reliably than a dashboard screenshot.
 
 Before every scenario, capture:
 
@@ -38,7 +38,7 @@ etcdctl --endpoints="$ETCDCTL_ENDPOINTS" \
 
 Set the endpoint list and TLS/authentication environment through the exercise's protected etcd administration profile; do not put private keys or passwords in the runbook output.
 
-Also save HAProxy backend state, replication positions, current timeline, and the live values of `ttl`, `loop_wait`, `retry_timeout`, `primary_start_timeout`, `maximum_lag_on_failover`, synchronous mode, watchdog mode, and DCS failsafe mode. Expected behavior changes with those settings.
+Also save HAProxy backend state, replication positions, current timeline, and the live values of `ttl`, `loop_wait`, `retry_timeout`, `primary_start_timeout`, `maximum_lag_on_failover`, synchronous mode, the canary session's `synchronous_commit`, `synchronous_standby_names`, `fsync`, watchdog mode, and DCS failsafe mode. Expected behavior changes with those settings.
 
 ## Scenario 1: crash the primary PostgreSQL process
 
@@ -52,7 +52,7 @@ loop_wait + primary_start_timeout + loop_wait
 
 When `primary_start_timeout` is zero, the documented bound is one `loop_wait`, assuming an eligible candidate and healthy DCS. A faster failover setting can increase the chance of unnecessary promotion after a transient process failure; it also cannot eliminate application reconnect time.
 
-Observe whether the same node restarts or another node promotes. Confirm HAProxy drops the old `/primary` backend and a fresh connection reaches exactly one writer. Reconcile canary commits, then let the old primary rejoin through Patroni rather than starting or promoting it manually.
+Observe whether the same node restarts or another node promotes. Confirm HAProxy marks the former primary backend down based on its `/primary` health check and a fresh connection reaches exactly one writer. Reconcile canary commits, then let the old primary rejoin through Patroni rather than starting or promoting it manually.
 
 ## Scenario 2: partition the primary
 
@@ -73,9 +73,9 @@ The required assertion is still one writer. Query every network side directly. A
 
 Start by stopping one member of a three-member etcd cluster. A two-member majority remains, so Patroni should retain normal leadership and no PostgreSQL role should change. Verify etcd endpoint health and leader status.
 
-Then, only in the isolated exercise, remove a second etcd member to lose quorum. Existing etcd data is not erased, but linearizable writes such as leader-lock renewal cannot succeed. No new Patroni leader can safely be elected through that DCS.
+Then, only in the isolated exercise, stop a second etcd member to lose quorum. Existing etcd data is not erased, but linearizable writes such as leader-lock renewal cannot succeed. No new Patroni leader can safely be elected through that DCS.
 
-Expected primary behavior depends on failsafe mode and Patroni-member reachability as described above. Record whether the writer demotes, stays up under failsafe, or becomes read-only/unavailable through routing. Restore the same etcd members and data; do not create a fresh DCS cluster or delete Patroni keys as a shortcut.
+Expected primary behavior depends on failsafe mode and Patroni-member reachability as described above. Record whether the writer demotes, stays up under failsafe, or becomes read-only/unavailable through routing. Restart the same stopped etcd processes with their original data directories; do not create a fresh DCS cluster or delete Patroni keys as a shortcut.
 
 Distinguish a Patroni-to-etcd network failure from an etcd quorum failure. They can look identical to one member but have different cluster-wide evidence and recovery actions.
 
@@ -83,7 +83,7 @@ Distinguish a Patroni-to-etcd network failure from an etcd quorum failure. They 
 
 First stop HAProxy on the active proxy. If Keepalived provides the stable address, verify its tracked process causes the VIP to move to the peer. If a platform load balancer fronts the proxies, verify it removes the failed target. PostgreSQL and the Patroni leader should not change.
 
-Next leave HAProxy running but block its access to Patroni REST port `8008`. Correct role-aware checks mark database backends down even if `5432` is reachable. This test proves the health-check path is part of service availability.
+Next leave HAProxy running but block its access to the configured Patroni REST port (commonly `8008`). Correct role-aware checks mark database backends down even if `5432` is reachable. This test proves the health-check path is part of service availability.
 
 Finally fail only the current database backend. With `on-marked-down shutdown-sessions`, old streams should close after the health-check fall threshold. Without it, new sessions move but old TCP streams can remain. Record both behaviors deliberately.
 
@@ -100,7 +100,7 @@ For each scenario, capture:
 
 Retry only complete transactions whose semantics permit it. A lost connection around `COMMIT` has an ambiguous outcome, so the application must query a stable idempotency key rather than blindly repeat the operation.
 
-Test long transactions, idle pooled connections, prepared statements, and read pools—not just repeated one-shot `psql` connections. Verify PgBouncer server connections no longer point at the former writer after the route changes.
+Test long transactions, idle pooled connections, prepared statements, and read pools—not just repeated one-shot `psql` connections. After the configured drain or invalidation action, query backend identity through each active PgBouncer pool and verify that its server connections no longer reach the former writer; account for the pooling mode because existing server connections can outlive an HAProxy route change.
 
 ## Restore and close the exercise
 
@@ -108,12 +108,12 @@ Remove fault rules through the pretested management path. Confirm etcd quorum fi
 
 Do not declare success until:
 
-- exactly one primary exists on the current timeline;
-- all intended replicas stream and replay within their objectives;
+- exactly one member is out of recovery and writable;
+- all intended replicas are in recovery, follow the elected primary's timeline history, and stream and replay within their objectives;
 - all temporary firewall, scheduler, and HA tags are removed;
 - DCS has the original healthy membership;
 - HAProxy/VIP redundancy is restored; and
-- acknowledged canary operations reconcile.
+- all attempted canary operations reconcile with their recorded client outcomes, and every acknowledged operation is present.
 
 Turn measured failure times and surprises into alert thresholds and runbook changes. Repeat after Patroni, PostgreSQL, DCS, proxy, kernel, and network architecture changes.
 
