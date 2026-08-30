@@ -139,7 +139,6 @@
 
 ## Rundeck
 
-6. How to Build Secure Rundeck Job Options for Passwords, Files, and Allowed Values
 7. How to Copy a User-Uploaded File to Remote Nodes Before Running a Rundeck Command
 8. Why Does a Command Work in Your Shell but Fail in Rundeck? Comparing Users, PATH, TTY, and Environment
 9. How to Create a Least-Privilege Rundeck ACL That Lets a Group Run Only Selected Jobs
