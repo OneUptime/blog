@@ -1464,6 +1464,26 @@
 18. How to Populate `known_hosts` in CI Without Setting `StrictHostKeyChecking=no`
 19. Multiple Git Identities on One SSH Host: Use Host Aliases, `IdentityFile`, and `IdentitiesOnly`
 20. SSH Works by IP but Not by Hostname: Inspect DNS, Host Blocks, Canonicalization, and Host-Key Entries
+21. How to Rotate an OpenSSH Certificate Authority Without Locking Out Existing Users
+22. How to Revoke Compromised SSH Keys and Certificates with an OpenSSH KRL
+23. How to Create and Use a Resident OpenSSH FIDO2 Key on a Security Key
+24. How to Apply Different SSH Authentication Requirements by User and Group with `Match` Blocks
+25. How to Audit Which Public Key Authenticated Each SSH Session
+26. How to Restrict One `authorized_keys` Entry by Source IP, Command, and Forwarding
+27. How to Rotate SSH Host Keys Gracefully with `UpdateHostKeys`
+28. How to Publish and Verify SSH Host Fingerprints with DNSSEC-Protected SSHFP Records
+29. How to Chain a Local Port Forward Through Multiple SSH Jump Hosts with `ProxyJump`
+30. How to Restrict a Reverse SSH Tunnel’s Listen Address and Port with `PermitListen` and `GatewayPorts`
+31. How to Restrict SSH Certificate Logins with `AuthorizedPrincipalsFile` and Critical Options
+32. How to Forward a Unix Domain Socket over SSH
+33. How to Build Short, Collision-Resistant SSH `ControlPath` Values with `%C` for Long Hostnames and Multiple Users
+34. How to Repair Stale SSH Multiplexing Sockets After a Crash
+35. How to Keep a Remote Job Running After the SSH Session Disconnects
+36. How to Resume Interrupted File Transfers with `rsync` over SSH
+37. How to Recover an SSHFS Mount After “Transport Endpoint Is Not Connected”
+38. How to Escape from a Frozen SSH Session Without Killing the Terminal
+39. How to Diagnose SSH Sessions That Hang Only on Large Packets by Testing MTU
+40. How to Limit SSH Connection Floods with `MaxStartups` and `PerSourcePenalties` in OpenSSH 9.8+
 
 ## Aerospike
 
@@ -1740,6 +1760,26 @@
 18. Building an Azure Monitor Alert Pack for MySQL CPU, Connections, Storage, and Replication Lag
 19. Debugging Azure MySQL Bicep Deployments That Fail with SKU, Zone, or Regional Capacity Errors
 20. Moving Azure MySQL from VNet Integration to Private Link or Public Access: Downtime and DNS Checklist
+21. How to Measure Application Recovery During an Azure MySQL Zone-Redundant Forced Failover
+22. How to Promote a Cross-Region Azure MySQL Read Replica During an Outage
+23. How to Route Read-Only Traffic Across Azure MySQL Replicas with ProxySQL
+24. How to Preflight Azure MySQL 8.0 Compatibility with Upgrade Checker and Replica Error Logs
+25. How to Import an Existing Azure MySQL Flexible Server, VNet, and Private DNS Links into Terraform State
+26. How to Verify Which Azure MySQL Parameter Changes Require a Restart and Coordinate It Safely
+27. How to Import MySQL Routines, Triggers, and Events into Azure Without `DEFINER` or `SUPER` Errors
+28. How to Retain Azure MySQL Backups Beyond 35 Days with `mydumper` and Blob Storage
+29. How to Recover One Azure MySQL Database or Table from a Full-Server Point-in-Time Restore
+30. How to Copy Azure MySQL Data into Azure SQL Database on a Schedule with Azure Data Factory
+31. How to Run Azure MySQL Schema Migrations from Azure Pipelines with `AzureMysqlDeployment@2`
+32. How to Enable Customer-Managed Key Encryption for Azure MySQL and Rotate the Key Safely
+33. How to Clone an Azure MySQL Production Database for Development and Mask Sensitive Data
+34. How to Schedule Azure MySQL Stop and Start for Dev/Test Without Missing the 30-Day Automatic Restart
+35. How to Diagnose Azure MySQL Burstable-Tier Slowdowns Caused by Exhausted CPU Credits
+36. How to Diagnose High Memory Use in Azure MySQL Before Scaling Up
+37. How to Detect Azure MySQL IOPS Throttling and Tune Storage Performance
+38. How to Stream Azure MySQL Changes with Debezium Using Data-Out Binlog Replication
+39. How to Scale Azure MySQL Compute and Storage with Connection Retries and Minimal Application Disruption
+40. How to Preserve Azure MySQL Scheduled Events Across Dump-and-Restore Migrations
 
 ## Mutating Webhooks
 
@@ -5983,3 +6023,187 @@
 18. How to Preserve Compute Savings Plans Utilization During an EC2-to-Fargate or Lambda Migration
 19. How to Exclude Ineligible Software, EKS Control Plane, and Dedicated Instance Fees from Commitment Models
 20. How to Automate Savings Plans Inventory, Utilization, Coverage, and Expiration Reports with AWS APIs
+
+## Hash Indexes
+
+1. How to Decide Whether a PostgreSQL Hash Index Beats a B-Tree for Equality Lookups
+2. How to Benchmark Hash and B-Tree Indexes with `EXPLAIN (ANALYZE, BUFFERS)`
+3. How to Find Equality-Heavy Queries That Are Candidates for Hash Indexes
+4. How to Index Oversized Text and URL Values with PostgreSQL Hash Indexes
+5. How to Compare Hash Index and B-Tree Disk Footprints with `pg_relation_size`
+6. How to Create a PostgreSQL Hash Index Concurrently Without Blocking Writes
+7. How to Diagnose Why PostgreSQL Chooses a Sequential Scan over a Hash Index
+8. How to Explain Hash Index Collisions, Lossy Scans, and Heap Rechecks in PostgreSQL
+9. How to Prevent Long Hash Bucket Overflow Chains on Skewed Data
+10. How to Inspect PostgreSQL Hash Index Pages and Buckets with `pageinspect`
+11. How to Monitor PostgreSQL Hash Index Usage, Size, and Scan Activity
+12. How to Reclaim Hash Index Space That `VACUUM` Cannot Return to the Operating System
+13. How to Diagnose Insert Latency Caused by Foreground Hash Bucket Splits
+14. How to Support Multi-Column Predicates When PostgreSQL Hash Indexes Are Single-Column
+15. How to Enforce Uniqueness Alongside a Hash Index That Cannot Be Unique
+16. How to Build a Partial Hash Index That Excludes High-Duplicate Values
+17. How to Test Hash Index Performance Under Concurrent Reads and Writes
+18. How to Choose `BUCKET_COUNT` for a SQL Server Memory-Optimized Hash Index
+19. How to Diagnose SQL Server Hash Index Collisions with Empty-Bucket and Chain-Length Metrics
+20. How to Build a Compound Hashed Index in MongoDB Without Using an Array Field
+
+## Incident Communication
+
+1. How to Publish an Initial Incident Acknowledgment Before the Root Cause Is Known
+2. How to Write Impact-First Incident Updates That Customers Can Act On
+3. How to Set an Incident Update Cadence and Promise the Next Timestamp
+4. How to Correct a Mistake in a Published Incident Update Without Hiding the Original
+5. How to Assign a Communications Lead So Responders Can Focus on Recovery
+6. How to Moderate Executive Questions During an Incident Without Interrupting Responders
+7. How to Keep Status Page, Email, Chat, SMS, and Social Updates Consistent
+8. How to Segment Incident Notifications by Affected Service, Region, and Audience
+9. How to Communicate a Partial or Intermittent Outage Without Overstating Its Scope
+10. How to Reconcile a Vendor Status Page with Your Own Telemetry Before Updating Customers
+11. How to Announce Planned Maintenance with Impact, Workarounds, and Rollback Timing
+12. How to Communicate an Incident Across Languages Without Changing Technical Meaning
+13. How to Communicate Recovery Estimates Without False Precision
+14. How to Translate Technical Findings into Plain Language Without Speculating
+15. How to Mark Conflicting Evidence and Uncertain Timestamps in a Live Incident Timeline
+16. How to Automate Incident Update Drafts Without Auto-Publishing Bad Data
+17. How to Coordinate Security-Incident Messaging with Legal, Privacy, and Regulators
+18. How to Move an Incident from Investigating to Monitoring to Resolved Clearly
+19. How to Publish a Correction When a Customer-Facing Incident Report Changes After New Evidence
+20. How to Measure Whether Incident Communication Reduced Confusion and Support Load
+
+## Grafana Pyroscope
+
+1. How to Run Grafana Pyroscope Locally with Docker Compose
+2. How to Deploy Grafana Pyroscope on Kubernetes with Helm
+3. How to Use Go PGO with Pyroscope Profiles Collected from Production
+4. How to Profile a Java Service with the Pyroscope Agent Without Excessive Allocation Overhead
+5. How to Initialize Pyroscope Safely in Python Gunicorn Workers
+6. How to Compare Pyroscope eBPF Profiles Across Kubernetes Nodes with Different CPU Architectures
+7. How to Diagnose Trace-to-Profile Links That Break After Tempo Sampling or Retention
+8. How to Compare Two Releases with Pyroscope Differential Flame Graphs
+9. How to Preserve Pyroscope Release Comparisons When Pod Names and Replica IDs Change
+10. How to Filter and Standardize Profile Labels with Alloy Relabeling Rules
+11. How to Store Pyroscope Profiles in Amazon S3 or MinIO
+12. How to Estimate Pyroscope Object-Storage Growth from Sample Rate, Retention, and Label Cardinality
+13. How to Secure Multi-Tenant Pyroscope Ingestion Behind an Authenticating Reverse Proxy
+14. How to Detect and Recover from Pyroscope Ingestion Backpressure Before Agents Drop Profiles
+15. How to Diagnose Pyroscope Query Gaps Caused by Clock Skew and Late Profile Uploads
+16. How to Add Pyroscope Flame Graphs to a Grafana Dashboard
+17. How to Migrate Continuous Profiling from Grafana Agent to Grafana Alloy
+18. How to Sample a Subset of Kubernetes Replicas for Continuous Profiling
+19. How to Correlate Kubernetes OOMKilled Events with Pyroscope Memory Profiles
+20. How to Scale Grafana Pyroscope v2 in Microservices Mode for High Availability
+
+## youki
+
+1. How to Build youki from Source on Ubuntu, Fedora, and RHEL
+2. How to Create and Run Your First OCI Bundle with youki
+3. How to Run Rootless Containers with youki, User Namespaces, and cgroup v2
+4. How to Register youki as an Additional Docker Runtime
+5. How to Configure Podman to Launch Containers with youki
+6. How to Add youki as an OCI Runtime in containerd
+7. How to Roll Out a youki RuntimeClass Gradually with Namespace Opt-In and Admission Policies
+8. How to Install youki Across Kubernetes Nodes with the youki-deploy DaemonSet
+9. How to Fix Podman’s “No Valid Executable Found for OCI Runtime youki” Error
+10. How to Troubleshoot Rootless youki cgroup Permission Errors in WSL2
+11. How to Configure youki for systemd-Managed cgroup v2 Hierarchies
+12. How to Customize Namespaces, Mounts, Environment Variables, and Capabilities in a youki OCI Spec
+13. How to Apply a Seccomp Profile to Containers Run by youki
+14. How to Apply an AppArmor Profile to Containers Run by youki
+15. How to Enforce CPU, Memory, I/O, and PID Limits with youki
+16. How to Manage the youki Container Lifecycle with Create, Start, Exec, Kill, State, and Delete
+17. How to Pause and Resume a Running youki Container with cgroup v2
+18. How to Run the OCI Runtime Conformance Suite Against youki
+19. How to Benchmark youki Startup Time and Memory Usage Against runc and crun
+20. How to Embed youki’s libcontainer Crate in a Rust Container Tool
+
+## Change Lead-Time
+
+1. How to Version a DORA Change Lead-Time Definition Without Breaking Historical Trends
+2. How to Backfill Missing Commit-to-Deployment Links Without Biasing Change Lead Time
+3. How to Retrieve Change Lead Time from the GitLab DORA Metrics API
+4. How to Measure Change Lead Time in a Jenkins Delivery Pipeline
+5. How to Deduplicate Argo CD Retries and No-Op Syncs Without Hiding Rollback Deployments
+6. How to Map Commits to Production Deployments in a Monorepo
+7. How to Calculate Change Lead Time When Pull Requests Are Squashed or Rebased
+8. How to Measure Per-Commit Change Lead Time in Batched Releases
+9. How to Report Median and Percentile Change Lead Time Instead of a Misleading Average
+10. How to Build a Grafana Dashboard for Change Lead Time Trends
+11. How to Break Change Lead Time into Review, Merge, Queue, and Deployment Stages
+12. How to Fix Null Lead-Time-for-Changes Results in GitLab
+13. How to Explain a Change Lead-Time Shift When the Deployment Pipeline Definition Changes
+14. How to Reduce Change Lead Time by Shortening Pull Request Review Queues
+15. How to Reduce Change Lead Time by Eliminating CI Queues and Flaky Tests
+16. How to Use Smaller Batches and Trunk-Based Development to Improve Change Lead Time
+17. How to Track Change Lead Time Without Encouraging Teams to Game the Metric
+18. How to Segment Change Lead Time by Service and Change Type Without Ranking Developers
+19. How to Choose the Production Success Timestamp for Canary and Progressive Deployments
+20. How to Measure Change Lead Time When Feature Flags Separate Deployment from Release
+
+## OWASP ZAP
+
+1. How to Proxy HTTPS Traffic Through ZAP Without Certificate Warnings
+2. How to Run a ZAP Baseline Scan in Docker Against a Local Web App
+3. How to Scan an Application in Another Docker Container with ZAP
+4. How to Choose Between the Traditional, AJAX, and Client Spiders in ZAP
+5. How to Keep a ZAP Scan in Scope and Exclude Logout or Destructive URLs
+6. How to Configure Form-Based Authentication and Verify That ZAP Stays Logged In
+7. How to Scan OAuth2, OIDC, or Keycloak Login Flows with ZAP Browser-Based Authentication
+8. How to Add a JWT or Custom Authorization Header to Every ZAP Request
+9. How to Refresh Expiring Access Tokens During a Long ZAP Scan
+10. How to Handle CSRF Tokens During an Authenticated ZAP Scan
+11. How to Import an OpenAPI Definition and Scan Authenticated API Endpoints with ZAP
+12. How to Scan a GraphQL API from Its Schema with ZAP
+13. How to Proxy Playwright or Selenium Tests Through ZAP for Authenticated Coverage
+14. How to Run ZAP from an Automation Framework YAML Plan in Docker
+15. How to Keep ZAP Credentials Out of YAML by Using Environment Variables
+16. How to Add ZAP DAST to GitHub Actions and Preserve Scan Reports
+17. How to Fail CI at a Chosen ZAP Risk Threshold with the Automation Framework `exitStatus` Job
+18. How to Suppress ZAP False Positives with Alert Filters and Track In-Progress Findings with a Progress File
+19. How to Generate HTML, JSON, XML, and SARIF Reports from Headless ZAP
+20. How to Tune ZAP Scan Policies, Timeouts, and Concurrency for Faster CI Feedback
+
+## XTDB
+
+1. How to Run XTDB Locally with Docker and Connect Using `psql`
+2. How to Connect a Java Application to XTDB over the PostgreSQL Wire Protocol
+3. How to Insert, Update, and Delete Schema-Less Records in XTDB with SQL
+4. How to Query Nested XTDB Documents and Unnest Arrays with SQL
+5. How to Query XTDB as of a Past System Time
+6. How to Backdate or Schedule Facts with XTDB Valid Time
+7. How to Compare Corrected History with the History Known at the Time in XTDB
+8. How to Correct Only Part of a Record’s History with `FOR PORTION OF VALID_TIME`
+9. How to Build an Audit Trail from XTDB System-Time Columns and the `xt.txs` Table
+10. How to Build Repeatable XTDB Reports with Snapshot Tokens and a Fixed Clock Time
+11. How to Enforce Uniqueness and Other Write Invariants with `ASSERT` in XTDB
+12. How to Make XTDB Queries Wait for a Submitted Transaction Before Reading
+13. How to Permanently Erase Personal Data from XTDB for GDPR Requests
+14. How to Migrate an XTDB 1.x Application from Datalog to XTDB 2.x SQL or XTQL
+15. How to Choose Between SQL and XTQL for XTDB Queries
+16. How to Deploy a Production XTDB Cluster with Kafka and S3-Compatible Object Storage
+17. How to Scale XTDB Reads Across Replica Nodes Without Breaking Consistency
+18. How to Tune XTDB Memory and Disk Caches for Remote Object Storage
+19. How to Monitor XTDB with Health Probes, Prometheus Metrics, and Grafana
+20. How to Back Up and Restore XTDB Without Desynchronizing Kafka and Object Storage
+
+## External Secrets
+
+1. How to Install External Secrets Operator with Helm and Verify Its CRDs, Webhook, and Certificate Controller
+2. How to Upgrade External Secrets Operator from `v1beta1` to `v1` Without Breaking Reconciliation
+3. How to Choose Between `SecretStore` and `ClusterSecretStore` Without Weakening Namespace Isolation
+4. How to Authenticate External Secrets Operator to AWS Secrets Manager with IRSA or EKS Pod Identity
+5. How to Read AWS Secrets Manager Secrets Across Accounts with `AssumeRole`
+6. How to Authenticate External Secrets Operator to Azure Key Vault with AKS Workload Identity
+7. How to Authenticate External Secrets Operator to HashiCorp Vault with Kubernetes Auth
+8. How to Map Individual Properties from a JSON Provider Secret into Kubernetes Secret Keys
+9. How to Use `dataFrom.extract` Without the “Cannot Unmarshal String” Plaintext Error
+10. How to Find Multiple Provider Secrets and Rewrite Their Keys into Valid Environment Variable Names
+11. How to Build Connection Strings and Configuration Files with External Secrets Operator Templates
+12. How to Convert a PKCS#12 Certificate from Azure Key Vault into a Kubernetes TLS Secret
+13. How to Escape External Secrets Operator Template Expressions Inside a Helm Chart
+14. How to Alert When an `ExternalSecret` Misses Its Refresh Interval or Enters `SecretSyncedError`
+15. How to Configure Secret Ownership and Deletion Policies Without Accidentally Removing Kubernetes Secrets
+16. How to Restart Kubernetes Workloads Automatically When External Secrets Operator Rotates a Secret
+17. How to Fan Out One Shared Secret Across Namespaces with `ClusterExternalSecret`
+18. How to Copy a Kubernetes Secret Between Namespaces with `PushSecret` and Least-Privilege RBAC
+19. How to Diagnose `SecretSyncedError` with Conditions, Events, Controller Logs, and Metrics
+20. How to Harden External Secrets Operator for Multi-Tenant Kubernetes Clusters
