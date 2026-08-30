@@ -14,7 +14,7 @@ Both can export OpenTelemetry data. The choice is about how telemetry is capture
 
 ## Start with the operating constraints
 
-Beyla runs on Linux and requires a compatible kernel, BTF support, host process visibility, and elevated eBPF-related capabilities. A DaemonSet can cover many services on a node without changing or restarting those applications.
+Beyla runs on Linux and requires a compatible kernel, BTF support, visibility into the target processes, and elevated eBPF-related capabilities. A DaemonSet can cover many services on a node without changing or restarting those applications.
 
 Most language agents do not need a privileged node agent, but they change each application launch environment and usually need an agent package, injected files, environment variables, or a rebuilt image. The OpenTelemetry Operator can inject zero-code instrumentation for .NET, Java, Node.js, Python, and Go in Kubernetes. Go is an important exception to the security generalization: the Operator's Go auto-instrumentation uses an eBPF sidecar and currently requires `privileged: true` with `runAsUser: 0`. Support, maturity, and security requirements still vary by language and framework.
 
@@ -58,7 +58,7 @@ A common production model is:
 
 Beyla detects OpenTelemetry-instrumented services and defaults to avoiding conflicting instrumentation. Keep that protection enabled. Do not deliberately run Beyla tracing and SDK tracing for the same request boundary unless the exact combination has been tested.
 
-If Beyla owns span metrics or service graphs while SDK traces also enter Tempo or Alloy, Grafana documents the `span.metrics.skip=true` resource attribute to stop another generator from deriving duplicates from those SDK spans.
+If Beyla owns span metrics or service graphs while SDK traces also enter Grafana Cloud Tempo, Grafana documents setting `span.metrics.skip=true` through `OTEL_RESOURCE_ATTRIBUTES` on those SDK traces and configuring Tempo's deduplication option to honor it. In self-managed Tempo, OpenTelemetry Collector, or Alloy pipelines, explicitly filter those SDK spans out of the metrics-generation path or disable the competing generator; the attribute is not a universal OpenTelemetry switch.
 
 ## A practical decision sequence
 
@@ -72,7 +72,7 @@ Choose Beyla first when all of these are true:
 Choose language auto-instrumentation first when any of these dominate:
 
 1. detailed framework, database, messaging, runtime, or log correlation is required;
-2. kernel capabilities or host PID access are prohibited;
+2. kernel capabilities or the required target-process visibility are prohibited;
 3. the workload is not on Linux;
 4. propagation crosses protocols or runtimes where Beyla has documented limitations.
 
