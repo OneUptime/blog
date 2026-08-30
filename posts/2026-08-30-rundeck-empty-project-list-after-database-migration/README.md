@@ -14,7 +14,7 @@ Stop and preserve evidence before creating replacement projects. Creating new ob
 
 ## First Decide Whether the Data Is Missing or Invisible
 
-Sign in with a known system administrator account and query the project list through the API or `rd` CLI using a fresh token. If an administrator sees projects but another user does not, investigate ACL application and project contexts rather than restoring the database.
+Sign in with a known Full Admin (`admin`) account and query the project list through the API or `rd` CLI using a fresh token with the required roles. If the Full Admin sees projects but another user does not, verify that user's application-context `read` permission for those projects; then check project-context permissions for actions within them rather than restoring the database.
 
 If every administrative view is empty, collect:
 
@@ -66,7 +66,7 @@ rundeck.storage.provider.1.path=/keys
 
 Some historical installations also use `rundeck.projectsStorageType` and `framework.projects.dir`. The official Rundeck 3.4 upgrade notes state that filesystem values for `rundeck.projectsStorageType` are no longer supported and that project configuration is migrated to database storage. Record the source setting for diagnosis, but follow the target version's upgrade path instead of copying a legacy filesystem value into a current installation.
 
-If projects were filesystem-backed, restore the configured projects directory, including each project's `etc/project.properties`, resource files, and permissions. Make sure the `rundeck` service account can traverse and read the path. In a cluster, every member needs consistent shared storage or database-backed project definitions.
+If a pre-3.4 source used legacy filesystem-backed project definitions, restore the configured projects directory, including each project's `etc/project.properties` and permissions, and restore referenced resource files from their configured paths. If the Project Definition Storage Facility instead used a `file` provider, restore that provider's configured `baseDir` and metadata. Make sure the `rundeck` service account can traverse and read the restored paths. In a supported Rundeck cluster, project definitions and Key Storage must use the shared database; execution logs and filesystem-backed resource models need appropriate shared storage.
 
 A mismatch can produce two confusing cases:
 
@@ -83,7 +83,7 @@ Use this order:
 4. **Import project archives.** If the database cannot be recovered, create the destination project deliberately and import its `.rdproject.jar`, selecting the supported components required for recovery. Standard jobs carry their schedule settings, separate commercial Schedule Definitions require their own archive component, and imported executions supply history; remote execution logs remain dependent on the original log-storage backend.
 5. **Load standalone job exports.** This recovers definitions but not execution history or output.
 
-Project archives are a valuable fallback and current versions can include project configuration, ACLs, node-source definitions, and other selectable components. They cannot package the live contents of every external resource provider or guarantee access to remotely stored execution logs, so preserve those backends separately. Key Storage is also separate: database-backed keys require the complete database and the same encryption-converter secrets; filesystem or external keys require their original backend.
+Project archives are a valuable fallback and current versions can include project configuration, ACLs, node-source definitions, and other selectable components. They cannot package the live contents of every external resource provider or guarantee access to remotely stored execution logs, so preserve those backends separately. Key Storage is also separate: database-backed keys require the corresponding database data and, if a storage converter encrypted them, the original converter configuration and secret; filesystem or external keys require their original backend and provider configuration.
 
 When importing schedules into a recovery environment, keep execution and scheduling disabled until node sources, credentials, notifications, and target endpoints have been reviewed.
 
@@ -109,7 +109,7 @@ Record which source restored each class of data. That turns the incident into a 
 - [Rundeck: Backup and Recovery](https://docs.rundeck.com/docs/administration/maintenance/backup.html)
 - [Rundeck: Project Archives](https://docs.rundeck.com/docs/manual/projects/project-archive.html)
 - [Rundeck: Migrate from H2 to MySQL](https://docs.rundeck.com/docs/learning/howto/migrate-to-mysql.html)
-- [Rundeck 3.4 Upgrade Notes: Project Storage](https://docs.rundeck.com/docs/upgrading/upgrading-to-rundeck-3.4.html#enterprise-acl-storage-layer-commercial)
+- [Rundeck 3.4 Upgrade Notes: Project Storage](https://docs.rundeck.com/docs/upgrading/upgrading-to-rundeck-3.4.html#removed-support-for-file-system-based-project-definitions)
 
 ## Conclusion
 
