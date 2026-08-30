@@ -12,7 +12,7 @@ Rundeck File options solve the first half of an upload workflow: they receive a 
 
 ## Understand the File References
 
-Create a job option named `bundle` with input type **File** and mark it required. Rundeck exposes four useful values:
+Create a job option named `bundle` with option type **File** and mark it required. Rundeck exposes four useful values:
 
 ```text
 ${option.bundle}          unique uploaded-file identifier
@@ -52,11 +52,16 @@ set -euo pipefail
 upload=$1
 
 test -f "$upload"
-test "$(stat -c %s "$upload")" -le 52428800
-/usr/bin/tar -tzf "$upload" >/dev/null
+test ! -L "$upload"
+test "$(/usr/bin/stat -c %s -- "$upload")" -le 52428800
 
-# Reject absolute paths and parent traversal before extraction elsewhere.
-if /usr/bin/tar -tzf "$upload" | /usr/bin/grep -Eq '(^/|(^|/)\.\.(/|$))'; then
+# Preserve leading slashes while listing. Do not use --absolute-names when extracting.
+unsafe=$(
+  /usr/bin/tar --absolute-names -tzf "$upload" |
+    /usr/bin/awk '/(^\/|(^|\/)\.\.(\/|$))/ { found=1 } END { print found + 0 }'
+)
+
+if [ "$unsafe" -eq 1 ]; then
   echo "unsafe archive path" >&2
   exit 2
 fi
@@ -69,6 +74,8 @@ Configure the Local Command as:
 ```
 
 Rundeck's Command/plugin configuration fields use `${file.bundle}`. Adjust `stat` syntax for the Automation Server's operating system.
+
+This is only a preliminary member-name check. Before extraction, the reviewed installer must also reject unsafe symbolic- and hard-link targets and special-file entries, bound the member count and total expanded size, and extract into a new protected directory.
 
 File type, extension, and MIME detection are hints, not proof. For deployment artifacts, verify a detached signature or compare `${file.bundle.sha}` with an independently trusted digest.
 
@@ -108,15 +115,15 @@ This catches a partial or altered transfer. Keep the remote file owned by the un
 
 ### Step 4: Perform the Operation
 
-Pass the fixed path as a quoted argument to a reviewed script:
+If you use the change-control argument below, also create a required Text option named `change_id` and restrict it to your ticket format. Pass the fixed path as a quoted argument to a reviewed script:
 
 ```bash
 /usr/local/sbin/install-release \
   --archive "/var/lib/rundeck-staging/@job.execid@-bundle.tar.gz" \
-  --change "@option.change_id@"
+  --change "$RD_OPTION_CHANGE_ID"
 ```
 
-If privilege escalation is required, grant `sudo` only for `install-release`, make that script validate ownership and content again, and call `sudo -n` so the job fails instead of waiting for a TTY password prompt.
+If privilege escalation is required, grant `sudo` only for `install-release`. Make that script acquire the staged non-symlink regular file into a root-owned directory without a check/use gap, then validate and consume only that private copy. Call `sudo -n` so the job fails instead of waiting for a TTY password prompt.
 
 ### Step 5: Clean Up on Success and Failure
 
@@ -126,7 +133,15 @@ Remove the staged file after the command:
 /usr/bin/rm -f -- "/var/lib/rundeck-staging/@job.execid@-bundle.tar.gz"
 ```
 
-Also attach cleanup as an error-handler path so a failed validation or install does not leave artifacts behind. A periodic cleanup policy for old `rundeck-*` staging files protects against process crashes that bypass workflow cleanup.
+Keep the default **Node First** workflow strategy for this layout. Attach an inline cleanup node step as the Error Handler for the Copy File, remote-verification, and install steps so each failed node attempts cleanup:
+
+```bash
+#!/usr/bin/env bash
+/usr/bin/rm -f -- "/var/lib/rundeck-staging/@job.execid@-bundle.tar.gz"
+exit 1
+```
+
+The nonzero exit preserves the original failure; omit it only when the handler is intentionally recovering the step. A periodic cleanup policy for sufficiently old regular `*-bundle.tar.gz` files in this dedicated staging directory protects against process crashes or connection failures that bypass workflow cleanup.
 
 ## Important Runner Limitation
 
