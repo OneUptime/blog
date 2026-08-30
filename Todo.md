@@ -139,7 +139,6 @@
 
 ## Rundeck
 
-11. How to Trigger a Rundeck Job from a Monitoring Alert with a Webhook
 12. Why Does a Rundeck Webhook Return "Failed Webhook Authorization" or HTTP 400?
 13. How to Run a Rundeck Job Through the API with Options and a Dynamic Node Filter
 14. How to Chain Rundeck Jobs and Pass Options and Data Between Job Reference Steps
