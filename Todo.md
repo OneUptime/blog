@@ -139,7 +139,6 @@
 
 ## Rundeck
 
-1. How to Add Linux Nodes to Rundeck with SSH Keys Stored in Key Storage
 2. Why Does Rundeck Say "SSH Key File Does Not Exist" or "Invalid Private Key"?
 3. How to Import an Ansible Inventory into Rundeck and Fix "No Matched Nodes"
 4. Why Does Rundeck Miss New or Changed Inventory Hosts? Controlling Node Source Refresh
