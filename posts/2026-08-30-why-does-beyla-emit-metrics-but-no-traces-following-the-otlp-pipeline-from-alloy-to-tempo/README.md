@@ -15,7 +15,8 @@ Debug the pipeline in one direction:
 ```text
 request -> process discovered -> span generated -> beyla.ebpf output
         -> Alloy processor -> OTLP exporter -> Tempo receiver
-        -> Tempo accepted/stored -> Grafana queried the right tenant/time/service
+        -> Tempo accepted -> Tempo queryable/stored
+        -> Grafana queried the right tenant/time/service
 ```
 
 Do not change multiple stages at once. Find the first boundary without evidence.
@@ -44,11 +45,13 @@ beyla.ebpf "apps" {
 
 Inspect Alloy logs while making requests. If no trace records appear, the problem is before OTLP: wrong port, selector mismatch, unsupported traffic/runtime, missing eBPF permissions, or no requests. Enable `debug = true` briefly for deeper Beyla logs, mindful of volume.
 
-If printed spans appear, stop changing discovery. The problem is downstream.
+If printed spans appear, process discovery and instrumentation work. Continue with the trace-export controls and downstream path.
 
 ## 2. Check `output.traces`
 
-Alloy requires an `output` block for `beyla.ebpf`, but every argument inside it is optional. With `output {}`, telemetry that is not connected elsewhere is dropped. Metrics can still be scraped through the component's `targets` export.
+In current Alloy, the `output` block for `beyla.ebpf` is optional, and every argument inside it is optional. If the block is omitted or configured as `output {}`, traces have no consumer and are not exported. Metrics can still be scraped through the component's `targets` export.
+
+Also check that `discovery.instrument.exports`, if configured, includes `"traces"`, and that `traces.instrumentations` includes the protocol under test.
 
 A complete trace edge looks like:
 
@@ -72,11 +75,11 @@ otelcol.processor.batch "beyla" {
 }
 ```
 
-Check labels exactly. `otelcol.processor.batch.default.input` and `otelcol.processor.batch.beyla.input` are different components. Use Alloy's component graph to confirm each consumer reference resolves and that a processor's trace output reaches the exporter.
+Check labels exactly. `otelcol.processor.batch.default.input` and `otelcol.processor.batch.beyla.input` are different components. Use Alloy's component graph to confirm the loaded connections, and check startup or reload errors for unresolved references.
 
 ## 3. Eliminate accidental sampling
 
-The default component trace instrumentations are enabled, but an explicit sampler can intentionally discard most traces. During diagnosis, remove global and per-service samplers or use an always-on configuration supported by the deployed component version.
+The default component trace instrumentations are enabled, but a sampler can intentionally discard traces. During diagnosis, temporarily configure `always_on` at the applicable global or per-service sampler, as supported by the deployed component version. Removing an explicit sampler restores the `parentbased_always_on` default, which can still drop spans whose parent is unsampled.
 
 For a ratio sampler such as:
 
@@ -89,7 +92,7 @@ traces {
 }
 ```
 
-one request is very weak evidence: a one-percent policy is expected to discard almost all isolated test requests. Generate a statistically meaningful controlled workload or temporarily test without sampling. Also inspect downstream collector or Tempo-side sampling if present.
+one request is very weak evidence: a one-percent policy is expected to discard almost all isolated test requests. Generate a statistically meaningful controlled workload or temporarily test with `always_on`. Also inspect sampling in any downstream Alloy or OpenTelemetry Collector stage.
 
 ## 4. Match exporter and receiver protocols
 
@@ -119,20 +122,22 @@ Do not use `insecure_skip_verify` as a permanent fix for a hostname or CA error.
 
 ## 5. Inspect Alloy delivery counters
 
-The OTLP exporter exposes debug metrics including sent spans, failed send attempts, retry-queue capacity, and retry-queue size. Query the Alloy metrics endpoint and compare counters while generating traffic.
+The OTLP exporter exposes debug metrics including successfully sent spans, spans in failed send attempts, retry-queue capacity, and retry-queue size. Query the Alloy metrics endpoint and compare them while generating traffic.
 
 Interpret them together:
 
-- printed spans but no exporter activity: consumer graph is disconnected;
-- failed sends increasing: protocol, network, TLS, authentication, receiver, or rate-limit problem;
-- queue size growing: Tempo is unavailable or slower than the incoming stream;
+- printed spans but no exporter activity: trace export is disabled, filtered, or sampled, or the consumer graph is disconnected;
+- failed-span counter increasing: protocol, network, TLS, authentication, receiver, or rate-limit problem; some spans may later succeed on retry;
+- queue size growing persistently: Tempo is unavailable or slower than the incoming stream;
 - sent spans increasing: move the investigation to Tempo and query scope.
 
-Alloy exporters retry transient failures and use a sending queue by default, but the queue is finite and normally in memory. A healthy-looking process can still drop data after retry limits or queue exhaustion. Read the actual error log rather than relying only on component health.
+Both Alloy OTLP exporters retry retryable failures and use a sending queue by default, but the queue is finite and normally in memory. A healthy-looking process can still drop data after retry limits or queue exhaustion. Read the actual error log rather than relying only on component health.
 
 ## 6. Confirm Tempo accepts the same tenant
 
-Tempo's distributor receives and validates spans. Check its logs and ingestion metrics at the same timestamps as Alloy's sent counter. Common rejection causes include authentication, tenant headers, rate limits, oversized traces or attributes, and a receiver bound to the wrong interface.
+Tempo's distributor receives and validates spans. Check its logs and ingestion metrics at the same timestamps as Alloy's sent counter. Common ingestion failures include authentication at a proxy, a missing or invalid `X-Scope-OrgID` when multitenancy is enabled, rate limits, and receiver reachability. Tempo truncates attributes that exceed `max_attribute_bytes`; per-trace size and live-trace limits can discard spans asynchronously downstream.
+
+In Tempo 3.x microservices mode, distributor success means Kafka acknowledged the write; searchable recent data and stored blocks depend on the live-store and block-builder consumers. If distributor counters rise but searches remain empty, also check their health and lag along with `tempo_discarded_spans_total`.
 
 When Tempo multitenancy is enabled, write requests require the configured tenant identity and queries must use the same tenant. Successfully sending to tenant A while Grafana queries tenant B looks exactly like missing traces.
 
@@ -153,7 +158,7 @@ No printed spans?
   -> discovery, supported traffic, requests, kernel permissions
 
 Printed spans, no exporter counters?
-  -> output.traces or processor graph
+  -> trace export disabled/filtered/sampled, output.traces, processor graph
 
 Exporter failures/queue growth?
   -> DNS, NetworkPolicy, OTLP protocol, TLS/auth, Tempo receiver
@@ -162,7 +167,7 @@ Exporter sent spans, no Tempo ingestion?
   -> receiver target, tenant, rejection/rate limits
 
 Tempo ingestion, no search result?
-  -> tenant, time range, service.name, query path
+  -> downstream trace limits/storage/lag, tenant, time range, service.name, query path
 ```
 
 Remove temporary text/debug printing after the incident; it can create significant log volume and expose request metadata.
@@ -179,4 +184,4 @@ Remove temporary text/debug printing after the incident; it can create significa
 
 ## Conclusion
 
-Metrics prove Beyla is alive, not that traces reached Tempo. Prove span generation with temporary trace printing, verify the `output.traces` consumer graph, remove sampling during the test, match OTLP protocol and receiver port, and follow Alloy sent/failed counters into Tempo's tenant and ingestion metrics. The first missing piece of evidence identifies the layer to fix.
+Metrics prove Beyla is alive, not that traces reached Tempo. Prove span generation with temporary trace printing, verify the trace-export controls and `output.traces` consumer graph, test with `always_on` sampling, match OTLP protocol and receiver port, and follow Alloy sent/failed counters into Tempo's tenant and ingestion metrics. The first missing piece of evidence identifies the layer to fix.
