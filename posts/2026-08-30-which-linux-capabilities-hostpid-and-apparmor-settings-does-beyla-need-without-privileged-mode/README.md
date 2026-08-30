@@ -18,7 +18,7 @@ Three settings solve different problems:
 
 - `hostPID: true` is a Pod-level setting. It lets a DaemonSet instance see application processes in the host PID namespace. Without it, discovery is limited to processes visible inside the Beyla Pod.
 - Linux capabilities authorize operations such as loading BPF programs, reading process metadata, attaching probes, and installing Traffic Control programs.
-- AppArmor controls which kernel and filesystem operations the process may perform even after capabilities have been granted. Grafana's Kubernetes guidance requires an unconfined AppArmor profile for the Beyla/Alloy container.
+- AppArmor controls which kernel and filesystem operations the process may perform even after capabilities have been granted. Grafana's Alloy `beyla.ebpf` Kubernetes guidance calls for an unconfined AppArmor profile. Standalone Beyla's Kubernetes guide does not impose one universally, but the same setting is needed if the node or runtime profile would otherwise block Beyla's host inspection or eBPF operations.
 
 None of these substitutes for another. Adding `BPF` does not make host processes visible, and `hostPID` does not authorize loading an eBPF program.
 
@@ -33,13 +33,13 @@ For broad application observability across supported languages, Grafana document
 - `NET_RAW` for the socket filter used by application HTTP instrumentation.
 - `SYS_ADMIN` for library-level uprobes. It is also the fallback on distributions whose `kernel.perf_event_paranoid` setting prevents `PERFMON` from being sufficient.
 
-Add `NET_ADMIN` only when a feature uses Linux Traffic Control, notably network collection with `source: tc` or network-level trace-context propagation. Socket-filter network metrics need only `BPF` and `NET_RAW`. Add `SYS_RESOURCE` for raising locked-memory limits on kernels earlier than 5.11; current kernels account BPF memory differently.
+Network collection with `source: tc` requires `BPF`, `PERFMON`, and `NET_ADMIN`, while socket-filter network metrics in current Beyla releases require `BPF`, `PERFMON`, and `NET_RAW`. Network-level trace-context propagation also adds `NET_ADMIN` to the application-observability set because it uses Linux Traffic Control. In Kubernetes, node-wide network collection additionally requires `hostNetwork: true` for packet visibility. Add `SYS_RESOURCE` for raising locked-memory limits on kernels earlier than 5.11; current kernels account BPF memory differently.
 
 This means there is no honest universal "minimal" list. Start from the use case, enable Beyla's capability enforcement, and remove capabilities only after testing every enabled protocol and propagation path.
 
 ## A non-privileged DaemonSet security context
 
-The following fragment is a practical baseline for application observability. It deliberately keeps `privileged` false while allowing library-level instrumentation:
+The following security-focused fragment is a practical baseline for application observability. It assumes that the `beyla` ServiceAccount, its RBAC, and Beyla's discovery and export configuration are defined separately. It deliberately keeps `privileged` false while allowing library-level instrumentation:
 
 ```yaml
 apiVersion: apps/v1
@@ -77,26 +77,20 @@ spec:
                 - SYS_PTRACE
                 - NET_RAW
                 - SYS_ADMIN
-          volumeMounts:
-            - name: var-run-beyla
-              mountPath: /var/run/beyla
           env:
             - name: BEYLA_ENFORCE_SYS_CAPS
               value: "1"
-      volumes:
-        - name: var-run-beyla
-          emptyDir: {}
 ```
 
-The writable `emptyDir` at `/var/run/beyla` follows Grafana's hardened manifest and lets Beyla create runtime files while the image filesystem remains read-only. The structured `appArmorProfile` field is the current Kubernetes API and is stable from Kubernetes 1.31; releases before 1.30 used the now-deprecated annotation form. If an older cluster rejects the field, use the documentation for that exact Kubernetes version rather than copying a modern manifest unchanged.
+The structured `appArmorProfile` field is the current Kubernetes API and is stable from Kubernetes 1.31; releases before 1.30 used the now-deprecated annotation form. If an older cluster rejects the field, use the documentation for that exact Kubernetes version rather than copying a modern manifest unchanged.
 
-If you enable network-level context propagation, add `NET_ADMIN` and the host mounts documented by Beyla for `/sys/fs/cgroup` and `/sys/kernel/tracing`. If the node kernel is older than 5.11, add `SYS_RESOURCE` and configure an adequate memlock rlimit at the runtime or service-manager layer.
+If you enable network-level context propagation, set `hostNetwork: true` (normally with `dnsPolicy: ClusterFirstWithHostNet`), add `NET_ADMIN`, and mount the host paths documented by Beyla for `/sys/fs/cgroup` and `/sys/kernel/tracing`. If the node kernel is older than 5.11, add `SYS_RESOURCE` so Beyla can raise its own `RLIMIT_MEMLOCK`; arranging a sufficient memlock limit at the runtime or service-manager layer is an alternative.
 
 ## Do not confuse AppArmor with seccomp
 
 AppArmor and seccomp are independent. An AppArmor profile can be unconfined while a seccomp profile still blocks `bpf`, `perf_event_open`, or another required syscall. Start with the container runtime's current seccomp behavior, examine node audit logs when a load fails, and relax only the operation shown to be blocked. A generic `operation not permitted` message does not prove which control rejected the call.
 
-Pod Security Admission is another separate concern. The Restricted policy will reject host PID access and added capabilities, so run Beyla in a deliberately governed namespace with a narrowly scoped exception. That is preferable to silently granting privileged mode cluster-wide.
+Pod Security Admission is another separate concern. Both the Baseline and Restricted policies reject host PID access and these added capabilities, so run Beyla in a dedicated, tightly governed namespace whose admission policy explicitly permits this DaemonSet. That is preferable to granting the DaemonSet privileged mode on every node.
 
 ## Verify the effective posture
 
@@ -104,20 +98,34 @@ After deployment, confirm both configuration and behavior:
 
 ```bash
 kubectl -n observability get pod -l app=beyla \
-  -o jsonpath='{range .items[*]}{.metadata.name}{" hostPID="}{.spec.hostPID}{" privileged="}{.spec.containers[0].securityContext.privileged}{"\n"}{end}'
+  -o jsonpath='{range .items[*]}{.metadata.name}{" hostPID="}{.spec.hostPID}{" privileged="}{.spec.containers[0].securityContext.privileged}{" appArmor="}{.spec.containers[0].securityContext.appArmorProfile.type}{"\n"}{end}'
 
 kubectl -n observability logs -l app=beyla --tail=200 | \
   grep -E 'capabilit|permission|BPF|instrument'
 
-kubectl -n observability exec daemonset/beyla -- \
-  sh -c 'cat /proc/1/status | grep -E "Cap(Eff|Prm|Bnd)|NoNewPrivs"'
+BEYLA_POD="$(kubectl -n observability get pod -l app=beyla \
+  -o jsonpath='{.items[0].metadata.name}')"
+
+kubectl -n observability debug -it "pod/$BEYLA_POD" \
+  --image=busybox:1.37.0 \
+  --profile=general -- \
+  sh -c 'for status_file in /proc/[0-9]*/status; do
+    if grep -q "^Name:[[:space:]]*beyla$" "$status_file"; then
+      grep -E "^(Name|Pid|Cap(Eff|Prm|Bnd)|NoNewPrivs):" "$status_file"
+      exit
+    fi
+  done
+  echo "Beyla process not found" >&2
+  exit 1'
 ```
+
+The official Beyla image is built from `scratch` and contains no shell, so the last command uses a one-shot ephemeral BusyBox container. Because `hostPID: true` exposes the node PID namespace, it scans for Beyla's actual PID instead of reading `/proc/1`, which belongs to the node's init process. The ephemeral-container entry remains in the Pod until that Pod is replaced.
 
 Then generate real HTTP or gRPC traffic and verify that the selected process is discovered and telemetry is exported. Startup success alone is insufficient: a missing capability may affect only a later tracer or propagation mode.
 
 ## Conclusion
 
-For a DaemonSet, `hostPID: true` provides visibility; targeted capabilities provide authority; and an unconfined AppArmor profile prevents the LSM from blocking those authorized operations. Keep `privileged: false`, enable `BEYLA_ENFORCE_SYS_CAPS=1`, and build the capability set from the Beyla features actually in use. Re-test it whenever you enable Traffic Control, a new language tracer, or a different kernel/runtime combination.
+For a DaemonSet, `hostPID: true` provides visibility; targeted capabilities provide authority; and an unconfined AppArmor profile prevents AppArmor from blocking those authorized operations. Keep `privileged: false`, enable `BEYLA_ENFORCE_SYS_CAPS=1`, and build the capability set from the Beyla features actually in use. Re-test it whenever you enable Traffic Control, a new language tracer, or a different kernel/runtime combination.
 
 ## Official Documentation
 
