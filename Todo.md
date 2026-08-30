@@ -139,7 +139,6 @@
 
 ## Rundeck
 
-10. Why Is a Rundeck Job Invisible Even Though the ACL Allows `run`? Application vs Project Contexts
 11. How to Trigger a Rundeck Job from a Monitoring Alert with a Webhook
 12. Why Does a Rundeck Webhook Return "Failed Webhook Authorization" or HTTP 400?
 13. How to Run a Rundeck Job Through the API with Options and a Dynamic Node Filter
