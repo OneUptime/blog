@@ -10,15 +10,15 @@ Description: Explain why a referenced job's Retry setting is ignored and place b
 
 Rundeck's job-level **Retry** setting applies when that job is invoked directly. The official Creating Jobs documentation explicitly notes that Retry does not apply when the job is used as a **Job Reference**. A child job can therefore show `Retry: 3` in its definition yet fail once when embedded in a parent workflow.
 
-That behavior is deliberate enough to design around. The parent owns one workflow execution, and the Job Reference is a step inside it rather than a separate top-level invocation with the child's scheduling/retry lifecycle.
+That behavior is deliberate enough to design around. The parent owns the top-level workflow execution, and the Job Reference is a nested step rather than an independently started execution with the child's scheduling/retry lifecycle.
 
 ## Confirm the Invocation Path
 
 Before changing retry counts, establish how the job started:
 
-- GUI **Run Job Now**, schedule, API `POST /job/ID/run`, or `rd run`: direct invocation; job Retry applies.
+- GUI **Run Job Now**, schedule, API `POST /api/<version>/job/ID/run`, or `rd run`: direct invocation; job Retry applies.
 - Job Reference step inside another job: referenced invocation; the child's job-level Retry does not apply.
-- Retry-execution API/UI: creates a retry based on a prior execution and has separate semantics for failed nodes.
+- Retry-execution API/UI: creates a retry based on a prior failed execution and has separate semantics for failed nodes.
 
 Inspect the execution tree and parent job definition. If the failing job is nested, increasing its Retry field will not change the reference behavior.
 
@@ -39,7 +39,7 @@ Do not hide a deterministic failure behind three identical attempts. It lengthen
 
 ## Pattern 1: Retry the Narrow Operation
 
-The safest retry is closest to the unstable boundary. Keep the child job referenced normally, but wrap only an idempotent API call or probe:
+The safest retry is closest to the unstable boundary. Keep the child job referenced normally, but wrap only an idempotent API call or probe. In this example, the command's contract uses exit status 75 for a retryable transient failure and other nonzero statuses for permanent failures:
 
 ```bash
 #!/usr/bin/env bash
@@ -47,17 +47,25 @@ set -euo pipefail
 
 max_attempts=4
 delay=2
+retryable_exit=75
 
 for attempt in $(seq 1 "$max_attempts"); do
   if /usr/local/bin/reconcile-release \
       --release "$RD_OPTION_RELEASE_ID" \
       --request-id "$RD_OPTION_REQUEST_ID"; then
     exit 0
+  else
+    status=$?
+  fi
+
+  if [ "$status" -ne "$retryable_exit" ]; then
+    echo "reconcile failed permanently with exit status $status" >&2
+    exit "$status"
   fi
 
   if [ "$attempt" -eq "$max_attempts" ]; then
     echo "reconcile failed after $attempt attempts" >&2
-    exit 1
+    exit "$status"
   fi
 
   sleep "$delay"
@@ -71,35 +79,35 @@ This pattern avoids repeating successful validation, approval, drain, or notific
 
 ## Pattern 2: Retry the Directly Invoked Parent
 
-Set Retry on the top-level orchestration job that users, schedules, webhooks, or the API invoke directly. If any Job Reference fails, the parent fails; Rundeck can then retry that direct parent execution.
+Set Retry on the top-level orchestration job that users, schedules, webhooks, or the API invoke directly. If an unhandled Job Reference fails, the parent fails; Rundeck can then retry that direct parent execution.
 
-This repeats the entire parent workflow, not merely the failed reference. Make every earlier step safe:
+By default, this repeats the entire parent workflow, not merely the failed reference. Make every earlier step safe:
 
 - Build/deploy by immutable release ID.
 - Check whether a node is already drained before draining.
 - Use upserts/reconciliation instead of blind creates.
-- Deduplicate notifications by execution/request ID.
+- Deduplicate notifications by a stable request or operation ID, not the current execution ID.
 - Store checkpoints in the target system, not only in transient job context.
 
 Configure a delay in the Retry setting to avoid immediate pressure on a recovering dependency. Rundeck accepts a number of seconds or duration units such as `30s` and `5m`; it can also take documented option references for dynamic retry/delay values. Cap operator-controlled values with allowed inputs.
 
 ## Pattern 3: Create a Standalone Execution Deliberately
 
-If the child must keep its own top-level retry lifecycle, invoke it through Rundeck's run-job API/CLI rather than a Job Reference, then poll the returned execution ID. That creates a distinct execution to which the child's Retry setting can apply.
+If the child must keep its own top-level retry lifecycle, invoke it through Rundeck's run-job API/CLI rather than a Job Reference, then monitor the returned execution and any automatic-retry successors until the chain reaches a terminal result. That creates an independently started execution to which the child's Retry setting can apply; each automatic retry is a fresh, linked execution.
 
 This is a different architecture, with real costs:
 
 - The parent must authenticate to the API.
 - It must handle accepted-but-response-lost ambiguity.
-- It must poll with a deadline and propagate final failure.
+- It must poll the execution chain with a deadline and propagate final failure.
 - Logs and execution relationships are less naturally nested.
 - Cancellation of the parent may not cancel the child automatically.
 
-Use this only when independent execution ownership is required, not as a shortcut around reference semantics. Protect against duplicate starts with a request ID and a recent/running-execution check.
+Use this only when independent execution ownership is required, not as a shortcut around reference semantics. Pass a request ID for correlation, enforce idempotency atomically in the child or target system, and use a recent/running-execution check only as a recovery aid.
 
 ## Avoid Recursive Retry Amplification
 
-Do not combine four script attempts, three parent retries, and an external alert sender's five webhook retries without calculating the product. That can create 60 calls, long after the incident state changed.
+Do not combine four script attempts, three parent retries (four parent executions including the initial one), and an external alert sender's five webhook retries (six deliveries including the first) without calculating the product. That can create 96 calls, long after the incident state changed.
 
 Set one retry owner per failure boundary. Document:
 
