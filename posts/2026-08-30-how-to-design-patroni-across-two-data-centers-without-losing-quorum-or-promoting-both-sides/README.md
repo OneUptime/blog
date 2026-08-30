@@ -13,11 +13,11 @@ Two data centers cannot provide automatic, partition-safe site failover by thems
 Patroni's official multi-data-center guidance therefore recommends, for exactly two sites, two independent DCS clusters and a Patroni standby cluster in the second site. Site promotion is manual and requires positively fencing the original site first.
 
 ```text
-DC1: Patroni primary cluster -> local three-member etcd quorum
+DC1: Patroni primary cluster -> local three-member etcd cluster
                  |
                  | asynchronous PostgreSQL streaming/WAL archive
                  v
-DC2: Patroni standby cluster -> separate local three-member etcd quorum
+DC2: Patroni standby cluster -> separate local three-member etcd cluster
 ```
 
 Each site can tolerate a local DCS member failure. A WAN partition does not split one etcd quorum or automatically authorize the standby site to write.
@@ -26,7 +26,7 @@ Each site can tolerate a local DCS member failure. A WAN partition does not spli
 
 A three-member etcd cluster split 2+1 between sites gives the two-member site automatic authority and makes the one-member site unavailable for elections. It is not symmetric site HA. A four-member 2+2 cluster still needs three votes, so neither half has quorum after the link fails. Adding members without a third independent failure domain does not solve the information problem.
 
-Patroni documents that an automatically zone-tolerant design needs at least three failure domains, with an odd three- or five-member DCS distributed among them. A genuinely independent third witness location can provide a majority, but it must have reliable failure characteristics and latency; placing a "witness" VM logically inside one of the same two power or network domains changes nothing.
+Patroni documents that an automatically zone-tolerant design needs at least three failure domains, with an odd three- or five-member DCS distributed among them. A genuinely independent third location hosting a voting DCS member can supply the vote needed for a majority, but it must have reliable failure characteristics and latency; placing that member inside either existing power or network failure domain only biases quorum toward that site and does not create a third failure domain.
 
 Do not stretch one DCS across two sites and enable DCS failsafe mode as a substitute for topology. Failsafe lets an existing primary continue during certain DCS failures only if it can reach every known Patroni member. It does not create a new cross-site consensus system.
 
@@ -87,7 +87,7 @@ Limit the ability to remove standby mode and update global routing to a small, a
 
 When DC1 returns, keep its client route fenced. Its old primary cannot simply rejoin the new DC2 timeline as a writer.
 
-Patroni's documented options are to convert the old primary site into a standby cluster of DC2 and attempt `pg_rewind`, or rebuild it from scratch. Patroni 4.1 and later provide `patronictl demote-cluster` to add the new remote-source settings and wait for a standby leader; older versions require the equivalent reviewed dynamic-configuration change. `pg_rewind` requires data checksums and/or `wal_log_hints=on`, plus the required WAL and timeline history, and can still fail for other reasons. Preserve and reconcile any transactions that existed only on the old timeline before rewinding or rebuilding.
+Patroni's documented options are to convert the old primary site into a standby cluster of DC2 and attempt `pg_rewind`, or rebuild it from scratch. Patroni 4.1 and later provide `patronictl demote-cluster` to add the new remote-source settings and wait for a standby leader; older versions require the equivalent reviewed dynamic-configuration change. `pg_rewind` requires the target cluster to have either data checksums enabled or `wal_log_hints=on`, and `full_page_writes` must be `on`. It examines both clusters' timeline histories and needs the target's WAL back to the divergence point, either in `pg_wal` or retrievable from an archive with `pg_rewind -c`; it can still fail for other reasons. Preserve and reconcile any transactions that existed only on the old timeline before rewinding or rebuilding.
 
 Only after the recovered site is a verified streaming standby should it receive read traffic or regain disaster-recovery eligibility. A future failback is another planned, fenced role reversal—not a DNS change.
 
