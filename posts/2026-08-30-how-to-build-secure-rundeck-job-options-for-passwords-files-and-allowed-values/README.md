@@ -68,7 +68,7 @@ Create a Secure option when a script genuinely needs the value. Reference it as 
 
 Where supported, point the Secure option at a **password** entry in Key Storage as its storage path. A user-supplied value can override that default, so decide whether the job should prompt or always use managed storage. Private/public key entries cannot be used as ordinary option values by design; only password entries can back Secure options.
 
-When passing a secret through a Job Reference, both parent and child options must have the same type. Plain can map to Plain, Secure to Secure, and Secure Remote Authentication to the same authentication type. Rundeck refuses cross-type mappings to prevent a secret from becoming a persisted plain value or an authentication-only value from entering a script.
+When passing a secret through a Job Reference, both parent and child options must have the same type. Plain can map to Plain, Secure to Secure, and Secure Remote Authentication to the same authentication type. Rundeck does not pass option values across types, preventing a secret from becoming a persisted plain value or an authentication-only value from entering a script.
 
 ## Use File Options Safely
 
@@ -81,10 +81,10 @@ ${file.bundle.filename}   # original client filename, when available
 ${file.bundle.sha}        # SHA-256 digest
 ```
 
-Use `${file.bundle}` as the source for a Copy File or validation step. Treat the original filename as untrusted display metadata; never concatenate it into a destination path without sanitizing it. Prefer a server-chosen path:
+Use `${file.bundle}` as the source for a Copy File or server-local validation step. Treat the original filename as untrusted display metadata; never concatenate it into a destination path without sanitizing it. Prefer a job-defined destination beneath a pre-created staging directory owned by the remote execution account and restricted to that account (for example, mode `0700`):
 
 ```text
-/var/tmp/rundeck-${job.execid}-bundle.tar.gz
+/var/tmp/rundeck-staging/bundle-${job.execid}.tar.gz
 ```
 
 Before copying, verify size, type, and expected digest or signature. Parse archives defensively to prevent path traversal, and delete remote temporary data in an always-run cleanup path.
@@ -97,7 +97,7 @@ Rundeck can fetch allowed values from a URL, including cascading values that dep
 
 - Use HTTPS and authenticate the request appropriately.
 - Return only values the caller is allowed to select.
-- Enable **Enforced from values** if the list is a security boundary.
+- Enable **Enforced from values**, but do not rely on a remote list as the sole authorization boundary. If the request fails, Rundeck permits text input and may not enforce the unavailable list, so validate and authorize the submitted value again in the job or target system and fail closed.
 - Set timeouts and define behavior when the provider is unavailable.
 - Do not place credentials in a query string or log provider responses containing secrets.
 
