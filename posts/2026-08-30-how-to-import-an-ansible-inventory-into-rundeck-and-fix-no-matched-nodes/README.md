@@ -8,23 +8,27 @@ Description: Configure an Ansible Resource Model Source in Rundeck, verify inven
 
 ---
 
-Rundeck can use an existing Ansible inventory as a project Node Source. This does not copy a one-time host list into a job: the Ansible Resource Model Source reads inventory and turns its hosts and variables into Rundeck nodes. A `No Matched Nodes` result means either the source produced no nodes or the job filter does not match the names and attributes that Rundeck produced.
+Rundeck can use an existing Ansible inventory as a project Node Source. This does not copy a one-time host list into a job: the Ansible Resource Model Source reads inventory and turns its hosts, groups, and selected variables into Rundeck nodes and attributes. A `No Matched Nodes` result means either the source produced no nodes or the job filter does not match the names and attributes that Rundeck produced.
 
 ## Validate Ansible Before Configuring Rundeck
 
 The inventory and `ansible.cfg` must be available in the execution environment where the Node Source runs. On a conventional installation, test them as the `rundeck` operating-system user:
 
 ```bash
-sudo -u rundeck ansible-inventory \
+sudo -H -u rundeck env \
+  ANSIBLE_CONFIG=/etc/ansible/production/ansible.cfg \
+  ansible-inventory \
   -i /etc/ansible/production/hosts.yml \
   --list
 
-sudo -u rundeck ansible-inventory \
+sudo -H -u rundeck env \
+  ANSIBLE_CONFIG=/etc/ansible/production/ansible.cfg \
+  ansible-inventory \
   -i /etc/ansible/production/hosts.yml \
   --graph
 ```
 
-This catches file permissions, missing inventory plugins, Python dependencies, Vault prompts, and relative-path assumptions before Rundeck is involved. A static YAML inventory might look like:
+Inspect both warnings and returned hosts: these commands can expose file-permission, missing inventory plugin or collection, Python-dependency, Vault-credential, and relative-path problems before Rundeck is involved. A static YAML inventory might look like:
 
 ```yaml
 all:
@@ -47,10 +51,10 @@ In the project, open **Project Settings > Edit Nodes > Sources**, select **Add a
 
 - **Ansible inventory file path** to the absolute inventory path.
 - **Ansible config file path** to the intended `ansible.cfg`.
-- Any plugin-specific executable or Python settings required by the installation.
-- The SSH user and authentication settings appropriate for node execution.
+- **Ansible binaries directory path** if the Ansible binaries are not available on the service's `PATH`.
+- When **Gather Facts** is enabled, the SSH user and authentication settings Ansible needs for discovery. Configure execution credentials on the chosen Node Executor separately.
 
-Save the source and refresh the Nodes page. The official integration guide also documents configuring **Ansible Ad-hoc Node Executor** as the project's default executor. That is a separate choice: importing nodes does not force you to execute through Ansible. You may import inventory through Ansible and still use Rundeck's SSH executor, provided the resulting node attributes contain suitable connection data.
+Save the source, then click the page-level **Save** on the Sources page to commit the change and refresh the Nodes page. The official integration guide also documents configuring **Ansible Ad-hoc Node Executor** as the project's default executor. That is a separate choice: importing nodes does not force you to execute through Ansible. You may import inventory through Ansible and still use Rundeck's SSH executor, provided the resulting node attributes or project settings contain suitable connection data.
 
 If **Gather Facts** is disabled, the integration can read inventory as YAML without contacting every host, which is faster and avoids turning a node-discovery operation into a connectivity test. Choose fact gathering only when you need attributes that require it.
 
@@ -64,15 +68,15 @@ Run `ansible-inventory --list` with the same inventory and configuration, as the
 
 ### 2. Does Rundeck Show the Hosts?
 
-Open **Nodes**, choose the filter that lists all nodes, and force a refresh. If only the local Rundeck server appears, inspect `rundeck.log` for the Resource Model Source exception. Common causes are:
+Open **Nodes**, choose the filter that lists all nodes, and force a refresh. If only the local Rundeck server appears, inspect `rundeck.log` for the Resource Model Source exception, or `runner.log` and `operations.log` when discovery is delegated to an Enterprise Runner. Common causes are:
 
-- The inventory path exists on the host but not inside the container or Runner.
-- The `rundeck` user cannot read a parent directory, inventory, variable file, or `ansible.cfg`.
+- The inventory path is not accessible to the Rundeck runtime or selected Enterprise Runner; in a container, the file was not copied or mounted.
+- The identity executing the source (`rundeck` conventionally, or the Runner process identity) cannot read a parent directory, inventory, variable file, or `ansible.cfg`.
 - A dynamic inventory plugin or collection is installed for your account but not for the service runtime.
 - Inventory output is invalid or exceeds configured YAML data/alias limits.
-- Multiple Node Sources define the same node name, and a later source overrides attributes from an earlier one.
+- Multiple Node Sources define the same node name, and the node definition from the lower (later) source in the list wins.
 
-Rundeck's documented defaults for the Ansible integration include a 10 MB YAML data limit and 1,000 aliases. Large inventories are easier to operate when segmented into smaller sources rather than simply raising every limit.
+When **Gather Facts** is disabled, Rundeck's documented defaults for the Ansible integration include a 10 MB YAML data limit and 1,000 aliases. Large inventories are easier to operate when segmented into smaller sources rather than simply raising every limit.
 
 ### 3. What Name and Attributes Did Rundeck Import?
 
@@ -89,7 +93,7 @@ tags: web+production
 hostname: 10\.20\.0\..*
 ```
 
-`tags: web+production` means both tags are required. A comma is OR, while separate attribute clauses are combined. If Ansible group names were not mapped to tags by the plugin configuration, `tags: web` cannot match even though `ansible web --list-hosts` works.
+`tags: web+production` means both tags are required. A comma is OR, while separate attribute clauses are combined. The plugin imports Ansible group names as tags by default, but a group excluded by **Ignore tags with this prefix** will not appear as a tag. In that case, `tags: web` cannot match even though `ansible web --list-hosts` works.
 
 ### 4. Is the Job Using a Dynamic Filter?
 
@@ -102,16 +106,17 @@ Choose and document a stable contract between the two tools:
 - Ansible inventory hostname becomes the Rundeck node name.
 - `ansible_host` becomes `hostname`.
 - `ansible_user` becomes `username`.
-- Selected groups or host variables become Rundeck tags/custom attributes.
+- Ansible group names become Rundeck tags unless the source's ignore-prefix setting excludes them.
+- Other inventory host variables become custom attributes only when **Import host vars** is enabled.
 - Secrets remain in Key Storage or Ansible's supported secret mechanism, not in ordinary node attributes.
 
-Avoid whitespace in Rundeck node names when the inventory may be generated back into Ansible; Ansible treats whitespace as a separator. Prefer `web-prod-01` over `web prod 01`.
+Avoid whitespace in Rundeck node names when the inventory may be generated back into Ansible; ordinary Ansible host-pattern parsing can split a name containing whitespace into separate patterns. Prefer `web-prod-01` over `web prod 01`.
 
 Create a diagnostic job that targets a single imported node and runs `id` or `hostname`. A successful import only proves discovery; executor credentials, network access, and sudo are independent layers.
 
 ## Refresh Safely
 
-Rundeck caches project node data, with a documented default cache delay of 30 seconds. Use the Nodes page refresh control after changing inventory. For workflows that mutate inventory and then delegate work, the built-in **Refresh Project Nodes** workflow step makes refreshed nodes available to subsequent Job Reference steps, not to node dispatch already selected for the current workflow. Do not build new automation around the old `/project/PROJECT/resources/refresh` API: it was deprecated without a replacement and removed in API v21.
+Rundeck caches project node data, with a documented default cache delay of 30 seconds. Use the Nodes page refresh control after changing inventory. For workflows that mutate inventory and then delegate work, the built-in **Refresh Project Nodes** workflow step makes refreshed nodes available to subsequent Job Reference steps, not to node dispatch already selected for the current workflow. Do not build new automation around the old `POST /api/2/project/[PROJECT]/resources/refresh` endpoint: it was deprecated without a replacement in API v14 and removed in API v21.
 
 ## Conclusion
 
