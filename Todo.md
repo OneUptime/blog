@@ -136,7 +136,6 @@
 
 ## Grafana Beyla
 
-11. Why Does a Beyla Trace Contain Only One Span? Enabling and Verifying Trace-Context Propagation
 12. How to Combine Beyla with OpenTelemetry SDK Instrumentation Without Duplicate Spans or Metrics
 13. How to Normalize Dynamic URL Paths in Beyla Before They Explode Prometheus Cardinality
 14. How to Exclude Health Checks, Metrics Endpoints, and Noisy Routes from Beyla Telemetry
