@@ -139,7 +139,6 @@
 
 ## Rundeck
 
-4. Why Does Rundeck Miss New or Changed Inventory Hosts? Controlling Node Source Refresh
 5. How to Pass a Job Option into a Rundeck Node Filter for Dynamic Target Selection
 6. How to Build Secure Rundeck Job Options for Passwords, Files, and Allowed Values
 7. How to Copy a User-Uploaded File to Remote Nodes Before Running a Rundeck Command
