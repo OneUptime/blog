@@ -136,7 +136,6 @@
 
 ## Grafana Beyla
 
-2. How to Run Grafana Beyla Beside a Dockerized Service Without Modifying Application Code
 3. How to Configure the `beyla.ebpf` Component in Grafana Alloy and Export Traces to Tempo
 4. Why Does Beyla Emit Metrics but No Traces? Following the OTLP Pipeline from Alloy to Tempo
 5. How to Fix Beyla's "Operation Not Permitted" eBPF Error in Kubernetes
