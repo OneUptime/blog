@@ -136,7 +136,6 @@
 
 ## Grafana Beyla
 
-15. How to Add Kubernetes Pod, Deployment, Namespace, and Node Metadata to Beyla Metrics and Traces
 16. How to Export Beyla RED Metrics to Prometheus and Traces to Tempo Through Grafana Alloy
 17. Why Is Grafana's Service Graph Empty Even Though Beyla Traces Reach Tempo?
 18. How to Use Beyla Network Flow Metrics to Map Kubernetes Service-to-Service Traffic
