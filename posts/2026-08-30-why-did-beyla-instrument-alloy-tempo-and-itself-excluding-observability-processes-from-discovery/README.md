@@ -13,16 +13,16 @@ A cluster-wide Beyla rule such as `open_ports: "1-65535"` or `k8s_namespace: "*"
 Current Beyla releases include default exclusions, so seeing these processes usually points to one of three causes:
 
 1. the deployment replaced or emptied `default_exclude_instrument`;
-2. the process is not covered by a built-in executable or namespace pattern;
-3. a custom path, image, wrapper executable, or namespace no longer matches the default.
+2. the process is not covered by a built-in executable, Kubernetes container-name, or namespace pattern;
+3. a renamed or multi-call executable, custom container name, or namespace no longer matches the defaults.
 
 The fix is to retain the built-ins and add explicit exclusions for the local topology.
 
 ## Know what Beyla excludes by default
 
-The default executable patterns cover Beyla/OBI, Grafana Alloy, OpenTelemetry Collector variants, and related helpers. Default Kubernetes exclusions also cover namespaces such as `monitoring`, `grafana-alloy`, `kube-system`, `cert-manager`, and several managed-platform system namespaces.
+The default executable patterns cover Beyla/OBI, Grafana Alloy, standard `otelcol` and `otelcol-contrib` OpenTelemetry Collector names, and related helpers. In Kubernetes, exact default container-name matches provide another guard for these components. Default Kubernetes exclusions also cover namespaces such as `monitoring`, `grafana-alloy`, `kube-system`, `cert-manager`, and several managed-platform system namespaces.
 
-Tempo is not universally excluded by executable name. It is often protected indirectly because it runs in `monitoring`, but a Tempo Pod in `observability` or a custom namespace can still match a broad inclusion rule.
+Tempo is not excluded by a default executable or container-name pattern. It is often protected indirectly because it runs in `monitoring`, but a Tempo Pod in `observability` or a custom namespace can still match a broad inclusion rule.
 
 Do not set `default_exclude_instrument: []` merely to make one application visible. That removes the whole safety net. If an application lives in a default-excluded namespace, move it to an application namespace or define a narrowly reviewed custom default list.
 
@@ -48,7 +48,7 @@ discovery:
     - exe_path: "*/prometheus"
 ```
 
-User-defined `exclude_instrument` entries are combined with the default exclusions. There is no need to repeat `*/beyla`, `*/alloy`, or `*/otelcol` unless a wrapper changes the executable path so the built-in glob no longer matches.
+User-defined `exclude_instrument` entries are combined with the default exclusions. There is no need to repeat the built-in `*beyla`, `*alloy`, or `*otelcol` patterns. If a renamed or multi-call executable avoids those suffix globs and its Kubernetes container name and namespace are also nonstandard, exclude the actual executable path or stable Kubernetes metadata.
 
 Fields within one entry are AND conditions. Use that when a namespace contains both applications and infrastructure:
 
@@ -64,7 +64,7 @@ This excludes only matching collector Pods in `shared-services`, not the entire 
 
 ## Prefer metadata over generated Pod names
 
-Pod names change during rollouts. An exclusion like `k8s_pod_name: "tempo-0"` misses a horizontally scaled or renamed deployment. Prefer, in order:
+Deployment Pod names commonly change during rollouts. A rule for one StatefulSet Pod such as `k8s_pod_name: "tempo-0"` also misses `tempo-1` and other replicas. Prefer, in order:
 
 - a dedicated Pod label owned by the platform team;
 - `k8s_deployment_name`, `k8s_statefulset_name`, or `k8s_daemonset_name`;
@@ -77,9 +77,9 @@ For example:
 discovery:
   exclude_instrument:
     - k8s_namespace: "observability"
-      k8s_statefulset_name: "tempo-*"
+      k8s_statefulset_name: "{tempo,tempo-*}"
     - k8s_namespace: "observability"
-      k8s_daemonset_name: "alloy-*"
+      k8s_daemonset_name: "{alloy,alloy-*}"
 ```
 
 Two entries are necessary because no Pod can normally belong to both the StatefulSet and the DaemonSet.
@@ -108,13 +108,13 @@ kubectl -n observability rollout status daemonset/beyla
 First inspect Beyla's discovery logs:
 
 ```bash
-kubectl -n observability logs daemonset/beyla --since=10m | \
+kubectl -n observability logs daemonset/beyla --all-pods=true --since=10m | \
   grep -Ei 'tempo|alloy|beyla|instrument|exclude'
 ```
 
-Then query telemetry for the unwanted service identities. Allow enough time for old Prometheus series and Tempo traces to age out; historical data remains after discovery stops. New requests to Tempo or Alloy should no longer create new Beyla application spans or RED samples.
+Then query telemetry for the unwanted service identities with a time range that starts after the rollout. Prometheus marks a series stale after successful scrapes stop returning it, while previously stored samples remain until retention; existing Tempo traces remain queryable until trace retention expires. New requests to Tempo or Alloy should no longer create server-side Beyla spans or RED metric updates attributed to the excluded service, although an instrumented client can still emit a client span for a call to it.
 
-If the process still appears, confirm the real executable path from its host PID namespace rather than guessing from the container image name. Containers often start through a shell, init wrapper, or renamed binary.
+If the process still appears, confirm the service PID's executable path from its host PID namespace rather than guessing from the container image or entrypoint. A shell or init process may launch the service, and the binary itself may have been renamed.
 
 ## Avoid filtering only downstream
 
@@ -122,7 +122,7 @@ A Collector filter can drop unwanted spans and Prometheus relabeling can drop un
 
 ## Conclusion
 
-Beyla already protects common observability components with default exclusions. Preserve that list, add topology-specific exclusions for Tempo and custom wrappers, and express unrelated exclusions as separate OR entries. Stable labels, owners, and namespaces make the policy survive rollouts, while source-side exclusion prevents both noisy telemetry and unnecessary instrumentation work.
+Beyla already protects common observability components with default exclusions. Preserve that list, add topology-specific exclusions for Tempo and nonstandard executable names, and express unrelated exclusions as separate OR entries. Stable labels, owners, and namespaces make the policy survive rollouts, while source-side exclusion prevents both noisy telemetry and unnecessary instrumentation work.
 
 ## Official Documentation
 
