@@ -32,7 +32,7 @@ Assume three Patroni members and two proxy hosts:
 | `proxy2` | `10.40.0.22` | HAProxy and Keepalived |
 | write VIP | `10.40.0.20` | Application endpoint |
 
-Create DNS `postgres-write.example.net` pointing only to the VIP. Use a certificate valid for that service name on every possible PostgreSQL primary if clients use `sslmode=verify-full`; HAProxy is forwarding TCP and does not change the database certificate.
+Create DNS `postgres-write.example.net` pointing only to the VIP. Use a certificate issued by a CA that clients trust and valid for that service name on every possible PostgreSQL primary if clients use `sslmode=verify-full`; HAProxy is forwarding TCP and does not change the database certificate.
 
 Install the same HAProxy configuration on both proxies:
 
@@ -56,15 +56,15 @@ backend patroni_primary
     http-check connect port 8008
     http-check send meth GET uri /primary ver HTTP/1.1 hdr Host patroni
     http-check expect status 200
-    default-server inter 2s fall 3 rise 2 on-marked-down shutdown-sessions
+    default-server inter 2s fall 3 rise 2 init-state fully-down on-marked-down shutdown-sessions
     server pg1 10.40.0.11:5432 check
     server pg2 10.40.0.12:5432 check
     server pg3 10.40.0.13:5432 check
 ```
 
-The accepted application connection goes to port `5432`, while each health check explicitly connects to Patroni on `8008`. Patroni documents `/primary` (and `/read-write`) as the role-aware endpoint for a running primary that holds the leader lock. Do not replace it with a TCP check of `5432`: a healthy replica also listens there.
+HAProxy accepts application connections on port `5000` and forwards them to PostgreSQL on port `5432`, while each health check explicitly connects to Patroni on `8008`. `init-state fully-down` keeps servers out of rotation on a fresh start until they pass the configured `rise 2` checks, avoiding a window in which a replica is treated as eligible before the role checks run. Patroni documents `/primary` (and `/read-write`) as the role-aware endpoint for a running primary that holds the leader lock. Do not replace it with a TCP check of `5432`: a healthy replica also listens there.
 
-`on-marked-down shutdown-sessions` intentionally closes HAProxy streams attached to a server when that server becomes `DOWN`. Without it, HAProxy changes where new connections go but existing streams can remain attached to the old node. The interruption is visible to clients, so applications still need bounded reconnect and whole-transaction retry logic.
+`on-marked-down shutdown-sessions` intentionally closes HAProxy streams attached to a server when that server becomes `DOWN`. Without it, HAProxy changes where new connections go but existing streams can remain attached to the old node. The interruption is visible to clients, so applications need bounded reconnect logic. Retry an interrupted transaction as a whole only when its outcome is known or the operation is idempotent or deduplicated; a lost connection around a write or `COMMIT` can leave the outcome unknown.
 
 Validate the file before reloading one proxy at a time:
 
@@ -95,6 +95,7 @@ vrrp_instance POSTGRES_VIP {
     nopreempt
 
     unicast_src_ip 10.40.0.21
+    check_unicast_src
     unicast_peer {
         10.40.0.22
     }
@@ -109,11 +110,11 @@ vrrp_instance POSTGRES_VIP {
 }
 ```
 
-On `proxy2`, use `unicast_src_ip 10.40.0.22`, peer `10.40.0.21`, and a lower priority such as `100`. Keep `virtual_router_id`, advertisement interval, VIP, and interface semantics aligned. Both nodes start in `BACKUP` state because Keepalived documents that `nopreempt` does not work with an initial `MASTER` state. `nopreempt` avoids moving the VIP back merely because the preferred proxy recovered, reducing unnecessary client disruption.
+On `proxy2`, use `unicast_src_ip 10.40.0.22`, peer `10.40.0.21`, and a lower priority such as `100`. Choose a `virtual_router_id` that does not collide with another VRRP instance on the same LAN, and keep the value, advertisement interval, VIP, and interface semantics aligned between these proxies. Both nodes start in `BACKUP` state because Keepalived documents that `nopreempt` does not work with an initial `MASTER` state. `nopreempt` avoids moving the VIP back merely because the preferred proxy recovered, reducing unnecessary client disruption.
 
-Tracking the process prevents a dead HAProxy from holding the VIP, but it does not prove the complete database path works. Monitor HAProxy's backend state and run an external SQL probe through the VIP. Do not make Keepalived relinquish the VIP merely because all Patroni backends are briefly down: moving to the other identical HAProxy cannot repair a database election, and repeated VIP movement makes diagnosis harder.
+Tracking the process prevents a proxy with no matching HAProxy process from holding the VIP, but it does not prove that HAProxy is responsive or that the complete database path works. Monitor HAProxy's backend state and run an external SQL probe through the VIP. Do not make Keepalived relinquish the VIP merely because all Patroni backends are briefly down: moving to the other identical HAProxy cannot repair a database election, and repeated VIP movement makes diagnosis harder.
 
-VRRP advertisements must be allowed between the two hosts. Unicast is useful where multicast is unavailable, but it is not a substitute for network policy. Restrict the peers and protect the proxy management plane. Legacy VRRP password authentication is not encryption and should not be treated as protection against a hostile network.
+VRRP advertisements must be allowed between the two hosts. Keepalived's unicast mode is useful where multicast is unavailable, but it is not a substitute for network policy. `check_unicast_src` rejects advertisements whose source is not in `unicast_peer`; also restrict the peers at the network layer and protect the proxy management plane. Legacy VRRP password authentication is not encryption and should not be treated as protection against a hostile network.
 
 ## Test each failure independently
 
@@ -127,14 +128,14 @@ psql "host=postgres-write.example.net port=5000 dbname=app user=app sslmode=veri
   -c "SELECT inet_server_addr(), pg_is_in_recovery();"
 ```
 
-The SQL result must show `pg_is_in_recovery() = false`. Then stage controlled tests:
+The direct Patroni probe returns `200` only when `pg1` is the current primary; `503` is expected there if another member leads. Probe all three members if you want to confirm that exactly one returns `200`. The SQL result must show `pg_is_in_recovery() = false`. Then stage controlled tests:
 
 1. Stop HAProxy on the VIP owner. Confirm the VIP appears on the other proxy and a fresh SQL connection succeeds.
 2. Restore HAProxy. With `nopreempt`, confirm ownership stays where it is.
 3. Perform a Patroni switchover. Confirm the VIP does not move, HAProxy marks the old database down, and new sessions reach the new primary.
 4. Block VRRP only in an isolated test environment and observe the result from both sides. A peer partition can make both Keepalived instances become `MASTER`; VRRP alone cannot guarantee one VIP owner when the proxies cannot hear each other. If duplicate ownership is unacceptable, add an external fencing mechanism or use a platform load balancer whose control plane provides that guarantee.
 
-Measure the total interruption rather than promising zero downtime. It includes Patroni election/promotion time, HAProxy `fall` detection, Keepalived detection if a proxy failed, neighbor-cache convergence, and application reconnect delay. Existing PostgreSQL sessions are not migrated.
+Measure the total interruption rather than promising zero downtime. It includes Patroni election/promotion time, HAProxy role-check convergence (`fall` and `rise` thresholds), Keepalived detection if a proxy failed, neighbor-cache convergence, and application reconnect delay. Existing PostgreSQL sessions are not migrated.
 
 ## Know when a floating VIP is the wrong primitive
 
