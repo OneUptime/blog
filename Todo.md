@@ -136,7 +136,6 @@
 
 ## Grafana Beyla
 
-3. How to Configure the `beyla.ebpf` Component in Grafana Alloy and Export Traces to Tempo
 4. Why Does Beyla Emit Metrics but No Traces? Following the OTLP Pipeline from Alloy to Tempo
 5. How to Fix Beyla's "Operation Not Permitted" eBPF Error in Kubernetes
 6. Which Linux Capabilities, `hostPID`, and AppArmor Settings Does Beyla Need Without Privileged Mode?
