@@ -133,7 +133,6 @@
 
 ## Postgres HA
 
-20. Why Won't Patroni Reinitialize a Failed Replica? Debugging Bootstrap Methods, Slots, and Permissions
 
 ## Grafana Beyla
 
