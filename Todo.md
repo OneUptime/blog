@@ -133,7 +133,6 @@
 
 ## Postgres HA
 
-13. How to Drain or Kill Stale Client Sessions During a PostgreSQL Primary Failover
 14. How to Split Read and Write Traffic in a Patroni Cluster Without Sending Writes to a Replica
 15. How to Exclude a Patroni Replica from Promotion While Keeping It Available for Reads
 16. How to Set `maximum_lag_on_failover` So Patroni Does Not Promote a Stale Replica
