@@ -139,7 +139,6 @@
 
 ## Rundeck
 
-16. How to Call a Remediation Job from a Rundeck Step Error Handler Without Hiding the Failure
 17. How to Prevent Overlapping Rundeck Executions for Long-Running Scheduled Jobs
 18. How to Put Rundeck Behind an HTTPS Reverse Proxy Without Broken Redirects or Exposed Port 4440
 19. How to Back Up Rundeck Projects, Job Definitions, Key Storage, and Execution History Before an Upgrade
