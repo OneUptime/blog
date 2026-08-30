@@ -139,7 +139,6 @@
 
 ## Rundeck
 
-13. How to Run a Rundeck Job Through the API with Options and a Dynamic Node Filter
 14. How to Chain Rundeck Jobs and Pass Options and Data Between Job Reference Steps
 15. Why Doesn't Rundeck Retry a Failed Job Reference? Designing Retries at the Right Level
 16. How to Call a Remediation Job from a Rundeck Step Error Handler Without Hiding the Failure
