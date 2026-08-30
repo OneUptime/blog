@@ -139,7 +139,6 @@
 
 ## Rundeck
 
-2. Why Does Rundeck Say "SSH Key File Does Not Exist" or "Invalid Private Key"?
 3. How to Import an Ansible Inventory into Rundeck and Fix "No Matched Nodes"
 4. Why Does Rundeck Miss New or Changed Inventory Hosts? Controlling Node Source Refresh
 5. How to Pass a Job Option into a Rundeck Node Filter for Dynamic Target Selection
