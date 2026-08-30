@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Grafana, Prometheus, Cardinality, HTTP, Observability
 
-Description: Map dynamic request paths to stable HTTP routes in Grafana Beyla with explicit patterns, heuristic fallback, and bounded low-cardinality matching.
+Description: Map dynamic request paths to stable HTTP routes in Grafana Beyla with explicit patterns, heuristic fallback, and per-segment cardinality control.
 
 ---
 
@@ -29,14 +29,14 @@ routes:
 
 Both `{name}` and `:name` identify a variable segment. The wildcard `*` matches a prefix, so `/assets/*` intentionally groups every nested asset path. Requests to `/users/123` and `/users/456` now share `http.route=/users/{user_id}`.
 
-Use explicit patterns for high-volume public APIs and SLO routes. They preserve useful operation names without waiting for a heuristic to learn that a segment is dynamic.
+Use explicit patterns for high-volume public APIs and SLO routes. They preserve useful operation names without relying on heuristic detection or waiting for low-cardinality mode to observe enough unique children.
 
 ## Choose the unmatched policy carefully
 
 Current Beyla supports four useful unmatched behaviors:
 
-- `heuristic` replaces segments that look numeric, random, or non-word-like. It is the default and requires little configuration, but human-looking identifiers can remain unique.
-- `low-cardinality` starts with heuristics and collapses a path segment after its number of unique children exceeds `max_path_segment_cardinality`.
+- `heuristic` replaces segments that look numeric, random, or non-word-like. It requires little configuration, but human-looking identifiers can remain unique.
+- `low-cardinality` starts with heuristics and collapses a path segment after its number of unique children exceeds `max_path_segment_cardinality`. It is the current Beyla default.
 - `wildcard` assigns a generic `/**` route. Cardinality is minimal but route-level diagnosis is lost.
 - `unset` leaves `http.route` absent for unmatched paths.
 
@@ -82,7 +82,7 @@ attributes:
     http_*:
       exclude:
         - url.path
-        - http_path
+        - url_path
 ```
 
 Beyla accepts OpenTelemetry and Prometheus naming forms in attribute selection. Excluding the raw path ensures a normalized `http.route` is not undermined by a second high-cardinality label.
@@ -109,13 +109,13 @@ topk(20,
 )
 ```
 
-Metric names and semantic-convention labels can differ between legacy and OpenTelemetry metric modes, so confirm the names at the scrape or ingestion endpoint before copying a query into an alert.
+Metric and attribute names can differ between OpenTelemetry semantic-convention versions and between OpenTelemetry and Prometheus export formats, so confirm the names at the scrape or ingestion endpoint before copying a query into an alert.
 
 After rollout, look for UUIDs, numeric IDs, hashes, dates, and usernames that remain in `http_route`. Add explicit patterns for important endpoints and lower the segment threshold only after considering how much legitimate static route diversity would be collapsed.
 
 ## Conclusion
 
-Normalize at Beyla before the metric reaches Prometheus. Explicit patterns provide immediate, meaningful routes; `low-cardinality` is a bounded fallback for unknown paths; and raw path attributes should remain excluded. Validate the resulting label set with real traffic and repeat the review whenever an API introduces new dynamic path shapes.
+Normalize at Beyla before the metric reaches Prometheus. Explicit patterns provide immediate, meaningful routes; `low-cardinality` is an adaptive fallback with per-segment cardinality control; and raw path attributes should remain excluded. Validate the resulting label set with real traffic and repeat the review whenever an API introduces new dynamic path shapes.
 
 ## Official Documentation
 
