@@ -49,7 +49,7 @@ roleRef:
   name: beyla-metadata-reader
 ```
 
-ReplicaSet ownership lets Beyla derive a Deployment identity for normal Deployment Pods. Services are especially useful for network endpoint decoration, and Nodes provide node identity. No create, update, patch, or delete permission is required.
+ReplicaSet ownership lets Beyla derive a Deployment identity for normal Deployment Pods. Services and Nodes support network endpoint decoration, and Nodes can also support cluster-name detection. No create, update, patch, or delete permission is required.
 
 Use a ClusterRole because a node-level DaemonSet can observe workloads from every namespace. A namespace-scoped Role would produce partial metadata for Pods outside that namespace.
 
@@ -90,7 +90,7 @@ Cloud environments may allow automatic cluster-name detection. Set a stable expl
 With decoration enabled, Beyla can add attributes including:
 
 - `k8s.namespace.name`
-- `k8s.deployment.name`, `k8s.statefulset.name`, `k8s.daemonset.name`, or `k8s.replicaset.name`
+- `k8s.deployment.name`, `k8s.statefulset.name`, `k8s.daemonset.name`, and `k8s.replicaset.name`, as applicable
 - `k8s.node.name`
 - `k8s.pod.name`, `k8s.pod.uid`, and `k8s.pod.start_time`
 - `k8s.container.name`
@@ -100,9 +100,9 @@ Not every workload has every owner attribute. A standalone Pod has no Deployment
 
 ## Account for metric attribute selection
 
-OTLP spans carry Kubernetes metadata as resource attributes. Metrics require more care because Beyla exposes a bounded default label set to control cardinality. The exported-metrics reference marks which attributes are shown or hidden for each instrument.
+OTLP spans and metrics carry Kubernetes metadata as resource attributes. With Beyla's native Prometheus exporter, application metrics expose Kubernetes metadata as labels, and `attributes.select` can restrict the per-metric label set. The exported-metrics reference marks which attributes are shown or hidden for each instrument.
 
-Use `attributes.select` only for labels needed by a concrete query. For example, a deployment-level HTTP view might include namespace, deployment, and node while deliberately excluding Pod UID:
+For Prometheus metrics, use `attributes.select` only for labels needed by a concrete query. For example, a deployment-level HTTP view might include namespace, deployment, and node while deliberately excluding Pod UID:
 
 ```yaml
 attributes:
@@ -121,9 +121,9 @@ attributes:
         - k8s.node.name
 ```
 
-An `include` list replaces the default set for matching metrics, so preserve every dimension your dashboards require. Attribute names can appear in OpenTelemetry dotted form or Prometheus underscore form depending on the exporter and query layer.
+An `include` list replaces the default set for matching Prometheus metrics, so preserve every dimension your dashboards require. Attribute names can appear in OpenTelemetry dotted form or Prometheus underscore form depending on the exporter and query layer.
 
-Pod name and UID multiply series by replica and rollout. Keep them on traces for debugging, but prefer Deployment, namespace, and cluster labels for long-lived metrics. Add node only when node-level skew is an actual investigation need.
+Pod name and UID multiply series by replica and rollout. With Prometheus metrics, omit them from the metric selector while retaining them on traces, and prefer Deployment, namespace, and cluster labels for long-lived metrics. For OTLP metrics, per-metric selectors do not remove Kubernetes resource attributes. `attributes.select.resource` can filter them, but it applies to both OTLP metrics and traces; use a metrics-only downstream pipeline when you need to retain Pod details on traces but remove them from OTLP metrics. Add node only when node-level skew is an actual investigation need.
 
 ## Control informer cost in large clusters
 
@@ -137,7 +137,7 @@ attributes:
     disable_informers: ["service"]
 ```
 
-`meta_restrict_local_node` reduces memory by retaining local Pod and Node metadata, but cross-node destination metadata in network and service-graph metrics can become incomplete. Disabling the Service or Node informer further reduces API activity but removes related metadata. Apply these only after deciding which attributes the use case requires.
+`meta_restrict_local_node` reduces memory by retaining local Pod and Node metadata, but cross-node destination metadata in network and service-graph metrics can become incomplete. Disabling the Service or Node informer further reduces API activity but can leave related metadata incomplete. Apply these only after deciding which attributes the use case requires.
 
 ## Verify RBAC and enrichment
 
@@ -156,7 +156,7 @@ Generate new traffic, then inspect one Tempo span's Resource section and one fre
 
 ## Conclusion
 
-Kubernetes enrichment is a join between process telemetry and read-only API metadata. Grant informer RBAC, enable `attributes.kubernetes`, set a stable cluster identity, and expose only the metric labels needed for aggregation. Keep high-cardinality Pod details in traces unless a specific metric investigation justifies them.
+Kubernetes enrichment is a join between process telemetry and read-only API metadata. Grant informer RBAC, enable `attributes.kubernetes`, and set a stable cluster identity. For native Prometheus metrics, expose only the labels needed for aggregation. For OTLP, use metrics-only downstream filtering when you want to retain high-cardinality Pod details on traces without carrying them on metrics.
 
 ## Official Documentation
 
