@@ -139,7 +139,6 @@
 
 ## Rundeck
 
-18. How to Put Rundeck Behind an HTTPS Reverse Proxy Without Broken Redirects or Exposed Port 4440
 19. How to Back Up Rundeck Projects, Job Definitions, Key Storage, and Execution History Before an Upgrade
 20. Why Does Rundeck Start with an Empty Project List After a Database Migration? Recovering Jobs and History
 
