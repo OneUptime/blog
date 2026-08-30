@@ -8,7 +8,7 @@ Description: Keep long-running Rundeck schedules from overlapping by using singl
 
 ---
 
-A job scheduled every ten minutes will eventually overlap if one run sometimes takes fifteen. Overlap can duplicate deployments, race database maintenance, or let two cleanup runs delete data based on different snapshots.
+A job scheduled every ten minutes can overlap if concurrent executions are allowed and one run takes fifteen. Overlap can duplicate deployments, race database maintenance, or let two cleanup runs delete data based on different snapshots.
 
 Rundeck's default single-execution setting solves the common case, but it is only a per-job guard. A reliable design also decides what should happen to triggers that arrive while a run is active and whether different jobs contend for the same external resource.
 
@@ -18,6 +18,8 @@ Rundeck jobs use **Single Execution** by default. In the job editor, leave **Mul
 
 ```yaml
 - name: Nightly inventory reconciliation
+  description: ''
+  loglevel: INFO
   group: maintenance
   multipleExecutions: false
   scheduleEnabled: true
@@ -41,7 +43,7 @@ Monitor for prevented starts so missed work is visible. If every scheduled occur
 There are three useful policies:
 
 - **Reject while busy:** Leave Multiple Executions disabled. This is usually right for periodic reconciliation because the active run should already converge the system.
-- **Queue every trigger:** Rundeck's per-job Job Queue feature accepts starts and runs them sequentially. The official feature is commercial, persistent across restart, and overrides the Multiple Executions setting. The current Job Queue documentation also says jobs with secure options are not supported, so do not choose this policy until every required option is compatible. Confirm that queued duplicates make sense before enabling it.
+- **Queue every trigger:** Rundeck's per-job Job Queue feature accepts starts and runs them sequentially. The official feature is commercial, preserves queued executions across a system restart, and overrides the Multiple Executions setting. The current Job Queue documentation also says jobs with secure options do not support queuing. If every trigger must be accepted, leave the queue-size limit empty or set it to `0`; when a finite limit is reached, further executions are rejected until space is available. Confirm that queued duplicates make sense before enabling it.
 - **Coalesce to one later run:** Record that another reconciliation is needed, then run once after the current execution finishes. Rundeck's basic single-execution switch does not itself implement this policy; use an external scheduler, event system, or an idempotent control job.
 
 Do not enable Multiple Executions merely to stop rejected schedule events. That converts a visibility issue into an unsafe concurrency issue.
@@ -69,9 +71,9 @@ Use a resource-scoped lock outside the per-job setting when several jobs share a
 - a cloud-provider operation lock; or
 - a purpose-built Rundeck locking plugin whose failure and lease behavior you have tested.
 
-A simple database-backed worker should acquire the lock atomically, attach the Rundeck execution ID as owner metadata, renew a bounded lease if needed, and release it in a cleanup path. Never use an unbounded lock that survives a crashed worker forever.
+A worker using a database-backed lease should acquire it atomically, attach the Rundeck execution ID as owner metadata, renew the bounded lease if needed, stop before further mutations if renewal or ownership is lost, and release it in a cleanup path only if it still owns the lease. Where work can outlive a lease, use fencing tokens or conditional writes so a stale owner cannot overwrite a newer run. Never use an unbounded lock that survives a crashed worker forever.
 
-File locks work only when all executions share one filesystem and host. They are not a distributed lock across Rundeck cluster members or remote runners.
+Host-local file locks protect only contenders that use the same lock on the same host. Do not assume they coordinate Rundeck cluster members or remote runners: shared-filesystem locking varies by protocol, server, and mount options and must be tested.
 
 ## Make the Work Idempotent
 
