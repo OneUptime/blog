@@ -17,12 +17,17 @@ Before an upgrade, inventory each storage backend and capture a consistent recov
 Record these settings before copying anything:
 
 ```bash
-sudo grep -E '^(dataSource\.(url|driverClassName|dialect|dbCreate)|rundeck\.(storage|config\.storage|projectsStorage)|framework\.(projects|logs))' \
+sudo grep -E \
+  -e '^[[:space:]]*dataSource\.(url|driverClassName|dialect|dbCreate)[[:space:]=:]' \
+  -e '^[[:space:]]*rundeck\.projectsStorageType[[:space:]=:]' \
+  -e '^[[:space:]]*rundeck\.(storage|config\.storage)\.(provider|converter)\.[0-9]+\.(type|path|removePathPrefix|config\.(baseDir|encryptorType|algorithm|provider|passwordEnvVarName|passwordSysPropName|keyObtentionIterations))[[:space:]=:]' \
+  -e '^[[:space:]]*rundeck\.execution\.logs\.(fileStoragePlugin|localFileStorageEnabled|streamingReaderPlugin|streamingWriterPlugins)[[:space:]=:]' \
+  -e '^[[:space:]]*framework\.(projects|logs|var)\.dir[[:space:]=:]' \
   /etc/rundeck/rundeck-config.properties \
   /etc/rundeck/framework.properties 2>/dev/null
 ```
 
-This intentionally excludes `dataSource.password`. Redact credentials embedded in a JDBC URL before saving the output. Also inspect environment-variable names, container-secret references, Helm values, or systemd overrides; they may replace file settings, but do not copy secret values into the manifest.
+This selection excludes `dataSource.password` and arbitrary storage-provider or converter `.config.*` values, which can contain credentials; it includes only non-secret filesystem and legacy encryption settings. Redact credentials embedded in a JDBC URL before saving the output. Also inventory the selected providers' non-secret settings, such as remote endpoints, buckets, mounts, and object prefixes, and inspect environment-variable names, container-secret references, Helm values, or systemd overrides. They may replace file settings, but do not copy secret values into the manifest.
 
 Classify the state:
 
@@ -31,14 +36,14 @@ Classify the state:
 | Jobs, execution records, schedules | Rundeck database |
 | Project configuration | Database by default in current Rundeck, or configured filesystem/plugin storage |
 | Key Storage | Database, filesystem under `$RDECK_BASE/var/storage`, or an external plugin |
-| Execution output | Local logs directory or configured log-storage plugin |
+| Execution output | Local logs directory and/or configured log-storage plugin |
 | Resource definitions and project files | Project filesystem or configured project storage/source |
-| Server configuration, file-based ACLs, realm files | `/etc/rundeck` or `$RDECK_BASE/server/config` |
+| Server configuration, file-based ACLs, realm files | `/etc/rundeck`; for launcher installs, `$RDECK_BASE/etc` and `$RDECK_BASE/server/config` |
 | Plugins | `libext` and any provisioned plugin directories |
 
-Keep encryption-converter passwords and external-vault credentials in the recovery plan. Encrypted blobs are useless if the destination lacks the same converter configuration and secret.
+Keep storage encryption-converter passwords, any configuration-property encryption master password, and external-vault credentials in the recovery plan. Encrypted storage content and `ENC(...)` configuration values cannot be decrypted if the destination lacks the corresponding encryption configuration and secret.
 
-If the edition uses database-backed ACL storage, those policies depend on the database backup rather than the file-copy row above. Inventory the effective ACL backend instead of assuming every policy is an `.aclpolicy` file.
+Database-stored ACLs—including policies managed through the System or Project ACL APIs and, where enabled, the Enterprise ACL Storage Layer—depend on the database backup rather than the file-copy row above. Inventory the effective ACL backends instead of assuming every policy is an `.aclpolicy` file.
 
 ## Export Jobs and Project Archives
 
@@ -63,7 +68,7 @@ Do not treat the archive as the only backup. In particular, externally managed n
 
 ## Take a Consistent Database Backup
 
-Prevent configuration changes and new executions during the final backup window. Stop Rundeck, or use a database-native consistent snapshot procedure that your DBA has tested.
+Put Rundeck in passive execution mode, wait for running executions and queued log-storage uploads to finish, and prevent configuration changes during the final backup window. Stop Rundeck, or use a database-native consistent snapshot procedure that your DBA has tested.
 
 For PostgreSQL, a custom-format logical dump is one option:
 
@@ -77,6 +82,8 @@ pg_dump \
 
 pg_restore --list backup/rundeck.dump > backup/rundeck.dump.contents
 ```
+
+A per-database `pg_dump` does not include cluster-wide roles or tablespace definitions. Capture them separately where you manage the PostgreSQL cluster, or document how to recreate the Rundeck database role, ownership, and grants before restoration.
 
 Use equivalent supported tools for MySQL, MariaDB, SQL Server, or Oracle. Include all schemas, tables, indexes, sequences, and large objects/BLOBs. Database-backed Key Storage and project storage depend on the BLOB data being present.
 
@@ -95,7 +102,9 @@ With Rundeck stopped for consistency, copy the paths that actually exist in your
 /var/lib/rundeck/projects/
 ```
 
-Historical and launcher installations use different paths such as `$RDECK_BASE/server/data`, `$RDECK_BASE/var/logs`, `$RDECK_BASE/var/storage`, and `$RDECK_BASE/projects`. Follow configured paths rather than copying this example blindly.
+Also securely copy the applicable service defaults file (`/etc/default/rundeckd` on DEB or `/etc/sysconfig/rundeckd` on RPM) and any systemd drop-ins. These can hold path and JVM overrides as well as secret values or references.
+
+Historical and launcher installations use different paths such as `$RDECK_BASE/etc`, `$RDECK_BASE/server/config`, `$RDECK_BASE/server/data`, `$RDECK_BASE/var/logs`, `$RDECK_BASE/var/storage`, `$RDECK_BASE/libext`, and `$RDECK_BASE/projects`. Follow configured paths rather than copying this example blindly.
 
 Preserve owners, modes, symlinks, ACLs, and extended attributes. For containers or Kubernetes, back up the persistent volumes and the deployment configuration that mounts them. For remote execution-log or secret-storage plugins, capture provider configuration and verify that retained remote objects remain readable from a restored instance.
 
@@ -107,17 +116,17 @@ Create a manifest containing:
 - Java version and installation method;
 - plugin names, versions, and checksums;
 - database engine and version;
-- storage-provider and encryption-converter settings;
+- storage-provider, storage-converter, and configuration-property encryption settings;
 - paths or object prefixes for execution logs;
 - exported project and job names; and
 - checksums for every backup artifact.
 
 Store the backup outside the machine being upgraded. Protect it as production-sensitive data because it can contain credentials, job arguments, node details, and execution output.
 
-The decisive validation is a restore rehearsal. In an isolated environment, restore the database and files with the old Rundeck version, provide the same encryption secrets, and confirm:
+The decisive validation is a restore rehearsal. In an isolated environment, restore the database and files with the old Rundeck version. Before the first restored startup, configure `rundeck.executionMode=passive` and enforce network controls that block production nodes and integrations. Provide the same encryption secrets, start Rundeck, and confirm:
 
 - all expected projects and jobs appear;
-- schedules are disabled until deliberately re-enabled;
+- no schedule can run while the server is passive, and project/job schedules are disabled before execution mode is deliberately re-enabled;
 - ACLs still restrict access;
 - Key Storage entries can be used without exposing their values;
 - historical execution metadata and output are readable; and
