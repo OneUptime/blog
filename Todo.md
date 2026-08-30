@@ -136,7 +136,6 @@
 
 ## Grafana Beyla
 
-20. Beyla or OpenTelemetry Auto-Instrumentation: How to Choose for HTTP, gRPC, Database, and Messaging Workloads
 
 ## Rundeck
 
