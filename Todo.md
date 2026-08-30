@@ -133,7 +133,6 @@
 
 ## Postgres HA
 
-17. How to Pause Patroni for Maintenance Without Triggering an Accidental Failover
 18. How to Test PostgreSQL HA Safely: Primary Crash, Network Partition, DCS Loss, and Proxy Failure
 19. How to Design Patroni Across Two Data Centers Without Losing Quorum or Promoting Both Sides
 20. Why Won't Patroni Reinitialize a Failed Replica? Debugging Bootstrap Methods, Slots, and Permissions
