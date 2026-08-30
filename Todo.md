@@ -139,7 +139,6 @@
 
 ## Rundeck
 
-20. Why Does Rundeck Start with an Empty Project List After a Database Migration? Recovering Jobs and History
 
 ## KubeVela
 
