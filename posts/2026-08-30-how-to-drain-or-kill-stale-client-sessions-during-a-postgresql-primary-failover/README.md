@@ -66,7 +66,7 @@ printf 'shutdown sessions server patroni_primary/pg1\n' \
   | socat stdio /run/haproxy/admin.sock
 ```
 
-The socket must be configured at administrative level and protected by filesystem permissions. Resolve `pg1` from fresh Patroni state first. A runtime action changes connections, not PostgreSQL roles.
+The socket must be configured at administrative level and protected by filesystem permissions. Resolve `pg1` from fresh Patroni state first, and ensure HAProxy has already marked it `DOWN` or placed it in maintenance. `shutdown sessions server` terminates current streams, but it does not change HAProxy server selection or PostgreSQL roles.
 
 ## Choose the correct PgBouncer command
 
@@ -77,7 +77,7 @@ psql -h pgbouncer.internal -p 6432 -U pgbouncer_admin pgbouncer \
   -c 'SHOW SERVERS;'
 ```
 
-`SHOW SERVERS` includes the downstream address, state, connection time, and `close_needed`. Then choose one of the documented controls:
+`SHOW SERVERS` includes the immediate downstream address (HAProxy in this topology), state, connection time, and `close_needed`. The account used for the process-control commands below must be listed in `admin_users`. Then choose one of the documented controls:
 
 ### Graceful, planned switchover
 
@@ -106,7 +106,7 @@ KILL app;
 RESUME app;
 ```
 
-`KILL` immediately drops client and server connections for the database (not the admin database), and new clients wait for `RESUME`. Use it only when retaining old connections is more dangerous than interrupting all clients. To target one client, get its `id` from `SHOW CLIENTS` and use `KILL_CLIENT id`.
+`KILL` immediately drops client and server connections for the database (not the admin database), and new clients wait for `RESUME`. Use it only when retaining old connections is more dangerous than interrupting all clients. To target one client, get its `id` from `SHOW CLIENTS` and use `KILL_CLIENT id`; this also terminates any server connection currently linked to that client.
 
 ## Terminate database backends only with a narrow predicate
 
@@ -157,7 +157,7 @@ SELECT inet_server_addr(),
        current_setting('transaction_read_only');
 ```
 
-Expect `false` and `off`, then verify PgBouncer `SHOW SERVERS` and HAProxy backend state contain no old writer connection.
+Expect `false` and `off`, then use PgBouncer `SHOW SERVERS` connection times to confirm that no server connection predates the cutover, and verify that HAProxy reports no current stream to the old writer.
 
 ## Official Documentation
 
