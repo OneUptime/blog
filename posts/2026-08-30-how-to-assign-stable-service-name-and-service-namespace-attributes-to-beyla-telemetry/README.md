@@ -8,21 +8,23 @@ Description: Give Beyla metrics and traces stable OpenTelemetry service identiti
 
 ---
 
-Service identity is the join key for dashboards, traces, service graphs, and alerts. If a rollout changes `service.name` from a Deployment name to a generated Pod name, the backend sees a new service. If two unrelated applications share a name, their telemetry is merged.
+The `service.namespace` and `service.name` pair is the service identity used to join dashboards, traces, service graphs, and alerts. If a rollout changes `service.name` from a Deployment name to a generated Pod name, the backend sees a new service. If two unrelated applications share both identity attributes, the backend treats them as the same logical service.
 
 Beyla now follows OpenTelemetry Operator-style resource discovery. The old `name` and `namespace` fields inside `discovery.instrument` still exist but are deprecated because one discovery entry can match multiple services and assign all of them the same identity.
 
 ## Understand Beyla's precedence
 
-Beyla chooses `service.name` and `service.namespace` in this order:
+For each attribute not explicitly set by the deprecated discovery fields, Beyla derives `service.name` and `service.namespace` independently in this order:
 
-1. `OTEL_SERVICE_NAME` and `OTEL_RESOURCE_ATTRIBUTES` on the **instrumented application process or container**.
+1. `OTEL_SERVICE_NAME` for the name and values in `OTEL_RESOURCE_ATTRIBUTES` for either attribute on the **instrumented application process or container**. If both set `service.name`, `OTEL_SERVICE_NAME` wins.
 2. Pod annotations `resource.opentelemetry.io/service.name` and `resource.opentelemetry.io/service.namespace`.
-3. Pod labels: `app.kubernetes.io/name` becomes the service name and `app.kubernetes.io/part-of` becomes the service namespace.
-4. Kubernetes owner metadata, preferring Deployment and then other workload owners before Pod and container names.
-5. The executable name.
+3. Pod labels: the first of `app.kubernetes.io/instance` and `app.kubernetes.io/name` becomes the service name, and `app.kubernetes.io/part-of` becomes the service namespace.
+4. For the service name, Kubernetes owner metadata, preferring Deployment and then other workload owners before Pod and container names.
+5. For the service name, the executable name.
 
-This hierarchy explains many apparent overrides. Setting a Pod annotation does not beat an `OTEL_SERVICE_NAME` already present in the application container. Also, setting that variable on the Beyla DaemonSet names Beyla itself; it does not name every process Beyla observes.
+If no higher-precedence source sets `service.namespace`, Beyla uses the Kubernetes namespace, or leaves the attribute empty outside Kubernetes.
+
+This hierarchy explains many apparent overrides. Setting a Pod annotation does not beat an `OTEL_SERVICE_NAME` already present in the application container. Do not set that variable on the Beyla DaemonSet: Beyla still consumes it as the deprecated global `service_name` setting, which can assign one name to multiple matched processes.
 
 ## Use Pod-template annotations for an explicit identity
 
@@ -35,6 +37,7 @@ metadata:
   name: checkout-v2
   namespace: retail-prod
 spec:
+  replicas: 2
   selector:
     matchLabels:
       app.kubernetes.io/name: checkout
@@ -58,7 +61,7 @@ Here, the annotations win over the labels and owner name, so a Deployment rename
 
 ## Set resources from the application when appropriate
 
-An application or injected SDK may already define standard resources:
+An application or injected SDK may already be configured with standard resource environment variables:
 
 ```yaml
 env:
@@ -68,7 +71,7 @@ env:
     value: service.namespace=retail,service.version=2.4.1,deployment.environment.name=production
 ```
 
-Because process-level OpenTelemetry resources have the highest precedence, this is the best option when the service owns its telemetry contract. Use exactly the same values for SDK and Beyla pipelines so metrics, traces, and service graphs join correctly.
+Because these process-level OpenTelemetry environment variables have the highest precedence in Beyla's resource discovery, this is the best option when the service owns its telemetry contract. Use exactly the same values for SDK and Beyla pipelines so metrics, traces, and service graphs join correctly.
 
 Avoid setting replica-specific values such as Pod name in `service.name`. Put those in `k8s.pod.name` or leave instance decoration to Beyla.
 
@@ -105,13 +108,13 @@ discovery:
 
 Every matching process can inherit the same service identity. Use it only as a temporary compatibility measure for a selector proven to match one logical service, then migrate to application resources, annotations, or labels.
 
-## Validate all three signal paths
+## Validate metrics and traces
 
 Generate traffic to two replicas and inspect:
 
 - a Beyla RED metric grouped by `service_name` and `service_namespace` in Prometheus naming;
 - a Tempo span's Resource section for `service.name` and `service.namespace`;
-- `service.instance.id`, which should differ between replicas;
+- `service.instance.id` in OTLP or Tempo (or `instance` in Beyla's Prometheus output), which should differ between replicas;
 - Kubernetes resource attributes such as `k8s.namespace.name` and `k8s.deployment.name`.
 
 If the name is unexpected, check the precedence from top to bottom. Inspect the application container environment, not only the Deployment YAML, because admission webhooks can inject `OTEL_*` variables.
@@ -127,5 +130,5 @@ Treat `service.name` and `service.namespace` as a stable contract. Prefer applic
 - [Beyla service-name and namespace precedence](https://grafana.com/docs/beyla/latest/configure/service-discovery/#override-service-name-and-namespace)
 - [Configure Beyla Kubernetes attributes](https://grafana.com/docs/beyla/latest/configure/metrics-traces-attributes/#kubernetes-decorator)
 - [OpenTelemetry resource semantic conventions](https://opentelemetry.io/docs/specs/semconv/resource/)
-- [OpenTelemetry service resource conventions](https://opentelemetry.io/docs/specs/semconv/resource/#service)
+- [OpenTelemetry service resource conventions](https://opentelemetry.io/docs/specs/semconv/resource/service/)
 - [Kubernetes recommended labels](https://kubernetes.io/docs/concepts/overview/working-with-objects/common-labels/)
