@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: PostgreSQL, Patroni, Maintenance, High Availability, Failover, Database Cluster
 
-Description: Put a Patroni cluster into maintenance mode, verify every member has observed the pause, perform controlled work, and resume safely.
+Description: Put a Patroni cluster into maintenance mode, verify every expected running member has observed the pause, fence any member that cannot be verified, perform controlled work, and resume safely.
 
 ---
 
@@ -16,7 +16,7 @@ Pause is a cluster-wide dynamic state, not a local daemon switch. The safe entry
 patronictl -c /etc/patroni/patroni.yml pause prod-ha --wait
 ```
 
-`--wait` matters: the command does not return successfully until all Patroni members known to the cluster have recognized the paused state. An unreachable member therefore prevents successful completion; without that confirmation, maintenance can begin while one member still follows normal HA behavior.
+`--wait` matters: it polls DCS member data for acknowledgements instead of returning immediately. It is not an inventory or fencing check. Current Patroni bounds this poll to about one HA loop; a stopped member whose DCS key never advances or disappears can be omitted, and a non-acknowledgement message does not produce a nonzero exit status. Require the explicit `Success:` message for the members Patroni did check, compare live membership with the expected inventory, verify that every reachable member's `/patroni` response contains `"pause": true`, and fence any member that cannot be verified before maintenance begins.
 
 ## Decide whether pause is actually needed
 
@@ -60,7 +60,7 @@ patronictl -c /etc/patroni/patroni.yml list prod-ha --extended
 patronictl -c /etc/patroni/patroni.yml show-config prod-ha
 ```
 
-The dynamic configuration should show `pause: true`, and member state should indicate the pause has been observed. Keep the command output with the maintenance record.
+The dynamic configuration should show `pause: true`, and `patronictl list` should display `Maintenance mode: on`. These are cluster-level views; `--extended` does not add a per-member pause field. Confirm `"pause": true` in every expected running member's `/patroni` response, and keep the command and API output with the maintenance record.
 
 Patroni's documented paused behavior is deliberately limited rather than completely inert:
 
@@ -82,7 +82,7 @@ For a controlled outage:
 
 1. Stop new application traffic at the proxy or pooler.
 2. Drain or terminate remaining sessions according to the published deadline.
-3. Pause with `--wait` and verify every member.
+3. Pause with `--wait`, verify every expected running member, and fence every member that cannot be verified.
 4. Execute the documented database procedure, preserving data directories and configuration ownership.
 5. Start PostgreSQL only where the procedure requires it.
 6. Verify roles directly with `pg_is_in_recovery()` before exposing any route.
@@ -99,7 +99,7 @@ SELECT inet_server_addr(),
        current_setting('transaction_read_only');
 ```
 
-There must be exactly one intended writable primary. Confirm every replica follows that primary on the correct timeline and replication is progressing. Check `patronictl list`, PostgreSQL logs, Patroni logs, and proxy backend state.
+Exactly one reachable member should return `pg_is_in_recovery() = false`; in the administrative session used for this check, `transaction_read_only` should be `off` on that intended primary. `transaction_read_only` describes the current transaction, not cluster-wide fencing, so every member that cannot be queried must already be fenced. Confirm every replica follows that primary on the correct timeline and replication is progressing. Check `patronictl list`, PostgreSQL logs, Patroni logs, and proxy backend state.
 
 If maintenance created parallel primaries, do not simply resume and hope Patroni repairs them. Fence client access, choose the authoritative timeline, preserve any divergent data needed for reconciliation, and rebuild or rewind the other node according to a reviewed recovery plan.
 
@@ -113,15 +113,15 @@ patronictl -c /etc/patroni/patroni.yml list prod-ha --extended
 patronictl -c /etc/patroni/patroni.yml show-config prod-ha
 ```
 
-The configuration should no longer show an active pause. Watch several Patroni HA loop iterations. Confirm the leader lock remains stable, replicas keep streaming, no unexpected restart or reinitialize starts, and the proxy sees exactly one write backend.
+The configuration should no longer show an active pause. As with pause, `resume --wait` does not prove that an absent member acknowledged the change. Verify that every expected running member's `/patroni` response no longer contains `"pause": true`, and keep an absent member fenced until it returns and is verified. Watch several Patroni HA loop iterations. Confirm the leader lock remains stable, replicas keep streaming, no unexpected restart or reinitialize starts, and the proxy sees exactly one write backend.
 
 Restore traffic gradually and run a read/write smoke test through the public endpoint. Do not leave the cluster paused after the ticket closes; paused automatic failover is an availability risk that should alert continuously.
 
 ## Handle a member that cannot acknowledge pause
 
-If `pause --wait` cannot complete, do not proceed as though the unreachable node were paused. Determine whether it is down, partitioned, or merely missing REST access. Fence its PostgreSQL and client paths if the maintenance could create a second writer. Only then either restore it so it observes the cluster flag or continue under an explicitly approved degraded procedure.
+If an expected member is absent, unreachable, or does not report `"pause": true`, do not assume that `pause --wait` acknowledged it, even if the command printed `Success`. Determine whether it is down, partitioned from the DCS, or merely missing REST access. A running member with DCS access can observe the flag despite missing REST access, so verify its current DCS member data or another trusted channel; otherwise fence its PostgreSQL and client paths if the maintenance could create a second writer. Only then either restore it so it observes the cluster flag or continue under an explicitly approved degraded procedure.
 
-Similarly, resume is incomplete until every expected member has observed the change. A member returning later will read dynamic state from the DCS, but it should not surprise an unmonitored production cluster.
+Similarly, treat resume as incomplete until every expected running member has observed the change. A member returning later will read dynamic state from the DCS, but keep it fenced until its role and pause state have been verified so that it does not surprise an unmonitored production cluster.
 
 ## Official Documentation
 
@@ -134,4 +134,4 @@ Similarly, resume is incomplete until every expected member has observed the cha
 
 ## Conclusion
 
-Pause Patroni only for maintenance that must step outside its normal HA state machine. Use `pause --wait`, verify every member, fence any unreachable or manually promoted node, and prove exactly one writer before `resume --wait`. Pause disables automatic recovery by design, so treat the whole interval as a controlled operational exception with active monitoring and clear ownership.
+Pause Patroni only for maintenance that must step outside its normal HA state machine. Use `pause --wait`, independently verify every expected running member, fence any absent, unreachable, or manually promoted node, and prove exactly one writer before `resume --wait`. Pause disables automatic recovery by design, so treat the whole interval as a controlled operational exception with active monitoring and clear ownership.
