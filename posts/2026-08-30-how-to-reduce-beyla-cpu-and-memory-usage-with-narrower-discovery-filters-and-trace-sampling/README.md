@@ -48,13 +48,15 @@ Use survey mode before expanding a selector. It reports discovered targets witho
 
 ## Collect only required protocols and signals
 
-If the service SLO covers HTTP and gRPC, do not enable every database, messaging, DNS, GPU, and payload detector:
+If the service SLO covers HTTP and gRPC, enable only those instrumentations rather than database, messaging, DNS, or GPU collection:
 
 ```yaml
+metrics:
+  features: ["application"]
+
 otel_metrics_export:
   endpoint: http://alloy.observability.svc.cluster.local:4318/v1/metrics
   protocol: http/protobuf
-  features: ["application"]
   instrumentations: ["http", "grpc"]
 
 otel_traces_export:
@@ -63,21 +65,16 @@ otel_traces_export:
   instrumentations: ["http", "grpc"]
 ```
 
-Do not enable header or payload extraction without a use case. Beyla keeps auxiliary protocol buffers at zero by default for several enrichment paths, and larger buffers increase work while potentially capturing sensitive data.
+Exporter `instrumentations` do not control the separate HTTP payload detectors; disable unused GraphQL, Elasticsearch/OpenSearch, and AWS detectors under `ebpf.http`. Do not enable HTTP header/body enrichment without a use case. Beyla keeps auxiliary protocol buffers at zero by default for several enrichment paths, and larger buffers increase work while potentially capturing sensitive data.
 
 Process metrics, span metrics, service-graph metrics, network flows, and inter-zone metrics are separate features. Each should have an owner and a dashboard or alert that consumes it.
 
 ## Drop predictable noise at the source
 
-Route filtering prevents low-value HTTP events from moving through the rest of the pipeline:
+Keep unmatched HTTP routes low-cardinality:
 
 ```yaml
 routes:
-  ignored_patterns:
-    - /healthz
-    - /ready
-    - /metrics
-  ignore_mode: all
   unmatched: low-cardinality
 ```
 
@@ -94,7 +91,7 @@ Filters reduce processing and export after instrumentation; they do not eliminat
 
 ## Sample traces with parent-aware decisions
 
-Metrics normally need complete counts, while traces can be sampled. Use a parent-based ratio so downstream services follow an upstream sampling decision:
+Metrics normally need complete counts, while traces can be sampled. Use a parent-based ratio so spans with a captured parent follow its sampling decision:
 
 ```yaml
 otel_traces_export:
@@ -105,7 +102,7 @@ otel_traces_export:
     arg: "0.10"
 ```
 
-This keeps approximately ten percent of new root traces while respecting a parent. Validate that propagated `traceparent` flags and SDK sampling policies agree; independent head sampling at each service creates partial traces.
+This keeps approximately ten percent of new root traces while respecting a captured parent's decision. Ensure trace-context capture and propagation work end to end: outside Go, incoming `traceparent` processing with `ebpf.track_request_headers` is disabled by default, while Beyla's own propagation is also disabled by default and does not support gRPC or HTTP/2. Independent head sampling at each service creates partial traces.
 
 Sampling primarily reduces trace processing, network, and backend ingest. It does not stop Beyla from observing the request needed to generate complete RED metrics.
 
@@ -123,7 +120,7 @@ attributes:
 
 This saves memory and API activity but can remove cross-node destination or Service metadata. Verify every dashboard that depends on those attributes.
 
-If network metrics are enabled, restrict interfaces, protocols, and CIDRs to the real use case. `network.sampling` can reduce packet-event volume, but sampled byte metrics need careful interpretation. Do not enable network collection at all when only application RED telemetry is required.
+If network metrics are enabled, restrict interfaces and protocols to the real use case. Configure `network.cidrs` only when you need CIDR decoration; it does not filter flows. `network.sampling` can reduce packet-event volume, but sampled byte metrics need careful interpretation. Do not enable network collection at all when only application RED telemetry is required.
 
 ## Review the result, not just the limit
 
