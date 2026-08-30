@@ -139,7 +139,6 @@
 
 ## Rundeck
 
-12. Why Does a Rundeck Webhook Return "Failed Webhook Authorization" or HTTP 400?
 13. How to Run a Rundeck Job Through the API with Options and a Dynamic Node Filter
 14. How to Chain Rundeck Jobs and Pass Options and Data Between Job Reference Steps
 15. Why Doesn't Rundeck Retry a Failed Job Reference? Designing Retries at the Right Level
