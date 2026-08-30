@@ -8,7 +8,7 @@ Description: Diagnose Rundeck webhook authorization and bad-request failures by 
 
 ---
 
-A Rundeck webhook request passes through three distinct checks: the generated webhook URL identifies the endpoint, optional HTTP Authorization verifies an additional secret, and the configured event plugin parses and handles the payload. A failure at any one of these layers can look like "the token is wrong," but the remedy depends on the response and server log.
+A Rundeck webhook request passes through four distinct checks: the generated URL token identifies the webhook and authenticates its configured user and roles; that identity must be allowed to `post` to webhooks in the project; optional HTTP Authorization verifies an additional secret; and the configured event plugin parses and handles the payload. A failure at any one of these layers can look like "the token is wrong," but the remedy depends on the response and server log.
 
 ## Reproduce with the Smallest Valid Request
 
@@ -33,7 +33,7 @@ Do not add a `Bearer` prefix unless it is literally part of the value Rundeck ge
 
 Use `curl --verbose` only in a controlled terminal and redact the URL token and headers before sharing output.
 
-## Fix "Failed Webhook Authorization"
+## Fix "Failed webhook authorization"
 
 The optional Authorization string is shown only once after the webhook is saved. The sender must reproduce it exactly in the `Authorization` header. Frequent causes are:
 
@@ -50,7 +50,7 @@ If the one-time value was lost, regenerate it, update the sender's secret atomic
 
 ## Fix HTTP 400 for a Run Job Webhook
 
-The built-in Run Job webhook handles JSON only. Send both syntactically valid JSON and an appropriate content type:
+The built-in Run Job webhook expects a JSON object. Send syntactically valid JSON and label it with the registered JSON media type:
 
 ```text
 Content-Type: application/json
@@ -61,7 +61,7 @@ These requests commonly produce a bad request or handler error:
 ```text
 payload=alert                    # form-encoded, not JSON
 {"status":"firing",}           # trailing comma
-Content-Type: text/plain         # wrong media type for this handler
+["firing"]                       # valid JSON, but not a JSON object
 ```
 
 Validate the exact bytes the monitoring system sends, not a hand-written approximation. If the provider cannot send the expected format, put a small adapter in front that verifies the provider signature, normalizes the event, and forwards JSON.
@@ -72,7 +72,7 @@ Next inspect Run Job plugin mappings. Given an argument such as:
 -service ${data.labels.service}
 ```
 
-the payload must contain an object at `labels` with a usable `service` value. A missing field can yield an empty required option, malformed node filter, or job validation failure. Start with a Log Events webhook or a non-mutating diagnostic job to see the real structure, applying care because alert payloads can contain secrets.
+the payload must contain an object at `labels` with a usable `service` value. A missing or wrongly typed field can cause template substitution to fail or render as `null`; empty or invalid mapped values can then fail option or node-filter validation. Start with a Log Events webhook or a non-mutating diagnostic job to see the real structure, applying care because alert payloads can contain secrets.
 
 The raw payload reference `${raw}` can sidestep field mapping, but it does not make arbitrary JSON safe to interpolate into a shell command. Pass it only to a plain option consumed by a parser, never directly to an unquoted command line.
 
@@ -84,16 +84,17 @@ Confirm that webhooks are enabled globally and this webhook is enabled. Rundeck 
 rundeck.feature.webhooks.enabled=false
 ```
 
-The configured webhook user is immutable after creation, and the user must have logged in at least once before being selected. The roles and user attached to the webhook become its execution identity. That identity needs ACL permission for the target project, job, and nodes.
+The configured webhook user is immutable after creation, and the user must have logged in at least once before being selected. The roles and user attached to the webhook become its execution identity. That identity needs project-scope `post` permission on webhooks, plus ACL permission for the target project, job, and nodes.
 
-An authorization failure inside the handler can therefore occur after the HTTP Authorization secret was accepted. Distinguish them in `rundeck.webhooks.log`/`rundeck.log` and the response body:
+The webhook `post` ACL check occurs before the optional HTTP Authorization header is checked; job authorization occurs inside the handler after that header is accepted. Use the response body, `rundeck.webhooks.log`/`rundeck.log`, and execution details to distinguish the failures:
 
-- **Webhook authorization failed:** check the optional header secret and proxy.
+- **You are not authorized to perform this action:** check the webhook identity's project-scope `post` permission on webhooks.
+- **Failed webhook authorization:** check the optional header secret and proxy.
 - **Job not authorized/not found:** check webhook user roles and application/project ACLs.
 - **No matched nodes:** check mapped option/filter data and refreshed inventory.
 - **Option validation error:** check required, allowed, or regex-constrained values.
 
-Do not change the webhook to run as `admin` to make diagnosis easier. Test the same target job interactively or by API as the webhook user/roles, then add only the missing permission.
+Do not recreate the webhook with an `admin` user or grant it an `admin` role to make diagnosis easier. Test the same target job interactively or by API as the webhook user/roles, then add only the missing permission.
 
 ## Inspect the Right Logs
 
@@ -115,7 +116,7 @@ A successful Run Job response includes `jobId` and `executionId`. It acknowledge
 
 ## Conclusion
 
-For "Failed Webhook Authorization," verify the exact one-time Authorization string and proxy forwarding. For HTTP 400, verify JSON bytes, `Content-Type`, handler mappings, required options, and the webhook's execution identity. Keeping URL authentication, header authentication, payload parsing, and job authorization separate makes the failing layer obvious.
+For "Failed webhook authorization," verify the exact one-time Authorization string and proxy forwarding. For HTTP 400, verify the webhook identity's `post` permission, JSON bytes, `Content-Type`, handler mappings, required options, and the webhook's execution identity. Keeping URL authentication, header authentication, payload parsing, and job authorization separate makes the failing layer obvious.
 
 ## Official Documentation
 
