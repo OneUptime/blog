@@ -8,7 +8,7 @@ Description: Diagnose Patroni replica reinitialization failures across target se
 
 ---
 
-`patronictl reinit` is a destructive rebuild of a Patroni-managed **replica**. Patroni removes that member's PostgreSQL data directory and starts `pg_basebackup` or the first successful configured replica-creation method. It cannot reinitialize the current primary, and it will not repair a bad source network, missing credentials, full filesystem, or broken backup script.
+`patronictl reinit` requests a potentially destructive rebuild of a Patroni-managed **replica**. With the built-in `basebackup` method, Patroni removes that member's PostgreSQL data directory and runs `pg_basebackup`; otherwise it tries configured replica-creation methods in order, and a custom method can retain the directory when `keep_data: true` is set. It cannot reinitialize the current primary, and it will not repair a bad source network, missing credentials, full filesystem, or broken backup script.
 
 Begin with the least ambiguous command:
 
@@ -17,7 +17,7 @@ patronictl -c /etc/patroni/patroni.yml reinit prod-ha pg3 \
   --from-leader --wait
 ```
 
-Confirm the target name and role before accepting the prompt. `--from-leader` requests the base backup directly from the leader; `--wait` waits for completion instead of reporting only that the request was accepted. `--force` only skips the confirmation prompt; it does not relax target checks or repair a failed clone path.
+Confirm the target name and role before accepting the prompt. `--from-leader` forces the built-in `basebackup` method directly against the leader, bypassing configured custom replica-creation methods; `--wait` waits for completion instead of reporting only that the request was accepted. `--force` skips confirmation and asks Patroni to cancel an already running asynchronous task before scheduling reinitialization. It does not relax replica or leader checks or repair a failed clone path.
 
 ## 1. Verify the request is valid
 
@@ -30,11 +30,12 @@ Check that:
 
 - `pg3` is a member of the expected `scope` and DCS namespace;
 - it is a replica, not the primary or standby leader;
+- the DCS cluster currently has a leader;
 - its Patroni REST API is reachable and authenticated for unsafe methods;
 - Patroni is running on the target; and
 - no previous reinitialize or restart action is still active.
 
-If the command targets the wrong cluster file, the same member name can refer to a different DCS scope. Treat `--force` as non-interactive confirmation, not target validation.
+If the command targets the wrong cluster file, the same member name can refer to a different DCS scope. Treat `--force` as a confirmation and in-progress-action override, not target validation.
 
 ## 2. Read the target Patroni log
 
@@ -53,7 +54,7 @@ Classify the first causal error rather than the last generic "bootstrap failed" 
 | Custom method exited nonzero | Script contract, binary, credentials, or backup repository |
 | Missing WAL after clone | Source/archive retention or replica start delay |
 
-Preserve the log and the failed target directory until the cause is understood. Repeatedly invoking reinit can erase useful partial state and repeatedly consume source I/O.
+Preserve the log and any failed target state that Patroni has not already cleaned until the cause is understood. Repeatedly invoking reinit can erase useful partial state and repeatedly consume source I/O.
 
 ## 3. Check replica-creation method order
 
@@ -68,11 +69,12 @@ postgresql:
   wal_e:
     command: patroni_wale_restore
     no_leader: 1
+    envdir: /etc/wal-e.d/env
 ```
 
-This follows Patroni's documented custom-method example; an actual WAL-E deployment still needs the backup tool's own repository and credential configuration. Patroni passes cluster arguments such as `--scope`, `--datadir`, `--role`, and `--connstring` unless `no_params` is configured. The command must be executable by the Patroni OS user and return zero only after it has produced a valid replica data directory.
+This follows Patroni's documented custom-method example; an actual WAL-E deployment still needs the backup tool's own repository and credential configuration. Patroni passes cluster arguments such as `--scope`, `--datadir`, `--role`, and `--connstring` unless `no_params: true` is set. The command must be executable by the Patroni OS user and return zero only after it has produced a valid replica data directory.
 
-`no_leader` allows a custom method to run without a live leader or replica source—useful for a backup repository. It does not make built-in `pg_basebackup` independent of a running PostgreSQL source.
+`no_leader` allows a custom method to run without a live leader or replica source during Patroni's source-less replica-creation path—useful for a backup repository. It does not make built-in `pg_basebackup` independent of a running PostgreSQL source, and it does not bypass the reinitialize endpoint's requirement that the DCS cluster currently have a leader.
 
 A standby cluster has a separate `standby_cluster.create_replica_methods` selection that references method definitions under `postgresql`. Confirm you are debugging the correct list for the cluster's current mode.
 
@@ -80,7 +82,7 @@ A standby cluster has a separate `standby_cluster.create_replica_methods` select
 
 From the failed replica host, resolve and connect to the actual source chosen by Patroni. Verify TCP, TLS trust, server-name validation, replication credentials, and HBA rules. Do not test only from an administrator laptop.
 
-PostgreSQL requires the base-backup connection role to have `REPLICATION` (or superuser) and `LOGIN`, and `pg_hba.conf` must allow a physical replication connection from the target address. The source also needs an available WAL sender. Keep secrets out of command history; use Patroni's configured authentication or a correctly owned password file.
+PostgreSQL requires the base-backup connection role to have `REPLICATION` (or superuser) and `LOGIN`, and `pg_hba.conf` must allow a physical replication connection from the target address. The source needs an available WAL sender for the backup plus another for WAL streaming, which is `pg_basebackup`'s default WAL method. Keep secrets out of command history; use Patroni's configured authentication or a correctly owned password file.
 
 `pg_basebackup` can use a replication slot, which PostgreSQL recommends because it prevents required WAL from being removed during the backup. That also means the source must have slot capacity and disk monitoring.
 
@@ -114,15 +116,15 @@ namei -l /var/lib/postgresql/18/main
 
 Also inspect tablespace mounts, backup scratch space, inode capacity, read-only mounts, quotas, and mandatory-access-control denials. Fix the owning mount or policy; do not recursively change permissions across an unknown PostgreSQL tree.
 
-Patroni's reinitialize endpoint removes the replica data directory. Back up any target-only diagnostic files first, and remember that user-defined tablespaces may live outside `PGDATA`. Verify your Patroni version's behavior and clean only paths positively owned by this failed replica.
+With the built-in `basebackup` method, reinitialization removes or replaces the replica data directory; a custom replica-creation method can retain it with `keep_data: true`. Back up any target-only diagnostic files first, and remember that user-defined tablespaces may live outside `PGDATA`. Verify your Patroni version's behavior and clean only paths positively owned by this failed replica.
 
 ## 6. Handle WAL and configuration edge cases
 
-A base backup is only the starting point. The new replica must retrieve all WAL needed to reach a consistent state. Ensure streaming starts promptly or the archive contains required segments. Inspect restore-command errors, timeline history, source slot state, and receiver logs.
+With the built-in `basebackup` method's `-X stream`, the backup already includes the WAL required for a consistent startup. A custom method that omits required WAL must retrieve it from the archive. The replica still needs subsequent WAL to catch up, so ensure streaming starts promptly or retention or an archive covers the gap. Inspect restore-command errors, timeline history, source slot state, and receiver logs.
 
 Patroni also documents a configuration edge case: it expects `postgresql.conf` or `postgresql.conf.backup` in `PGDATA` after base backup for a standby cluster. If the source stores PostgreSQL configuration elsewhere, the replica-creation procedure is responsible for providing the expected file.
 
-Use `pg_rewind` for a diverged former primary only when its prerequisites and history are intact. Reinit is the clean fallback when rewind is impossible, but it consumes a full copy and discards the target's old data.
+Use `pg_rewind` for a diverged former primary only when its prerequisites and history are intact. Reinit is the clean fallback when rewind is impossible; with the built-in `basebackup` method, it consumes a full copy and discards the target's old data.
 
 ## Verify the rebuilt replica
 
@@ -156,4 +158,4 @@ It must remain in recovery, stream on the current timeline, and converge below t
 
 ## Conclusion
 
-Debug reinitialization from the target outward: validate the replica and cluster identity, read the first Patroni error, confirm method order, test the source path as the Patroni user, and inspect slots, WAL retention, storage, and permissions. Reinit intentionally destroys a replica's data directory, so repeat it only after fixing the underlying cause and verify the rebuilt node reaches the current timeline before restoring service.
+Debug reinitialization from the target outward: validate the replica and cluster identity, read the first Patroni error, confirm method order, test the source path as the Patroni user, and inspect slots, WAL retention, storage, and permissions. Reinit can destroy a replica's data directory, so repeat it only after fixing the underlying cause and verify the rebuilt node reaches the current timeline before restoring service.
