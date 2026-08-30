@@ -8,7 +8,7 @@ Description: Wire Grafana Alloy's beyla.ebpf component through an OpenTelemetry 
 
 ---
 
-Grafana Alloy's `beyla.ebpf` component runs Beyla as a child process, discovers selected Linux applications, generates spans and RED metrics, and exposes those signals to Alloy pipelines. Trace export is explicit: the component's required `output` block must send traces to an `otelcol` consumer, and that consumer must eventually reach Tempo.
+Grafana Alloy's `beyla.ebpf` component runs Beyla as a child process, discovers selected Linux applications, generates spans and RED metrics, and exposes those signals to Alloy pipelines. Trace export is explicit: configure `output.traces` to send traces to an `otelcol` consumer, and that consumer must eventually reach Tempo.
 
 The data path is:
 
@@ -56,9 +56,9 @@ otelcol.exporter.otlp "tempo" {
 }
 ```
 
-`otelcol.exporter.otlp` uses OTLP over gRPC, so its endpoint is `host:port` rather than an HTTP URL. The `insecure = true` example is appropriate only for clear-text traffic on a protected in-cluster network. Use validated TLS and authentication across untrusted boundaries.
+`otelcol.exporter.otlp` uses OTLP over gRPC, so its endpoint is `host:port` rather than an HTTP URL. `insecure = true` disables TLS; use it only where clear-text traffic is permitted, such as a protected in-cluster network. Use validated TLS and authentication across untrusted boundaries.
 
-Tempo's distributor is its trace-ingestion entry point. Enable only the required OTLP receiver and ensure it listens on an address reachable from Alloy; Tempo's receiver defaults may bind to localhost unless explicitly configured by the deployment. The Kubernetes Service must expose the same protocol and port.
+Tempo's distributor is its trace-ingestion entry point. Enable only the required OTLP receiver and ensure it listens on an address reachable from Alloy; Tempo's receiver defaults may bind to localhost unless explicitly configured by the deployment. The Kubernetes Service port configured in Alloy must route to the receiver's listening port and carry the matching OTLP transport (gRPC or HTTP).
 
 If Tempo exposes OTLP/HTTP on `4318` instead, use Alloy's `otelcol.exporter.otlphttp` component and provide an HTTP(S) endpoint according to that component reference. Merely changing `4317` to `4318` while retaining the gRPC exporter does not change protocols.
 
@@ -102,7 +102,7 @@ Kubernetes metadata decoration requires suitable list/watch RBAC for the resourc
 
 ## Preserve the trace output connection
 
-The `output` block is required syntactically, but its arguments are optional. If it is empty, telemetry not routed elsewhere is dropped. This configuration is valid but exports no traces:
+In Alloy 1.19, the `output` block is optional unless an explicit global `traces` configuration sets instrumentations or a sampler. Either omitting it or leaving it empty gives spans no Alloy consumer. This configuration is valid but exports no traces:
 
 ```alloy
 beyla.ebpf "checkout" {
@@ -141,7 +141,7 @@ Start with `enforce_sys_caps = true` in `beyla.ebpf` during rollout. Missing cap
 ```alloy
 beyla.ebpf "checkout" {
   enforce_sys_caps = true
-  trace_printer    = "counter"
+  trace_printer    = "text"
 
   discovery {
     instrument {
@@ -155,13 +155,13 @@ beyla.ebpf "checkout" {
 }
 ```
 
-The counter printer is useful for a low-volume proof and should be removed when normal monitoring is in place.
+The text printer provides live, per-span confirmation at controlled volume and should be removed when normal monitoring is in place.
 
 ## Validate every boundary
 
 1. Ask Alloy to load the configuration and inspect the component graph/UI for `beyla.ebpf.checkout`, the batch processor, and exporter.
 2. Generate supported HTTP or gRPC traffic on the selected service after Alloy starts.
-3. Temporarily set `trace_printer = "text"` to prove spans leave the Beyla child process.
+3. Temporarily set `trace_printer = "text"` to confirm that the Beyla subprocess is intercepting requests and generating spans.
 4. Inspect Alloy exporter metrics such as sent and failed spans plus retry-queue size.
 5. From the Alloy Pod or host, resolve the Tempo name and connect to the configured port.
 6. Check Tempo distributor logs and ingestion metrics.
@@ -183,7 +183,7 @@ traces {
 }
 ```
 
-This keeps approximately ten percent by trace ID; it is not appropriate when the validation expects every single request. Establish complete unsampled delivery at controlled volume first, then choose sampling from traffic, cost, and incident-debugging requirements.
+This keeps approximately ten percent by trace ID; it is not appropriate when the validation expects every single request. For a baseline that drops nothing at the Beyla sampler, use `always_on`; the default `parentbased_always_on` may drop spans when a request carries an unsampled parent context. Establish delivery at controlled volume first, then choose sampling from traffic, cost, and incident-debugging requirements.
 
 ## Official Documentation
 
