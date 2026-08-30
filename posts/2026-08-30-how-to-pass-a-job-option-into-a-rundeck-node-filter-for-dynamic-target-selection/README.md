@@ -94,7 +94,7 @@ Give both options enforced values. This preserves flexibility without making fil
 
 ## Run It Through the API
 
-For a saved dynamic filter, the caller usually needs to provide only options:
+For a saved dynamic filter, the caller usually needs to provide only options. The JSON `options` map requires API version 18 or later, so set `RUNDECK_API_VERSION` accordingly:
 
 ```bash
 curl --fail-with-body --request POST \
