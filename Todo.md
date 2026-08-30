@@ -136,7 +136,6 @@
 
 ## Grafana Beyla
 
-13. How to Normalize Dynamic URL Paths in Beyla Before They Explode Prometheus Cardinality
 14. How to Exclude Health Checks, Metrics Endpoints, and Noisy Routes from Beyla Telemetry
 15. How to Add Kubernetes Pod, Deployment, Namespace, and Node Metadata to Beyla Metrics and Traces
 16. How to Export Beyla RED Metrics to Prometheus and Traces to Tempo Through Grafana Alloy
