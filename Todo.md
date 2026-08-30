@@ -139,7 +139,6 @@
 
 ## Rundeck
 
-9. How to Create a Least-Privilege Rundeck ACL That Lets a Group Run Only Selected Jobs
 10. Why Is a Rundeck Job Invisible Even Though the ACL Allows `run`? Application vs Project Contexts
 11. How to Trigger a Rundeck Job from a Monitoring Alert with a Webhook
 12. Why Does a Rundeck Webhook Return "Failed Webhook Authorization" or HTTP 400?
