@@ -47,7 +47,7 @@ Start the stack and generate requests:
 
 ```bash
 docker compose up -d
-curl --insecure https://localhost:18443/
+curl --retry 10 --retry-connrefused --retry-delay 1 --insecure https://localhost:18443/
 docker compose logs --follow beyla
 ```
 
@@ -76,7 +76,7 @@ docker run --rm \
   grafana/beyla:latest
 ```
 
-The target container must already exist and be named `api`. Do not add `--network host` merely to make process discovery work; select network mode based on how Beyla reaches its OTLP destination and on any network-observability features you intentionally enable.
+The target container must already be running and be named `api`. Do not add `--network host` merely to make process discovery work; select network mode based on how Beyla reaches its OTLP destination and on any network-observability features you intentionally enable.
 
 ## Prefer a configuration file as the setup grows
 
@@ -107,7 +107,7 @@ Mount it read-only and point `BEYLA_CONFIG_PATH` to it:
 
 Validate field names against the documentation matching the deployed Beyla version. Standalone Beyla YAML and Grafana Alloy's River-style `beyla.ebpf` component configuration are not interchangeable.
 
-Route configuration matters because zero-code instrumentation sees raw request paths. A path such as `/orders/6f2c...` should be represented by a stable route like `/orders/{id}` before it becomes a metric label or trace search dimension.
+Route configuration matters because zero-code instrumentation sees raw request paths. With the heuristic configuration above, a path such as `/orders/6f2c...` is represented by a stable route such as `/orders/*` before it becomes a metric label or trace search dimension.
 
 ## Know what zero-code does and does not mean
 
@@ -123,9 +123,9 @@ Use Beyla for service-level RED telemetry and zero-code entry points. Add SDK in
 
 ## Reduce privilege deliberately
 
-`privileged: true` is the simplest documented Docker setup because it avoids kernel- and feature-specific capability debugging. It also grants broad host access. Grafana publishes the capability requirements by Beyla operating mode; application observability commonly needs `BPF`, `PERFMON`, `SYS_PTRACE`, `DAC_READ_SEARCH`, and `CHECKPOINT_RESTORE`, with additional capabilities for network filters, context propagation, library-level uprobes, or older kernels.
+`privileged: true` is the simplest documented Docker setup because it avoids kernel- and feature-specific capability debugging. It also grants broad host access. Grafana publishes capability requirements by Beyla operating mode and tracer; the current application-observability example lists `BPF`, `DAC_READ_SEARCH`, `CHECKPOINT_RESTORE`, `PERFMON`, `NET_RAW`, `SYS_ADMIN`, and `SYS_PTRACE`, with `NET_ADMIN` needed for TC-based network capture or packet-level context propagation and `SYS_RESOURCE` on kernels older than 5.11.
 
-Do not copy a minimal `cap_add` list from a different Beyla version or feature set. First pin versions, set `BEYLA_ENFORCE_SYS_CAPS=1`, and verify the required list in logs on the actual host kernel. Then replace privileged mode with the documented capabilities and repeat request, export, restart, and failure tests.
+Do not copy a minimal `cap_add` list from a different Beyla version or feature set. First pin versions and replace privileged mode with the documented capabilities. Set `BEYLA_ENFORCE_SYS_CAPS=1` while validating the reduced-capability configuration; Beyla aborts startup and logs any missing capabilities. Then repeat request, export, restart, and failure tests on the actual host kernel.
 
 The host must be Linux from Beyla's perspective and allow eBPF operations. Container engines running inside another VM add a kernel boundary; test the exact production engine rather than assuming a laptop result predicts the server.
 
