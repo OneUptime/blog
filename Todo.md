@@ -136,7 +136,6 @@
 
 ## Grafana Beyla
 
-8. How to Discover Beyla Services by Kubernetes Namespace, Pod Label, Executable Path, or Open Port
 9. Why Did Beyla Instrument Alloy, Tempo, and Itself? Excluding Observability Processes from Discovery
 10. How to Assign Stable `service.name` and `service.namespace` Attributes to Beyla Telemetry
 11. Why Does a Beyla Trace Contain Only One Span? Enabling and Verifying Trace-Context Propagation
