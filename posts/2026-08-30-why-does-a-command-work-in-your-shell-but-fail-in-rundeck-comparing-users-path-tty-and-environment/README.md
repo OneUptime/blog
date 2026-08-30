@@ -12,7 +12,7 @@ Description: Reproduce Rundeck's non-interactive execution context and fix comma
 
 ## Establish Where the Step Runs
 
-A **Local Command** or workflow-local script runs on the Automation Server as the Rundeck service account. A **Command** or node Script step runs through the selected Node Executor on each target, often over SSH as the node's `username`. An Enterprise Runner changes the local execution environment again.
+Without Runner delegation, a **Local Command** or other server-local step runs on the Automation Server under the operating-system account that runs Rundeck. A **Command** or node Script step runs through the selected Node Executor on each target, often over SSH using the resolved node, project, or framework SSH username. If an Enterprise Runner is selected, local execution or remote dispatch originates in that Runner's environment.
 
 Record the step type, selected node, Node Executor provider, File Copier provider, Runner, and remote username before debugging. Testing on the wrong machine produces convincing but irrelevant results.
 
@@ -26,12 +26,13 @@ set -eu
 
 /usr/bin/id
 /bin/pwd
-printf 'shell=%s\n' "${SHELL-<unset>}"
+printf 'shell_env=%s\n' "${SHELL-<unset>}"
+printf 'bash=%s\n' "${BASH-<unset>}"
 printf 'path=%s\n' "${PATH-<unset>}"
 printf 'home=%s\n' "${HOME-<unset>}"
 printf 'lang=%s\n' "${LANG-<unset>}"
 printf 'umask='; umask
-printf 'tty='; if /usr/bin/test -t 0; then echo yes; else echo no; fi
+printf 'stdin_tty='; if /usr/bin/test -t 0; then echo yes; else echo no; fi
 command -v python3 || true
 command -v kubectl || true
 ```
@@ -63,7 +64,7 @@ Do not solve this by changing ownership of broad application directories to `run
 
 ## PATH and Shell Initialization
 
-Interactive login shells may source `/etc/profile`, `~/.profile`, `~/.bash_profile`, and interactive-only files such as `~/.bashrc`. Non-interactive SSH commands are not guaranteed to load the same files. Tools installed by `nvm`, `pyenv`, `rbenv`, Homebrew, or a user-local package manager can vanish from `PATH`.
+With Bash, a login shell reads `/etc/profile` and then the first readable file among `~/.bash_profile`, `~/.bash_login`, and `~/.profile`; an interactive non-login shell reads `~/.bashrc`. Bash also reads `~/.bashrc` when it detects that a non-interactive shell was invoked by `sshd`, but other shells and configurations differ, so remote commands are not guaranteed to load the same files as an interactive login. Tools installed by `nvm`, `pyenv`, `rbenv`, Homebrew, or a user-local package manager can vanish from `PATH`.
 
 The durable fix is explicit configuration:
 
@@ -83,7 +84,7 @@ Rundeck Script steps support an explicit invocation string, such as `sudo -u app
 
 ## TTY and Sudo
 
-Rundeck normally provides no interactive terminal. Commands that prompt for passwords, confirmations, MFA, license acceptance, or input will fail or hang. Confirm with `test -t 0` and make the tool non-interactive:
+Rundeck normally provides no interactive terminal. Commands that prompt for passwords, confirmations, MFA, license acceptance, or input will fail or hang. Check whether standard input is a terminal with `test -t 0` and make the tool non-interactive:
 
 ```bash
 sudo -n /usr/local/sbin/restart-myapp
@@ -110,7 +111,7 @@ Reload sshd after a reviewed change. This wildcard exposes Rundeck-generated con
 Relative paths break when the working directory changes. Start scripts with an explicit directory or derive the script's own location:
 
 ```bash
-cd /opt/myapp
+cd /opt/myapp || exit 1
 /usr/local/bin/docker compose --file /opt/myapp/compose.yml ps
 ```
 
