@@ -136,7 +136,6 @@
 
 ## Grafana Beyla
 
-5. How to Fix Beyla's "Operation Not Permitted" eBPF Error in Kubernetes
 6. Which Linux Capabilities, `hostPID`, and AppArmor Settings Does Beyla Need Without Privileged Mode?
 7. Why Does Beyla Report "MEMLOCK May Be Too Low"? Fixing eBPF Map Creation Failures
 8. How to Discover Beyla Services by Kubernetes Namespace, Pod Label, Executable Path, or Open Port
