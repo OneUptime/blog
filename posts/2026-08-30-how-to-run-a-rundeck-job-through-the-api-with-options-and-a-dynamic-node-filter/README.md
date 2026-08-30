@@ -12,7 +12,7 @@ Rundeck exposes a direct endpoint for starting a saved job by UUID. A JSON reque
 
 ## Prepare the Job and API Identity
 
-Find the saved job's UUID in its definition/page or list project jobs through the API. Use an API token belonging to a dedicated service account, not an administrator. The account needs application access to the project and project-context permission to run the job and targeted nodes.
+Find the saved job's UUID in its definition/page or list project jobs through the API. Use an API token belonging to a dedicated service account, not an administrator. Grant application-context `read` on the project. In project context, grant `run` plus `view` (or `read`) on the job and `read` plus `run` on the allowed nodes; add `read` on the `event` resource if the caller will list recent/running executions.
 
 Store connection values in the caller's secret/configuration system:
 
@@ -49,7 +49,7 @@ payload=$(jq -n \
   }')
 ```
 
-Do not interpolate raw values into a quoted JSON string. Node filters contain spaces, colons, backslashes, and regex metacharacters that are easy to corrupt, and untrusted shell interpolation can execute code before the request is sent.
+Do not interpolate raw values into a hand-built JSON string. Node filters contain spaces, colons, backslashes, and regex metacharacters that are easy to corrupt, and naive interpolation can produce invalid JSON or allow untrusted input to alter the JSON structure. Passing generated text through `eval` or `sh -c` would additionally create a shell-injection risk.
 
 The run-job API accepts either an `argString` or an `options` map. Since API v18, when `options` is present, `argString` is ignored. Use the map: it avoids command-line parsing and keeps each option value distinct.
 
@@ -64,9 +64,16 @@ response=$(curl --silent --show-error --fail-with-body \
   --header "Accept: application/json" \
   --header "Content-Type: application/json" \
   --data "$payload" \
-  "$RUNDECK_URL/api/$RUNDECK_API_VERSION/job/$RUNDECK_JOB_ID/run")
+  "$RUNDECK_URL/api/$RUNDECK_API_VERSION/job/$RUNDECK_JOB_ID/run") || {
+  curl_status=$?
+  printf 'Rundeck run request failed: %s\n' "$response" >&2
+  exit "$curl_status"
+}
 
-execution_id=$(jq -er '.id' <<<"$response")
+execution_id=$(jq -er '.id' <<<"$response") || {
+  printf 'Rundeck returned no execution ID: %s\n' "$response" >&2
+  exit 1
+}
 printf 'started Rundeck execution %s\n' "$execution_id"
 ```
 
@@ -76,7 +83,7 @@ The documented endpoint shape is:
 POST /api/V/job/ID/run
 ```
 
-The JSON request can also include `runAtTime` and `asUser`. `asUser` requires explicit `runAs` authorization and should not be accepted from an untrusted caller. Keep it out unless impersonation is a designed requirement.
+The JSON request can also include `runAtTime` and `asUser`. `asUser` changes the username recorded for the execution; authorization still uses the caller's context. It requires explicit `runAs` authorization and should not be accepted from an untrusted caller. Keep it out unless alternate attribution is a designed requirement.
 
 ## Decide Who Owns the Dynamic Filter
 
@@ -117,13 +124,13 @@ curl --silent --show-error --fail-with-body \
   "$RUNDECK_URL/api/$RUNDECK_API_VERSION/execution/$execution_id"
 ```
 
-Terminal statuses include `succeeded`, `failed`, `aborted`, and `timedout`. Set a caller-side deadline and surface the execution permalink/ID for investigation. Do not immediately POST again after an uncertain network timeout: the first request may have created an execution even though the response was lost. Use an idempotency option such as a change or request ID and check recent/running executions before retrying.
+Documented terminal statuses include `succeeded`, `failed`, `aborted`, `timedout`, and `failed-with-retry`; a custom terminal status is reported as `other` with `customStatus`. Treat `scheduled`, `queued`, and `running` as non-terminal, and surface unknown statuses instead of polling forever. Set a caller-side deadline and surface the execution permalink/ID for investigation. Do not immediately POST again after an uncertain network timeout: the first request may have created an execution even though the response was lost. The run-job endpoint has no documented idempotency key. Pass a unique change or request ID as an option for correlation; to make retries idempotent, have the job or a durable external store atomically reject duplicate IDs. Checking recent/running executions first is only a best-effort duplicate guard.
 
 ## Diagnose API Failures
 
-- `401` indicates a missing, invalid, or expired token.
-- `403` indicates the token's user lacks an ACL action.
-- `404` often means an incorrect job UUID or an identity that cannot see the resource.
+- `401` may come from an upstream authentication layer; current Rundeck returns `403` for missing, invalid, or expired API-token authentication.
+- `403` can also indicate that the token's user lacks a required ACL action, so inspect the JSON error message rather than diagnosing by status alone.
+- `404` generally means the job or execution ID is unknown; a disabled project can also produce it.
 - `400` usually points to invalid JSON, a required/invalid option, a disabled execution, or an unacceptable filter.
 - A successful POST followed by a failed execution is a job/runtime problem; inspect the execution, not the HTTP client.
 
