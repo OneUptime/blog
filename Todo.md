@@ -139,7 +139,6 @@
 
 ## Rundeck
 
-19. How to Back Up Rundeck Projects, Job Definitions, Key Storage, and Execution History Before an Upgrade
 20. Why Does Rundeck Start with an Empty Project List After a Database Migration? Recovering Jobs and History
 
 ## KubeVela
