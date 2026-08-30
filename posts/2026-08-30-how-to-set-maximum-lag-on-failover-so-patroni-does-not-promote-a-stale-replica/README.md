@@ -22,7 +22,7 @@ SELECT pg_current_wal_lsn();
 SELECT pg_current_wal_lsn();
 ```
 
-Use `pg_wal_lsn_diff(new_lsn, old_lsn)` to calculate bytes generated during that interval. Also collect the counter `pg_stat_wal.wal_bytes` on supported PostgreSQL releases. Record ordinary peaks, batch jobs, maintenance, index creation, and write bursts.
+Use `pg_wal_lsn_diff(new_lsn, old_lsn)` to calculate how far the WAL write position advanced, in bytes, during that interval. Also collect the counter `pg_stat_wal.wal_bytes` on supported PostgreSQL releases. Record ordinary peaks, batch jobs, maintenance, index creation, and write bursts.
 
 A useful sizing exercise is:
 
@@ -64,7 +64,7 @@ patronictl -c /etc/patroni/patroni.yml edit-config prod-ha \
   --set maximum_lag_on_failover=67108864 --force
 ```
 
-Do not change only `bootstrap.dcs` in local YAML after the cluster exists. That section initializes DCS state once at bootstrap. Confirm every member sees the new dynamic value in `patronictl show-config` and its logs.
+Do not change only `bootstrap.dcs` in local YAML after the cluster exists. That section initializes DCS state once at bootstrap. Confirm the new DCS value with `patronictl show-config`. Dynamic changes reach members asynchronously, so check each member's logs and, if necessary, its `patroni.dynamic.json` cache to verify that it processed the new configuration.
 
 `check_timeline: true` is a complementary guard: during a healthy switchover or automatic failover, a node on an older known timeline is not an acceptable candidate. It does not replace lag checking.
 
@@ -96,9 +96,9 @@ SELECT pg_last_wal_receive_lsn(),
        pg_last_xact_replay_timestamp();
 ```
 
-These views explain different bottlenecks. A receive position behind the primary points toward network, sender, receiver, or source pressure. A large local receive-to-replay gap means WAL arrived but replay is delayed, perhaps by recovery conflicts, I/O, deliberate apply delay, or resource saturation.
+These views explain different bottlenecks. A receive position behind the primary points toward network, sender, receiver, or source pressure. While streaming replication is active, a large positive local receive-to-replay gap means streamed WAL arrived but replay is delayed, perhaps by recovery conflicts, I/O, deliberate apply delay, or resource saturation.
 
-Do not convert `pg_last_xact_replay_timestamp()` into an exact byte or time lag when the primary is idle; no new commit timestamp arrives during an idle period. Monitor positions, rates, receiver state, and time signals together.
+Patroni's election check does not use replay lag alone: for a replica, it uses the greater of the receive and replay LSN as the candidate WAL position. Do not convert `pg_last_xact_replay_timestamp()` into an exact byte or time lag when the primary is idle; once the replica has replayed the last transaction, the value remains unchanged while wall-clock time advances. Monitor positions, rates, receiver state, and time signals together.
 
 ## Separate three different lag controls
 
@@ -112,7 +112,7 @@ Changing the HAProxy read threshold does not protect an election. Changing the f
 
 ## Test the unavailability side of the policy
 
-In a disposable cluster, pause WAL replay on one replica or constrain its I/O, generate known writes, and wait until it exceeds the selected byte limit. Keep another current replica if the test should preserve failover capability.
+In a disposable cluster, stop or throttle WAL receipt on one replica, generate known writes, and wait until its candidate WAL position falls more than the selected byte limit behind Patroni's last known leader position. Pausing WAL replay alone is not sufficient because Patroni can count WAL that the replica has received but not yet replayed. Keep another current replica if the test should preserve failover capability.
 
 Verify the lagging member is visible but ineligible, then perform a planned candidate check or a controlled primary failure according to the test runbook. Patroni should prefer an eligible up-to-date node. If every replica is beyond the threshold, automatic failover should not promote one merely to restore availability.
 
