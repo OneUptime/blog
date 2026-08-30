@@ -25,10 +25,13 @@ Standalone Beyla otherwise logs a warning and attempts to continue, which can tu
 Collect Beyla's complete startup log, the Pod security context, node kernel version, and node security logs:
 
 ```bash
+kubectl -n observability logs pod/beyla-example
 kubectl -n observability logs pod/beyla-example --previous
 kubectl -n observability get pod beyla-example -o yaml
 kubectl get node worker-1 -o wide
 ```
+
+The first command reads the current container instance. Use `--previous` only after the container has restarted; it reads the preceding terminated instance if one exists.
 
 On the affected node, inspect `journalctl`, `dmesg`, AppArmor audit output, or SELinux audit records through your approved node-debugging process. A log naming `perf_event_open`, `bpf`, `/proc/<pid>/exe`, a raw socket, or an AppArmor profile points to different fixes.
 
@@ -57,7 +60,7 @@ Current Beyla security documentation maps capabilities to operations:
 | `PERFMON` | Performance monitoring and eBPF probe access |
 | `SYS_PTRACE` | Inspect `/proc/<pid>/exe` and executable modules |
 | `DAC_READ_SEARCH` | Read protected process/kernel information |
-| `CHECKPOINT_RESTORE` | Access process information through `/proc` symlinks |
+| `CHECKPOINT_RESTORE` | Read other processes' `/proc/<pid>/map_files` symlink targets on upstream Linux 5.9 and later |
 | `NET_RAW` | Raw sockets and socket-filter based capture |
 | `NET_ADMIN` | Traffic-control programs and trace-context propagation |
 | `SYS_RESOURCE` | Raise locked-memory limits on kernels earlier than 5.11 |
@@ -89,19 +92,19 @@ spec:
             - NET_ADMIN
 ```
 
-This is a diagnostic starting shape, not a claim that every feature works with exactly that list. Add `SYS_RESOURCE` only for the documented pre-5.11 locked-memory case. Add `SYS_ADMIN` only when library-level instrumentation or the actual host policy requires it. Pin the image version before finalizing the policy.
+This is a diagnostic starting shape, not a claim that every feature works with exactly that list. Add `SYS_RESOURCE` only for the documented pre-5.11 locked-memory case. `CHECKPOINT_RESTORE` was added in Linux 5.9; on an upstream 5.8 kernel, reading another process's `/proc/<pid>/map_files` symlink targets requires `SYS_ADMIN`. Older vendor kernels with backports need a capability policy matched to that kernel. Otherwise, add `SYS_ADMIN` only when library-level instrumentation or the actual host policy requires it. Pin the image version before finalizing the policy.
 
 Grafana's unprivileged Kubernetes example also mounts `/sys/fs/cgroup`, `/sys/kernel/tracing`, and a writable `/var/run/beyla` volume for the features it demonstrates. If the denial names one of those paths, compare your mounts with the deployment guide rather than making the root filesystem writable.
 
 ## Check `perf_event_paranoid`
 
-Loading probe-based instrumentation requires access to `perf_event_open()`. `CAP_PERFMON` is the least-privilege capability intended for that access, but the node's `kernel.perf_event_paranoid` setting also governs it:
+Loading probe-based instrumentation requires access to `perf_event_open()`. `CAP_PERFMON` is the least-privilege capability intended for that access. On upstream Linux, a process with effective `CAP_PERFMON` bypasses the `perf_events` scope restrictions controlled by `kernel.perf_event_paranoid`; the sysctl governs callers without that capability. Some downstream kernels give values above `2` additional semantics and may impose an additional check, so inspect the actual node kernel and setting:
 
 ```bash
 sysctl kernel.perf_event_paranoid
 ```
 
-Grafana notes that some distributions use a value higher than `2`, and AKS/EKS node configurations may require `SYS_ADMIN` unless the node policy is adjusted. Changing a node-wide sysctl affects every workload and may be overwritten by managed-node upgrades. Choose between an approved node-pool setting and the broader capability through security review; do not mutate one node by hand and call the DaemonSet fixed.
+Grafana notes that affected distribution and managed-node images, including some AKS/EKS configurations, may require `SYS_ADMIN` unless the node policy is adjusted. Changing a node-wide sysctl affects every workload and may be overwritten by managed-node upgrades. Choose between an approved node-pool setting and the broader capability through security review; do not mutate one node by hand and call the DaemonSet fixed.
 
 Test every node image and pool. A DaemonSet can work on one kernel and fail on another with the same Pod manifest.
 
@@ -123,16 +126,16 @@ Privileged mode is a useful **temporary isolation test** in a non-production nam
 
 ## Check Pod admission and capability delivery
 
-Pod Security Standards, Gatekeeper/Kyverno rules, or a managed platform may reject `hostPID`, privileged mode, added capabilities, or Unconfined profiles. Read Kubernetes Events and the admission response:
+The built-in Pod Security Admission controller enforcing Pod Security Standards, Gatekeeper/Kyverno rules, or a managed platform may reject `hostPID`, privileged mode, added capabilities, or Unconfined profiles. Capture a direct admission error from `kubectl apply`, `kubectl create`, or your deployment tool. For objects that were accepted, inspect any existing Pod and recent Kubernetes Events:
 
 ```bash
 kubectl -n observability describe pod beyla-example
-kubectl -n observability get events --sort-by=.lastTimestamp
+kubectl -n observability get events --sort-by=.metadata.creationTimestamp
 ```
 
-A manifest accepted after a mutating admission webhook may not equal the manifest you submitted. Inspect the running Pod and, when the image has suitable tools, its process capability sets under `/proc/1/status`. For Alloy running non-root, follow its component documentation for inheritable and ambient capabilities; `no_new_privs`/`allowPrivilegeEscalation` affects whether capabilities can be raised for the Beyla child.
+A manifest accepted after a mutating admission webhook may not equal the manifest you submitted. Inspect the running Pod and, when the image has suitable tools, the Beyla or Alloy process capability sets under `/proc/<pid>/status`. Do not assume that process is PID 1: with `hostPID: true`, `/proc/1` is the host's init process, and containers in a shared Pod process namespace do not get separate PID 1 processes. For Alloy running non-root, follow its component documentation for inheritable and ambient capabilities; `no_new_privs`/`allowPrivilegeEscalation` affects whether capabilities can be raised for the Beyla child.
 
-Create a tightly scoped policy exception for the dedicated observability namespace and service account if required. Do not weaken the cluster-wide restricted baseline for application namespaces.
+Create a tightly scoped exception using the mechanism your admission policy supports. Built-in Pod Security Admission exemptions can target requester usernames, RuntimeClass names, or namespaces; they are not selected by a Pod's `serviceAccountName`. Do not weaken the cluster-wide restricted baseline for application namespaces.
 
 ## Verify the fix with real instrumentation
 
