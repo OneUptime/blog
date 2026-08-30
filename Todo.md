@@ -133,7 +133,6 @@
 
 ## Postgres HA
 
-19. How to Design Patroni Across Two Data Centers Without Losing Quorum or Promoting Both Sides
 20. Why Won't Patroni Reinitialize a Failed Replica? Debugging Bootstrap Methods, Slots, and Permissions
 
 ## Grafana Beyla
