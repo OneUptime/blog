@@ -17,7 +17,7 @@ Configuring only the trace output does not export metrics, and scraping the Beyl
 
 ## Build both pipelines explicitly
 
-This Alloy configuration selects HTTP and gRPC services in a production namespace, remote-writes RED metrics, and sends traces to Tempo over OTLP/HTTP:
+This Alloy configuration discovers services in a production namespace, restricts collected telemetry to HTTP and gRPC, remote-writes RED metrics, and sends traces to Tempo over OTLP/HTTP:
 
 ```alloy
 beyla.ebpf "applications" {
@@ -29,6 +29,10 @@ beyla.ebpf "applications" {
         namespace = "production"
       }
     }
+  }
+
+  ebpf {
+    track_request_headers = true
   }
 
   attributes {
@@ -90,9 +94,9 @@ The OTLP/HTTP exporter treats its `endpoint` as the base and sends traces to the
 
 `prometheus.remote_write` needs a remote-write receiver such as Grafana Mimir, Grafana Cloud Metrics, or Prometheus started with its remote-write receiver feature enabled. A normal Prometheus query endpoint is not automatically a write endpoint.
 
-Set the URL to the backend's documented write path, commonly `/api/v1/write`. If credentials are not required for an in-cluster backend, remove the `basic_auth` block entirely rather than injecting empty values.
+Set the URL to the backend's documented write path. Prometheus's built-in receiver uses `/api/v1/write`, Grafana Mimir uses `/api/v1/push`, and Grafana Cloud Metrics uses the stack-specific `/api/prom/push` URL. If credentials are not required for an in-cluster backend, remove the `basic_auth` block entirely rather than injecting empty values.
 
-Beyla's `application` feature exports request rate, errors, and duration metrics. Additional features such as process, span, service-graph, or network metrics have separate cost and cardinality implications; enable them deliberately rather than using `all`.
+Beyla's `application` feature exports request-duration histograms whose count series and status-code labels provide the data used to calculate request rate and errors. Additional features such as process, span, service-graph, or network metrics have separate cost and cardinality implications; enable them deliberately rather than using `all`.
 
 ## Meet the Kubernetes prerequisites
 
@@ -104,9 +108,9 @@ Pin an Alloy release and check the component reference shipped for that release.
 
 ## Verify metrics independently from traces
 
-Use Alloy's component health view first. Then query a fresh RED counter in the metrics backend and group it by service. The exact metric name depends on the selected Beyla semantic-convention format, so inspect available `http_*` or `rpc_*` names rather than assuming a legacy dashboard name.
+Use Alloy's component health view first to catch configuration errors; component health alone does not prove backend delivery. Then query the `_count` series of a fresh request-duration histogram in the metrics backend and group it by service. With this configuration, inspect `http_*_request_duration_seconds*` or `rpc_*_duration_seconds*` series from the embedded Beyla version rather than assuming a legacy dashboard name.
 
-For traces, send a request with a known W3C trace ID:
+For traces, send a request with a known W3C trace ID. The configuration enables `ebpf.track_request_headers` so Beyla uses the incoming ID for non-Go services; Go services process it automatically:
 
 ```bash
 curl -H 'traceparent: 00-11111111111111111111111111111111-2222222222222222-01' \
@@ -119,7 +123,7 @@ Do not use the presence of one signal as proof that the other path works. They s
 
 ## Secure and operate the pipeline
 
-Use TLS for traffic that leaves the cluster and configure the exporter client's CA and authentication according to the destination. Size the batch processor and remote-write queue for expected outage duration, then alert on dropped samples, failed exports, and sustained retry queues.
+Use TLS for traffic that leaves the cluster and configure the exporter client's CA and authentication according to the destination. Size the OTLP exporter's `sending_queue` and retry window for the expected outage duration, configure remote-write WAL retention and storage for that duration, and tune the remote-write queue for catch-up throughput. Then alert on dropped samples, failed exports, and sustained retry queues.
 
 Limit discovery to intended workloads. A broad cluster-wide rule can increase Alloy/Beyla CPU, Prometheus cardinality, and Tempo ingest together.
 
