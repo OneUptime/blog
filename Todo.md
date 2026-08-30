@@ -139,7 +139,6 @@
 
 ## Rundeck
 
-14. How to Chain Rundeck Jobs and Pass Options and Data Between Job Reference Steps
 15. Why Doesn't Rundeck Retry a Failed Job Reference? Designing Retries at the Right Level
 16. How to Call a Remediation Job from a Rundeck Step Error Handler Without Hiding the Failure
 17. How to Prevent Overlapping Rundeck Executions for Long-Running Scheduled Jobs
