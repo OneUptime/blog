@@ -10,8 +10,8 @@ Description: Expose separate Patroni-aware PostgreSQL write and read endpoints, 
 
 A safe read/write split uses two endpoints with different contracts:
 
-- `postgres-write.example.net:5000` sends new sessions only to the Patroni primary.
-- `postgres-read.example.net:5001` distributes new sessions only across eligible replicas.
+- `postgres-write.example.net:5000` sends new sessions to servers that pass HAProxy's Patroni primary check.
+- `postgres-read.example.net:5001` distributes new sessions across servers that pass HAProxy's Patroni replica check.
 
 Do not create one listener that round-robins across every PostgreSQL node and hope failed writes reveal a replica. Routing decisions happen when a connection opens, and a transaction remains on that one server for the life of the connection.
 
@@ -61,7 +61,7 @@ backend patroni_read
 
 HAProxy opens the health check on `8008` but sends accepted TCP traffic to the server line's `5432`. The `64MB` lag threshold is illustrative, not a universal safe value. Derive it from how much stale data the read workload can tolerate and confirm how Patroni's lag signal behaves during replay stalls.
 
-`on-marked-down shutdown-sessions` prevents a connection from remaining attached after its node no longer satisfies that backend's role. That means a promoted replica drops from the read backend and joins the write backend; existing sessions are interrupted instead of silently continuing under a changed contract.
+`on-marked-down shutdown-sessions` terminates connections to a backend server once HAProxy marks that server down. With `inter 2s fall 3 rise 2`, that happens only after the configured health-check thresholds are met. The read and write backends keep independent health state, so their transitions are not atomic: during a short detection window, a node can remain eligible according to a stale check and can briefly be eligible in both backends or neither. After a promoted replica's read-backend entry is marked down, its existing read sessions are interrupted; once its write-backend entry passes the rise threshold, it can receive new write sessions. Clients must handle connection failures and read-only errors during this window.
 
 ## Add database-side guardrails
 
@@ -74,7 +74,7 @@ ALTER ROLE app_read SET default_transaction_read_only = on;
 CREATE ROLE app_write LOGIN;
 ```
 
-Grant `app_read` only the object privileges it needs. `default_transaction_read_only` is not an authorization boundary for superusers or roles that can change it, so pair it with least-privilege grants. Do not give the read role table-write privileges merely because replicas currently reject writes.
+Grant `app_read` only the object privileges it needs. `default_transaction_read_only` is only a default, not an authorization boundary: on a primary, an ordinary role can override it. Pair it with least-privilege grants. Do not give the read role table-write privileges merely because replicas currently reject writes.
 
 Keep write and read connection pools distinct in the application. A pool created against the read address must never be borrowed for writes. Name them explicitly, export separate metrics, and make the query layer require the caller to choose a contract.
 
@@ -92,7 +92,7 @@ psql "host=postgres-write.example.net port=5000 dbname=app user=app_write" \
   -Atc "SELECT inet_server_addr(), pg_is_in_recovery(), current_setting('transaction_read_only')"
 ```
 
-Every write result must be `pg_is_in_recovery() = false` and `transaction_read_only = off`. Every replica read result should be `true` and `on`. Alert if the write backend has zero eligible servers; alert at emergency severity if it ever has more than one.
+Every write result must be `pg_is_in_recovery() = false` and `transaction_read_only = off`. Every replica read result should be `true` and `on`. Alert if the write backend has zero eligible servers; alert at emergency severity if it has more than one beyond the expected health-check convergence window.
 
 Libpq offers another guard for clients that use multi-host connection strings: `target_session_attrs=read-write` accepts only a server that is not in hot standby and whose default transactions are writable. `target_session_attrs=standby` selects a hot standby, while `prefer-standby` falls back to any server. These checks protect new libpq connections; they do not replace Patroni-aware routing or move a live connection.
 
@@ -106,7 +106,7 @@ Read scaling is not transparent for every workload:
 - Transactions cannot begin on a replica and later switch to the primary.
 - Sequence observations, job claiming, locks, and read-modify-write operations usually belong on the write endpoint.
 
-Use one of three explicit application policies: keep consistency-sensitive reads on the primary; pass a write LSN and wait for a replica to replay it; or accept bounded eventual consistency for designated views. Avoid a hidden "read/write splitter" that tries to classify arbitrary SQL text—functions, common table expressions, temporary objects, and transactions make that unreliable.
+Use one of three explicit application policies: keep consistency-sensitive reads on the primary; after a write commits, capture a primary WAL LSN and wait for a replica to replay it before taking the read snapshot; or accept bounded eventual consistency for designated views. Avoid a hidden "read/write splitter" that tries to classify arbitrary SQL text—functions, common table expressions, temporary objects, and transactions make that unreliable.
 
 ## Exclude an unhealthy replica without disabling promotion
 
