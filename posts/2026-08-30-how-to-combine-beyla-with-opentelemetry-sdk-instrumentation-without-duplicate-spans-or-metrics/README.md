@@ -8,7 +8,7 @@ Description: Combine Beyla's zero-code RED and network visibility with OpenTelem
 
 ---
 
-Beyla and an OpenTelemetry SDK can complement each other, but they observe overlapping boundaries. Both can create an HTTP server span for the same request, both can report request-duration metrics, and a metrics generator can derive another metric set from the SDK trace. Sending all of it does not create a richer view; it creates double-counting and two nearly identical traces with different span IDs.
+Beyla and an OpenTelemetry SDK can complement each other, but they observe overlapping boundaries. Both can create an HTTP server span for the same request, both can report request-duration metrics, and a metrics generator can derive another metric set from the SDK trace. Sending all of it does not create a richer view; it creates double-counting and duplicate server spans. If both producers honor the same incoming context, those spans can appear in one trace; without shared context, they can appear in separate traces. Either way, they have independently generated span IDs.
 
 The reliable design is to assign ownership per signal and per service before changing configuration.
 
@@ -46,11 +46,11 @@ prometheus_export:
   features: ["application"]
 ```
 
-This selector cannot emit Beyla traces. Keep the SDK's OTLP trace exporter enabled and avoid configuring a Beyla trace destination for that service group.
+With no later matching discovery rule overriding `exports`, this selector cannot emit Beyla traces. Keep the SDK's OTLP trace exporter enabled and avoid configuring a Beyla trace destination for that service group.
 
 ## Prevent a second metric derivation
 
-Even with one request-metric producer, Tempo's metrics-generator or an Alloy span-metrics connector can derive RED metrics from SDK traces. If Beyla already owns span metrics or service graphs, Grafana recommends adding this resource attribute to the SDK-instrumented service:
+Even with one request-metric producer, Tempo's metrics-generator or an Alloy span-metrics connector can derive RED metrics from SDK traces. If Beyla already owns the overlapping RED/span metrics or service graphs, Grafana recommends adding this resource attribute to the SDK-instrumented service:
 
 ```yaml
 env:
@@ -61,7 +61,7 @@ env:
       span.metrics.skip=true
 ```
 
-Grafana's trace-to-metrics components recognize `span.metrics.skip=true` as an instruction not to generate another set from those spans. Beyla adds the attribute to its own traces when its span-metric or service-graph generation is enabled.
+Grafana Cloud Tempo can be configured under Application Observability's Duplication Options to exclude traces carrying `span.metrics.skip=true`. In self-managed Tempo or Alloy, the attribute is only a marker: configure Tempo `filter_policies` in each enabled `span_metrics` and `service_graphs` processor, or an Alloy `otelcol.processor.filter` only on the branch feeding the corresponding connector. Values set through `OTEL_RESOURCE_ATTRIBUTES` are strings, while Beyla emits a Boolean value, so self-managed filters shared by both sources must handle both types. Beyla 3.33.0 adds the flag to its own traces when span-metric export is enabled; it does not add it for a service-graph-only configuration.
 
 If the metrics-generator, rather than Beyla, is intended to own derived metrics, omit that attribute and disable the overlapping Beyla metric features. The point is not that one source is universally better; it is that exactly one source must feed each SLI.
 
@@ -87,9 +87,9 @@ This yields byte counters between network endpoints, not a duplicate HTTP durati
 
 ## Align resource identity and propagation
 
-Both pipelines must use the same stable `service.name` and `service.namespace`. Put those values in the application container's OpenTelemetry resource configuration or on standard Kubernetes resource annotations. If the SDK says `checkout-api` while Beyla derives `checkout-v2`, dashboards and service graphs show two services even when no sample is technically duplicated.
+Both pipelines must use the same stable `service.name` and `service.namespace`. Put those values in the application container's OpenTelemetry resource configuration; Beyla reads the target process's `OTEL_SERVICE_NAME` and `OTEL_RESOURCE_ATTRIBUTES`. In Kubernetes, Beyla also recognizes the Pod annotations `resource.opentelemetry.io/service.name` and `resource.opentelemetry.io/service.namespace`, but ensure the SDK, OpenTelemetry Operator, or another component maps them into the application's resource as well. If the SDK says `checkout-api` while Beyla derives `checkout-v2`, dashboards and service graphs show two services even when no sample is technically duplicated.
 
-Let the SDK inject W3C `traceparent` for protocols it understands. Beyla honors an outbound header the application already generated. Avoid enabling generic Beyla packet-level propagation unless a tested hop needs it; otherwise two context mechanisms complicate debugging, especially across TLS proxies.
+Let the SDK's HTTP or RPC instrumentation inject W3C `traceparent` where supported. Beyla honors an outbound header the application already generated. Keep Beyla's network-level propagation disabled unless a tested hop needs it. For HTTPS, its TCP/IP-level context reaches only another Beyla-instrumented endpoint, and L7 proxies or load balancers disrupt it.
 
 For Go manual spans combined with eBPF zero-code instrumentation, OpenTelemetry documents the Auto SDK integration. Do not register a competing global Go `TracerProvider` in that pattern, because it prevents correlation with the eBPF-provided context.
 
@@ -98,7 +98,7 @@ For Go manual spans combined with eBPF zero-code instrumentation, OpenTelemetry 
 Send one request with a known trace ID and inspect the pipeline:
 
 1. Tempo should contain one server span for the request boundary, plus the SDK's legitimate child spans.
-2. Search span resource attributes for `telemetry.sdk.name`; SDK spans normally identify their SDK, while Beyla telemetry has its own scope.
+2. Inspect resource attributes such as `telemetry.sdk.name`: standard OpenTelemetry SDK spans normally report `opentelemetry`, while Beyla 3.33.0 reports `beyla` and records `otel.scope.name=github.com/grafana/beyla`.
 3. Query request counts from each candidate metric family over the same interval. A single request should not increment two metrics used by the same dashboard or SLO.
 4. Inspect the Collector/Alloy graph and ensure the SDK OTLP receiver does not fan out to two trace exporters that both reach the same Tempo tenant.
 5. Allow old series and traces to age out before evaluating the final topology.
@@ -107,7 +107,7 @@ Do not attempt to deduplicate spans by name in the Collector. Independently crea
 
 ## Conclusion
 
-Beyla and SDK instrumentation work best with explicit signal ownership: SDKs for deep traces and application semantics, Beyla for uniform RED or network visibility. Keep Beyla's OTel detection enabled, restrict Beyla exports, prevent a second metrics generator with `span.metrics.skip=true` when applicable, and align service resources across both paths.
+Beyla and SDK instrumentation work best with explicit signal ownership: SDKs for deep traces and application semantics, Beyla for uniform RED or network visibility. Keep Beyla's OTel detection enabled, restrict Beyla exports, configure the trace-to-metrics pipeline to honor `span.metrics.skip=true` or disable overlapping generation, and align service resources across both paths.
 
 ## Official Documentation
 
