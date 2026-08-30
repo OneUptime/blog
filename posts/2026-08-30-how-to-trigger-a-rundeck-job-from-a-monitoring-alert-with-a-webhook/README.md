@@ -40,7 +40,7 @@ In the target project, open **Webhooks**, add a webhook, and select the **Run Jo
 - A dedicated webhook user and minimal roles.
 - Option arguments that map parsed JSON fields.
 
-The configured webhook user must exist and must have logged in to Rundeck at least once before it can be selected successfully. Its effective ACLs need application project visibility plus project permissions to view/run the target job and read/run the allowed nodes. Do not run the webhook as `admin`.
+The configured webhook user must exist and must have logged in to Rundeck at least once before it can be selected successfully. Its effective ACLs need application-context `read` access to the project and project-context permissions to `post` to webhooks, `view` (or `read`) and `run` the target job, and `read` and `run` the allowed nodes. Do not run the webhook as `admin`.
 
 After saving, copy the generated **Post URL** exactly. It contains a webhook authentication token and must be handled as a secret. The send-event API currently follows this shape:
 
@@ -87,7 +87,7 @@ curl --fail-with-body --request POST "$RUNDECK_WEBHOOK_URL" \
   --data @test-alert.json
 ```
 
-The value is not automatically `Bearer <token>`; use the exact generated string. Regenerating it immediately invalidates the previous value. Ensure a reverse proxy preserves the `Authorization` header.
+The value is not automatically `Bearer <token>`; use the exact generated string. A regenerated authorization string takes effect when the webhook is saved and replaces the previous value. Ensure a reverse proxy preserves the `Authorization` header.
 
 Even with header authorization, protect the Post URL and expose it only over HTTPS. Restrict inbound network paths or place a validating relay in front when the monitoring platform supports signed requests that the basic Run Job handler does not validate itself.
 
@@ -115,7 +115,7 @@ Test these cases before production:
 
 ## Operate the Integration
 
-Monitor the webhook's HTTP responses and Rundeck execution outcomes separately. Rotate the Post URL token and optional authorization string through a coordinated change so the sender and receiver do not drift. Avoid logging full URLs, headers, or raw alert payloads containing credentials or customer data.
+Monitor the webhook's HTTP responses and Rundeck execution outcomes separately. The webhook update API does not allow its Post URL token to be changed, so rotate that token by recreating the webhook or through a project-archive import that regenerates webhook tokens. Rotate the optional authorization string with its **Regenerate** control. Coordinate either change so the sender and receiver do not drift. Avoid logging full URLs, headers, or raw alert payloads containing credentials or customer data.
 
 For troubleshooting, Rundeck can emit webhook activity to its dedicated webhook log when configured. Apply retention and access controls because payloads may include sensitive labels and annotations.
 
