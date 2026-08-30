@@ -1,4 +1,4 @@
-# Validation Summary: How to Export Beyla RED Metrics to Prometheus and Traces to Tempo Through Grafana Alloy
+# Validation Summary: How to Export Beyla Metrics and Traces Through Grafana Alloy
 
 ## Status
 validated

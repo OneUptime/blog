@@ -1,4 +1,4 @@
-# Validation Summary: How to Exclude Health Checks, Metrics Endpoints, and Noisy Routes from Beyla Telemetry
+# Validation Summary: How to Exclude Health Checks and Noisy Routes from Beyla
 
 ## Status
 validated

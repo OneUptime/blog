@@ -1,4 +1,4 @@
-# Validation Summary: How to Give Applications One Stable PostgreSQL Endpoint with HAProxy and Keepalived
+# Validation Summary: How to Give Apps One Stable PostgreSQL Endpoint with HAProxy and Keepalived
 
 ## Status
 validated

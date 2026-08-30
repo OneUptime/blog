@@ -1,4 +1,4 @@
-# How to Exclude Health Checks, Metrics Endpoints, and Noisy Routes from Beyla Telemetry
+# How to Exclude Health Checks and Noisy Routes from Beyla
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

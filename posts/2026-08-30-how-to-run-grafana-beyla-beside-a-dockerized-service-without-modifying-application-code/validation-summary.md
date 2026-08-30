@@ -1,4 +1,4 @@
-# Validation Summary: How to Run Grafana Beyla Beside a Dockerized Service Without Modifying Application Code
+# Validation Summary: How to Run Grafana Beyla Beside a Dockerized Service
 
 ## Status
 validated

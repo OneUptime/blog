@@ -1,4 +1,4 @@
-# How to Export Beyla RED Metrics to Prometheus and Traces to Tempo Through Grafana Alloy
+# How to Export Beyla Metrics and Traces Through Grafana Alloy
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

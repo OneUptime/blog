@@ -1,4 +1,4 @@
-# Validation Summary: How to Call a Remediation Job from a Rundeck Step Error Handler Without Hiding the Failure
+# Validation Summary: Rundeck Step Error Handlers: Preserve Failure After Remediation
 
 ## Status
 

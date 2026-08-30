@@ -1,4 +1,4 @@
-# Validation Summary: How to Test PostgreSQL HA Safely: Primary Crash, Network Partition, DCS Loss, and Proxy Failure
+# Validation Summary: How to Safely Test PostgreSQL HA Failure Scenarios
 
 ## Status
 validated

@@ -101,7 +101,7 @@ Test the policy by starting a controlled long run and attempting a second manual
 
 ## Official Documentation
 
-- [Rundeck: Creating Jobs — Multiple Executions, Timeout, and Retry](https://docs.rundeck.com/docs/manual/jobs/creating-jobs.html#multiple-executions)
+- [Rundeck: Creating Jobs - Multiple Executions, Timeout, and Retry](https://docs.rundeck.com/docs/manual/jobs/creating-jobs.html#multiple-executions)
 - [Rundeck Job Queue](https://docs.rundeck.com/docs/manual/jobs/job-queue.html)
 - [Rundeck Job YAML format](https://docs.rundeck.com/docs/manual/document-format-reference/job-yaml-v12.html)
 - [Rundeck Job Workflows](https://docs.rundeck.com/docs/manual/jobs/job-workflows.html)

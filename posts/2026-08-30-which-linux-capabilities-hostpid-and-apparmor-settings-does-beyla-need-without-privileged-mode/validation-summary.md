@@ -1,4 +1,4 @@
-# Validation Summary: Which Linux Capabilities, `hostPID`, and AppArmor Settings Does Beyla Need Without Privileged Mode?
+# Validation Summary: Beyla Linux Capabilities, `hostPID`, and AppArmor Requirements
 
 ## Status
 validated

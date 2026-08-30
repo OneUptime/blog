@@ -1,4 +1,4 @@
-# Validation Summary: Why Does Rundeck Miss New or Changed Inventory Hosts? Controlling Node Source Refresh
+# Validation Summary: Why Does Rundeck Miss Inventory Changes? Node Source Refresh
 
 ## Status
 validated

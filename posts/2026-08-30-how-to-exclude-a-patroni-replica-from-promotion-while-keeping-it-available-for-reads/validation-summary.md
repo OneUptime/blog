@@ -1,4 +1,4 @@
-# Validation Summary: How to Exclude a Patroni Replica from Promotion While Keeping It Available for Reads
+# Validation Summary: How to Keep a Patroni Replica Readable but Exclude It from Promotion
 
 ## Status
 

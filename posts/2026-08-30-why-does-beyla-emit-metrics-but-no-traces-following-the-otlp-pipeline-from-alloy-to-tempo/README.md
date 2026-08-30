@@ -1,4 +1,4 @@
-# Why Does Beyla Emit Metrics but No Traces? Following the OTLP Pipeline from Alloy to Tempo
+# Beyla Metrics but No Traces? Debugging the OTLP Pipeline
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

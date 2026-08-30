@@ -1,4 +1,4 @@
-# How to Discover Beyla Services by Kubernetes Namespace, Pod Label, Executable Path, or Open Port
+# How to Discover Beyla Services with Kubernetes and Process Filters
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

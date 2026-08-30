@@ -1,4 +1,4 @@
-# Which Linux Capabilities, `hostPID`, and AppArmor Settings Does Beyla Need Without Privileged Mode?
+# Beyla Linux Capabilities, `hostPID`, and AppArmor Requirements
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

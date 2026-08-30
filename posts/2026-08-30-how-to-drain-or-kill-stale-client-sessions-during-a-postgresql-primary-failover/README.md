@@ -87,7 +87,7 @@ PAUSE app;
 RESUME app;
 ```
 
-`PAUSE` waits for server connections to be released according to pool mode. In transaction pooling that means transactions finish; in session pooling it can wait for the client to disconnect. New clients wait while the database is paused. Set an operational deadline—an abandoned transaction must not block maintenance indefinitely.
+`PAUSE` waits for server connections to be released according to pool mode. In transaction pooling that means transactions finish; in session pooling it can wait for the client to disconnect. New clients wait while the database is paused. Set an operational deadline-an abandoned transaction must not block maintenance indefinitely.
 
 ### Gradual downstream refresh
 

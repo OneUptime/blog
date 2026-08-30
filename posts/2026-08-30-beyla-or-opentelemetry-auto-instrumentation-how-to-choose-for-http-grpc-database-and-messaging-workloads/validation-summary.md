@@ -1,4 +1,4 @@
-# Validation Summary: Beyla or OpenTelemetry Auto-Instrumentation: How to Choose for HTTP, gRPC, Database, and Messaging Workloads
+# Validation Summary: Beyla vs OpenTelemetry Auto-Instrumentation: How to Choose
 
 ## Status
 validated

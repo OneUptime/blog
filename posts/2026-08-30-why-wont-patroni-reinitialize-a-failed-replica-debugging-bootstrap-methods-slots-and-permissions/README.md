@@ -1,4 +1,4 @@
-# Why Won't Patroni Reinitialize a Failed Replica? Debugging Bootstrap Methods, Slots, and Permissions
+# Why Won't Patroni Reinitialize a Failed Replica?
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
@@ -74,7 +74,7 @@ postgresql:
 
 This follows Patroni's documented custom-method example; an actual WAL-E deployment still needs the backup tool's own repository and credential configuration. Patroni passes cluster arguments such as `--scope`, `--datadir`, `--role`, and `--connstring` unless `no_params: true` is set. The command must be executable by the Patroni OS user and return zero only after it has produced a valid replica data directory.
 
-`no_leader` allows a custom method to run without a live leader or replica source during Patroni's source-less replica-creation path—useful for a backup repository. It does not make built-in `pg_basebackup` independent of a running PostgreSQL source, and it does not bypass the reinitialize endpoint's requirement that the DCS cluster currently have a leader.
+`no_leader` allows a custom method to run without a live leader or replica source during Patroni's source-less replica-creation path-useful for a backup repository. It does not make built-in `pg_basebackup` independent of a running PostgreSQL source, and it does not bypass the reinitialize endpoint's requirement that the DCS cluster currently have a leader.
 
 A standby cluster has a separate `standby_cluster.create_replica_methods` selection that references method definitions under `postgresql`. Confirm you are debugging the correct list for the cluster's current mode.
 

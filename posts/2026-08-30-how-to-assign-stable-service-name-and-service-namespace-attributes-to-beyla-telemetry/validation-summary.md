@@ -1,4 +1,4 @@
-# Validation Summary: How to Assign Stable `service.name` and `service.namespace` Attributes to Beyla Telemetry
+# Validation Summary: How to Set Stable `service.name` and `service.namespace` in Beyla
 
 ## Status
 validated

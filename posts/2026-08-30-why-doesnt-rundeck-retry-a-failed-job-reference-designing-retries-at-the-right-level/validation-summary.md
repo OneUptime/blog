@@ -1,4 +1,4 @@
-# Validation Summary: Why Doesn't Rundeck Retry a Failed Job Reference? Designing Retries at the Right Level
+# Validation Summary: Why Rundeck Job Reference Retries Fail and Where to Retry
 
 ## Status
 

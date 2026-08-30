@@ -1,4 +1,4 @@
-# Validation Summary: How to Copy a User-Uploaded File to Remote Nodes Before Running a Rundeck Command
+# Validation Summary: Copy User-Uploaded Files to Remote Nodes in Rundeck
 
 ## Status
 

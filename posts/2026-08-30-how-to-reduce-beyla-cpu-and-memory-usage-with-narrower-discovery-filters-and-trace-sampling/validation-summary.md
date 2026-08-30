@@ -1,4 +1,4 @@
-# Validation Summary: How to Reduce Beyla CPU and Memory Usage with Narrower Discovery, Filters, and Trace Sampling
+# Validation Summary: How to Reduce Beyla Resource Use with Filters and Sampling
 
 ## Status
 

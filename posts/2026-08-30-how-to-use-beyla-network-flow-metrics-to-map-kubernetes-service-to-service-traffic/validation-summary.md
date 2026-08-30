@@ -1,4 +1,4 @@
-# Validation Summary: How to Use Beyla Network Flow Metrics to Map Kubernetes Service-to-Service Traffic
+# Validation Summary: How to Map Kubernetes Service Traffic with Beyla Network Flows
 
 ## Status
 

@@ -1,4 +1,4 @@
-# Validation Summary: How to Add Kubernetes Pod, Deployment, Namespace, and Node Metadata to Beyla Metrics and Traces
+# Validation Summary: How to Add Kubernetes Metadata to Beyla Metrics and Traces
 
 ## Status
 validated

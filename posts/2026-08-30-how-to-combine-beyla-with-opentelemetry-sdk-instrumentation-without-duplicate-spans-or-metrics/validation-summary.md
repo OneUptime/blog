@@ -1,4 +1,4 @@
-# Validation Summary: How to Combine Beyla with OpenTelemetry SDK Instrumentation Without Duplicate Spans or Metrics
+# Validation Summary: How to Combine Beyla and OpenTelemetry Without Duplicate Telemetry
 
 ## Status
 validated

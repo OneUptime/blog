@@ -1,4 +1,4 @@
-# How to Fix Beyla's "Operation Not Permitted" eBPF Error in Kubernetes
+# How to Fix Beyla's 'Operation Not Permitted' eBPF Error in Kubernetes
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

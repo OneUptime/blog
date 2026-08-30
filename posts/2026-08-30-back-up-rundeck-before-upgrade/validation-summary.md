@@ -1,4 +1,4 @@
-# Validation Summary: How to Back Up Rundeck Projects, Job Definitions, Key Storage, and Execution History Before an Upgrade
+# Validation Summary: Back Up Rundeck Before an Upgrade: Projects, Keys, and History
 
 ## Status
 validated

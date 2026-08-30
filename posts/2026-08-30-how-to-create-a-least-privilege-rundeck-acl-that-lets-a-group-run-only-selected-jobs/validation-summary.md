@@ -1,4 +1,4 @@
-# Validation Summary: How to Create a Least-Privilege Rundeck ACL That Lets a Group Run Only Selected Jobs
+# Validation Summary: Create a Least-Privilege Rundeck ACL for Selected Jobs
 
 ## Status
 

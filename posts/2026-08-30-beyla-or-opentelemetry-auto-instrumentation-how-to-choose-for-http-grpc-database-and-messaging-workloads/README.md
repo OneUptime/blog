@@ -1,4 +1,4 @@
-# Beyla or OpenTelemetry Auto-Instrumentation: How to Choose for HTTP, gRPC, Database, and Messaging Workloads
+# Beyla vs OpenTelemetry Auto-Instrumentation: How to Choose
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

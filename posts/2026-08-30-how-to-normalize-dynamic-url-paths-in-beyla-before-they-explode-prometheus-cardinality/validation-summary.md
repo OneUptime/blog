@@ -1,4 +1,4 @@
-# Validation Summary: How to Normalize Dynamic URL Paths in Beyla Before They Explode Prometheus Cardinality
+# Validation Summary: How to Normalize Beyla URL Paths to Control Prometheus Cardinality
 
 ## Status
 

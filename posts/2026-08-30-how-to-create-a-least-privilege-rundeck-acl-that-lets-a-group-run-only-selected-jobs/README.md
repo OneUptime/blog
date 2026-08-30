@@ -1,4 +1,4 @@
-# How to Create a Least-Privilege Rundeck ACL That Lets a Group Run Only Selected Jobs
+# Create a Least-Privilege Rundeck ACL for Selected Jobs
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

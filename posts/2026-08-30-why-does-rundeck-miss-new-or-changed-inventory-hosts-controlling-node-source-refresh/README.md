@@ -1,4 +1,4 @@
-# Why Does Rundeck Miss New or Changed Inventory Hosts? Controlling Node Source Refresh
+# Why Does Rundeck Miss Inventory Changes? Node Source Refresh
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

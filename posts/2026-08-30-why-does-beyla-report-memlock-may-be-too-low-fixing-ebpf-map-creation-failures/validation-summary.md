@@ -1,4 +1,4 @@
-# Validation Summary: Why Does Beyla Report "MEMLOCK May Be Too Low"? Fixing eBPF Map Creation Failures
+# Validation Summary: Fixing Beyla's 'MEMLOCK May Be Too Low' Error
 
 ## Status
 validated

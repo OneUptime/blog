@@ -1,4 +1,4 @@
-# Validation Summary: How to Design Patroni Across Two Data Centers Without Losing Quorum or Promoting Both Sides
+# Validation Summary: How to Run Patroni Across Two Data Centers Without Split Brain
 
 ## Status
 

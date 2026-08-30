@@ -1,4 +1,4 @@
-# How to Exclude a Patroni Replica from Promotion While Keeping It Available for Reads
+# How to Keep a Patroni Replica Readable but Exclude It from Promotion
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
@@ -34,7 +34,7 @@ tags:
   nosync: true
 ```
 
-`nosync: true` is optional and separate. Use it when this node must also never become a synchronous standby—for example, a high-latency reporting replica whose selection would increase commit latency. Do not add it automatically to every `nofailover` node; a non-promotable local replica may still be a valid synchronous durability target if that is an intentional, tested design.
+`nosync: true` is optional and separate. Use it when this node must also never become a synchronous standby-for example, a high-latency reporting replica whose selection would increase commit latency. Do not add it automatically to every `nofailover` node; a non-promotable local replica may still be a valid synchronous durability target if that is an intentional, tested design.
 
 Ask Patroni to reread the local file:
 

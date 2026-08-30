@@ -1,4 +1,4 @@
-# How to Assign Stable `service.name` and `service.namespace` Attributes to Beyla Telemetry
+# How to Set Stable `service.name` and `service.namespace` in Beyla
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

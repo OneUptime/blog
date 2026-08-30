@@ -1,4 +1,4 @@
-# Why Is a Rundeck Job Invisible Even Though the ACL Allows `run`? Application vs Project Contexts
+# Invisible Rundeck Job? Application vs Project ACL Contexts
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

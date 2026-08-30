@@ -1,4 +1,4 @@
-# How to Run Grafana Beyla Beside a Dockerized Service Without Modifying Application Code
+# How to Run Grafana Beyla Beside a Dockerized Service
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

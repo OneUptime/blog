@@ -1,4 +1,4 @@
-# How to Combine Beyla with OpenTelemetry SDK Instrumentation Without Duplicate Spans or Metrics
+# How to Combine Beyla and OpenTelemetry Without Duplicate Telemetry
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

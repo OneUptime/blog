@@ -1,4 +1,4 @@
-# Validation Summary: Why Is a Rundeck Job Invisible Even Though the ACL Allows `run`? Application vs Project Contexts
+# Validation Summary: Invisible Rundeck Job? Application vs Project ACL Contexts
 
 ## Status
 validated

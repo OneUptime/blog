@@ -1,4 +1,4 @@
-# Validation Summary: How to Split Read and Write Traffic in a Patroni Cluster Without Sending Writes to a Replica
+# Validation Summary: How to Split Read and Write Traffic Safely in a Patroni Cluster
 
 ## Status
 validated

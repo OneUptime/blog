@@ -1,4 +1,4 @@
-# How to Put Rundeck Behind an HTTPS Reverse Proxy Without Broken Redirects or Exposed Port 4440
+# Put Rundeck Behind HTTPS Without Broken Redirects or Port 4440
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

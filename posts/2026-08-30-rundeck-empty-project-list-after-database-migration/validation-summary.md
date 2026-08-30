@@ -1,4 +1,4 @@
-# Validation Summary: Why Does Rundeck Start with an Empty Project List After a Database Migration? Recovering Jobs and History
+# Validation Summary: Recover Rundeck's Project List After a Database Migration
 
 ## Status
 validated

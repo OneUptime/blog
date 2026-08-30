@@ -1,4 +1,4 @@
-# How to Design Patroni Across Two Data Centers Without Losing Quorum or Promoting Both Sides
+# How to Run Patroni Across Two Data Centers Without Split Brain
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
@@ -89,13 +89,13 @@ When DC1 returns, keep its client route fenced. Its old primary cannot simply re
 
 Patroni's documented options are to convert the old primary site into a standby cluster of DC2 and attempt `pg_rewind`, or rebuild it from scratch. Patroni 4.1 and later provide `patronictl demote-cluster` to add the new remote-source settings and wait for a standby leader; older versions require the equivalent reviewed dynamic-configuration change. `pg_rewind` requires the target cluster to have either data checksums enabled or `wal_log_hints=on`, and `full_page_writes` must be `on`. It examines both clusters' timeline histories and needs the target's WAL back to the divergence point, either in `pg_wal` or retrievable from an archive with `pg_rewind -c`; it can still fail for other reasons. Preserve and reconcile any transactions that existed only on the old timeline before rewinding or rebuilding.
 
-Only after the recovered site is a verified streaming standby should it receive read traffic or regain disaster-recovery eligibility. A future failback is another planned, fenced role reversal—not a DNS change.
+Only after the recovered site is a verified streaming standby should it receive read traffic or regain disaster-recovery eligibility. A future failback is another planned, fenced role reversal-not a DNS change.
 
 ## Test the design
 
 In an isolated exercise, cut only the inter-site link while both local DCS clusters stay healthy. DC1 should remain the only writer; DC2 should remain a standby cluster and must not automatically promote. Then simulate complete DC1 fencing, execute the manual promotion gates, and reconcile the canary workload.
 
-Also test a single etcd member loss in each site, loss of a local DCS majority, exhausted replication-slot disk, missing WAL, global-router failure, and restoration of DC1. Measure RTO from disaster declaration—not merely from the promotion command—and RPO from acknowledged workload reconciliation.
+Also test a single etcd member loss in each site, loss of a local DCS majority, exhausted replication-slot disk, missing WAL, global-router failure, and restoration of DC1. Measure RTO from disaster declaration-not merely from the promotion command-and RPO from acknowledged workload reconciliation.
 
 ## Official Documentation
 

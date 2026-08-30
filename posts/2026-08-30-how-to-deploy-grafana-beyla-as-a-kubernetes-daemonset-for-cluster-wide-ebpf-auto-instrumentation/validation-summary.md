@@ -1,4 +1,4 @@
-# Validation Summary: How to Deploy Grafana Beyla as a Kubernetes DaemonSet for Cluster-Wide eBPF Auto-Instrumentation
+# Validation Summary: How to Deploy Grafana Beyla as a Kubernetes DaemonSet
 
 ## Status
 

@@ -1,4 +1,4 @@
-# Validation Summary: How to Put Rundeck Behind an HTTPS Reverse Proxy Without Broken Redirects or Exposed Port 4440
+# Validation Summary: Put Rundeck Behind HTTPS Without Broken Redirects or Port 4440
 
 ## Status
 validated

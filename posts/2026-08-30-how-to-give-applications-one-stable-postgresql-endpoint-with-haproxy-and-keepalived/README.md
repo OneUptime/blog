@@ -1,4 +1,4 @@
-# How to Give Applications One Stable PostgreSQL Endpoint with HAProxy and Keepalived
+# How to Give Apps One Stable PostgreSQL Endpoint with HAProxy and Keepalived
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

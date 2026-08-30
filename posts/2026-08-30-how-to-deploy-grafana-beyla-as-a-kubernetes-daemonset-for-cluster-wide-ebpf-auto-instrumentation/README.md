@@ -1,4 +1,4 @@
-# How to Deploy Grafana Beyla as a Kubernetes DaemonSet for Cluster-Wide eBPF Auto-Instrumentation
+# How to Deploy Grafana Beyla as a Kubernetes DaemonSet
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -1,4 +1,4 @@
-# How to Use Beyla Network Flow Metrics to Map Kubernetes Service-to-Service Traffic
+# How to Map Kubernetes Service Traffic with Beyla Network Flows
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

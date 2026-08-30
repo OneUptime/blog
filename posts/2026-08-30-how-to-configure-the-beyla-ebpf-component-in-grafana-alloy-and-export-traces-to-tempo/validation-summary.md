@@ -1,4 +1,4 @@
-# Validation Summary: How to Configure the `beyla.ebpf` Component in Grafana Alloy and Export Traces to Tempo
+# Validation Summary: How to Export Grafana Alloy `beyla.ebpf` Traces to Tempo
 
 ## Status
 validated

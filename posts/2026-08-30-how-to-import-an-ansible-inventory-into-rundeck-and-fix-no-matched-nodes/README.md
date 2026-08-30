@@ -1,4 +1,4 @@
-# How to Import an Ansible Inventory into Rundeck and Fix "No Matched Nodes"
+# How to Import an Ansible Inventory into Rundeck and Fix 'No Matched Nodes'
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

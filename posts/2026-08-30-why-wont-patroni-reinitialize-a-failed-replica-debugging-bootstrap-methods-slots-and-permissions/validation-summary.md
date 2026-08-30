@@ -1,4 +1,4 @@
-# Validation Summary: Why Won't Patroni Reinitialize a Failed Replica? Debugging Bootstrap Methods, Slots, and Permissions
+# Validation Summary: Why Won't Patroni Reinitialize a Failed Replica?
 
 ## Status
 validated

@@ -1,4 +1,4 @@
-# Validation Summary: Why Did Beyla Instrument Alloy, Tempo, and Itself? Excluding Observability Processes from Discovery
+# Validation Summary: How to Exclude Alloy, Tempo, and Beyla from Beyla Discovery
 
 ## Status
 validated

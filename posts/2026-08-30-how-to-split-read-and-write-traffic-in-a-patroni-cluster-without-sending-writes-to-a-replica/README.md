@@ -1,4 +1,4 @@
-# How to Split Read and Write Traffic in a Patroni Cluster Without Sending Writes to a Replica
+# How to Split Read and Write Traffic Safely in a Patroni Cluster
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
@@ -106,7 +106,7 @@ Read scaling is not transparent for every workload:
 - Transactions cannot begin on a replica and later switch to the primary.
 - Sequence observations, job claiming, locks, and read-modify-write operations usually belong on the write endpoint.
 
-Use one of three explicit application policies: keep consistency-sensitive reads on the primary; after a write commits, capture a primary WAL LSN and wait for a replica to replay it before taking the read snapshot; or accept bounded eventual consistency for designated views. Avoid a hidden "read/write splitter" that tries to classify arbitrary SQL text—functions, common table expressions, temporary objects, and transactions make that unreliable.
+Use one of three explicit application policies: keep consistency-sensitive reads on the primary; after a write commits, capture a primary WAL LSN and wait for a replica to replay it before taking the read snapshot; or accept bounded eventual consistency for designated views. Avoid a hidden "read/write splitter" that tries to classify arbitrary SQL text-functions, common table expressions, temporary objects, and transactions make that unreliable.
 
 ## Exclude an unhealthy replica without disabling promotion
 

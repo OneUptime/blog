@@ -1,4 +1,4 @@
-# How to Copy a User-Uploaded File to Remote Nodes Before Running a Rundeck Command
+# Copy User-Uploaded Files to Remote Nodes in Rundeck
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

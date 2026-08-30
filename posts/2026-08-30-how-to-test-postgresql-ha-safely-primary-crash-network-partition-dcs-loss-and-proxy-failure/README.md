@@ -1,4 +1,4 @@
-# How to Test PostgreSQL HA Safely: Primary Crash, Network Partition, DCS Loss, and Proxy Failure
+# How to Safely Test PostgreSQL HA Failure Scenarios
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
@@ -100,7 +100,7 @@ For each scenario, capture:
 
 Retry only complete transactions whose semantics permit it. A lost connection around `COMMIT` has an ambiguous outcome, so the application must query a stable idempotency key rather than blindly repeat the operation.
 
-Test long transactions, idle pooled connections, prepared statements, and read pools—not just repeated one-shot `psql` connections. After the configured drain or invalidation action, query backend identity through each active PgBouncer pool and verify that its server connections no longer reach the former writer; account for the pooling mode because existing server connections can outlive an HAProxy route change.
+Test long transactions, idle pooled connections, prepared statements, and read pools-not just repeated one-shot `psql` connections. After the configured drain or invalidation action, query backend identity through each active PgBouncer pool and verify that its server connections no longer reach the former writer; account for the pooling mode because existing server connections can outlive an HAProxy route change.
 
 ## Restore and close the exercise
 

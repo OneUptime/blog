@@ -1,4 +1,4 @@
-# Why Doesn't Rundeck Retry a Failed Job Reference? Designing Retries at the Right Level
+# Why Rundeck Job Reference Retries Fail and Where to Retry
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

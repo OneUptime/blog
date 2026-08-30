@@ -1,4 +1,4 @@
-# Validation Summary: How to Discover Beyla Services by Kubernetes Namespace, Pod Label, Executable Path, or Open Port
+# Validation Summary: How to Discover Beyla Services with Kubernetes and Process Filters
 
 ## Status
 validated

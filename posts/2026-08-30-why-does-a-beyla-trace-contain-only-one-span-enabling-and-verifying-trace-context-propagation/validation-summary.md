@@ -1,4 +1,4 @@
-# Validation Summary: Why Does a Beyla Trace Contain Only One Span? Enabling and Verifying Trace-Context Propagation
+# Validation Summary: Beyla Traces Have One Span? Enable Trace Context Propagation
 
 ## Status
 validated

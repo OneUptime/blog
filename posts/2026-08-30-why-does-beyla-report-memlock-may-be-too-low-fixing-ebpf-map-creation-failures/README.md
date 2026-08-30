@@ -1,4 +1,4 @@
-# Why Does Beyla Report "MEMLOCK May Be Too Low"? Fixing eBPF Map Creation Failures
+# Fixing Beyla's 'MEMLOCK May Be Too Low' Error
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

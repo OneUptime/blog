@@ -1,4 +1,4 @@
-# Validation Summary: Why Does a Command Work in Your Shell but Fail in Rundeck? Comparing Users, PATH, TTY, and Environment
+# Validation Summary: Why Shell Commands Fail in Rundeck: Users, PATH, TTY, and Environment
 
 ## Status
 

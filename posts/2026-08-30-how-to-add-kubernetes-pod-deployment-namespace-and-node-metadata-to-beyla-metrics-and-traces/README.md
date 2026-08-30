@@ -1,4 +1,4 @@
-# How to Add Kubernetes Pod, Deployment, Namespace, and Node Metadata to Beyla Metrics and Traces
+# How to Add Kubernetes Metadata to Beyla Metrics and Traces
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

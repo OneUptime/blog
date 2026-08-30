@@ -8,7 +8,7 @@ Description: Put a Patroni cluster into maintenance mode, verify every expected 
 
 ---
 
-Patroni pause mode disables automatic failover and largely detaches Patroni from changing PostgreSQL state while retaining cluster information in the distributed configuration store. Use it for unusual work—major-version upgrades, corruption recovery, or maintenance that intentionally starts and stops PostgreSQL outside Patroni's normal assumptions.
+Patroni pause mode disables automatic failover and largely detaches Patroni from changing PostgreSQL state while retaining cluster information in the distributed configuration store. Use it for unusual work-major-version upgrades, corruption recovery, or maintenance that intentionally starts and stops PostgreSQL outside Patroni's normal assumptions.
 
 Pause is a cluster-wide dynamic state, not a local daemon switch. The safe entry command is:
 

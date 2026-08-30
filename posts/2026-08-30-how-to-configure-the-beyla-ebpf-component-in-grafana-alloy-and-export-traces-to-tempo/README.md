@@ -1,4 +1,4 @@
-# How to Configure the `beyla.ebpf` Component in Grafana Alloy and Export Traces to Tempo
+# How to Export Grafana Alloy `beyla.ebpf` Traces to Tempo
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
@@ -17,7 +17,7 @@ application process -> beyla.ebpf -> otelcol.processor.batch
                     -> otelcol.exporter.otlp -> Tempo OTLP receiver
 ```
 
-Alloy and standalone Beyla do not necessarily ship the same Beyla version. The current Alloy component reference identifies the embedded version it wraps. Treat that component page—not the latest standalone Beyla YAML reference—as authoritative for accepted Alloy blocks and fields.
+Alloy and standalone Beyla do not necessarily ship the same Beyla version. The current Alloy component reference identifies the embedded version it wraps. Treat that component page-not the latest standalone Beyla YAML reference-as authoritative for accepted Alloy blocks and fields.
 
 ## Configure a minimal trace pipeline
 

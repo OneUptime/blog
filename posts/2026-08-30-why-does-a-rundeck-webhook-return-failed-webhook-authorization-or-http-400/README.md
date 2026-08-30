@@ -1,4 +1,4 @@
-# Why Does a Rundeck Webhook Return "Failed Webhook Authorization" or HTTP 400?
+# Why Does a Rundeck Webhook Return 'Failed Webhook Authorization' or HTTP 400?
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

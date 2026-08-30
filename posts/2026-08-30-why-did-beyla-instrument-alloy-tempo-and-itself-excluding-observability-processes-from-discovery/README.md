@@ -1,4 +1,4 @@
-# Why Did Beyla Instrument Alloy, Tempo, and Itself? Excluding Observability Processes from Discovery
+# How to Exclude Alloy, Tempo, and Beyla from Beyla Discovery
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

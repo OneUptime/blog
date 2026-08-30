@@ -1,4 +1,4 @@
-# How to Back Up Rundeck Projects, Job Definitions, Key Storage, and Execution History Before an Upgrade
+# Back Up Rundeck Before an Upgrade: Projects, Keys, and History
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
@@ -43,7 +43,7 @@ Classify the state:
 
 Keep storage encryption-converter passwords, any configuration-property encryption master password, and external-vault credentials in the recovery plan. Encrypted storage content and `ENC(...)` configuration values cannot be decrypted if the destination lacks the corresponding encryption configuration and secret.
 
-Database-stored ACLs—including policies managed through the System or Project ACL APIs and, where enabled, the Enterprise ACL Storage Layer—depend on the database backup rather than the file-copy row above. Inventory the effective ACL backends instead of assuming every policy is an `.aclpolicy` file.
+Database-stored ACLs-including policies managed through the System or Project ACL APIs and, where enabled, the Enterprise ACL Storage Layer-depend on the database backup rather than the file-copy row above. Inventory the effective ACL backends instead of assuming every policy is an `.aclpolicy` file.
 
 ## Export Jobs and Project Archives
 
