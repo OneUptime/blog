@@ -1803,6 +1803,26 @@
 18. Applying Mutations to Existing Kubernetes Resources with a Reconciliation Job Instead of a Webhook
 19. Injecting an Init Container, Volume, and Volume Mount Atomically with JSON Patch
 20. Replacing Simple Mutating Webhooks with Kubernetes 1.36 MutatingAdmissionPolicy: ApplyConfiguration vs. JSONPatch
+21. How to Prevent a Mutating Webhook from Blocking Its Own Pods During Node Failure
+22. How to Deploy a Webhook Server and `MutatingWebhookConfiguration` in Safe Helm or GitOps Order
+23. How to Load Mutating Webhook Configuration from Static Manifests for Bootstrap-Time Enforcement in Kubernetes 1.37
+24. How to Skip Static Mirror Pods and Other Kubernetes Objects Whose Real State Cannot Be Mutated
+25. How to Decide Whether a Kubernetes Finalizer Belongs in a Controller or a Mutating Webhook
+26. How to Escape Slashes and Tildes in JSON Patch Paths for Kubernetes Labels and Annotations
+27. How to Stop Mutating Webhook Fields from Sticking Across `kubectl apply` Updates
+28. How to Choose Between Mutating Workload Templates and the Pods They Create
+29. How to Mutate CronJob Templates, Jobs, and Generated Pods Without Applying the Same Change Twice
+30. How to Design a Replacement Workflow When a Mutating Webhook Cannot Change `metadata.namespace`
+31. How to Preserve New Pod Fields When an Older Mutating Webhook Uses Stale Go Types
+32. How to Prevent Mixed Webhook Replicas from Returning Different Patches During a Rolling Upgrade
+33. How to Version Injected Fields So a Mutating Webhook Can Upgrade or Roll Back Its Own Changes
+34. How to Resolve Image Tags to Digests Without Making the Container Registry an API Server Dependency
+35. How to Rewrite Container Images to a Private Registry Without Breaking Digests or Pull Credentials
+36. How to Inject Pod Resource Defaults Without Conflicting with LimitRange, VPA, or User Intent
+37. How to Add `imagePullSecrets` in a Mutating Webhook Without Duplicating ServiceAccount Credentials
+38. How to Inject Pod Topology Spread Constraints with a Mutating Webhook Without Making Pods Unschedulable
+39. How to Set `automountServiceAccountToken` in a Mutating Webhook Without Breaking API-Dependent Workloads
+40. How to Default Pod Security Context Fields with a Mutating Webhook Without Weakening Existing Settings
 
 ## TeamCity
 
@@ -6207,3 +6227,210 @@
 18. How to Copy a Kubernetes Secret Between Namespaces with `PushSecret` and Least-Privilege RBAC
 19. How to Diagnose `SecretSyncedError` with Conditions, Events, Controller Logs, and Metrics
 20. How to Harden External Secrets Operator for Multi-Tenant Kubernetes Clusters
+
+## PostgreSQL
+
+1. How to Diagnose PostgreSQL Wait Events with `pg_stat_activity` and `pg_wait_events`
+2. How to Inspect PostgreSQL 18 Asynchronous I/O Activity with `pg_aios`, `pg_stat_io`, and Wait Events
+3. How to Catch Intermittent Slow PostgreSQL Plans with `auto_explain` Without Overloading Production
+4. How to Diagnose Generic-Plan Regressions in PostgreSQL Prepared Statements with `plan_cache_mode`
+5. How to Cancel a Runaway PostgreSQL Query Safely—and Know When to Terminate Its Session
+6. How to Set PostgreSQL Statement, Lock, Transaction, and Idle-in-Transaction Timeouts per Role
+7. How to Diagnose PostgreSQL Backend Memory Growth with `pg_log_backend_memory_contexts` Before an OOM
+8. How to Repair an Invalid PostgreSQL Index Left by `CREATE INDEX CONCURRENTLY`
+9. How to Verify PostgreSQL B-Tree Integrity with `amcheck` Before Reindexing
+10. How to Monitor PostgreSQL Concurrent Index Builds with `pg_stat_progress_create_index` and Lock Waits
+11. How to Fix PostgreSQL Collation Version Mismatch After an OS or ICU Upgrade
+12. How to Validate PostgreSQL Configuration Changes Before Reloading with `pg_file_settings`
+13. How to Find PostgreSQL Settings That Still Require a Restart with `pg_settings.pending_restart`
+14. How to Verify PostgreSQL Data Checksums Offline and Alert on Checksum Failures in Production
+15. How to Measure `COPY` and `pg_basebackup` Progress with PostgreSQL Progress Views
+16. How to Attribute PostgreSQL WAL Volume to Queries with `EXPLAIN WAL` and `pg_stat_statements`
+17. How to Detect PostgreSQL Sequence Exhaustion Before It Breaks Inserts
+18. How to Detect and Resolve Orphaned Prepared Transactions in PostgreSQL Before They Hold Locks Forever
+19. How to Reconstruct a PostgreSQL Deadlock from Server Logs and Application Names
+20. How to Fix PostgreSQL Row-Estimate Errors with Extended Statistics Before Adding Another Index
+
+## Rclone
+
+1. How to Turn Rclone Sync into Versioned Backups with `--backup-dir` and a Retention Policy
+2. How to Test Rclone Filters and Deletion Rules Safely with `--dry-run`, `--interactive`, and `--max-delete`
+3. How to Prevent an Empty or Unmounted Source from Wiping an Rclone Destination
+4. How to Verify Rclone Transfers End to End with `check`, `check --download`, and `cryptcheck`
+5. How to Recover Rclone Bisync After a Critical Error Without Losing the Newer Copy
+6. How to Resolve Rclone Bisync Conflicts Predictably Across Two-Way Changes
+7. How to Tune Rclone VFS Cache Modes for Writable Mounts Without Filling the Disk
+8. How to Refresh Stale Directory Listings in an Rclone Mount with Polling, SIGHUP, and Remote Control
+9. How to Run an Rclone Mount Reliably as a systemd Service After the Network Is Ready
+10. How to Share an Rclone FUSE Mount with Docker Containers Without Permission Errors
+11. How to Stop Rclone 429 and Rate-Limit Errors by Tuning TPS, Checkers, and Transfers
+12. How to Tune Rclone `--fast-list` and `--list-cutoff` for Huge Remotes Without Running Out of Memory
+13. How to Diagnose Why Rclone Reuploads the Same Files on Every Sync
+14. How to Restart Interrupted Rclone Transfers Without Recopying Completed Files—and Handle `.partial` Files Safely
+15. How to Encrypt Rclone Configuration Non-Interactively with a Secret Manager
+16. How to Rotate an Rclone Crypt Password by Migrating to a New Encrypted Remote
+17. How to Verify and Restore an Rclone Backup in a Scheduled Recovery Drill
+18. How to Monitor Rclone Jobs with Prometheus Metrics, Structured Logs, and Exit Codes
+19. How to Reauthorize an Rclone OAuth Remote on a Headless Server
+20. How to Remove Duplicate Google Drive Files Safely with `rclone dedupe`
+
+## Latency
+
+1. How to Build an End-to-End Latency Budget Across DNS, TLS, Load Balancing, Application, and Database Time
+2. How to Read a Latency Heatmap Without Mistaking Sparse Traffic Gaps for Fast Performance
+3. How to Diagnose Bimodal Latency Caused by Cache Misses, Cold Paths, or One Bad Replica
+4. How to Aggregate Latency Histograms Across Replicas Without Averaging Percentiles
+5. How to Detect Latency Histogram Bucket Changes Before They Distort Long-Range Dashboards and Alerts
+6. How to Measure Latency with a Monotonic Clock Without NTP-Induced Negative Durations
+7. How to Detect Availability-Zone Latency Skew Before the Global p99 Moves
+8. How to Include Timeouts and Failed Requests Without Hiding Tail Latency
+9. How to Separate Fast Failures from Slow Failures Before Timeouts Exhaust Worker Pools
+10. How to Detect Microbursts That One-Minute Latency Rollups Hide
+11. How to Reject RPC Work That Cannot Finish Within the Remaining Deadline
+12. How to Measure the Latency Cost of Hedged Requests Without Double-Counting Canceled Attempts
+13. How to Preserve End-to-End Request Age Across Retries and Backoff
+14. How to Measure One-Way Network Latency When RTT Is Not Enough—and Know When Clock Sync Invalidates It
+15. How to Diagnose Periodic Latency Bands Caused by Cron Jobs, GC, and Connection Rotation
+16. How to Measure Telemetry Pipeline Delay Without Confusing It with Application Latency
+17. How to Compare Synthetic, Real-User, and Server Latency Without Mixing Measurement Boundaries
+18. How to Migrate Latency Metrics from Classic to Native Histograms Without Breaking SLO Alerts
+19. How to Quantify Instrumentation Overhead Before Blaming the Application for Added Latency
+20. How to Segment Latency by Route, Region, and Tenant Without Creating a Cardinality Explosion
+
+## Keepalived
+
+1. How to Diagnose Keepalived Split Brain with VRRP Packet Captures, Firewall Checks, and VRID Validation
+2. How to Make a Keepalived `vrrp_script` Trigger Failover with Correct Exit Codes, Weights, and Priorities
+3. How to Tune Keepalived `rise`, `fall`, and `init_fail` Without Causing Failover Flapping
+4. How to Run Keepalived Health Checks Safely with `script_user`, `enable_script_security`, and SELinux
+5. How to Bound a Hanging Keepalived Health Check and Treat Timeouts as Failures
+6. How to Configure Keepalived Unicast VRRP Across Routed or Multicast-Blocked Networks
+7. How to Fix a Keepalived VIP That Moves but Remains Unreachable Because ARP or Neighbor Caches Are Stale
+8. How to Use Weighted Keepalived `track_bfd` for Fast Failure Detection Without Making Both VRRP Peers Enter FAULT
+9. How to Prevent Keepalived Failback Flapping with `nopreempt`, `preempt_delay`, and Maintenance Priorities
+10. How to Coordinate Multiple Keepalived VRRP Instances with a `vrrp_sync_group`
+11. How to Write Idempotent Keepalived Notify Scripts for MASTER, BACKUP, FAULT, and STOP Transitions
+12. How to Perform a Planned Keepalived Switchover and Prove Traffic Drained Before Reclaiming the VIP
+13. How to Preserve Stateful TCP and NAT Sessions Across Keepalived Failover with IPVS or conntrackd Sync
+14. How to Monitor Keepalived VRRP State, Effective Priority, and Transition Rate with SNMP or D-Bus
+15. How to Alert on Keepalived Dual-MASTER, Missing Advertisements, and Stuck FAULT States
+16. How to Reload Keepalived Safely with Configuration Validation and Rollback
+17. How to Recover a Stale Keepalived VIP After a Reload or Network-Interface Reconfiguration
+18. How to Use Keepalived State Transitions to Move a Cloud Route or Elastic IP When Layer-2 VIPs Are Unsupported
+19. How to Roll Out Keepalived 2.4.2+ `auth_hmac` Safely with Receive-Only, Permissive, and Enforce Modes
+20. How to Test Keepalived Failover with Repeatable Node, Link, Service, and Packet-Loss Drills
+
+## Timeouts
+
+1. How to Build an End-to-End Timeout Budget Across Clients, Proxies, Services, Queues, and Databases
+2. How to Detect DNS Resolver Queueing Before It Consumes an HTTP Client’s Deadline
+3. How to Set Different Timeout Budgets for Interactive, Batch, and Background Traffic
+4. How to Detect When an SDK Silently Overrides a Service’s Intended Timeout
+5. How to Preserve the Original Timeout Cause When Proxies Rewrite Errors as 504
+6. How to Instrument Timeout Phases and Cancellation Causes in OpenTelemetry Traces
+7. How to Stop Canceled Work Without Leaving Half-Completed Writes or Leaked Resources
+8. How to Separate User Cancellation from Deadline Expiry in Metrics, Logs, and Error Handling
+9. How to Enforce Local Deadlines with a Monotonic Clock Without Trusting Wall Time
+10. How to Retry an Ambiguous Timeout Safely with Idempotency Keys and Operation-Status Lookups
+11. How to Detect Connection-Pool Starvation When It Appears as an Upstream Timeout
+12. How to Configure Idle, Absolute, and Per-Message Timeouts for SSE, WebSockets, and gRPC Streams
+13. How to Keep Long-Running HTTP Work from Timing Out with Asynchronous Jobs and `202 Accepted`
+14. How to Diagnose Timeouts Caused by Event-Loop Stalls, GC Pauses, and CPU Starvation
+15. How to Prevent Stale Keep-Alive Connections by Aligning Pool Lifetime with Proxy Idle Timeouts
+16. How to Bound Queue Wait Separately from Service Time During Overload
+17. How to Build Timeout Contract Tests with Fault Injection and Virtual Clocks
+18. How to Alert on Timeout Regressions Using Error Budgets, Phase Labels, and Exemplars
+19. How to Make Graceful Shutdown Honor In-Flight Request Deadlines Instead of Extending Them
+20. How to Audit Timeout Defaults Across SDKs, Service Meshes, Ingresses, and Cloud Load Balancers
+
+## Log Parsing
+
+1. How to Route Mixed JSON, logfmt, Syslog, and Plain-Text Events Through Format-Specific Parsers
+2. How to Parse logfmt Correctly When Values Are Quoted, Escaped, Empty, or Repeated
+3. How to Parse Delimited Logs with Embedded Quotes and Newlines Without Greedy Regex
+4. How to Choose Between Dissect, Grok, Regex, JSON, and logfmt Parsers for Speed and Reliability
+5. How to Prevent Catastrophic Regex Backtracking in a High-Volume Log Parser
+6. How to Bound Log Parser Memory When a Multiline Record Never Reaches Its Terminator
+7. How to Replay Archived Incident Logs Against a New Parser Before Production
+8. How to Fuzz-Test a Log Parser for Crashes, Runaway CPU, and Silent Field Corruption
+9. How to Measure Parse Success, Field Coverage, Dropped Records, and Parser Latency
+10. How to Parse JSON Arrays Without Exploding One Log Entry into Unbounded Child Events
+11. How to Coerce Parsed Log Fields into Stable Numeric, Boolean, IP, and Timestamp Types
+12. How to Normalize Dotted, Slashed, and Reserved Log Keys Without Causing Field-Name Collisions
+13. How to Handle RFC 3164 Syslog Timestamps with No Year or Time Zone—Especially During Backfills
+14. How to Parse NGINX Upstream Timing Fields to Separate Connect, Header, and Response Latency
+15. How to Parse Journald Native Fields Without Flattening Away Units, Cgroups, and Boot IDs
+16. How to Handle Invalid UTF-8, Truncated JSON, and Oversized Records Without Stalling Log Ingestion
+17. How to Preserve Empty Strings, Nulls, Missing Fields, and Zero Values as Distinct Parsed Log States
+18. How to Decide Which Log Fields to Parse at Ingestion and Which to Extract at Query Time
+19. How to Parse Unit-Suffixed Durations and Byte Sizes into Comparable Numeric Fields
+20. How to Prevent Parsed Application Fields from Overwriting Trusted Kubernetes or Tenant Metadata
+
+## PanWeiDB
+
+1. How to Deploy a Three-Node PanWeiDB Cluster on BCLinux or openEuler with PTK
+2. How to Choose PanWeiDB A, B, C, or PG Compatibility Mode Before Cluster Initialization
+3. How to Fix PanWeiDB Installation Failures on Hosts with Less Than 16 GB of Memory
+4. How to Configure Secure Remote `gsql` Access to PanWeiDB with Client Tools and Host Rules
+5. How to Diagnose PanWeiDB License Permission and Expiration Errors
+6. How to Tune PanWeiDB Memory, WAL, and Connection Settings After Installation
+7. How to Capture Intermittent Slow SQL in PanWeiDB with `statement_history` and Recorded Plans
+8. How to Monitor PanWeiDB Replication Lag from WAL LSNs and `pg_stat_replication`
+9. How to Troubleshoot a PanWeiDB Switchover That Times Out During an HA Drill
+10. How to Test PanWeiDB Automatic Failover, VIP Movement, and Primary Recovery Safely
+11. How to Build and Validate a PanWeiDB Full-plus-PTRACK Backup Chain with `gs_probackup`
+12. How to Fix PanWeiDB `pg_stop_backup doesn't answer` and Archive Timeout Errors
+13. How to Back Up and Restore PanWeiDB Custom Tablespaces with External Directory Mappings
+14. How to Run PanWeiDB Backups from a Remote Host Without `Normal user is not allowed to use HA channel`
+15. How to Perform Point-in-Time Recovery in PanWeiDB with a Base Backup and Archived WAL
+16. How to Upgrade PanWeiDB V2.0-S2.x to V2.0-S3.x Without Losing Environment or Static Cluster Configuration
+17. How to Migrate Oracle to PanWeiDB with `panwei_dtp` and Resolve Case-Sensitive Identifier Failures
+18. How to Migrate MySQL Workloads to PanWeiDB B Mode and Validate Compatibility Gaps
+19. How to Automate Repeatable PanWeiDB 3.x Deployments with dbops and Ansible
+20. How to Build PanWeiDB Health Alerts from WDR Snapshots, Instance History, and Audit Logs
+
+## Databricks SQL
+
+1. How to Diagnose Databricks SQL Queueing with `system.query.history` and Warehouse Events
+2. How to Right-Size a Databricks SQL Warehouse from Spill, Queue, and Concurrency Metrics
+3. How to Stop Scheduled SQL Alerts from Repeatedly Warming a Warehouse and Inflating Cost
+4. How to Attribute Databricks SQL Spend to Dashboards, Alerts, Users, and Applications with `query_source`, Identity, and Query Tags
+5. How to Troubleshoot `RESOURCE_EXHAUSTED` When a Serverless SQL Warehouse Cannot Start
+6. How to Enforce Statement Timeouts and Cancel Runaway Databricks SQL Queries
+7. How to Connect a Service Principal to Databricks SQL with OAuth M2M Instead of PATs
+8. How to Run Databricks SQL Connectors Through a Corporate HTTPS Proxy Without 407 or TLS Errors
+9. How to Execute Long-Running Databricks SQL Through the Statement Execution API with Polling and Pagination
+10. How to Fetch Large Databricks SQL Result Sets with Arrow and CloudFetch Without Exhausting Client Memory
+11. How to Retry Databricks SQL Connections Without Replaying Non-Idempotent Statements
+12. How to Fix `CAN USE` but `PERMISSION_DENIED` by Separating Warehouse ACLs from Unity Catalog Grants
+13. How to Isolate BI Dashboards from Ad Hoc Queries with Separate Databricks SQL Warehouses
+14. How to Choose Power BI DirectQuery, Import, or Incremental Refresh Against Databricks SQL
+15. How to Bulk Load Cloud Files Through a Databricks SQL Warehouse with `COPY INTO`
+16. How to Monitor Databricks SQL SLOs and Spend with System Tables and Alerts
+17. How to Set the Default Catalog and Schema Across JDBC, ODBC, and the Databricks SQL Connector
+18. How to Upgrade to Databricks SQL Connector 4.x Without Breaking SQLAlchemy or Losing Arrow and CloudFetch
+19. How to Compare a Standard Serverless SQL Warehouse with Lakehouse Real-Time Beta for Subsecond Read-Only BI
+20. How to Test Databricks SQL Queries in CI When You Cannot Run a SQL Warehouse Locally
+
+## Dependency Scanning
+
+1. How to Add Dependency Scanning to Pull Requests Without Blocking Developers on Existing CVEs
+2. How to Gate New Dependencies by Vulnerability Severity, Runtime Scope, and License in GitHub Actions
+3. How to Trace a Vulnerable Transitive Dependency Back to Its Direct Parent
+4. How to Enable GitLab Static Reachability for Java and Python Dependency Findings
+5. How to Scan Every Nested Lockfile in a Polyglot Monorepo
+6. How to Run GitLab Dependency Scanning in an Air-Gapped Network with Mirrored Analyzers and Package Metadata
+7. How to Use GitLab Continuous Dependency Scanning to Rescan CycloneDX SBOMs for Newly Disclosed CVEs
+8. How to Fix a Dependency Scan That Reports Zero Packages or Produces No SBOM
+9. How to Explain Conflicting Severity and Fix Versions Across GitHub, GitLab, and OSV Scanners
+10. How to Require Owners, Justifications, and Expiry Dates for Dependency-Scan Exceptions
+11. How to Scan Build Plugins, CI Actions, and Other Build-Time Dependencies
+12. How to Apply Different Scan Policies to Runtime, Development, and Test Dependencies
+13. How to Scan Dependencies from Private Package Registries Without Exposing Credentials
+14. How to Fix Dependency Scanner Mismatches Between Package URLs, CPEs, and Advisory Names
+15. How to Find Every Repository That Uses a Vulnerable Dependency with a Central SBOM Inventory
+16. How to Remediate a Vulnerable Transitive Dependency When No Direct Upgrade Is Available
+17. How to Fix Stale Dependency Findings That Remain After Upgrading the Package
+18. How to Scan Vendored and Copied Libraries That Are Missing from Package Manifests
+19. How to Combine Dependency and Container Scanning Without Duplicating the Same Findings
+20. How to Measure Dependency Scan Coverage, Alert Noise, and Remediation Time
