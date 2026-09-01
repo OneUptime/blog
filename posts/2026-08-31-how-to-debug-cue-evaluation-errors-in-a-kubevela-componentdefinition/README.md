@@ -8,15 +8,15 @@ Description: Isolate KubeVela ComponentDefinition CUE failures by rendering loca
 
 ---
 
-A CUE evaluation error means KubeVela could not produce one concrete, valid resource graph from the definition, Application parameters, and runtime context. It occurs before a Kubernetes scheduler or container runtime can fix anything. Start with the earliest CUE message and the smallest render that reproduces it; downstream `Application` status often wraps the same root conflict in broader workflow errors.
+A render-time CUE evaluation error means KubeVela could not produce one concrete, valid resource graph from the definition, Application parameters, and render context. It occurs before the generated resources can be scheduled or started. This guide focuses on render-time errors; CUE failures in status or health expressions and PostDispatch traits can occur later against live resources. Start with the earliest CUE message and the smallest render that reproduces it; downstream `Application` status often wraps the same root conflict in broader workflow errors.
 
 Typical messages fall into a few groups:
 
-- **conflicting values**: two constraints unify to an empty value, such as `replicas: >=2` and input `1`;
-- **incomplete value**: a required field remains only `string`, `int`, or another unconstrained type when concrete YAML is required;
+- **conflicting values**: two constraints unify to bottom (`_|_`), such as `replicas: >=2` and input `1`;
+- **incomplete value**: a field remains non-concrete, with only `string`, `int`, or another type constraint, when concrete YAML is required;
 - **field not allowed**: a closed struct rejects an unexpected Application property;
 - **undefined field**: the template reads a parameter or context path that does not exist;
-- **cycle**: values depend on each other recursively; or
+- **unresolved or structural cycle**: recursive dependencies cannot produce a concrete result or would construct an infinite value; or
 - **list/type mismatch**: the Application supplies a scalar where the definition expects a list or object.
 
 ## Preserve the failing inputs
@@ -27,10 +27,11 @@ Collect the exact definition revision, Application, CLI/core versions, and statu
 vela version
 vela status payments --namespace apps -o yaml
 kubectl get application payments --namespace apps -o yaml
-vela def get api-service > /tmp/api-service.cue
+vela def get api-service > /tmp/api-service-current.cue
+vela def get api-service --revisions
 ```
 
-`vela def get` retrieves the installed definition in CUE form. If the Application uses a snapshotted definition revision, also inspect the relevant `ApplicationRevision`; testing only today's shared definition can miss the historical failure.
+`vela def get` without `--revision` retrieves the current installed definition in CUE form. For a pinned type such as `api-service@v3`, retrieve the exact definition with `vela def get api-service --revision v3`; add `--namespace` if the definition is not in the default `vela-system` namespace. For a historical Application run, also inspect the relevant `ApplicationRevision`, which snapshots the Application and its runtime dependencies; testing only today's shared definition can miss the historical failure.
 
 Avoid repeatedly updating the production Application. Each change can generate a revision or restart its workflow and make the original evidence harder to correlate.
 
@@ -50,12 +51,12 @@ vela show ./api-service.cue
 Use the CUE CLI directly for standalone fragments:
 
 ```bash
-cue fmt api-service.cue
-cue vet api-service.cue
+cue fmt --check api-service.cue
+cue vet -c=false api-service.cue
 cue eval api-service.cue
 ```
 
-KubeVela definitions have a wrapper understood by `vela def`; do not assume raw `cue export` precisely emulates the KubeVela evaluator. Use CUE tools for syntax and unification insight, then confirm with KubeVela's renderer.
+The `-c=false` flag lets `cue vet` check a template fragment without rejecting parameters that are intentionally non-concrete; use `cue vet -c` when all inputs should be concrete. KubeVela definitions have a wrapper understood by `vela def`; do not assume raw `cue export` precisely emulates the KubeVela evaluator. Use CUE tools for syntax and unification insight, then confirm template behavior with `vela dry-run`.
 
 ## Dry-run one minimal Application
 
@@ -100,7 +101,7 @@ output: {
 
 Input `replicas: 20` conflicts with `<=10`; it is not clamped to ten. Make the validation message discoverable through parameter documentation and test the boundary values.
 
-A required unconstrained field remains incomplete:
+A required parameter constrained only by a type remains incomplete:
 
 ```cue
 parameter: image: string
@@ -118,6 +119,7 @@ Guard optional output rather than referencing it unconditionally:
 
 ```cue
 parameter: {
+	image:   string
 	command?: [...string]
 }
 
@@ -146,22 +148,22 @@ Traits run with the component's rendered resources available through `context.ou
 
 - two definitions using the same output key;
 - a trait assuming a Deployment-shaped primary output;
-- selectors reading a label the component never sets;
+- a trait dereferencing a label path the component never sets;
 - a trait patch conflicting with a closed component field; or
 - an optional auxiliary output referenced as mandatory.
 
-Use `appliesToWorkloads` to reject structurally incompatible traits early.
+Declare `appliesToWorkloads` to advertise compatible workload types, but do not rely on it to reject incompatible Applications; guard structural assumptions in CUE and test incompatible components with dry-run.
 
 ## Debug in a safe environment
 
-KubeVela's `vela debug` can inspect rendered variables and resources for an Application. The official documentation warns that workflow debugging runs in the real environment. Add the documented debug policy and use it only in an isolated test cluster or namespace:
+KubeVela's `vela debug` can inspect rendered variables and resources for an Application. The official documentation warns that workflow debugging runs in the real environment. If the Application uses a workflow, add the documented debug policy; `vela up --debug` does so automatically. Use it only in an isolated test cluster or namespace:
 
 ```bash
 vela up --file minimal-app.yaml --debug
 vela debug cue-minimal
 ```
 
-For a production failure, prefer read-only status, revision inspection, local render, and a cloned test case. If evaluation reaches Kubernetes but admission rejects the object, CUE succeeded; switch to server-side schema, webhook, RBAC, and event troubleshooting.
+For a production failure, prefer read-only status, revision inspection, local render, and a cloned test case. If KubeVela successfully renders a generated workload or trait resource but the Kubernetes API server rejects applying that resource, the CUE template evaluation succeeded; switch to server-side schema validation, admission webhooks, authorization/RBAC, and event troubleshooting.
 
 ## Prevent regressions
 
@@ -178,4 +180,4 @@ Maintain table-driven examples for defaults, optional branches, invalid bounds, 
 
 ## Conclusion
 
-Debug CUE failures by preserving the exact revision, rendering the definition, reproducing with one minimal component, and then adding parameters and traits incrementally. Interpret CUE fields as unified constraints, guard optional values, verify list and scalar types, and separate evaluation failures from Kubernetes admission or runtime failures. Fix the smallest conflicting constraint and lock it down with render and dry-run tests.
+Debug render-time CUE failures by preserving the exact revision, rendering the definition, reproducing with one minimal component, and then adding parameters and traits incrementally. Interpret CUE fields as unified constraints, guard optional values, verify list and scalar types, and separate render-time evaluation failures from Kubernetes API rejection and runtime failures. Fix the smallest conflicting constraint and lock it down with render and dry-run tests.
