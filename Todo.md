@@ -168,7 +168,6 @@
 2. Why Did Your LLM Golden Dataset Go Stale? A Maintenance and Sampling Workflow
 3. How to Turn LLM Evaluation into a Reliable CI Regression Gate
 4. Why Do LLM Eval Scores Change Between Runs? Measuring Variance Before Setting Thresholds
-5. How to Calibrate an LLM-as-a-Judge Against Human Labels with Cohen’s Kappa
 6. How to Detect and Reduce Position Bias in Pairwise LLM Evaluations
 7. Why Do LLM Judges Prefer Longer Answers? Testing and Controlling Verbosity Bias
 8. Pointwise vs Pairwise LLM Evaluation: How to Choose the More Reliable Scoring Method
