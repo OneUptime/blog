@@ -142,7 +142,6 @@
 
 ## KubeVela
 
-2. Why Does `helm list` Show No KubeVela Release? Checking Namespaces, Repositories, and Existing Names
 11. Why Is a KubeVela Multi-Cluster Application Stuck? Debugging Topology Policies and Placement
 
 ## LLM Evaluation
