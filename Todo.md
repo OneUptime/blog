@@ -175,7 +175,6 @@
 13. Why Does Ragas `answer_relevancy` Return NaN? Debugging Judge Failures and Token Limits
 14. How to Fix Ragas “LLM Is None” and Metric Initialization Errors
 15. How to Evaluate a RAG System with a Local LLM That Produces Invalid JSON
-18. How to Evaluate Tool-Calling Agents for Correct Tool Choice, Arguments, and Final Answers
 
 ## Apache Geode
 
