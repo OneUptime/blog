@@ -149,7 +149,6 @@
 ## LLM Evaluation
 
 6. How to Detect and Reduce Position Bias in Pairwise LLM Evaluations
-8. Pointwise vs Pairwise LLM Evaluation: How to Choose the More Reliable Scoring Method
 9. How to Write a Single-Criterion Rubric That an LLM Judge Can Apply Consistently
 11. How to Measure RAG Faithfulness Without Confusing Retrieval Quality with Answer Quality
 15. How to Evaluate a RAG System with a Local LLM That Produces Invalid JSON
