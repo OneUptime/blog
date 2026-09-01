@@ -8,7 +8,7 @@ Description: Build a durable golden evaluation dataset by turning real productio
 
 ---
 
-A golden dataset should describe what “good” means for your application, not what is convenient to score. Production failures are unusually valuable because they reveal the real input distribution, the surrounding system state, and the consequences of a bad answer. The hard part is converting an incident into a stable test without preserving noise, private data, or a label that only one person understands.
+A golden dataset should describe what “good” means for your application, not what is convenient to score. Production failures are unusually valuable because they expose cases drawn from the real input distribution, along with the surrounding system state and the consequences of a bad answer. The hard part is converting an incident into a stable test without preserving noise, private data, or a label that only one person understands.
 
 ## Start with a Failure Intake Queue
 
@@ -44,7 +44,7 @@ An isolated user message is often insufficient. Record the inputs that affected 
 }
 ```
 
-Pin mutable dependencies. That may mean a document snapshot or stable document IDs, replayed tool responses, system-prompt version, model configuration, locale, and feature flags. Do not save hidden reasoning. Save observable messages, tool calls, outputs, and state transitions needed to reproduce the product contract.
+Pin mutable dependencies. That may mean a document snapshot or document IDs that resolve to immutable versions, replayed tool responses, system-prompt version, model configuration, locale, and feature flags. Do not save hidden reasoning. Save observable messages, tool calls, outputs, and state transitions needed to reproduce the product contract.
 
 ## Label the Desired Behavior, Not the Historical Output
 
@@ -74,9 +74,9 @@ Separate the data into roles. Keep a small immutable “never regress” set for
 
 ## Require a Reproduction and a Fix Check
 
-Before accepting a case, run it against the version associated with the incident when that version is still available. Confirm that the asserted failure actually occurs or that the trace proves it occurred. Then run the proposed version and confirm the case passes without breaking its counterexample.
+Before accepting a case, run it against the version associated with the incident when that version is still available. Confirm through the retained trace or repeated independent trials that the asserted failure actually occurs. Predeclare the number of trials and pass-rate threshold when behavior is nondeterministic. Then run the same protocol against the proposed version and confirm it meets the threshold without breaking its counterexample.
 
-A case that cannot be reproduced can still be retained as an observed production trace, but mark it separately. Do not silently turn an ambiguous report into a hard release gate. A good intake checklist asks:
+A case that cannot be reproduced under the predeclared trial protocol can still be retained as an observed production trace, but mark it separately. Do not silently turn an ambiguous report into a hard release gate. A good intake checklist asks:
 
 - Is the expected behavior supported by a product rule or authoritative source?
 - Does the case preserve the original failure mechanism after sanitization?
