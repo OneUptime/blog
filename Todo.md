@@ -145,7 +145,6 @@
 2. Why Does `helm list` Show No KubeVela Release? Checking Namespaces, Repositories, and Existing Names
 3. How to Run KubeVela on a kind Cluster with a Custom Pod CIDR
 5. KubeVela ComponentDefinition vs TraitDefinition: How to Design a Reusable Platform API
-8. How to Pass Environment-Specific Overrides to One KubeVela Application
 9. How to Promote a KubeVela Application Across Dev, Staging, and Production
 11. Why Is a KubeVela Multi-Cluster Application Stuck? Debugging Topology Policies and Placement
 12. How to Register, Label, and Select Managed Clusters in KubeVela
