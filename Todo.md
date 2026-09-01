@@ -171,7 +171,6 @@
 6. How to Detect and Reduce Position Bias in Pairwise LLM Evaluations
 8. Pointwise vs Pairwise LLM Evaluation: How to Choose the More Reliable Scoring Method
 9. How to Write a Single-Criterion Rubric That an LLM Judge Can Apply Consistently
-10. How to Evaluate an LLM Judge Before Trusting Its Scores
 11. How to Measure RAG Faithfulness Without Confusing Retrieval Quality with Answer Quality
 13. Why Does Ragas `answer_relevancy` Return NaN? Debugging Judge Failures and Token Limits
 14. How to Fix Ragas “LLM Is None” and Metric Initialization Errors
