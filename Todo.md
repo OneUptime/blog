@@ -179,7 +179,6 @@
 15. How to Evaluate a RAG System with a Local LLM That Produces Invalid JSON
 17. How to Evaluate Hallucinations by Checking LLM Answers Against Retrieved Sources
 18. How to Evaluate Tool-Calling Agents for Correct Tool Choice, Arguments, and Final Answers
-20. How to Control LLM Evaluation Cost with Sampling, Caching, and Cascaded Judges
 
 ## Apache Geode
 
