@@ -86,7 +86,7 @@ Start with the least destructive change:
 
 - clarify one criterion and its exclusions;
 - add human-adjudicated length controls as prompt examples;
-- use pairwise `A/B/TIE` instead of a broad point score;
+- use pairwise `A/B/TIE` instead of a broad point score for reliability, but test the pairwise judge separately for verbosity bias;
 - require claim-level support or checklist coverage;
 - blind model identity and normalize wrappers; and
 - route boundary cases to human review.
