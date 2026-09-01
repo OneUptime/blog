@@ -8,7 +8,7 @@ Description: Diagnose a Geode client that reaches a locator or server but fails 
 
 ---
 
-A successful Apache Geode client connection proves only that the client's pool found a locator or cache server and completed the connection handshake. It does not prove that the selected servers host the region the application will use. Client and server regions are separate objects: creating `Orders` in a `ClientCache` does not create `/Orders` in a server cache.
+A successful Apache Geode client connection proves only that the client's pool found a locator or cache server and completed the connection handshake. It does not prove that the selected servers define the region the application will use, either as data hosts or accessors. Client and server regions are separate objects: creating `Orders` in a `ClientCache` does not create `/Orders` in a server cache.
 
 That distinction explains the common sequence “the client connects, but the first `put` reports that the region was not found.” Fix it by checking the server-side region first, then the client region's name and pool.
 
@@ -23,14 +23,14 @@ gfsh> list regions
 gfsh> describe region --name=/Orders
 ```
 
-`list regions` should contain `Orders`, and `describe region` should list the intended hosting servers. If the region is absent, create it in the cluster configuration:
+`list regions` should contain `Orders`, and `describe region` should list the intended servers under `Hosting Members` or, for proxy server regions, `Accessor Members`. If the region is absent and should be cluster-wide, create it in the cluster configuration:
 
 ```text
 gfsh> create region --name=Orders --type=PARTITION_REDUNDANT --if-not-exists
 gfsh> describe region --name=/Orders
 ```
 
-The cluster configuration service, enabled by default on locators, saves a `gfsh create region` definition and sends it to servers that subsequently join the applicable cluster or group. A region created only through one server's local `cache.xml` or Java code may not exist on the other servers in the client's pool.
+The cluster configuration service, enabled by default on dedicated locators, saves a `gfsh create region` definition and sends it to servers that subsequently join the applicable cluster or group with cluster configuration enabled. Server use of cluster configuration is also enabled by default. A region created only through one server's local `cache.xml` or Java code may not exist on the other servers in the client's pool.
 
 Do not use a client region as the test for server existence. `clientCache.getRegion("Orders")` looks in that client's local region registry. It can return a valid proxy while the remote region is missing.
 
@@ -70,9 +70,9 @@ For a subregion, reproduce the same hierarchy on both sides rather than creating
 
 ## Check Pool and Server-Group Routing
 
-A locator returns cache servers eligible for the client's pool. If every server hosts the same regions, the default pool is usually sufficient. If regions are split among member groups, the pool must select the group that hosts its region.
+A locator returns cache servers eligible for the client's pool. If every server defines the same regions, the default pool is usually sufficient. If regions are split among member groups, the pool must select the group that defines its region.
 
-For example, start the relevant servers in the `orders` group, create the region for that group, and constrain the client pool:
+If the region should instead be limited to the `orders` group, create the group-scoped definition instead of the cluster-wide definition above. Start the relevant servers in that group and constrain the client pool:
 
 ```text
 gfsh> start server --name=orders-1 --groups=orders --locators=locator.example.net[10334]
@@ -95,16 +95,16 @@ Region<String, Order> orders = cache
     .create("Orders");
 ```
 
-Otherwise the client can query one cluster or server group while the proxy was intended for another. Geode's server-discovery documentation recommends matching server groups with corresponding client pools when servers manage different data sets.
+Without the explicit binding, region creation can fail when no default pool exists, or the proxy can use an unintended default pool. Geode's server-discovery documentation recommends matching server groups with corresponding client pools when servers manage different data sets.
 
 ## Separate Region Failures from Other Failures
 
 Read the complete exception chain and server log. A remote operation is often wrapped in `ServerOperationException`; its cause is more useful than the wrapper.
 
-- A server-side region-not-found message or `RegionDestroyedException` during a data operation points to server configuration, group selection, or a path mismatch. The separate `org.apache.geode.cache.query.RegionNotFoundException` is used when OQL or an index definition references a missing region.
+- A server-side region-not-found message or `RegionDestroyedException` during a data operation points to a missing or destroyed server region; check the region lifecycle, server configuration, group selection, and path. The separate `org.apache.geode.cache.query.RegionNotFoundException` is used when OQL or an index definition references a missing region.
 - `NoAvailableServersException` or `NoAvailableLocatorsException` points to discovery, advertised addresses, TLS, or network reachability.
 - `AuthenticationRequiredException` or `NotAuthorizedException` means the region may exist but the client identity cannot perform the operation.
-- Serialization or PDX errors mean routing reached the server and failed while encoding or decoding the key or value.
+- Serialization or PDX errors can occur on the client or server while encoding or decoding the key or value. They do not by themselves prove that the server received the operation.
 
 Also verify that `gfsh` and the application really use the same locator host, port, TLS settings, and environment. A development locator on `localhost:10334` can form a perfectly healthy but entirely different cluster from the container or production locator.
 
