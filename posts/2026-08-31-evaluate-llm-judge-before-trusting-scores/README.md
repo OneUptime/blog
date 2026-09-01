@@ -36,7 +36,7 @@ Split this data into judge development and held-out validation sets. Do not sele
 
 For categorical labels, report raw agreement, a chance-adjusted statistic such as Cohen’s kappa for two raters, and the complete confusion matrix. Report precision and recall for the harmful or failing class. A judge with high overall accuracy can still pass nearly every rare unsafe response.
 
-For ordered or continuous scores, inspect per-level confusion, absolute error, rank correlation where appropriate, and calibration at the actual release threshold. Agreement at score extremes does not prove reliability near the pass/fail boundary.
+For ordered or continuous scores, inspect per-level confusion, absolute error, rank correlation where appropriate, and false-pass and false-fail rates at the actual release threshold. If the judge emits probabilities, assess their calibration separately. Agreement at score extremes does not prove reliability near the pass/fail boundary.
 
 Bootstrap independent cases or clusters to show uncertainty. Compare judge-human agreement with human-human agreement, but do not assume machines should reproduce every human inconsistency. Review the disagreements themselves.
 
