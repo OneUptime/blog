@@ -22,7 +22,7 @@ Git -> Argo CD -> KubeVela Application on hub
                     +-> KubeVela -> generated resources on hub/spokes
 ```
 
-Argo CD owns objects that are directly present in its Git source. KubeVela owns objects represented by components, traits, topology policies, and workflows. An external autoscaler may own a deliberately excluded field such as `spec.replicas`, using KubeVela's documented `apply-once` policy.
+Argo CD owns objects rendered from its configured sources. KubeVela owns objects represented by components, traits, topology policies, and workflows. An external autoscaler may own a deliberately excluded field such as `spec.replicas`, using KubeVela's documented `apply-once` policy.
 
 Document field-level exceptions. “Both controllers manage it but ignore some differences” is not a stable ownership model unless the exact paths and lifecycle are tested.
 
@@ -55,7 +55,9 @@ spec:
             replicas: 3
 ```
 
-Replace the image placeholder with a real digest. `Prune=confirm` is an Argo CD per-resource sync option that requires deletion approval. It is useful because pruning the KubeVela Application can trigger KubeVela garbage collection of many generated resources. Whether to use it is a release-policy decision; test deletion and finalizer behavior before relying on it.
+Replace the image placeholder with a real digest. Because `app.oam.dev/publishVersion` identifies a static Application revision, change it to a new unique value whenever changes to the Application or its referenced dependencies should take effect. Otherwise, KubeVela continues using the pinned revision.
+
+`Prune=confirm` is an Argo CD per-resource sync option that requires deletion approval. It is useful because pruning the KubeVela Application can trigger KubeVela garbage collection of many generated resources. Whether to use it is a release-policy decision; test deletion and finalizer behavior before relying on it.
 
 An Argo CD `Application` can target the hub cluster and the `delivery` namespace:
 
@@ -77,25 +79,24 @@ spec:
   syncPolicy:
     automated:
       prune: true
+      allowEmpty: true
       selfHeal: true
-    syncOptions:
-      - CreateNamespace=false
 ```
 
-The repository is illustrative. Bootstrap the namespace and RBAC through the owning platform layer. With `selfHeal`, a direct edit to the KubeVela Application is reverted to Git; this is desirable only when operators know Git is the source of truth.
+The repository is illustrative. Bootstrap the namespace and RBAC through the owning platform layer. `allowEmpty: true` permits automated pruning when this Application is the last manifest removed from the source; `Prune=confirm` still requires approval before that resource is deleted. With `selfHeal`, a direct edit to the KubeVela Application is reverted to Git; this is desirable only when operators know Git is the source of truth.
 
 ## Bootstrap CRDs and definitions first
 
 Argo CD cannot apply a KubeVela Application before the KubeVela CRD exists. Built-in or custom ComponentDefinitions, TraitDefinitions, addons, and destination namespaces must also be available before reconciliation can succeed.
 
-Use separate Argo CD Applications or sync waves for infrastructure ordering:
+Use separately sequenced Argo CD Applications or sync waves within one Application for infrastructure ordering:
 
 1. KubeVela CRDs and control plane;
 2. platform definitions and required addons;
 3. namespaces, RBAC, secret-management controllers, and policies;
 4. KubeVela Applications.
 
-Argo CD sync waves order objects during an Argo sync. KubeVela workflows order component delivery and multi-cluster promotion after the KubeVela Application exists. Do not use one system's ordering feature to imitate the other's runtime responsibility.
+Argo CD sync waves order objects during one Argo sync; merely splitting objects across separate Applications does not order those Applications. KubeVela workflows order component delivery and multi-cluster promotion after the KubeVela Application exists. Do not use one system's ordering feature to imitate the other's runtime responsibility.
 
 ## Keep rendered resources out of Argo tracking
 
@@ -103,7 +104,9 @@ Do not feed `vela dry-run` output back into the same Argo CD Application. Dry-ru
 
 If an organizational policy requires Argo CD to own ordinary Deployments directly, do not model those same Deployments as KubeVela components. Use KubeVela only for a disjoint set of resources or choose one reconciler for that application.
 
-Argo CD resource exclusions and compare customizations can hide generated objects or controller-mutated status, but hiding a conflict is not resolving ownership. Use them only for resources Argo intentionally observes but does not own, and keep the configuration narrowly scoped.
+Use Argo CD's annotation-based resource tracking for this pattern. KubeVela propagates Application labels and most annotations to some generated objects, so label-based tracking can misclassify those children as Argo-owned. With annotation tracking, copied tracking IDs that do not identify the child itself neither affect sync status nor make the child a prune candidate.
+
+Argo CD resource exclusions remove matching resources from discovery and sync, while diff and compare customizations suppress selected differences or extraneous sync status. None of these changes who writes an object's fields, so hiding a conflict is not resolving ownership. Keep them narrowly scoped and use them only where the ownership boundary is already explicit.
 
 ## Decide who owns definitions and addons
 
@@ -132,15 +135,15 @@ Notifications should include both the Git revision and KubeVela publish version 
 
 ## Prevent rollback loops
 
-If a KubeVela release fails, changing live state with `vela workflow rollback` can be immediately reversed by Argo CD self-heal because Git still contains the failed Application. Coordinate recovery:
+If a KubeVela release fails, changing live state with `vela workflow rollback inventory --namespace delivery` can be immediately reversed by Argo CD self-heal because Git still contains the failed Application. Coordinate recovery:
 
 1. stop or revert the offending Git change, or temporarily disable automated sync through the approved Argo procedure;
-2. suspend the KubeVela workflow if it is still progressing;
+2. run `vela workflow suspend inventory --namespace delivery` if the KubeVela workflow is still progressing;
 3. inspect revisions and side effects;
 4. roll back KubeVela if safe; and
 5. commit the safe desired state before restoring automation.
 
-Do not use `kubectl rollout undo` on a generated Deployment. Both Argo/KubeVela desired state can overwrite it.
+Do not use `kubectl rollout undo` on a generated Deployment. KubeVela's desired state can overwrite it; Argo CD can do so too only in the disallowed dual-owned design.
 
 ## Test deletion and pruning
 
@@ -162,6 +165,7 @@ Never remove KubeVela finalizers or ResourceTrackers merely to make Argo show Sy
 - [Argo CD automated sync](https://argo-cd.readthedocs.io/en/stable/user-guide/auto_sync/)
 - [Argo CD sync options](https://argo-cd.readthedocs.io/en/stable/user-guide/sync-options/)
 - [Argo CD sync phases and waves](https://argo-cd.readthedocs.io/en/stable/user-guide/sync-waves/)
+- [Argo CD resource tracking](https://argo-cd.readthedocs.io/en/stable/user-guide/resource_tracking/)
 
 ## Conclusion
 
