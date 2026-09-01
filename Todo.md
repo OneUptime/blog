@@ -147,7 +147,6 @@
 11. Why Is a KubeVela Multi-Cluster Application Stuck? Debugging Topology Policies and Placement
 14. Why Did a KubeVela Workflow Stop at `suspend` or `wait`? Inspecting Step Status and Conditions
 17. How to Use KubeVela with Argo CD Without Creating Two Competing Reconcilers
-20. How to Troubleshoot a KubeVela Addon That Fails to Enable or Stays Unhealthy
 
 ## LLM Evaluation
 
