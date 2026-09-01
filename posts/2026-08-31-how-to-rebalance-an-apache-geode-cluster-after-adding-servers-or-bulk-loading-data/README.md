@@ -8,7 +8,7 @@ Description: Simulate, execute, and verify a Geode partitioned-region rebalance 
 
 ---
 
-Adding an Apache Geode server creates storage capacity, but existing partitioned-region buckets may remain on the old members. A bulk load can also leave members uneven when bucket sizes differ. Rebalancing recovers missing redundancy and moves buckets and primary ownership to make partitioned-region utilization fairer across eligible data stores.
+Adding an Apache Geode server creates storage capacity, but existing partitioned-region buckets may remain on the old members. A bulk load can also leave members uneven when bucket sizes differ. Rebalancing attempts to recover missing redundancy and moves buckets and primary ownership to make partitioned-region utilization fairer across eligible data stores.
 
 Rebalance affects partitioned regions, not replicated regions. It is an online data-movement operation, so simulate it, control its scope, and keep it away from sensitive transaction windows.
 
@@ -22,7 +22,7 @@ gfsh> list members
 gfsh> describe region --name=/Orders
 ```
 
-The new server must define `/Orders` as a partitioned data store. A server that never received the region configuration, belongs to the wrong group, or defines the region as an accessor with `local-max-memory=0` cannot receive buckets.
+The new server must define `/Orders` as a partitioned data store. A server that did not receive or otherwise define the region—for example, because `/Orders` is group-scoped and the server is not in that group—or defines it as an accessor with `local-max-memory=0` cannot receive buckets.
 
 Add all planned servers before moving data. Geode's documentation recommends one rebalance after starting multiple members; rebalancing after every server repeats transfers that the next run may undo.
 
@@ -72,16 +72,21 @@ RebalanceOperation operation = manager.createRebalanceFactory()
     .includeRegions(Set.of("/Orders"))
     .start();
 
-RebalanceResults results = operation.getResults();
-System.out.printf(
-    "timeMs=%d bucketBytes=%d bucketCreates=%d bucketTransfers=%d%n",
-    results.getTotalTime(),
-    results.getTotalBucketTransferBytes(),
-    results.getTotalBucketCreatesCompleted(),
-    results.getTotalBucketTransfersCompleted());
+try {
+    RebalanceResults results = operation.getResults();
+    System.out.printf(
+        "timeMs=%d bucketTransferBytes=%d bucketCreates=%d bucketTransfers=%d%n",
+        results.getTotalTime(),
+        results.getTotalBucketTransferBytes(),
+        results.getTotalBucketCreatesCompleted(),
+        results.getTotalBucketTransfersCompleted());
+} catch (InterruptedException e) {
+    Thread.currentThread().interrupt();
+    throw new IllegalStateException("Interrupted while waiting for rebalance", e);
+}
 ```
 
-The API operation is asynchronous until `getResults()` waits for completion. Record the detailed per-region results as well as the totals; a global success can hide that one region had no eligible destination.
+The API operation is asynchronous until `getResults()` waits for completion. Because that method can throw `InterruptedException`, the example restores the thread's interrupt status before propagating the failure. Record the detailed per-region results as well as the aggregate totals; totals can hide that one region had no eligible destination.
 
 ## Know What Rebalancing Can and Cannot Fix
 
@@ -89,13 +94,13 @@ Rebalancing places whole buckets. It does not split one hot key, change `total-n
 
 If one routing object owns most entries or traffic, its bucket stays a single unit. Geode can put fewer large buckets on that member to improve memory balance, but the hot bucket's primary still handles that routing object's writes. Correct the key or resolver design through a migration if the business partition itself is skewed.
 
-Fixed partitioned regions do not participate in normal rebalancing because the application has fixed their placement. Colocated regions move as a group so buckets with equal IDs remain together; including one member of a colocated group can therefore move more data than the named region alone suggests.
+Fixed partitioned regions do not participate in normal rebalancing because the application has fixed their placement. Colocated regions move as a group so buckets with equal IDs remain together. Scope a colocated group by its leader region (the region whose `colocated-with` is unset); naming only a child region does not select the group, while rebalancing the leader can move more data than that region alone suggests.
 
 Replicated regions already hold a full copy on each replica and are not rebalanced. If a new server should host a replica, make sure it receives the replicated-region configuration and allow initial image transfer instead.
 
 ## Separate Rebalance from Restore Redundancy
 
-Every rebalance first attempts to recover configured redundancy, then balances buckets. If the only goal is to recreate missing redundant copies without moving existing buckets between members, use the narrower operation:
+For each participating non-fixed partitioned region, a rebalance first attempts to recover configured redundancy, then balances buckets. If the only goal is to recreate missing redundant copies without moving existing buckets between members, use the narrower operation:
 
 ```text
 gfsh> restore redundancy --include-region=/Orders
@@ -109,7 +114,7 @@ Use restore redundancy after a failure when capacity placement is acceptable. Us
 
 Geode warns that moving data during a transaction can cause transaction failure, including `TransactionDataRebalancedException`; the `TransactionDataNotColocatedException` API also notes movement as a possible cause. Keep important transactions short, schedule major rebalances during lower traffic, and make any retry policy idempotent.
 
-Bucket transfer consumes network, CPU, serialization, heap, and disk bandwidth. Watch client latency, garbage collection, critical heap thresholds, disk queueing, WAN backlog, and server departures. If the cluster approaches a critical threshold, diagnose and reduce workload or cancel an API-started operation deliberately rather than launching overlapping corrective runs.
+Bucket transfer consumes network, CPU, serialization, and memory resources, and can consume disk bandwidth for persistent or overflow regions. Watch client latency, garbage collection, critical heap thresholds, disk queueing, WAN backlog, and server departures. If the cluster approaches a critical threshold, diagnose and reduce workload or cancel an API-started operation deliberately rather than launching overlapping corrective runs.
 
 Bulk loading is often faster when data is loaded first and rebalanced once afterward. However, do not run old members so close to critical memory that they cannot survive the load before movement begins. Adding and validating capacity before the bulk load may be safer even if the final bucket move still happens afterward.
 
@@ -121,11 +126,12 @@ After completion:
 gfsh> list members
 gfsh> describe region --name=/Orders
 gfsh> show metrics --region=/Orders
+gfsh> show metrics --member=server1 --region=/Orders
 gfsh> status redundancy --include-region=/Orders
 gfsh> rebalance --include-region=/Orders --simulate=true
 ```
 
-Compare member-level entry memory, bucket counts, primary counts, and configured capacity rather than expecting identical raw numbers. Geode balances the percentage of available region storage used, so members with different `local-max-memory` values should not necessarily hold equal bytes.
+Repeat the member-scoped `show metrics` command for each data store to compare local bucket and primary counts; the region-only command is cluster-wide. `gfsh show metrics` does not print member-local region bytes or `localMaxMemory`, so use the local `RegionMXBean` (for `entrySize` and `localMaxMemory`) or equivalent monitoring for that comparison. Do not expect identical raw numbers: Geode balances the percentage of available region storage used, so members with different `local-max-memory` values should not necessarily hold equal bytes.
 
 Verify application reads and writes, configured redundancy, query latency, and colocated-region functions. A second simulation should show little useful movement unless ongoing writes or topology changes materially altered placement. Preserve before/after output and duration so the next capacity change has an evidence-based estimate.
 
