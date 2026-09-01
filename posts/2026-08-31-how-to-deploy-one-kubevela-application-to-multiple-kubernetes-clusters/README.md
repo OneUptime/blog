@@ -131,13 +131,13 @@ Combine `topology` with `override` in a `deploy` step:
           policies: ["eu-secondary", "secondary-size"]
 ```
 
-An override should be paired with a topology policy. Render array and trait changes carefully; definition-aware merge behavior can surprise authors who expect generic JSON merge semantics.
+An override should be paired with a topology policy. Render array and trait changes carefully; KubeVela's property-map and trait-by-type merge behavior can surprise authors who expect generic JSON merge semantics.
 
 ## Render and deploy from the hub
 
 ```bash
-vela show topology
-vela show override
+vela def get topology --type policy
+vela def get override --type policy
 vela show deploy
 vela dry-run --file edge-api.yaml
 vela up --file edge-api.yaml --namespace delivery
@@ -161,7 +161,7 @@ If the resource tree shows a target but it is unhealthy, inspect events and logs
 
 ## Plan updates and deletion
 
-Updating the hub Application reconciles destinations selected by its workflow and policies. Review label changes before starting or re-running delivery: an expanded selector can send the same release to newly matched clusters.
+Because this example sets `app.oam.dev/publishVersion`, update that annotation to a new value for each release; changes to the Application spec or its dependencies do not take effect until a new publish version triggers a fresh workflow run. That run reconciles destinations selected by its workflow and policies. Review label changes before starting or re-running delivery: an expanded selector can send the same release to newly matched clusters.
 
 KubeVela tracks dispatched resources for garbage collection. Removing a topology or deleting an Application can remove managed workloads depending on policy and version. Test lifecycle behavior in a nonproduction fleet and configure documented garbage-collection policy when resources must be retained. Never detach a managed cluster during an active rollout without understanding how resource tracking and credentials will be handled.
 
