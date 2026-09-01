@@ -147,7 +147,6 @@
 3. How to Run KubeVela on a kind Cluster with a Custom Pod CIDR
 4. How to Package a Multi-Service Kubernetes Application with KubeVela Components and Traits
 5. KubeVela ComponentDefinition vs TraitDefinition: How to Design a Reusable Platform API
-7. How to Expose a KubeVela Webservice with Ports, Services, and Ingress Traits
 8. How to Pass Environment-Specific Overrides to One KubeVela Application
 9. How to Promote a KubeVela Application Across Dev, Staging, and Production
 11. Why Is a KubeVela Multi-Cluster Application Stuck? Debugging Topology Policies and Placement
