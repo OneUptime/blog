@@ -38,7 +38,7 @@ Use a small evaluation matrix:
 
 | Component | Question | Example signal |
 |---|---|---|
-| Retrieval precision | Were retrieved chunks relevant, and were useful chunks ranked early? | context precision / precision@k |
+| Retrieval precision | Were retrieved chunks relevant, and were useful chunks ranked early? | context precision / average precision@k |
 | Retrieval recall | Was the information needed for the reference answer retrieved? | context recall / recall@k |
 | Faithfulness | Are response claims supported by retrieved context? | claim support ratio |
 | Answer quality | Is the response correct, relevant, and complete for the user? | reference checks, rubric, human rating |
@@ -60,9 +60,9 @@ Decompose the answer into independently checkable factual claims. For each claim
 - `contradicted`: conflicts with the supplied contexts;
 - `unsupported`: neither supported nor contradicted;
 - `not_factual`: advice, formatting, or another statement outside the criterion; or
-- `insufficient_context`: evidence cannot decide.
+- `unscorable`: missing or malformed evaluation data prevents a reliable label.
 
-A basic faithfulness score is supported material claims divided by all material factual claims. Ragas’ official `Faithfulness` metric follows this broad approach: extract statements and check whether each can be inferred from the retrieved context. Its finite ratio is from 0 to 1, but the v0.4.3 collections implementation returns `NaN` when it extracts no statements or receives no verdict statements, so coverage must be reported with the score.
+A basic faithfulness score is supported material claims divided by all scorable material factual claims. Report unscorable claims separately. Ragas’ official `Faithfulness` metric follows this broad approach: extract statements and check whether each can be inferred from the retrieved context. Its finite ratio is from 0 to 1, but the v0.4.3 collections implementation returns `NaN` when it extracts no statements or receives no verdict statements, so coverage must be reported with the score.
 
 Weighting claims by severity can be appropriate, but do not hide the unweighted counts. An incorrect refund deadline can matter more than a harmless wrong adjective. Define materiality and weights before evaluating candidates.
 

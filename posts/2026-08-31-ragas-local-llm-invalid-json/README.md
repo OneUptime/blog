@@ -17,7 +17,7 @@ The solution is to test the evaluator path independently, use the adapter docume
 Ragas’ current quickstart shows an OpenAI-compatible Ollama endpoint. Use an async client for the collections-metric `ascore` path used later in this post:
 
 ```python
-from openai import AsyncOpenAI
+from openai import APITimeoutError, AsyncOpenAI
 from ragas.llms import llm_factory
 
 client = AsyncOpenAI(
@@ -34,9 +34,9 @@ evaluator_llm = llm_factory(
 )
 ```
 
-Ragas’ modern `llm_factory` returns a Ragas adapter that requests and parses structured output, and it automatically selects an adapter, with explicit `instructor` or `litellm` options available when needed. That adapter does **not** make the underlying local model or server schema-compliant. Do not copy an old `LangchainLLMWrapper` tutorial into a collections-based metric without following the migration guide.
+Ragas’ modern `llm_factory` returns a Ragas LLM wrapper configured through a structured-output adapter, and it automatically selects the adapter, with explicit `instructor` or `litellm` options available when needed. That adapter does **not** make the underlying local model or server schema-compliant. Do not copy an old `LangchainLLMWrapper` tutorial into a collections-based metric without following the migration guide.
 
-Endpoint compatibility varies by server and model. Verify the exact local model name, OpenAI-compatible base URL, and server’s support for the request fields emitted by the adapter. Pin Ragas, the OpenAI client, adapter packages, local server, model weights, and prompt template.
+Endpoint compatibility varies by server and model. Verify the exact local model name, OpenAI-compatible base URL, and server’s support for the request fields emitted by the adapter. Pin Ragas, the OpenAI client, adapter packages, transitive integrations, local server, model weights, and prompt template. For Ragas 0.4.3, include `langchain-community==0.3.31` in that lock; an unconstrained install can select 0.4.x, which removed a module that Ragas imports.
 
 ## Prove the Local Endpoint First
 
@@ -46,9 +46,9 @@ Test three layers separately:
 2. **Structured output:** request a tiny fixed schema through the same client and adapter used by Ragas.
 3. **Metric call:** score one short known-good example.
 
-Capture raw provider output in a restricted debug environment. Useful failure signatures include prose before the JSON object, Markdown fences, a missing required field, wrong field type, trailing text, truncated closing braces, or an empty response. Avoid logging evaluation content that contains private data.
+Capture raw provider output and finish reasons in a restricted debug environment when the adapter, exception, or server logs expose them. Useful failure signatures include prose before the JSON object, Markdown fences, a missing required field, wrong field type, trailing text, truncated closing braces, or an empty response. Avoid logging evaluation content that contains private data.
 
-If the direct endpoint already truncates or ignores schemas, changing RAG inputs will not fix it. Choose a model/server combination with reliable instruction and structured-output behavior or use a different adapter supported by Ragas.
+If a tiny endpoint probe consistently truncates output or ignores the schema, changing RAG inputs alone is unlikely to fix it. Choose a model/server combination with reliable instruction and structured-output behavior or use a different supported adapter/client pairing.
 
 ## Run One Modern Metric in Isolation
 
@@ -76,28 +76,32 @@ If this works, increase context and answer length gradually. Then add the next m
 
 Work through these causes in order:
 
-- **Model capability:** use an instruction-tuned model large enough to follow the metric’s schema consistently.
+- **Model capability:** use an instruction-tuned model that you have measured to follow the metric’s schema consistently.
 - **Output truncation:** provide enough output tokens for the structured response and inspect finish reasons.
 - **Context overflow:** reduce irrelevant retrieved text or select an evaluator with a sufficient context window; do not silently truncate supported production cases.
 - **Unsupported parameters:** update the client/server or configure an adapter compatible with the endpoint.
-- **Prompt wrappers:** remove chat templates added twice by the server and client.
+- **Prompt wrappers:** remove duplicate prompt or chat-template wrapping configured in a proxy, server, or surrounding client layer.
 - **Stop sequences:** ensure a custom stop token does not cut off the closing JSON.
-- **Concurrency:** lower parallelism if the local server is overloaded or returning partial responses.
+- **Concurrency:** lower parallelism if the local server is overloaded, rejecting requests, or timing out.
 - **Sampling:** use the most deterministic settings the selected model supports, while recognizing that low temperature does not guarantee schema compliance.
 
 Do not “repair” arbitrary JSON with regex and count it as equivalent. Removing code fences around an otherwise valid object can be a documented parser normalization; inventing missing verdicts or extracting whichever number appears first changes the metric.
 
 ## Configure Retries for the Right Failures
 
-Current Ragas guidance configures timeout and retries on the provider client for collections metrics. Retries are appropriate for transient connection resets or server overload. Repeating the same malformed schema ten times wastes compute and can conceal an incompatible model.
+Current Ragas guidance configures timeout and retries on the provider client for collections metrics. Provider-client retries are appropriate for transient connection resets, overload responses, and other retryable HTTP statuses; they do not retry a successful response merely because schema parsing fails. Adapter-level schema-validation retries are separate. Keep both retry layers bounded because repeatedly sending an incompatible schema request wastes compute and can conceal an incompatible model.
 
 Classify results:
 
 ```python
+from math import isfinite
+
 try:
     result = metric.score(**sample)
+    if not isfinite(result.value):
+        raise ValueError("metric returned a non-finite score")
     save_score(case_id, result.value)
-except TimeoutError as exc:
+except APITimeoutError as exc:
     save_error(case_id, "timeout", str(exc))
 except Exception as exc:
     save_error(case_id, "invalid_or_provider_error", str(exc))
