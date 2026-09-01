@@ -29,15 +29,15 @@ kubectl cluster-info
 
 An empty namespace value normally means `default`. If installation happened from a different shell, CI runner, administrator account, or kubeconfig, compare API server endpoints rather than relying only on friendly context names.
 
-Now search every namespace and include every release state:
+On Helm 4, search every namespace; all release states are included by default:
 
 ```bash
-helm list --all-namespaces --all
-helm list --all-namespaces --all --filter '^kubevela$'
-helm list --namespace vela-system --all
+helm list --all-namespaces
+helm list --all-namespaces --filter '^kubevela$'
+helm list --namespace vela-system
 ```
 
-`--all-namespaces` changes namespace scope; `--all` includes statuses such as failed, pending, uninstalled, and superseded. Neither changes the selected cluster.
+`--all-namespaces` changes namespace scope. Helm 4 lists all statuses by default; on Helm 3, add `--all` to each command to include statuses such as failed, pending, uninstalled, and superseded. Neither flag changes the selected cluster.
 
 If you find the release, use the namespace from that row in every subsequent command:
 
@@ -51,20 +51,20 @@ The chart column may be `vela-core-<version>` while the release name is `kubevel
 
 ## Search for a nonstandard release name
 
-The official guide chooses `kubevela`, but Helm permits another release name:
+The official guide chooses `kubevela`, but Helm permits another release name. On Helm 3, add `--all` to this command as described above:
 
 ```bash
-helm list --all-namespaces --all --filter 'kubevela|vela-core|vela'
+helm list --all-namespaces --filter 'kubevela|vela-core|vela'
 ```
 
-Treat the result as a lead, not proof. Inspect its chart metadata and manifests:
+Treat the result as a lead, not proof. `helm get metadata` requires Helm 3.13 or newer. Inspect its chart metadata and manifests:
 
 ```bash
 helm get metadata <release-name> --namespace <release-namespace>
 helm get manifest <release-name> --namespace <release-namespace> | sed -n '1,40p'
 ```
 
-Do not immediately install a second release called `kubevela`. Two KubeVela controllers and two charts trying to own cluster-scoped CRDs, webhooks, or shared resources can create a much harder recovery problem.
+Do not immediately install a second release called `kubevela`. Two KubeVela controllers and two charts trying to create or manage cluster-scoped CRDs, webhooks, or shared resources can create a much harder recovery problem.
 
 ## Determine whether KubeVela was installed outside Helm
 
@@ -75,7 +75,7 @@ kubectl get namespace vela-system
 kubectl get deployments,statefulsets,pods --namespace vela-system
 kubectl get crd applications.core.oam.dev componentdefinitions.core.oam.dev
 kubectl get deployment --all-namespaces \
-  -l app.kubernetes.io/part-of=kubevela
+  -l app.kubernetes.io/name=vela-core
 ```
 
 Labels vary by chart and version, so also list resources directly when the label query is empty. If controllers and CRDs exist without a Helm record, identify their owner before adopting, upgrading, or deleting anything. A Helm install will not safely assume ownership of every pre-existing object.
@@ -84,7 +84,7 @@ For a Helm-managed release, release records normally appear as Secrets in the re
 
 ```bash
 kubectl get secrets --all-namespaces \
-  -l owner=helm,name=kubevela
+  -l owner=helm
 ```
 
 This is a diagnostic check, not an invitation to edit or delete the Secrets. They contain Helm's release history. Manual changes can make rollback and upgrade impossible.
@@ -111,18 +111,20 @@ Do not infer the installed version from the newest search result. Read the relea
 
 ## Handle failed and uninstalled states safely
 
-If `helm list -A --all` finds a failed or pending release, collect evidence:
+If the all-status listing finds a failed or pending release, collect evidence:
 
 ```bash
-helm status <release-name> --namespace <namespace> --show-resources
+helm status <release-name> --namespace <namespace>
 helm history <release-name> --namespace <namespace>
-kubectl get events --namespace <namespace> --sort-by=.lastTimestamp
+kubectl events --namespace <namespace>
 kubectl get pods --namespace <namespace> -o wide
 ```
 
+Helm 4 includes release resources in `helm status` by default. On Helm 3, add `--show-resources` when you want that list.
+
 A pending state may indicate an interrupted Helm operation; a failed state may reflect an admission denial, hook failure, image pull, unschedulable pod, or timeout. Reusing `helm install` will produce a name-in-use error and does not repair the underlying resource.
 
-If the release was uninstalled with history retained, the name may remain in Helm history. Decide whether the intended action is rollback, upgrade/install, or a clean reinstall only after checking whether KubeVela Applications and cluster-scoped definitions remain. Never remove CRDs as a shortcut: deleting a CRD can delete all custom resources of that kind.
+If the release was uninstalled with history retained, the name may remain in Helm history. Decide whether the intended action is rollback, upgrade/install, or a clean reinstall only after checking whether KubeVela Applications and cluster-scoped CRDs remain. Never remove CRDs as a shortcut: deleting a CRD can delete all custom resources of that kind.
 
 ## Confirm KubeVela itself
 
@@ -136,13 +138,17 @@ kubectl wait --namespace vela-system \
   --timeout=5m
 ```
 
-Deployment names can differ with release name or chart version, so obtain the exact name with `kubectl get deployment -n vela-system` before using `kubectl wait`. Compare the CLI and core versions and consult version-specific docs when their capabilities differ.
+The `kubectl wait` example assumes the standard release name and namespace. Deployment names can differ with release name or chart version, so obtain the exact name with `kubectl get deployment -n <release-namespace>` and substitute both the located name and namespace before using `kubectl wait`. Compare the CLI and core versions and consult version-specific docs when their capabilities differ.
+
+`vela version` looks for the core release in `vela-system` by default. If the release uses another namespace, set `KUBEVELA_SYSTEM_NAMESPACE` to that namespace before running it.
 
 ## Official Documentation
 
-- [Helm `list` command](https://helm.sh/docs/helm/helm_list/)
+- [Helm 4 `list` command](https://helm.sh/docs/helm/helm_list/)
+- [Helm 3 `list` command](https://helm.sh/docs/v3/helm/helm_list/)
 - [Helm 3 namespace-scoped release names](https://helm.sh/docs/faq/changes_since_helm2/#release-names-are-now-scoped-to-the-namespace)
-- [Helm `status` command](https://helm.sh/docs/helm/helm_status/)
+- [Helm 4 `status` command](https://helm.sh/docs/helm/helm_status/)
+- [Helm 3 `status` command](https://helm.sh/docs/v3/helm/helm_status/)
 - [KubeVela installation on Kubernetes](https://kubevela.io/docs/installation/kubernetes/)
 - [KubeVela `vela install` command](https://kubevela.io/docs/cli/vela_install/)
 - [KubeVela system commands](https://kubevela.io/docs/cli/vela_system/)
