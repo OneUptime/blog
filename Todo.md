@@ -151,7 +151,6 @@
 ## Apache Geode
 
 2. Why Does `gfsh list members` Show the Locator but Not the Geode Server?
-7. Why Does Geode Throw `TransactionDataNotColocatedException`? Fixing Keys and Partition Resolvers
 10. Why Is an Apache Geode Query Ignoring the Region You Requested? `Region.query` vs `QueryService`
 11. How to Serialize Cross-Language Objects in Apache Geode with PDX
 12. Why Does a Geode Continuous Query Fail with a Serialization Mismatch? Checking CQ Dependencies and PDX
