@@ -142,7 +142,6 @@
 
 ## KubeVela
 
-11. Why Is a KubeVela Multi-Cluster Application Stuck? Debugging Topology Policies and Placement
 
 ## LLM Evaluation
 
