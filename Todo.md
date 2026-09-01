@@ -146,7 +146,6 @@
 5. KubeVela ComponentDefinition vs TraitDefinition: How to Design a Reusable Platform API
 11. Why Is a KubeVela Multi-Cluster Application Stuck? Debugging Topology Policies and Placement
 14. Why Did a KubeVela Workflow Stop at `suspend` or `wait`? Inspecting Step Status and Conditions
-17. How to Use KubeVela with Argo CD Without Creating Two Competing Reconcilers
 
 ## LLM Evaluation
 
