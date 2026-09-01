@@ -8,7 +8,7 @@ Description: Reduce LLM evaluation spend without hiding regressions by combining
 
 ---
 
-LLM evaluation cost grows multiplicatively. A rough budget is:
+LLM evaluation token volume grows quickly because several factors multiply. A rough estimate of judge-token volume is:
 
 ```text
 cases × candidates × generation repeats × metrics × judge calls × tokens per call
@@ -41,7 +41,7 @@ Treat retry and parse-failure rates as budget variables. A cheap local judge tha
 
 ## Sample Without Losing Critical Coverage
 
-Use a small, fixed smoke set on every change and a larger stratified set on pull requests or scheduled runs. Strata should include common traffic, known production failures, rare but costly intents, languages, long contexts, safety cases, and unanswerable questions. Keep critical cases as an always-run census even if their traffic share is small.
+Use a small, fixed smoke set on every change and a larger stratified set on pull requests or scheduled runs. Design coverage for common traffic, known production failures, rare but costly intents, languages, long contexts, safety cases, and unanswerable questions. If these categories overlap, track them as coverage slices; define formal sampling strata as a mutually exclusive, exhaustive partition, using combinations or a documented priority rule. Keep critical cases as an always-run census even if their traffic share is small.
 
 For the remaining population, sample within each stratum and retain sampling weights if you want a production-weighted aggregate. Rotate a portion of the sample so the same easy rows do not become the entire evaluation. Keep a stable anchor subset to make trends comparable across runs.
 
@@ -49,15 +49,24 @@ Adaptive sampling can spend more calls near a decision boundary or in slices sho
 
 ## Cache Only Reusable Computation
 
-Cache deterministic preprocessing and embeddings for immutable text. Reuse a saved candidate output when the goal is to re-score that exact generation, and reuse a judge result only when the goal is to reuse that exact judgment. Fixed generation settings do not guarantee identical model output, so cached generations or judgments must not be counted as fresh repetitions in a variance study. A safe cache key includes every value that can change the result:
+Cache deterministic preprocessing and embeddings for immutable text. Reuse a saved candidate output when the goal is to re-score that exact generation, and reuse a judge result only when the goal is to reuse that exact judgment. Fixed generation settings do not guarantee identical model output, so cached generations or judgments must not be counted as fresh repetitions in a variance study. Build a separate cache key for each computation from a canonical, field-named serialization, then hash it with a stable digest such as SHA-256. Include every exact input, configuration, and version relevant to that stage that can change the result:
 
 ```text
-hash(
-  case + candidate_model + system_prompt + generation_settings +
-  retrieved_context + tool_schema + metric_version + rubric +
-  judge_model + judge_prompt + parser_version
-)
+sha256(canonical_serialize({
+  stage,
+  exact_stage_inputs,
+  provider,
+  model_id_or_snapshot,
+  prompt,
+  settings,
+  tool_schema,
+  metric_or_preprocessing_version,
+  rubric,
+  parser_version
+}))
 ```
+
+For a judgment, `exact_stage_inputs` includes the actual candidate response or recorded trace, any reference, and all context or tool results shown to the judge, not merely the settings that produced the candidate. An embedding key similarly includes the exact embedded text, preprocessing version, embedding model or revision, and embedding settings.
 
 Never key only by user question. That can silently reuse a score after a prompt, model, corpus, or rubric change. Store the full provenance next to the value, set a retention policy for sensitive data, and provide a deliberate cache-bypass mode for audits and repeated-run measurements. Treat a disk cache as another copy of evaluation prompts, responses, and possibly private source material: apply the same access control, encryption, locality, and deletion requirements as the underlying dataset, or do not cache that content.
 
