@@ -169,7 +169,6 @@
 4. How to Set a Connection Timeout for an Apache Geode Client When No Locator Is Available
 5. Replicated vs Partitioned Regions in Apache Geode: How to Choose for Read and Write Workloads
 7. Why Does Geode Throw `TransactionDataNotColocatedException`? Fixing Keys and Partition Resolvers
-8. How to Rebalance an Apache Geode Cluster After Adding Servers or Bulk Loading Data
 9. How to Speed Up Slow Apache Geode OQL Joins with Colocation, Keys, Indexes, and Functions
 10. Why Is an Apache Geode Query Ignoring the Region You Requested? `Region.query` vs `QueryService`
 11. How to Serialize Cross-Language Objects in Apache Geode with PDX
