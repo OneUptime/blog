@@ -33,6 +33,7 @@ helm show chart <chart-reference> --version <chart-version>
 helm show values <chart-reference> --version <chart-version> > /tmp/values.yaml
 helm template review <chart-reference> \
   --version <chart-version> \
+  --include-crds \
   --namespace app \
   --values ./values-reviewed.yaml > /tmp/rendered.yaml
 ```
@@ -75,7 +76,7 @@ spec:
           timeout: 10m
 ```
 
-The repository and chart are illustrative. Compare every property with the installed reference. Current documentation describes chart sources from repositories, OCI registries, or direct archives, optional `valuesFrom`, release name/namespace, wait/atomic controls, and health-status gates. It also creates a controller-managed ConfigMap named `{releaseName}-helm-release` in the release namespace as the stable release-metadata output. Do not edit that ConfigMap, and do not assume `helm list` or Flux resources are the source of truth for this component.
+The repository and chart are illustrative. Compare every property with the installed reference. Current documentation describes chart sources from repositories, OCI registries, or direct `.tgz` URLs, optional `valuesFrom`, release name/namespace, wait/atomic controls, and health-status gates. It also creates a controller-managed ConfigMap named `{releaseName}-helm-release` in the release namespace as the stable release-metadata output. Do not edit that ConfigMap, and do not assume `helm list` or Flux resources are the source of truth for this component.
 
 The current reference warns that Helm SDK readiness can report a single-replica Deployment ready immediately when `maxUnavailable` is `1`, because zero ready replicas satisfy `replicas - maxUnavailable`. In that case, `wait: true` and `atomic: true` do not provide the safety their names suggest. Set an appropriate rollout strategy or replicas, and define a `healthStatus` gate for the specific Deployment condition when readiness must block the workflow.
 
@@ -116,7 +117,7 @@ spec:
             type: ClusterIP
 ```
 
-The addon creates Flux source and Helm reconciliation resources. Inspect those objects and controller logs when chart fetch or release health fails. KubeVela's component health depends on the definition and Flux status; a successful source download does not prove the release is healthy.
+Ensure `observability` already exists in the destination cluster; the addon-provided `helm` definition does not expose Flux's `spec.install.createNamespace` setting. Enabling the addon installs the Flux controllers and CRDs, while applying the component creates a Flux source object and a `HelmRelease`. Inspect those objects and controller logs when chart fetch or release health fails. KubeVela's component health depends on the definition and Flux status; a successful source download does not prove the release is healthy.
 
 ## Supply private-repository credentials safely
 
@@ -148,26 +149,31 @@ Do not copy an entire upstream `values.yaml` into your Application. Keep the min
 
 ## Render, deploy, and inspect
 
+Use the earlier `helm template` command as the non-mutating chart preview. On KubeVela v1.11, do not rely on `vela dry-run` as a safety boundary for `helmchart`: after admission validation, the CLI's local render path can invoke the native Helm provider's real install/upgrade path. For Flux-backed `helm`, `vela dry-run` previews the generated Flux custom resources rather than the chart's workloads.
+
 ```bash
+# Flux-backed helm only: preview the generated Flux resources
 vela dry-run --file metrics.yaml
+
+# Deploy either component after reviewing the chart render
 vela up --file metrics.yaml --namespace delivery
 vela status metrics --namespace delivery --tree --detail
 ```
 
-The dry-run should be compared with `helm template`, but the two may differ because KubeVela adds context, placement, policies, or generated wrapper resources. After deployment, inspect the target namespace and controller-specific status:
+For `helmchart`, compare the deployed KubeVela resource tree with `helm template`; the two may differ because KubeVela adds context, placement, policies, or generated wrapper resources. After deployment, inspect the target namespace and controller-specific status:
 
 ```bash
 kubectl get all --namespace observability
 kubectl get events --namespace observability --sort-by=.lastTimestamp
 ```
 
-For Flux-backed delivery, inspect `HelmRepository`, `HelmRelease`, and their conditions using the API versions installed by the addon. For `helmchart`, use the KubeVela resource tree and Application conditions. Diagnose source authentication, rendering, admission, hooks, readiness, and health as separate layers.
+For Flux-backed delivery, inspect the generated source object (`HelmRepository` in this example), `HelmRelease`, and their conditions using the API versions installed by the addon. For `helmchart`, use the KubeVela resource tree and Application conditions. Diagnose source authentication, rendering, admission, hooks, readiness, and health as separate layers.
 
 ## Add KubeVela placement and workflow carefully
 
-Wrap the component with `topology`, `override`, and `deploy` policies for multi-cluster delivery. Every destination must have chart CRD prerequisites, storage, workload runtime Secrets, ingress classes, and image-registry access. By contrast, current `helmchart` chart-auth and `valuesFrom` objects are hub-side inputs and are not destination Secrets. Pin the same chart and artifact versions across clusters unless a reviewed override intentionally differs.
+Use `topology` and `override` policies with a `deploy` workflow step for multi-cluster delivery. Every destination must have any prerequisites the chart needs, such as CRDs, storage, workload runtime Secrets, ingress classes, and image-registry access. Flux-backed `helm` also requires the Flux controllers and CRDs in each destination. By contrast, current `helmchart` chart-auth and `valuesFrom` objects are hub-side inputs and are not destination Secrets. Pin the same chart and artifact versions across clusters unless a reviewed override intentionally differs.
 
-Charts can create cluster-scoped resources. Deploying the same chart from multiple KubeVela Applications or clusters can cause ownership conflicts. Inventory CRDs, ClusterRoles, webhook configurations, and release names before replication.
+Charts can create cluster-scoped resources. Deploying the same chart more than once into the same destination cluster can cause ownership conflicts when releases manage the same cluster-scoped resources. Inventory CRDs, ClusterRoles, webhook configurations, and release names before replication.
 
 ## Official Documentation
 
