@@ -1,4 +1,4 @@
-# Validation Summary: How to Rebalance an Apache Geode Cluster After Adding Servers or Bulk Loading Data
+# Validation Summary: Rebalance an Apache Geode Cluster After Adding Servers or Bulk Loads
 
 ## Status
 

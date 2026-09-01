@@ -1,4 +1,4 @@
-# Why Do LLM Eval Scores Change Between Runs? Measuring Variance Before Setting Thresholds
+# Why LLM Eval Scores Change: Measure Variance Before Setting Thresholds
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
@@ -53,7 +53,7 @@ There are two common questions, and they require different resampling units.
 
 First, “How stable is this fixed evaluation set under repeated execution?” Hold the cases fixed and summarize repeated runs per case. If a common run or environment can affect multiple cases, preserve that run identifier and also summarize the aggregate score for each complete run; otherwise, per-case summaries omit cross-case covariance. This captures execution variance for the benchmark you actually gate on.
 
-Second, “How well does this dataset estimate production performance?” Resample independent cases or clusters. If several turns, paraphrases, or questions come from one conversation or document, resample the whole cluster. Treating correlated rows as independent can make intervals invalid—often too narrow when within-cluster correlation is positive.
+Second, “How well does this dataset estimate production performance?” Resample independent cases or clusters. If several turns, paraphrases, or questions come from one conversation or document, resample the whole cluster. Treating correlated rows as independent can make intervals invalid-often too narrow when within-cluster correlation is positive.
 
 For a candidate comparison, use paired differences because both systems saw the same cases:
 

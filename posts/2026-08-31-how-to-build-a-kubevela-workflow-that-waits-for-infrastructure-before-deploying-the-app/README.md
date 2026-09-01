@@ -1,4 +1,4 @@
-# How to Build a KubeVela Workflow That Waits for Infrastructure Before Deploying the App
+# Build a KubeVela Workflow That Waits for Infrastructure Before Deployment
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

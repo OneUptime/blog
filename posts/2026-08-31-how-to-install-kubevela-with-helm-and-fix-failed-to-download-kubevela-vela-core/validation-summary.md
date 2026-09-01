@@ -1,4 +1,4 @@
-# Validation Summary: How to Install KubeVela with Helm and Fix “Failed to Download kubevela/vela-core”
+# Validation Summary: Install KubeVela with Helm and Fix “Failed to Download kubevela/vela-core”
 
 ## Status
 validated

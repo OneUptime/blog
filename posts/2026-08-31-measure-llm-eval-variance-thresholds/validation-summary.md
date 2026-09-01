@@ -1,4 +1,4 @@
-# Validation Summary: Why Do LLM Eval Scores Change Between Runs? Measuring Variance Before Setting Thresholds
+# Validation Summary: Why LLM Eval Scores Change: Measure Variance Before Setting Thresholds
 
 ## Status
 

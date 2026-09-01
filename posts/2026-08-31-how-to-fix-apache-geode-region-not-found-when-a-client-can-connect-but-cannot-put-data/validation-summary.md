@@ -1,4 +1,4 @@
-# Validation Summary: How to Fix Apache Geode “Region Not Found” When a Client Can Connect but Cannot Put Data
+# Validation Summary: Fix Geode “Region Not Found” When a Client Connects but Cannot Put Data
 
 ## Status
 

@@ -1,4 +1,4 @@
-# Validation Summary: How to Colocate Apache Geode Partitioned Regions for Transactions and Join-Like Access
+# Validation Summary: Colocate Apache Geode Regions for Transactions and Join-Like Access
 
 ## Status
 

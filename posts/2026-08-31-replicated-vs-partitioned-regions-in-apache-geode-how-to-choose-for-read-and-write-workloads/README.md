@@ -1,4 +1,4 @@
-# Replicated vs Partitioned Regions in Apache Geode: How to Choose for Read and Write Workloads
+# Replicated vs Partitioned Apache Geode Regions for Read and Write Workloads
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

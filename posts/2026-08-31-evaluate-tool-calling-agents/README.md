@@ -1,4 +1,4 @@
-# How to Evaluate Tool-Calling Agents for Correct Tool Choice, Arguments, and Final Answers
+# Evaluate Tool-Calling Agents: Tools, Arguments, and Final Answers
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

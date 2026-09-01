@@ -1,4 +1,4 @@
-# Validation Summary: Context Precision vs Context Recall: How to Evaluate the Retriever in a RAG Pipeline
+# Validation Summary: Context Precision vs Recall: Evaluating the Retriever in a RAG Pipeline
 
 ## Status
 

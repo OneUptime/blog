@@ -1,4 +1,4 @@
-# Validation Summary: KubeVela ComponentDefinition vs TraitDefinition: How to Design a Reusable Platform API
+# Validation Summary: KubeVela ComponentDefinition vs TraitDefinition for Reusable Platform APIs
 
 ## Status
 validated

@@ -1,4 +1,4 @@
-# How to Package a Multi-Service Kubernetes Application with KubeVela Components and Traits
+# Package a Multi-Service App with KubeVela Components and Traits
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

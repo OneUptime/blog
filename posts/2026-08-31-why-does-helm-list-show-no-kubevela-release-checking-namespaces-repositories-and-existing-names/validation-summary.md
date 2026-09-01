@@ -1,4 +1,4 @@
-# Validation Summary: Why Does `helm list` Show No KubeVela Release? Checking Namespaces, Repositories, and Existing Names
+# Validation Summary: Why `helm list` Shows No KubeVela Release: Namespaces and Repositories
 
 ## Status
 

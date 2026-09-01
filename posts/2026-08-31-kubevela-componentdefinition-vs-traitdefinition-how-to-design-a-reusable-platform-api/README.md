@@ -1,4 +1,4 @@
-# KubeVela ComponentDefinition vs TraitDefinition: How to Design a Reusable Platform API
+# KubeVela ComponentDefinition vs TraitDefinition for Reusable Platform APIs
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

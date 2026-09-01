@@ -1,4 +1,4 @@
-# Why Does `helm list` Show No KubeVela Release? Checking Namespaces, Repositories, and Existing Names
+# Why `helm list` Shows No KubeVela Release: Namespaces and Repositories
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

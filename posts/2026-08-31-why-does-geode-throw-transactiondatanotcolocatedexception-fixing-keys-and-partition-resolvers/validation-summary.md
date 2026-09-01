@@ -1,4 +1,4 @@
-# Validation Summary: Why Does Geode Throw `TransactionDataNotColocatedException`? Fixing Keys and Partition Resolvers
+# Validation Summary: Fix Geode `TransactionDataNotColocatedException` with Colocated Keys
 
 ## Status
 

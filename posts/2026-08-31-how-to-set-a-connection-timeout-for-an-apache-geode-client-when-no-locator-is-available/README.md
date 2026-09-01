@@ -1,4 +1,4 @@
-# How to Set a Connection Timeout for an Apache Geode Client When No Locator Is Available
+# Set an Apache Geode Client Timeout When No Locator Is Available
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -1,4 +1,4 @@
-# Validation Summary: Pointwise vs Pairwise LLM Evaluation: How to Choose the More Reliable Scoring Method
+# Validation Summary: Pointwise vs Pairwise LLM Evaluation: Choosing a Reliable Method
 
 ## Status
 

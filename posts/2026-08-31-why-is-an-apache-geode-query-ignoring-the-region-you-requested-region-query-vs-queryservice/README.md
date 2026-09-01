@@ -1,4 +1,4 @@
-# Why Is an Apache Geode Query Ignoring the Region You Requested? `Region.query` vs `QueryService`
+# Why an Apache Geode Query Ignores Its Region: `Region.query` vs `QueryService`
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
@@ -93,7 +93,7 @@ Query query = ordersQueries.newQuery(
     "SELECT DISTINCT o FROM /Orders o WHERE o.status = $1");
 ```
 
-The same path can exist in two clusters behind two pools. Using `customersPool` to query `/Orders` can return a different region, fail with `RegionNotFoundException`, or reach servers whose copy has a different operational purpose. A path is resolved within the query service's execution target, not globally across every pool in the JVM.
+The same path can exist in two clusters behind two pools. Using `customersPool` to query `/Orders` can return a different region, fail with `ServerOperationException` caused by a server-side `RegionNotFoundException`, or reach servers whose copy has a different operational purpose. A path is resolved within the query service's execution target, not globally across every pool in the JVM.
 
 The official querying FAQ specifically recommends `Cache.getQueryService()` for a Java peer application's local/peer query and `Pool.getQueryService()` for a client-to-server query. Pool-specific code makes multi-cluster intent reviewable. When multiple pools are declared, a default pool may not exist, so use a named pool instead of expecting `ClientCache.getQueryService()` to choose one.
 
@@ -128,7 +128,7 @@ gfsh> describe region --name=/Orders
 Use this symptom map:
 
 - Results clearly have another domain type: inspect every `FROM` path and any query-template constant.
-- `RegionNotFoundException`: the path does not exist on servers selected by that query service or pool.
+- `RegionNotFoundException`, or a client `ServerOperationException` caused by it: the path does not exist in the query service's execution target.
 - Empty result from a local query but server data exists: the region is `PROXY` or the client cache is incomplete.
 - Different results from `Region.query` and local `QueryService`: one runs on the server while the other intentionally reads client-local state.
 - Correct region, unexpectedly stale client object: distinguish query result execution from later reads through a `CACHING_PROXY` and review interest/caching behavior.
@@ -140,7 +140,7 @@ Do not “fix” scope by string concatenating user input into `FROM`. Besides s
 
 Even for a single region, full OQL makes the target visible in logs and code review, supports bind parameters and projections, and exposes query statistics. `Region.query` remains concise for a simple predicate, but its implicit scope and lack of bind parameters are limiting.
 
-For a partitioned-region join, a plain client `QueryService.execute()` is still not enough. Geode requires the supported colocated equi-join to run inside a region function and to execute with `Query.execute(RegionFunctionContext)`. API choice cannot override partitioned-query restrictions.
+For a partitioned-region join, a plain `Query.execute()` from a client is still not enough. Geode requires the supported colocated equi-join to run inside a region function and to execute with `Query.execute(RegionFunctionContext)`. API choice cannot override partitioned-query restrictions.
 
 ## Official Documentation
 
@@ -149,7 +149,7 @@ For a partitioned-region join, a plain client `QueryService.execute()` is still 
 - [`RegionService.getQueryService` Java API](https://geode.apache.org/releases/latest/javadoc/org/apache/geode/cache/RegionService.html)
 - [`ClientCache` query-service APIs](https://geode.apache.org/releases/latest/javadoc/org/apache/geode/cache/client/ClientCache.html)
 - [Querying FAQ and API selection](https://geode.apache.org/docs/guide/latest/getting_started/querying_quick_reference.html)
-- [Writing and executing OQL](https://geode.apache.org/docs/guide/latest/developing/querying_basics/querying_basics.html)
+- [Writing and executing OQL](https://geode.apache.org/docs/guide/latest/developing/querying_basics/running_a_query.html)
 - [Partitioned-region query restrictions](https://geode.apache.org/docs/guide/latest/developing/query_additional/partitioned_region_query_restrictions.html)
 
 ## Conclusion

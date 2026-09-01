@@ -1,4 +1,4 @@
-# How to Install KubeVela with Helm and Fix “Failed to Download kubevela/vela-core”
+# Install KubeVela with Helm and Fix “Failed to Download kubevela/vela-core”
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

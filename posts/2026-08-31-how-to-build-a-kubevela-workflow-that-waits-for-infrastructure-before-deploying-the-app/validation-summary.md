@@ -1,4 +1,4 @@
-# Validation Summary: How to Build a KubeVela Workflow That Waits for Infrastructure Before Deploying the App
+# Validation Summary: Build a KubeVela Workflow That Waits for Infrastructure Before Deployment
 
 ## Status
 

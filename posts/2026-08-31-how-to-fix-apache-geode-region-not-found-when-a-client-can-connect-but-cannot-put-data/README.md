@@ -1,4 +1,4 @@
-# How to Fix Apache Geode “Region Not Found” When a Client Can Connect but Cannot Put Data
+# Fix Geode “Region Not Found” When a Client Connects but Cannot Put Data
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

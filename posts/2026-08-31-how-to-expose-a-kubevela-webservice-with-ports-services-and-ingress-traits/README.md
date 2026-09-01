@@ -8,14 +8,17 @@ Description: Expose a KubeVela webservice through container ports, a Kubernetes 
 
 ---
 
-Exposing a KubeVela `webservice` is a chain, not one switch. The container must listen on the declared port, KubeVela must render a Service that selects ready Pods, an ingress controller must watch the generated Ingress, and DNS must send the hostname to that controller. Debugging is fastest when each layer is verified in that order.
+Exposing a KubeVela `webservice` is a chain, not one switch. The container must listen on the declared port, KubeVela must render a Service that selects the Pods, the selected Pods must become ready endpoints, an ingress controller must watch the generated Ingress, and DNS must send the hostname to that controller. Debugging is fastest when each layer is verified in that order.
 
 Current KubeVela documentation uses the built-in `gateway` trait for HTTP ingress. Some older examples and customized platforms expose a trait named `ingress`. Definitions are programmable and release-specific, so inspect the cluster first:
 
 ```bash
-vela show webservice
-vela show gateway
-vela def list --type trait | grep -E 'gateway|ingress|expose'
+vela show webservice --namespace apps
+vela show gateway --namespace apps
+vela def list --type trait --namespace apps \
+  | grep -E 'gateway|ingress|expose'
+vela def list --type trait --namespace vela-system \
+  | grep -E 'gateway|ingress|expose'
 ```
 
 Use the schema printed by your installed definition. Do not mix a v1.7 `ingress` example, a v1.10 `gateway` schema, and a customized platform definition in one manifest.
@@ -54,7 +57,7 @@ spec:
 
 `port` must match the port on which the process listens unless the installed definition provides a separate `containerPort`. Declaring a port does not cause the process to bind it. Test the image's configuration and ensure the process listens on `0.0.0.0`, not only loopback.
 
-An alternative is the built-in `expose` trait, which can create a `ClusterIP`, `NodePort`, or `LoadBalancer` Service for compatible workloads. Prefer one Service owner: either webservice port exposure or an expose trait designed by your platform. Do not create two Services accidentally and then debug the wrong one.
+An alternative is the built-in `expose` trait, which can create a `ClusterIP`, `NodePort`, or `LoadBalancer` Service for compatible workloads. Prefer one Service owner: use webservice port exposure, an expose trait designed by your platform, or a gateway trait that generates its own backend Service. Do not create two Services accidentally and then debug the wrong one.
 
 ## Add HTTP ingress with `gateway`
 
@@ -68,6 +71,7 @@ Attach the current documented trait:
         - type: gateway
           properties:
             name: public
+            existingServiceName: api
             domain: catalog.example.com
             class: nginx
             classInSpec: true
@@ -76,7 +80,7 @@ Attach the current documented trait:
               "/": 8080
 ```
 
-The `http` map sends the path to a Service port. `classInSpec: true` asks the definition to use `spec.ingressClassName`; this aligns with the stable Kubernetes Ingress API. Confirm the rendered object because older controller versions may use the legacy class annotation.
+The `http` map sends the path to a Service port. `existingServiceName: api` tells the current built-in definition to reuse the Service rendered by the webservice component; without it, this named gateway would render a second Service named `api-public`. `classInSpec: true` asks the definition to use `spec.ingressClassName`; this aligns with the stable Kubernetes Ingress API. Confirm the rendered object because older controller versions may use the legacy class annotation.
 
 For TLS, create the certificate Secret through your certificate-management or GitOps layer and reference it:
 
@@ -128,7 +132,7 @@ kubectl get endpointslice --namespace apps \
   -l kubernetes.io/service-name=<service-name> -o yaml
 ```
 
-No EndpointSlice endpoints means the Service selector matched no Pods. Endpoints with `conditions.ready: false` mean Pods were selected but are not ready. A selected endpoint with the wrong target port means Service-to-container mapping is wrong.
+No EndpointSlice endpoints usually means the Service selector matched no eligible Pods; verify the selector, Pod labels, and that matching Pods have Pod IPs. Endpoints with `conditions.ready: false` are not eligible for ordinary Service traffic; for Pod-backed endpoints, the Pod may be unready or terminating, so inspect `conditions.serving` and `conditions.terminating` too. A selected endpoint with the wrong target port means Service-to-container mapping is wrong.
 
 Test without ingress:
 

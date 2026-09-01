@@ -1,4 +1,4 @@
-# How to Compare Prompts or Models with Confidence Intervals Instead of Average Scores
+# Compare Prompts or Models with Confidence Intervals, Not Average Scores
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -1,4 +1,4 @@
-# Validation Summary: Why Does Ragas `answer_relevancy` Return NaN? Debugging Judge Failures and Token Limits
+# Validation Summary: Why Ragas `answer_relevancy` Returns NaN: Judges and Token Limits
 
 ## Status
 

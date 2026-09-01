@@ -1,4 +1,4 @@
-# Why Did a KubeVela Workflow Stop at `suspend` or `wait`? Inspecting Step Status and Conditions
+# Why a KubeVela Workflow Stops at `suspend` or `wait`: Inspecting Status
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -1,4 +1,4 @@
-# Why Does Ragas `answer_relevancy` Return NaN? Debugging Judge Failures and Token Limits
+# Why Ragas `answer_relevancy` Returns NaN: Judges and Token Limits
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
@@ -10,7 +10,7 @@ Description: Diagnose missing Ragas answer-relevancy scores by checking API vers
 
 A Ragas answer-relevancy `NaN` is not a relevance verdict. It can come from a legacy evaluation path that could not produce a usable measurement or converted a row exception into `NaN`. Treat it as missing evaluation data and find which stage failed.
 
-The first debugging step is version identification. Ragas 0.1 examples use the singleton `answer_relevancy` with `evaluate()` and Hugging Face dataset columns such as `question` and `answer`. Later legacy examples instantiate `ResponseRelevancy` and call `single_turn_ascore()` with a `SingleTurnSample` containing `user_input` and `response`. In the legacy implementation, no usable generated questions—an empty result list or all-empty question strings—produces `NaN`, and batch evaluation can replace exceptions with `NaN` when `raise_exceptions=False`. Current documentation recommends the collections API, where the class is `AnswerRelevancy`, inputs are `user_input` and `response`, and the result is read from `.value`.
+The first debugging step is version identification. Ragas 0.1 examples use the singleton `answer_relevancy` with `evaluate()` and Hugging Face dataset columns such as `question` and `answer`. Later legacy examples instantiate `ResponseRelevancy` and call `single_turn_ascore()` with a `SingleTurnSample` containing `user_input` and `response`. In the legacy implementation, no usable generated questions-an empty result list or all-empty question strings-produces `NaN`, and batch evaluation can replace exceptions with `NaN` when `raise_exceptions=False`. Current documentation recommends the collections API, where the class is `AnswerRelevancy`, inputs are `user_input` and `response`, and the result is read from `.value`.
 
 The Ragas 0.4.3 collections implementation behaves differently: zero-length `user_input` or `response` values, invalid dependencies, and ordinary LLM or embedding call failures raise exceptions, while a run that collects no non-empty generated questions returns `0.0`. With finite embedding arithmetic, it also returns zero when every collected result is marked noncommittal. Therefore, a zero is not always proof of a successfully measured off-topic answer, and a `NaN` seen around a collections metric may have been introduced by a surrounding runner or by non-finite embedding arithmetic. Preserve API generation and failure details rather than interpreting either value in isolation.
 

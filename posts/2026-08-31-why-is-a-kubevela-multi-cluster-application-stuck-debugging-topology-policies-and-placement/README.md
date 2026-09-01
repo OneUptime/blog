@@ -1,4 +1,4 @@
-# Why Is a KubeVela Multi-Cluster Application Stuck? Debugging Topology Policies and Placement
+# Debug a Stuck KubeVela Multi-Cluster Application and Topology Policy
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
@@ -22,7 +22,7 @@ vela cluster list
 
 Record the current Application generation, publish version, workflow step names/phases/messages, selected clusters shown under Services, and `.status.conditions`. Also preserve KubeVela controller logs around the first failure. The last generic “workflow running” line is usually less useful than the earliest condition or event.
 
-Do not resume, restart, or reapply yet. Those operations can create a new workflow attempt and replace the status you need.
+Do not resume or restart yet, and do not apply or publish a changed Application. Resuming changes the current workflow state, while restarting starts another run. If `app.oam.dev/publishVersion` is absent, applying a changed spec starts the next run; if it is present, advancing the annotation does. Either can replace the status you need.
 
 ## 1. Prove the topology matches clusters
 
@@ -47,9 +47,9 @@ properties:
     region: eu
 ```
 
-Every listed label must match. Inspect labels reported by `vela cluster list` and audit recent label changes. A selector matching zero clusters is a placement issue; a selector unexpectedly matching ten clusters is a change-control incident. Do not “fix” zero matches by loosening a production selector until you enumerate the resulting set.
+Every listed label must match. Inspect labels reported by `vela cluster list` and audit recent label changes. By default, a selector matching zero clusters fails the topology step; with `allowEmpty: true`, it succeeds with no destinations. A selector unexpectedly matching ten clusters is a change-control incident. Do not “fix” zero matches by loosening a production selector until you enumerate the resulting set.
 
-Check destination namespace as well. The topology namespace may differ from the hub Application namespace, but KubeVela can be configured with `--allow-cross-namespace-resource=false`, and target RBAC can deny namespace creation or resource writes.
+Check the destination namespace as well. The topology namespace may differ from the hub Application namespace, but KubeVela can be configured with `--allow-cross-namespace-resource=false`. A topology policy does not create the destination namespace; bootstrap it separately, and ensure the target credential can write the dispatched resources.
 
 ## 2. Verify the workflow references the policies
 
@@ -69,7 +69,7 @@ Common errors include:
 - misspelling a policy name;
 - defining topology but using a custom workflow that never references it;
 - using an external Policy or Workflow in another namespace;
-- listing an `override` without a `topology`, which official guidance warns can deploy nothing;
+- listing an `override` without a `topology`, which makes the current `deploy` step fall back to `local` instead of the intended managed cluster;
 - waiting at an intentional `suspend` step; and
 - a previous workflow step failing or remaining unhealthy.
 
@@ -80,12 +80,13 @@ Inspect the workflow section in `vela status`, not only the overall phase. Query
 ```bash
 vela cluster probe cluster-eu-1
 vela cluster probe cluster-eu-2
-kubectl get pods --namespace vela-system
+kubectl get deployments --namespace vela-system --show-labels
+kubectl get pods --namespace vela-system --show-labels
 kubectl logs --namespace vela-system \
-  -l app=kubevela-cluster-gateway --tail=200
+  -l app.kubernetes.io/name=vela-core-cluster-gateway --tail=200
 ```
 
-First list deployments and labels in `vela-system`, because the log selector can differ by chart version or release name. With default Cluster Gateway registration, the hub connects to the managed API endpoint using stored kubeconfig credentials. Diagnose:
+First list deployments, pods, and labels in `vela-system`, because the log selector can differ by chart version or name overrides. With default Cluster Gateway registration, the hub connects to the managed API endpoint using stored kubeconfig credentials. Diagnose:
 
 - DNS and routes from the hub/control-plane network, not an operator laptop;
 - API server TLS name and CA;
@@ -115,7 +116,7 @@ Use `vela status --tree --detail` to identify the cluster, namespace, kind, and 
 
 ## 5. Inspect target workload health
 
-If Deployments and Services exist, placement worked. The workflow may be waiting for component health:
+If the current ApplicationRevision's expected resources exist on the intended spoke and the tree marks them `updated`, placement worked for those resources. The workflow may be waiting for component health:
 
 ```bash
 vela status payments --namespace delivery --pod
@@ -124,7 +125,7 @@ vela logs payments --namespace delivery
 
 On the selected spoke, inspect Pods, events, rollout status, and referenced dependencies. Typical blockers are image pulls, unschedulable replicas, missing Secrets, unavailable storage classes, failing readiness probes, and ingress or custom-resource health logic.
 
-A custom ComponentDefinition determines what KubeVela considers healthy. If its health policy waits for a condition that the target controller never sets, Kubernetes resources can look usable while KubeVela waits forever. Compare the installed definition revision and actual `.status` shape.
+A custom ComponentDefinition determines what KubeVela considers healthy. If its health policy waits for a condition that the target controller never sets, Kubernetes resources can look usable while KubeVela waits forever. Compare the target resource's actual `.status` shape with the health policy in the ComponentDefinition snapshot recorded in the ApplicationRevision used by this workflow; if definition versioning is in use, verify the selected DefinitionRevision as well.
 
 ## 6. Check override and resource conflicts
 
@@ -134,7 +135,7 @@ Also look for two reconcilers owning the same resource. If Argo CD applies the r
 
 ## Recover without losing evidence
 
-Fix registration, labels, policy names, prerequisites, or target health in Git. Publish a new version when the desired Application changes. Resume only an intentional and approved `suspend`; restarting a failed workflow may repeat side effects. For a failed release, follow KubeVela's revision and workflow rollback procedure and understand that rollback targets the latest succeeded Application revision.
+Fix registration, labels, policy names, prerequisites, or target health in Git. If the Application uses `app.oam.dev/publishVersion`, publish a new value when the desired Application changes. Resume only an intentional and approved `suspend`; restarting a failed workflow may repeat side effects. For an Application using `app.oam.dev/publishVersion`, suspend the failed workflow and follow KubeVela's revision and workflow rollback procedure; `vela workflow rollback` selects the latest succeeded published ApplicationRevision.
 
 Do not detach a cluster, delete ResourceTrackers, remove finalizers, or erase Helm release records as a first response. Those actions can orphan or delete dispatched resources.
 

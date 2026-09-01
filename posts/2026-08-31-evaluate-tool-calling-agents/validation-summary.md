@@ -1,4 +1,4 @@
-# Validation Summary: How to Evaluate Tool-Calling Agents for Correct Tool Choice, Arguments, and Final Answers
+# Validation Summary: Evaluate Tool-Calling Agents: Tools, Arguments, and Final Answers
 
 ## Status
 

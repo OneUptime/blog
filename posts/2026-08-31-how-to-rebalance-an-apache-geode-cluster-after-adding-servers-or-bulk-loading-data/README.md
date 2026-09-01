@@ -1,4 +1,4 @@
-# How to Rebalance an Apache Geode Cluster After Adding Servers or Bulk Loading Data
+# Rebalance an Apache Geode Cluster After Adding Servers or Bulk Loads
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
@@ -22,7 +22,7 @@ gfsh> list members
 gfsh> describe region --name=/Orders
 ```
 
-The new server must define `/Orders` as a partitioned data store. A server that did not receive or otherwise define the region—for example, because `/Orders` is group-scoped and the server is not in that group—or defines it as an accessor with `local-max-memory=0` cannot receive buckets.
+The new server must define `/Orders` as a partitioned data store. A server that did not receive or otherwise define the region-for example, because `/Orders` is group-scoped and the server is not in that group-or defines it as an accessor with `local-max-memory=0` cannot receive buckets.
 
 Add all planned servers before moving data. Geode's documentation recommends one rebalance after starting multiple members; rebalancing after every server repeats transfers that the next run may undo.
 

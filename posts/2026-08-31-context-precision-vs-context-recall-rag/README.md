@@ -1,4 +1,4 @@
-# Context Precision vs Context Recall: How to Evaluate the Retriever in a RAG Pipeline
+# Context Precision vs Recall: Evaluating the Retriever in a RAG Pipeline
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

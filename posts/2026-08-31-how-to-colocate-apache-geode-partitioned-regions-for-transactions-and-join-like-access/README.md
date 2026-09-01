@@ -1,4 +1,4 @@
-# How to Colocate Apache Geode Partitioned Regions for Transactions and Join-Like Access
+# Colocate Apache Geode Regions for Transactions and Join-Like Access
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -1,4 +1,4 @@
-# Validation Summary: How to Measure RAG Faithfulness Without Confusing Retrieval Quality with Answer Quality
+# Validation Summary: Measure RAG Faithfulness Separately from Retrieval and Answer Quality
 
 ## Status
 validated

@@ -1,4 +1,4 @@
-# Validation Summary: How to Speed Up Slow Apache Geode OQL Joins with Colocation, Keys, Indexes, and Functions
+# Validation Summary: Speed Up Apache Geode OQL Joins with Colocation, Keys, and Indexes
 
 ## Status
 validated

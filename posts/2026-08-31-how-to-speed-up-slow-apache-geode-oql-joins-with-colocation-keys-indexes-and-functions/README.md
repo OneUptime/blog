@@ -1,4 +1,4 @@
-# How to Speed Up Slow Apache Geode OQL Joins with Colocation, Keys, Indexes, and Functions
+# Speed Up Apache Geode OQL Joins with Colocation, Keys, and Indexes
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

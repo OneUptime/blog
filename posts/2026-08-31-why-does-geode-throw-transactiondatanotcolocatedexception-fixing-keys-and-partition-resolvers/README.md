@@ -1,4 +1,4 @@
-# Why Does Geode Throw `TransactionDataNotColocatedException`? Fixing Keys and Partition Resolvers
+# Fix Geode `TransactionDataNotColocatedException` with Colocated Keys
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

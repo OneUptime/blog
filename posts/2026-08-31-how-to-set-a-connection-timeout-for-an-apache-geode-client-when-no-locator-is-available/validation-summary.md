@@ -1,4 +1,4 @@
-# Validation Summary: How to Set a Connection Timeout for an Apache Geode Client When No Locator Is Available
+# Validation Summary: Set an Apache Geode Client Timeout When No Locator Is Available
 
 ## Status
 validated

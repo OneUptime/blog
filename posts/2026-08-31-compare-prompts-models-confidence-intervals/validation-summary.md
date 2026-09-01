@@ -1,4 +1,4 @@
-# Validation Summary: How to Compare Prompts or Models with Confidence Intervals Instead of Average Scores
+# Validation Summary: Compare Prompts or Models with Confidence Intervals, Not Average Scores
 
 ## Status
 

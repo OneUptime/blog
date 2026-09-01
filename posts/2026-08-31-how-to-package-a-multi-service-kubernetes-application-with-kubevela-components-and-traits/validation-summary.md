@@ -1,4 +1,4 @@
-# Validation Summary: How to Package a Multi-Service Kubernetes Application with KubeVela Components and Traits
+# Validation Summary: Package a Multi-Service App with KubeVela Components and Traits
 
 ## Status
 validated

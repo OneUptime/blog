@@ -1,4 +1,4 @@
-# Validation Summary: Replicated vs Partitioned Regions in Apache Geode: How to Choose for Read and Write Workloads
+# Validation Summary: Replicated vs Partitioned Apache Geode Regions for Read and Write Workloads
 
 ## Status
 

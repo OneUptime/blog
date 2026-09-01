@@ -1,4 +1,4 @@
-# Validation Summary: Why Did a KubeVela Workflow Stop at `suspend` or `wait`? Inspecting Step Status and Conditions
+# Validation Summary: Why a KubeVela Workflow Stops at `suspend` or `wait`: Inspecting Status
 
 ## Status
 

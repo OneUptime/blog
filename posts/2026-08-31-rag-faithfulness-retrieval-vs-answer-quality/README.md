@@ -1,4 +1,4 @@
-# How to Measure RAG Faithfulness Without Confusing Retrieval Quality with Answer Quality
+# Measure RAG Faithfulness Separately from Retrieval and Answer Quality
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
