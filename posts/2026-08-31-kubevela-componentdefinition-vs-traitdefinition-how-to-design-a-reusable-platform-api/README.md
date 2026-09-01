@@ -86,7 +86,7 @@ Declare compatibility rather than hoping every workload has a Deployment-shaped 
 }
 ```
 
-`appliesToWorkloads` narrows where the trait is valid. `conflictsWith` makes incompatible combinations fail early. For a trait that wraps a resource requiring a workload reference, `workloadRefPath` can tell KubeVela where to inject it; when emitting a KEDA `ScaledObject`, many platforms instead render `scaleTargetRef` explicitly from the component context. Confirm behavior against the installed release.
+`appliesToWorkloads` declares where the trait is intended to be valid, but KubeVela v1.11.0 does not check it when applying an Application, so enforce that contract in platform validation. `conflictsWith` is also metadata only in v1.11.0; admission enforcement was merged after that release, so confirm that the installed build includes the fix before relying on early rejection. For a trait that wraps a resource requiring a workload reference, `workloadRefPath` can tell KubeVela where to inject it; when emitting a KEDA `ScaledObject`, many platforms instead render `scaleTargetRef` explicitly from the component context. Confirm behavior against the installed release.
 
 ## Define ownership field by field
 
