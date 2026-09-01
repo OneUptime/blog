@@ -8,7 +8,7 @@ Description: Wrap a KEDA ScaledObject in a reusable KubeVela TraitDefinition, pr
 
 ---
 
-KubeVela already documents a `keda` addon that supplies a `keda-auto-scaler` trait. Prefer that maintained capability when it meets the platform contract:
+KubeVela already documents a version-pinned `keda` addon that supplies a `keda-auto-scaler` trait. Confirm that its pinned KEDA release supports your Kubernetes version, then prefer that packaged capability when it meets the platform contract:
 
 ```bash
 vela addon enable keda
@@ -21,15 +21,16 @@ This tutorial creates a CPU autoscaling trait because it has no broker credentia
 
 ## Install and verify KEDA first
 
-Install KEDA through its official Helm chart or the version-pinned KubeVela addon according to your platform ownership model. Then verify the API and controller:
+Install KEDA through its official Helm chart or the version-pinned KubeVela addon according to your platform ownership model. Set `KEDA_NAMESPACE` to the installation namespace (`keda` for the official Helm default or `kube-system` for the current KubeVela addon), then verify the API and controller:
 
 ```bash
+KEDA_NAMESPACE=keda
 kubectl api-resources --api-group=keda.sh
 kubectl get crd scaledobjects.keda.sh
-kubectl get pods --namespace keda
+kubectl get pods --namespace "$KEDA_NAMESPACE"
 ```
 
-Namespace and labels depend on installation values. A TraitDefinition can render a `ScaledObject`, but it cannot make an absent KEDA CRD or metrics pipeline work.
+Namespace and labels can depend on installation values. A TraitDefinition can render a `ScaledObject`, but it cannot make an absent KEDA CRD or metrics pipeline work.
 
 ## Scaffold the trait
 
@@ -64,7 +65,6 @@ template: {
 		spec: {
 			scaleTargetRef: name: context.name
 			pollingInterval: parameter.pollingInterval
-			cooldownPeriod:  parameter.cooldownPeriod
 			minReplicaCount: parameter.minReplicas
 			maxReplicaCount: parameter.maxReplicas
 			triggers: [{
@@ -80,12 +80,11 @@ template: {
 		maxReplicas:     *10 | int & >=1
 		utilization:     *"80" | string
 		pollingInterval: *30 | int & >=1
-		cooldownPeriod:  *300 | int & >=0
 	}
 }
 ```
 
-KEDA trigger metadata is string-valued, so utilization is deliberately a string. Validate `maxReplicas >= minReplicas` with an additional CUE constraint or admission rule in your production definition. The exact `ScaledObject` schema can evolve; compare against the KEDA version installed.
+KEDA trigger metadata is string-valued, so utilization is deliberately a string. This CPU-only trait requires at least one replica and therefore does not expose `cooldownPeriod`: KEDA uses that field only when scaling to zero, while the generated HPA controls scaling between one and N replicas. Validate `maxReplicas >= minReplicas` with an additional CUE constraint or admission rule in your production definition. The exact `ScaledObject` schema can evolve; compare against the KEDA version installed.
 
 `appliesToWorkloads` rejects non-Deployment components. `conflictsWith` makes obvious competing scaling traits invalid. `context.name` matches the primary workload name for the built-in webservice contract; for custom components, render and verify that assumption. A broader trait may expose a target name or use KubeVela's workload-reference features, but that also enlarges the public API and security surface.
 
@@ -158,6 +157,12 @@ The workload sets a CPU request because utilization-based scaling uses requested
 
 ## Verify the complete control loop
 
+Create the application namespace once if it does not already exist:
+
+```bash
+kubectl create namespace apps
+```
+
 ```bash
 vela up --file keda-demo.yaml --namespace apps
 vela status keda-demo --namespace apps --tree --detail
@@ -166,9 +171,9 @@ kubectl describe scaledobject api --namespace apps
 kubectl get deployment api --namespace apps -o yaml
 ```
 
-Resource names depend on component context; discover them from the tree if needed. Check ScaledObject conditions, generated HPA, metrics API, Pod CPU requests, current metrics, desired replicas, and Deployment rollout. Generate controlled load in a test environment and observe scale-up and cooldown. Do not validate autoscaling in production by creating uncontrolled traffic.
+Resource names depend on component context; discover them from the tree if needed. Check ScaledObject conditions, generated HPA, metrics API, Pod CPU requests, current metrics, desired replicas, and Deployment rollout. Generate controlled load in a test environment and observe scale-up and HPA-controlled scale-down. Do not validate autoscaling in production by creating uncontrolled traffic.
 
-If the ScaledObject is ready but replicas snap back, inspect KubeVela policy selection and other reconcilers. If KEDA reports a scaler error, debug metrics availability and trigger schema rather than the TraitDefinition render.
+If the ScaledObject is ready but replicas snap back, inspect KubeVela policy selection and other reconcilers. If the generated HPA reports a resource-metric error, debug the `metrics.k8s.io` API and Pod CPU requests. If the ScaledObject reports a trigger configuration error, check the trigger schema rather than the TraitDefinition render.
 
 ## Official Documentation
 
@@ -181,4 +186,4 @@ If the ScaledObject is ready but replicas snap back, inspect KubeVela policy sel
 
 ## Conclusion
 
-Prefer KubeVela's maintained KEDA addon when possible; build a custom trait only for a deliberate platform contract. Restrict compatible workloads, emit the ScaledObject under `outputs`, validate its target, and declare conflicts. Most importantly, give KEDA ownership of `spec.replicas` with `apply-once`, then test the entire metrics-to-HPA-to-Deployment loop rather than stopping at successful CUE rendering.
+Prefer KubeVela's packaged KEDA addon when its pinned version supports your cluster; build a custom trait only for a deliberate platform contract. Restrict compatible workloads, emit the ScaledObject under `outputs`, validate its target, and declare conflicts. Most importantly, give KEDA ownership of `spec.replicas` with `apply-once`, then test the entire metrics-to-HPA-to-Deployment loop rather than stopping at successful CUE rendering.
