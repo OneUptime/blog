@@ -150,7 +150,6 @@
 7. How to Expose a KubeVela Webservice with Ports, Services, and Ingress Traits
 8. How to Pass Environment-Specific Overrides to One KubeVela Application
 9. How to Promote a KubeVela Application Across Dev, Staging, and Production
-10. How to Deploy One KubeVela Application to Multiple Kubernetes Clusters
 11. Why Is a KubeVela Multi-Cluster Application Stuck? Debugging Topology Policies and Placement
 12. How to Register, Label, and Select Managed Clusters in KubeVela
 14. Why Did a KubeVela Workflow Stop at `suspend` or `wait`? Inspecting Step Status and Conditions
