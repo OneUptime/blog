@@ -41,7 +41,7 @@ WHERE o.customerId = c.customerId
   AND o.status = $2
 ```
 
-Project only fields the caller needs. Returning two complete object graphs for every row increases serialization, network traffic, and collector memory. Use bind parameters for repeated queries instead of concatenating values into OQL; Geode can reuse the compiled query, and the code avoids quoting mistakes.
+Project only fields the caller needs. Returning two complete object graphs for every row increases serialization, network traffic, and collector memory. Use bind parameters instead of concatenating values into OQL. They keep runtime values separate from the query text and avoid quoting mistakes; a retained, thread-safe `Query` object can also be built once and executed repeatedly with different parameter values.
 
 This is an equality join. Colocation does not enable arbitrary theta joins, cross products, or a join whose equality field differs from the routing field. Multi-column partitioning requires all relevant colocation columns in the equality conditions, joined with the required `AND` logic.
 
@@ -110,7 +110,7 @@ The filter selects the bucket and members on which the function runs. The result
 
 ## Add Indexes That Match the Real Query
 
-Create indexes on every server member that hosts the regions, preferably before bulk loading. A `QueryService.createIndex` call creates the index for the member where that code runs, so run programmatic definitions during initialization on every host, or use `gfsh create index` to create and persist the definition cluster-wide. Programmatic definitions can match aliases and `FROM` clauses exactly:
+Create indexes on the data-store members that host buckets for the regions. Building them before bulk loading adds index-maintenance work to the load; building them afterward populates them from existing data, so measure the trade-off. For a partitioned region, a programmatic `QueryService.createIndex` call distributes index creation to the region's data stores, but it does not persist cluster configuration. Invoke the programmatic definitions once after the regions exist, or use `gfsh create index` without a `--members` target to create the indexes and, when the region is managed by the enabled cluster configuration service, persist their definitions for future starts. Programmatic definitions let each single-region index use the corresponding iterator form from the query:
 
 ```java
 QueryService queryService = cache.getQueryService();
@@ -125,9 +125,9 @@ queryService.createIndex(
     "customersById", "c.customerId", "/Customers c");
 ```
 
-Do not create every possible index. Each index consumes memory and is maintained on writes. Start with selective fields used by frequent queries and measure the write penalty. If a queried field truly corresponds to the region key or configured partitioning field, evaluate a key index; otherwise use a functional range index. Hash indexes are deprecated in current Geode APIs.
+Do not create every possible index. Each index consumes memory and is maintained on writes. Start with selective fields used by frequent queries and measure the write penalty. For this equi-join, use regular range indexes on both sides of the join; key indexes are not applied to equi-join queries. For separate single-region queries, consider a key index only when the indexed expression evaluates to the actual region key and the predicate uses equality; a routing field alone is not sufficient. Otherwise use a range index. Hash indexes are deprecated in current Geode APIs.
 
-Geode's index guidance says the query and index `FROM` clauses should match exactly when possible. Aliases, nested collections, and expression shape matter. An index existing in `gfsh list indexes` does not prove that a differently shaped query can use it.
+Geode's general index guidance says the query and index `FROM` clauses should match exactly when possible. Equi-joins are the documented case where you create one regular single-region index for each side, as above. Iterator structure, nested collections, and expression shape matter. An index existing in `gfsh list indexes` does not prove that a differently shaped query can use it.
 
 For several indexes on a populated region, the `QueryService.defineIndex` and `createDefinedIndexes` workflow avoids separate full-region iterations for each build. Build indexes with capacity headroom; index creation over a large live region consumes CPU and memory.
 
