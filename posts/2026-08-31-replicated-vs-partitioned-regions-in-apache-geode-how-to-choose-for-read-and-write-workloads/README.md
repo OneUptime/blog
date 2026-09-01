@@ -23,10 +23,10 @@ The practical default for a large or growing data set is partitioning. Replicati
 | Write cost | Update distributed to every replica | Update sent to primary and configured redundant copies |
 | Scale-out capacity | New replica adds another full copy | New data store adds usable capacity after bucket assignment/rebalance |
 | Failure tolerance | Other replicas retain the full region | Controlled by `redundant-copies`, recovery, and persistence |
-| Large distributed query | Local full copy may simplify peer query | Query fans across relevant buckets and merges results |
+| Large distributed query | Local full copy may simplify peer query | A typical full-region query fans across all buckets and merges results |
 | Data-aware compute | Every replica has all data | Functions can run where selected buckets reside |
 
-For a logical data size of `D` on `N` equal members, replication consumes roughly `D × N` before object, index, and product overhead. A partitioned region with one redundant copy stores roughly `D × 2` across the cluster, again before overhead. These are capacity-planning approximations, not heap-sizing formulas; serialization form, indexes, eviction, and bucket metadata all matter.
+For a logical data size of `D` on `N` equal data-hosting members, replication consumes roughly `D × N` before object, index, and product overhead. A partitioned region with one redundant copy stores roughly `D × 2` across the cluster when that redundancy is fully satisfied, again before overhead. These are capacity-planning approximations, not heap-sizing formulas; serialization form, indexes, eviction, and bucket metadata all matter.
 
 ## Choose Replication for Bounded Reference Data
 
@@ -55,7 +55,7 @@ gfsh> create region \
   --total-num-buckets=113
 ```
 
-With one redundant copy, a write normally affects the primary and one secondary rather than every server in the cluster. Adding servers creates capacity, but existing buckets do not automatically become evenly placed merely because a new process started. Assign buckets for a new empty region or run a controlled rebalance for an existing region.
+With one redundant copy, a write normally affects the primary and one secondary rather than every server in the cluster. Adding servers creates capacity, but existing buckets do not automatically become evenly placed merely because a new process started. After all intended data stores are running, preassign buckets for a new empty region or run a controlled rebalance for an existing region.
 
 Partitioning does not cure a bad key distribution. A hot routing object maps to one bucket and therefore one primary member. Use keys with stable, well-distributed `hashCode` behavior, or a `PartitionResolver` that intentionally groups related data without concentrating most traffic in a few routing values.
 
@@ -79,7 +79,7 @@ A nonpersistent partitioned region with zero redundant copies can lose entries w
 
 Persistence is another axis. `REPLICATE_PERSISTENT` and persistent partitioned shortcuts preserve region data in disk stores, subject to Geode's startup and recovery rules. Persistence does not eliminate the need for live redundancy when the application must continue serving through a member failure, and redundancy does not replace backups. Geode also rejects persistent-region operations inside atomic transactions by default; its opt-in override does not make the transaction's disk writes crash-atomic.
 
-For either model, size heap below critical thresholds, include indexes and copies in the budget, and test member loss under realistic load. “There are two servers” is not evidence that a partitioned region has a redundant copy or that a persistent replica is currently online.
+For either model, size the workload and heap so that heap use stays below any configured critical threshold, include indexes and copies in the budget, and test member loss under realistic load. “There are two servers” is not evidence that a partitioned region has a redundant copy or that a persistent replica is currently online.
 
 ## Account for Queries and Functions
 
