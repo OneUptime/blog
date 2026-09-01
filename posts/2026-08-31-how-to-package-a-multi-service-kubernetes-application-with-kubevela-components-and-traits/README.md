@@ -8,7 +8,7 @@ Description: Model related services as KubeVela components, attach reusable oper
 
 ---
 
-A KubeVela `Application` is a delivery plan composed of components, traits, policies, and optionally a workflow. A component describes a deployable artifact such as a container service or Helm chart. A trait adds an operational behavior-scaling, routing, storage, a sidecar, or another platform capability-to one component. This keeps the application author focused on parameters while the platform team owns the Kubernetes implementation.
+A KubeVela `Application` is a delivery plan composed of components and can also include per-component traits, application-wide policies, and a workflow. A component describes a deployable artifact such as a container service or Helm chart. A trait adds an operational behavior-scaling, routing, storage, a sidecar, or another platform capability-to one component. This keeps the application author focused on parameters while the platform team owns the Kubernetes implementation.
 
 Do not turn an Application into an unbounded inventory of an entire estate. KubeVela's core-concept guidance recommends treating an application as a microservice unit with one frequently developed core service and closely related dependencies, keeping component counts modest. Split services with independent ownership, release cadence, security boundary, or lifecycle into separate Applications and coordinate them through workflows or GitOps promotion.
 
@@ -25,7 +25,7 @@ vela show scaler
 vela show gateway
 ```
 
-These commands expose the platform API available to application authors. If `worker`, `gateway`, or another type is absent, install the documented addon or ask the platform owner; changing the YAML spelling will not manufacture a definition.
+These commands expose the platform API available to application authors. If an expected type is absent, ask the platform owner to install its definition or, for an addon-provided type, enable the documented addon; changing the YAML spelling will not manufacture a definition.
 
 ## Model services as components
 
@@ -89,6 +89,7 @@ spec:
             replicas: 2
         - type: gateway
           properties:
+            existingServiceName: frontend
             class: nginx
             classInSpec: true
             domain: shop.example.com
@@ -152,7 +153,7 @@ kubectl get application storefront --namespace shop -o yaml
 
 The resource tree connects each generated object to its component and trait. If a component remains unhealthy, inspect its Deployment, Pods, events, and definition health logic before assuming `dependsOn` is broken. If the gateway is healthy but unreachable, verify the ingress controller, `IngressClass`, DNS, TLS Secret, and external load balancer separately.
 
-Use immutable image digests or rigorously controlled tags in production. Updating one component changes the Application revision and can re-run its workflow, so record a unique publish version and preserve the Git commit that produced it.
+Use immutable image digests or rigorously controlled tags in production. Because this Application uses `app.oam.dev/publishVersion`, a component change does not take effect until you bump the annotation to a new value; that generates a new `ApplicationRevision` and triggers a fresh workflow run. Use a unique publish version and preserve the Git commit that produced it.
 
 ## Decide when to split the package
 
