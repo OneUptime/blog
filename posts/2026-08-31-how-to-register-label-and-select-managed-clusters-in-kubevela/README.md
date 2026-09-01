@@ -8,7 +8,7 @@ Description: Join managed Kubernetes clusters to KubeVela, apply governed placem
 
 ---
 
-KubeVela registers managed clusters on a hub control plane. By default, Cluster Gateway stores credentials and connects from the hub to each managed Kubernetes API. Applications select registration names or labels through a `topology` policy. Registration and labels are therefore privileged platform operations: they decide where workloads can be dispatched and what credentials the hub holds.
+KubeVela registers managed clusters on a hub control plane. By default, KubeVela stores endpoint and credential material in a Kubernetes Secret on the hub, which Cluster Gateway uses to connect directly to each managed Kubernetes API. Applications select registration names or labels through a `topology` policy. Registration and labels are therefore privileged platform operations: they decide where workloads can be dispatched and what credentials the hub holds.
 
 The hub appears as the special cluster `local`. KubeVela's documentation notes that it cannot be detached or modified like a managed cluster.
 
@@ -20,16 +20,15 @@ Also verify network direction. In the default mode, the hub must reach the API s
 
 ## Join a managed cluster
 
-Select the hub context for `vela`, while passing the spoke kubeconfig as an argument:
+Confirm that the current context is the hub context for `vela`, while passing the spoke kubeconfig as an argument:
 
 ```bash
 kubectl config current-context
 vela cluster join ./cluster-eu-1.kubeconfig \
-  --name cluster-eu-1 \
-  --labels environment=production,region=eu,team=payments
+  --name cluster-eu-1
 ```
 
-The official `vela cluster join` command accepts a kubeconfig, optional registration name, labels, and cluster engine. Its `--create-namespace` option names a namespace to create in the managed cluster; it is not the workload destination selected later by a topology policy. Keep kubeconfig files out of Git and shell transcripts, restrict their filesystem permissions, and remove temporary copies securely according to your organization's credential procedure.
+The official `vela cluster join` command accepts a kubeconfig, optional registration name, labels, and cluster engine. Its `--create-namespace` option names a namespace to create in the managed cluster; it is not the workload destination selected later by a topology policy. KubeVela v1.11 republishes Applications that contain an explicit `clusterLabelSelector` during a join, so a cluster whose join-time labels match an existing selector can receive workloads immediately. Inventory existing selectors before joining, especially a catch-all `clusterLabelSelector: {}`, and add governed placement labels only after readiness validation. Keep kubeconfig files out of Git and shell transcripts, restrict their filesystem permissions, and remove temporary copies securely according to your organization's credential procedure.
 
 List and probe the result:
 
@@ -131,7 +130,7 @@ vela up --file payments-api.yaml --namespace delivery
 vela status payments-api --namespace delivery --tree --detail
 ```
 
-The resource tree should show exactly the expected cluster/namespace pairs. If none appear, check labels and workflow policy references. If a target appears but fails, registration worked far enough to select it; inspect Cluster Gateway, target admission, and workload health.
+The resource tree's `updated` rows should include the expected cluster/namespace pairs. It can also show `not-deployed` placements or `outdated` resources from earlier revisions, so do not treat every row as an active deployment. If an expected active target is absent, check labels and workflow policy references. If the target has deployed resources but the workload is unhealthy, registration worked far enough to select it; inspect Cluster Gateway, target admission, and workload health.
 
 ## Rename or detach with care
 
