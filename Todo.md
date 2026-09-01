@@ -159,7 +159,6 @@
 16. How to Import and Customize a Helm Chart as a KubeVela Application
 17. How to Use KubeVela with Argo CD Without Creating Two Competing Reconcilers
 18. How to Keep Secrets Out of KubeVela Application Manifests in a GitOps Workflow
-19. How to Create a Custom KubeVela Trait for KEDA Autoscaling
 20. How to Troubleshoot a KubeVela Addon That Fails to Enable or Stays Unhealthy
 
 ## LLM Evaluation
