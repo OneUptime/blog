@@ -153,7 +153,6 @@
 14. Why Did a KubeVela Workflow Stop at `suspend` or `wait`? Inspecting Step Status and Conditions
 15. How to Roll Back a Failed KubeVela Application Revision Safely
 17. How to Use KubeVela with Argo CD Without Creating Two Competing Reconcilers
-18. How to Keep Secrets Out of KubeVela Application Manifests in a GitOps Workflow
 20. How to Troubleshoot a KubeVela Addon That Fails to Enable or Stays Unhealthy
 
 ## LLM Evaluation
