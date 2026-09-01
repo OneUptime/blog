@@ -27,7 +27,7 @@ If the criterion can be evaluated in code, use code. JSON Schema, exact tool nam
 
 ## Use an Evidence-Bound Template
 
-A robust rubric contains seven parts:
+A robust rubric contains eight parts:
 
 ```text
 Criterion name: Source faithfulness
@@ -46,17 +46,20 @@ FAIL:
 At least one material factual claim contradicts SOURCE or lacks support.
 
 CANNOT_JUDGE:
-SOURCE is absent, unreadable, or insufficient to assess a material claim.
+Required SOURCE is absent or unreadable, so source support cannot be assessed.
+A readable SOURCE that merely omits support for a material claim yields FAIL.
 
 Ignore:
 Writing style, length, politeness, and whether the response fully answers
 the user, except where they change the factual claim.
 
 Output:
-{"label":"PASS|FAIL|CANNOT_JUDGE","evidence":[...],"reason":"..."}
+Return exactly these keys. label must be PASS, FAIL, or CANNOT_JUDGE;
+evidence must be an array of strings; reason must be a non-empty string.
+{"label":"PASS","evidence":[],"reason":"All material claims are supported."}
 ```
 
-The labels describe outcomes, not feelings. `CANNOT_JUDGE` prevents missing context from becoming a fabricated pass or fail. Keep infrastructure errors such as timeout or invalid JSON separate from rubric labels.
+The labels describe outcomes, not feelings. `CANNOT_JUDGE` gives the judge an explicit alternative when required evaluation input is unavailable or unusable, rather than forcing a fabricated pass or fail. Keep infrastructure errors such as timeout or invalid JSON separate from rubric labels.
 
 ## Define Materiality and Boundaries
 
@@ -76,7 +79,7 @@ Examples should teach the decision boundary rather than copy the production test
 
 Exclusions are as important as the definition. If the criterion is groundedness, instruct the judge not to reward completeness, elegant prose, citations by appearance, or facts it knows independently. If the criterion is relevance, tell it not to punish a factual error unless that error changes whether the content addresses the request; score correctness separately.
 
-This prevents verbosity and halo effects. It also makes disagreements actionable: either the judge used forbidden evidence, or the rubric needs refinement.
+This helps reduce verbosity bias and halo effects. It also makes disagreements actionable: either the judge used forbidden evidence, or the rubric needs refinement.
 
 Keep candidate identity hidden. For pairwise scoring, use symmetric wrappers, allow ties, and swap A/B order. Do not reveal which output is the baseline, expensive model, or human answer unless identity is part of the criterion.
 
@@ -109,9 +112,21 @@ A post-processor can enforce invariants:
 
 ```python
 def validate_judgment(value):
-    if value.get("label") not in {"PASS", "FAIL", "CANNOT_JUDGE"}:
+    if not isinstance(value, dict):
+        raise ValueError("judgment must be an object")
+    if set(value) != {"label", "evidence", "reason"}:
+        raise ValueError("judgment must contain exactly label, evidence, and reason")
+    if not isinstance(value["label"], str) or value["label"] not in {
+        "PASS", "FAIL", "CANNOT_JUDGE"
+    }:
         raise ValueError("invalid label")
-    if value["label"] == "FAIL" and not value.get("evidence"):
+    if not isinstance(value["evidence"], list) or not all(
+        isinstance(item, str) and item.strip() for item in value["evidence"]
+    ):
+        raise ValueError("evidence must be an array of non-empty strings")
+    if not isinstance(value["reason"], str) or not value["reason"].strip():
+        raise ValueError("reason must be a non-empty string")
+    if value["label"] == "FAIL" and not value["evidence"]:
         raise ValueError("failure requires evidence")
     return value
 ```
