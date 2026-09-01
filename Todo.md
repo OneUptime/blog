@@ -179,7 +179,6 @@
 13. Why Does Ragas `answer_relevancy` Return NaN? Debugging Judge Failures and Token Limits
 14. How to Fix Ragas “LLM Is None” and Metric Initialization Errors
 15. How to Evaluate a RAG System with a Local LLM That Produces Invalid JSON
-16. How to Build Ground Truth for RAG Evaluation When No Reference Answers Exist
 17. How to Evaluate Hallucinations by Checking LLM Answers Against Retrieved Sources
 18. How to Evaluate Tool-Calling Agents for Correct Tool Choice, Arguments, and Final Answers
 19. How to Compare Prompts or Models with Confidence Intervals Instead of Average Scores
