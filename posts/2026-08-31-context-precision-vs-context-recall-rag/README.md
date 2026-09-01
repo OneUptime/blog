@@ -8,7 +8,7 @@ Description: Evaluate RAG retrieval by measuring whether ranked contexts are rel
 
 ---
 
-Context precision and context recall diagnose different retriever failures. Precision asks whether the retrieved list is concentrated with useful results and ranks them early. Recall asks whether the retriever found all the information needed to answer the query. Improving one can reduce the other, so a single “retrieval score” hides the tradeoff.
+Context precision and context recall diagnose different retriever failures. Precision@k asks whether the first `k` results are concentrated with useful material, while Ragas’ context precision asks whether relevant chunks are ranked ahead of irrelevant ones. Recall asks whether the retriever found all the information needed to answer the query. Improving one can reduce the other, so a single “retrieval score” hides the tradeoff.
 
 ## Define Relevance Before Computing Anything
 
@@ -22,7 +22,7 @@ Record the corpus version, chunking strategy, query, ordered retrieved chunk IDs
 
 ## Understand Context Precision
 
-Precision at rank `k` is the fraction of the first `k` results that are relevant. Ragas’ `ContextPrecision` is an average-precision-like ranking metric: relevant chunks receive more credit when they appear earlier. This matters because generators have context limits and may attend unevenly to long prompts.
+Precision at rank `k` is the fraction of the first `k` results that are relevant. Ragas’ `ContextPrecision` is an average-precision-like ranking metric: relevant chunks receive more credit when they appear earlier. Because it averages precision at relevant ranks, trailing irrelevant chunks after all relevant chunks do not lower the score; use Precision@k when you need to measure concentration at a fixed cutoff. This matters because generators have context limits and may attend unevenly to long prompts.
 
 Suppose relevance by rank is:
 
@@ -33,7 +33,7 @@ relevant:  1  0  1  0  0
 
 Precision@1 is 1.0, precision@3 is 2/3, and precision@5 is 2/5. A ranking-sensitive score rewards the relevant item at rank 1 more than if it appeared at rank 5.
 
-Low precision produces noisy prompts, higher token cost, and more opportunities for the generator to follow irrelevant or conflicting passages. Fixes include stronger filters, metadata constraints, hybrid retrieval, reranking, query rewriting, and better chunk boundaries.
+Low Precision@k means more of the selected chunks are irrelevant. This can waste context-window capacity and token spend and gives the generator more opportunities to follow irrelevant or conflicting passages. Fixes include stronger filters, metadata constraints, hybrid retrieval, reranking, query rewriting, and better chunk boundaries.
 
 ## Understand Context Recall
 
@@ -78,19 +78,19 @@ async def main():
 asyncio.run(main())
 ```
 
-Ragas also documents `IDBasedContextPrecision` and `IDBasedContextRecall` for direct ID comparisons. Prefer deterministic ID calculations when trustworthy relevance IDs exist: they are cheaper and avoid a judge interpreting text. However, the stable documentation currently demonstrates these classes with `ragas.metrics`, `SingleTurnSample`, and `single_turn_ascore`, so those examples use the legacy sample-based API rather than the collections API. The documented non-LLM context variants use the same legacy calling shape, and string similarity is not the same as expert relevance.
+Ragas also documents `IDBasedContextPrecision` and `IDBasedContextRecall` for direct, set-based ID comparisons. These metrics ignore rank order and deduplicate IDs. Calculate conventional Precision@k directly over the first `k` positions; add a ranking-sensitive metric when order within the list matters. Prefer deterministic ID calculations when trustworthy relevance IDs exist: they are cheaper and avoid a judge interpreting text. However, the stable documentation currently demonstrates these classes with `ragas.metrics`, `SingleTurnSample`, and `single_turn_ascore`, so those examples use the legacy sample-based API rather than the collections API. The documented non-LLM context variants use the same legacy calling shape, and string similarity is not the same as expert relevance.
 
 The `LLMContextPrecisionWithReference`, `LLMContextRecall`, `IDBasedContextPrecision`, `IDBasedContextRecall`, `NonLLMContextPrecisionWithReference`, and `NonLLMContextRecall` examples shown with `SingleTurnSample` belong to the legacy metric API. Do not mix those imports and calling conventions with collections metrics. For a new collections-based application, a small deterministic precision/recall function over your IDs is often clearer than introducing the legacy dataset layer solely for this calculation.
 
 ## Read the Two Metrics Together
 
-The four broad quadrants suggest different actions:
+The four broad quadrants for Ragas’ ranking-sensitive context precision and context recall suggest different actions:
 
-| Precision | Recall | Likely diagnosis |
+| Context precision | Context recall | Likely diagnosis |
 |---|---|---|
-| High | High | Useful evidence is present and ranked early |
-| High | Low | A clean but incomplete result set |
-| Low | High | Evidence is present but buried in noise |
+| High | High | Most required evidence is present, and relevant chunks are generally ranked early |
+| High | Low | Retrieved relevant evidence generally ranks early, but required evidence is missing |
+| Low | High | Most required evidence is present, but relevant chunks are interspersed with or buried below irrelevant ones |
 | Low | Low | Retrieval, corpus coverage, or labels need major work |
 
 Always inspect by query type. Single-hop factual queries, multi-hop synthesis, temporal queries, and permission-filtered queries have different difficulty and acceptable top-k. A global average can conceal zero recall for a critical source.
@@ -126,4 +126,4 @@ Also report evaluator failures. Timeouts, invalid judge output, empty references
 
 ## Conclusion
 
-Context precision measures concentration and ranking of useful results; context recall measures missing required evidence. Define the relevance unit, preserve ranked retrieval outputs, use IDs when possible, and report both metrics at operational cutoffs. Then evaluate the generator separately so retrieval improvements and answer improvements remain distinguishable.
+Precision@k measures concentration at an operational cutoff, Ragas’ context precision measures whether useful chunks are ranked early, and context recall measures missing required evidence. Define the relevance unit, preserve ranked retrieval outputs, use IDs when possible, and report the chosen precision and recall metrics at operational cutoffs. Then evaluate the generator separately so retrieval improvements and answer improvements remain distinguishable.
