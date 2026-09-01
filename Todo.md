@@ -148,7 +148,6 @@
 
 ## LLM Evaluation
 
-9. How to Write a Single-Criterion Rubric That an LLM Judge Can Apply Consistently
 
 ## Apache Geode
 
