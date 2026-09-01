@@ -165,7 +165,6 @@
 
 ## LLM Evaluation
 
-1. How to Build a Golden Evaluation Dataset from Real LLM Production Failures
 2. Why Did Your LLM Golden Dataset Go Stale? A Maintenance and Sampling Workflow
 3. How to Turn LLM Evaluation into a Reliable CI Regression Gate
 4. Why Do LLM Eval Scores Change Between Runs? Measuring Variance Before Setting Thresholds
