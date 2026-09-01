@@ -35,7 +35,7 @@ Use an adjudicated expert label as the comparison target, but retain original re
 
 ## Freeze the Judge Under Test
 
-Pin the judge model version, full prompt, examples, output schema, decoding configuration, and all supplied references. Save parse failures and refusals as explicit error outcomes. Do not exclude them from the denominator: a judge that labels 90% of cases accurately and fails to produce a label for 10% is not a 90%-agreement production judge.
+Pin the judge model version, full prompt, examples, output schema, decoding configuration, and all supplied references. Save parse failures and refusals as explicit error outcomes. Do not exclude them from the denominator: a judge that is 90% accurate on the 90% of cases where it produces a label and fails on the remaining 10% has only 81% end-to-end agreement.
 
 Run the judge on the untouched calibration set and normalize only harmless formatting differences:
 
