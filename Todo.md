@@ -174,7 +174,6 @@
 9. How to Write a Single-Criterion Rubric That an LLM Judge Can Apply Consistently
 10. How to Evaluate an LLM Judge Before Trusting Its Scores
 11. How to Measure RAG Faithfulness Without Confusing Retrieval Quality with Answer Quality
-12. Context Precision vs Context Recall: How to Evaluate the Retriever in a RAG Pipeline
 13. Why Does Ragas `answer_relevancy` Return NaN? Debugging Judge Failures and Token Limits
 14. How to Fix Ragas “LLM Is None” and Metric Initialization Errors
 15. How to Evaluate a RAG System with a Local LLM That Produces Invalid JSON
