@@ -18,22 +18,26 @@ Each test case should include more than an input and expected prose:
 
 ```yaml
 input: "Move tomorrow's 10:00 review to 11:00"
+current_time: "2026-08-31T09:00:00+01:00"
+user_timezone: Europe/London
 initial_state:
   events:
     - id: evt-42
       title: Review
-      start: 2026-09-01T10:00:00+01:00
+      start: "2026-09-01T10:00:00+01:00"
 allowed_tools: [calendar_search, calendar_update]
 required_outcome:
   event_id: evt-42
-  start: 2026-09-01T11:00:00+01:00
+  start: "2026-09-01T11:00:00+01:00"
 forbidden_outcomes: [create_duplicate_event, modify_other_event]
 final_answer_requirements: [confirm_new_time]
 ```
 
+Inject the fixture's `current_time` and `user_timezone` into the agent and tool sandbox so relative dates such as “tomorrow” remain deterministic.
+
 Add cases where no tool should be called, where clarification is required, where a tool returns an error, and where the requested action is forbidden. The agent's ability to refrain from acting is part of correctness.
 
-Run mutating tools against a sandbox, emulator, or reversible fixture. Reset state between cases. A replayed test must not email a customer, charge a card, or alter a real calendar. Give every simulated write an idempotency key and record before-and-after state.
+Run mutating tools against a sandbox, emulator, or reversible fixture. Reset state between cases. A replayed test must not email a customer, charge a card, or alter a real calendar. Give each logical simulated write a stable idempotency key, reuse it on retries, and record every attempted call plus before-and-after state.
 
 ## Score Tool Choice and Arguments Separately
 
@@ -45,17 +49,19 @@ Tool-choice accuracy asks whether the selected capability matches the task. It s
 - wrong tool with a superficially similar name;
 - prohibited or unsafe call.
 
-Arguments need field-aware comparison. Exact JSON equality is appropriate for identifiers and enumerations, but not always for equivalent timestamps or harmless object-key ordering. Normalize only semantics allowed by the tool contract:
+Arguments need field-aware comparison. Exact equality is appropriate for identifiers and enumerations. Compare parsed JSON objects structurally so member order is irrelevant, and normalize only semantic equivalences allowed by the tool contract, such as equivalent timestamps:
 
 ```python
 from datetime import datetime, timezone
 
 def normalize_update(args):
+    start = datetime.fromisoformat(args["start"])
+    if start.tzinfo is None or start.utcoffset() is None:
+        raise ValueError("start must include a UTC offset")
+
     return {
         "event_id": args["event_id"],
-        "start": datetime.fromisoformat(args["start"])
-        .astimezone(timezone.utc)
-        .isoformat(),
+        "start": start.astimezone(timezone.utc).isoformat(),
     }
 
 argument_match = normalize_update(actual) == normalize_update(expected)
@@ -63,9 +69,9 @@ argument_match = normalize_update(actual) == normalize_update(expected)
 
 Do not use a semantic LLM judge to excuse an invalid schema, a missing required field, or the wrong account ID. Validate the schema first, compare strict safety-critical fields next, and reserve semantic comparison for genuinely open-ended values such as a search query. Provider-enforced strict function schemas can improve syntactic conformance, but they do not prove that the model selected the right tool or supplied semantically correct values.
 
-For partial performance, report tool-call precision, recall, and F1. Precision penalizes extra distinct calls; recall penalizes missing expected calls. Ragas' current collections `ToolCallF1` converts predicted and reference calls to sets of `(tool name, arguments)` and matches those structures without considering order. Set conversion also collapses duplicate identical calls, so this metric cannot detect an accidental repeated write by itself.
+For partial performance, report tool-call precision, recall, and F1. Precision penalizes extra distinct calls; recall penalizes missing expected calls. Ragas' current collections `ToolCallF1` converts predicted and reference calls to sets of `(tool name, arguments)` and matches those structures without considering tool-call order. Set conversion also collapses duplicate identical calls, so this metric cannot detect an accidental repeated write by itself.
 
-The current `ToolCallAccuracy` implementation first requires the complete tool-name sequence to match, or the same sorted tool-name multiset when `strict_order=False`; a name or call-count mismatch makes the final score zero. When names align, its argument score is the fraction of **reference** keys whose stringified values match. Missing or wrong reference arguments lower the score. When the reference argument object is nonempty, additional predicted keys are not penalized by that function; when the reference has no arguments but the prediction does, it returns zero. This is why schema validation, duplicate-call checks, safety-critical type checks, and state assertions must remain separate. Both Ragas metrics are useful only when one reference call set represents all acceptable behavior; otherwise add alternative-reference or outcome-aware logic.
+The current `ToolCallAccuracy` implementation first requires the complete tool-name sequence to match, or the same sorted tool-name multiset when `strict_order=False`; a name or call-count mismatch makes the final score zero. When names align, it scores each paired call as the fraction of that **reference** call's keys whose stringified values match, then averages those per-call scores over the reference calls. Missing or wrong reference arguments lower the score. When the reference argument object is nonempty, additional predicted keys are not penalized by that function; when the reference has no arguments but the prediction does, it returns zero. This is why schema validation, duplicate-call checks, safety-critical type checks, and state assertions must remain separate. Both Ragas metrics accept one reference call collection per evaluation; when multiple behaviors are acceptable, add alternative-reference or outcome-aware logic.
 
 ## Decide When Order Matters
 
