@@ -177,7 +177,6 @@
 
 1. How to Fix Apache Geode “Region Not Found” When a Client Can Connect but Cannot Put Data
 2. Why Does `gfsh list members` Show the Locator but Not the Geode Server?
-3. How to Configure Geode Locator and Server Bind Addresses in Docker
 4. How to Set a Connection Timeout for an Apache Geode Client When No Locator Is Available
 5. Replicated vs Partitioned Regions in Apache Geode: How to Choose for Read and Write Workloads
 7. Why Does Geode Throw `TransactionDataNotColocatedException`? Fixing Keys and Partition Resolvers
