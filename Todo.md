@@ -163,7 +163,6 @@
 ## Apache Geode
 
 2. Why Does `gfsh list members` Show the Locator but Not the Geode Server?
-4. How to Set a Connection Timeout for an Apache Geode Client When No Locator Is Available
 5. Replicated vs Partitioned Regions in Apache Geode: How to Choose for Read and Write Workloads
 7. Why Does Geode Throw `TransactionDataNotColocatedException`? Fixing Keys and Partition Resolvers
 9. How to Speed Up Slow Apache Geode OQL Joins with Colocation, Keys, Indexes, and Functions
