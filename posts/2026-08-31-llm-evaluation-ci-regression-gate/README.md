@@ -46,12 +46,19 @@ import numpy as np
 baseline = np.asarray(load_scores("baseline.json"), dtype=float)
 candidate = np.asarray(load_scores("candidate.json"), dtype=float)
 
-if baseline.shape != candidate.shape or baseline.size < 2:
-    raise RuntimeError("candidate and baseline need the same case set with at least two rows")
+if (baseline.ndim != 1 or candidate.ndim != 1 or
+        baseline.shape != candidate.shape or baseline.size < 2):
+    raise RuntimeError(
+        "candidate and baseline need one score per case on the same case set "
+        "with at least two rows"
+    )
 if not np.isfinite(baseline).all() or not np.isfinite(candidate).all():
     raise RuntimeError("incomplete evaluation results")
 
-deltas = candidate - baseline
+with np.errstate(over="ignore", invalid="ignore"):
+    deltas = candidate - baseline
+if not np.isfinite(deltas).all():
+    raise RuntimeError("non-finite paired differences")
 if np.all(deltas == deltas[0]):
     # BCa is undefined for a degenerate bootstrap distribution. The empirical
     # bootstrap distribution collapses to the observed point value.
@@ -73,7 +80,7 @@ if low <= allowed_regression:
     )
 ```
 
-Load or join these arrays by stable case ID and verify the IDs match before relying on positional pairing. The constant-difference branch prevents a degenerate BCa result from becoming a non-finite interval that accidentally passes the gate. Its point interval describes the empirical resampling distribution only; it is not evidence that an unseen production population has zero uncertainty. A production gate still needs enough independent, representative cases when the observed differences happen to be identical.
+Load or join these arrays by stable case ID and verify the IDs match before relying on positional pairing. The constant-difference branch avoids asking BCa to estimate an undefined interval; the finite check rejects other non-finite intervals. Its point interval describes the empirical resampling distribution only; it is not evidence that an unseen production population has zero uncertainty. A production gate still needs enough independent, representative cases when the observed differences happen to be identical.
 
 The exact rule is a product decision. A conservative non-inferiority gate may block when the lower confidence bound is at or below the tolerated regression because the data have not ruled out unacceptable harm; that does **not** prove the candidate regressed. Another policy may fail only when the upper bound is below the tolerance, requiring stronger evidence of harm but permitting uncertain candidates. State which error is more costly: temporarily blocking a good change or shipping a bad one.
 
@@ -123,18 +130,19 @@ jobs:
         with:
           python-version: "3.13"
           cache: pip
+          cache-dependency-path: evals/requirements.lock
       - run: pip install -r evals/requirements.lock
       - run: python -m evals.run --suite pr --baseline evals/baseline.json
         env:
           EVAL_API_KEY: ${{ secrets.EVAL_API_KEY }}
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: llm-eval-report
           path: evals/results/
 ```
 
-GitHub Actions treats a nonzero exit as failure. Protect the target branch with this check only after observing it in advisory mode, measuring flakiness, and confirming that failures are actionable. Do not give pull-request code from untrusted forks access to production secrets or writable caches.
+GitHub Actions treats a nonzero exit as failure. Protect the target branch with this check only after observing it in advisory mode, measuring flakiness, and confirming that failures are actionable. Do not expose production secrets or sensitive cache contents to untrusted pull-request code, and do not let low-trust events write caches that trusted workflows can restore.
 
 ## Roll Out the Gate Safely
 
