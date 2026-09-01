@@ -18,12 +18,12 @@ At least four components matter:
 
 - **Case variation:** some inputs are intrinsically harder than others.
 - **Application variation:** repeated generations for the same case differ.
-- **Evaluator variation:** a stochastic or fallible judge changes its decision.
+- **Evaluator variation:** repeated scoring by a stochastic judge can change its decision; systematic judge error is bias rather than run-to-run variance.
 - **Environment variation:** retriever contents, tools, provider versions, concurrency, and failures change.
 
 Freeze everything you can measure independently. Snapshot documents, replay tool results, pin prompt and model versions, and record decoding parameters. Then deliberately repeat the components that remain stochastic.
 
-A practical crossed design runs every case several times, then scores each saved response several times with the judge. Saving responses is important: it lets you re-score the exact same application output and distinguish judge variance from generation variance.
+A practical repeated-measures design runs every case several times, then scores each saved response several times with the judge. Saving responses is important: it lets you re-score the exact same application output and distinguish judge repeatability variance from generation variance.
 
 ```text
 for each case i:
@@ -51,9 +51,9 @@ Review the raw traces of high-variance cases. An underspecified rubric should be
 
 There are two common questions, and they require different resampling units.
 
-First, “How stable is this fixed evaluation set under repeated execution?” Hold the cases fixed and summarize repeated runs per case. This captures execution variance for the benchmark you actually gate on.
+First, “How stable is this fixed evaluation set under repeated execution?” Hold the cases fixed and summarize repeated runs per case. If a common run or environment can affect multiple cases, preserve that run identifier and also summarize the aggregate score for each complete run; otherwise, per-case summaries omit cross-case covariance. This captures execution variance for the benchmark you actually gate on.
 
-Second, “How well does this dataset estimate production performance?” Resample independent cases or clusters. If several turns, paraphrases, or questions come from one conversation or document, resample the whole cluster. Treating correlated rows as independent makes intervals too narrow.
+Second, “How well does this dataset estimate production performance?” Resample independent cases or clusters. If several turns, paraphrases, or questions come from one conversation or document, resample the whole cluster. Treating correlated rows as independent can make intervals invalid—often too narrow when within-cluster correlation is positive.
 
 For a candidate comparison, use paired differences because both systems saw the same cases:
 
@@ -80,7 +80,7 @@ print("95% interval", result.confidence_interval)
 
 Because `delta` already contains paired observations, it is resampled as one array. If you instead pass baseline and candidate as separate arrays to a statistic, set `paired=True` so SciPy resamples common indices.
 
-A confidence interval is not the probability that the true value lies inside this one computed interval. Under the method’s assumptions, the procedure produces intervals with the stated long-run coverage. It also does not remove bias from an unrepresentative dataset or a misaligned judge.
+A confidence interval is not the probability that the true value lies inside this one computed interval. Under the method’s assumptions, the procedure produces intervals with approximately the stated long-run coverage. It also does not remove bias from an unrepresentative dataset or a misaligned judge.
 
 ## Choose a Threshold from the Decision
 
@@ -90,7 +90,7 @@ Then choose a decision rule. For paired delta `candidate - baseline` and tolerat
 
 - fail conservatively if the interval’s lower bound is at or below `-0.02`;
 - fail only with strong regression evidence if the upper bound is below `-0.02`; or
-- mark the result inconclusive and collect more samples when the interval crosses the boundary.
+- mark the result inconclusive and collect more samples when the interval includes the boundary.
 
 The first rule blocks more potentially good changes; the second can allow uncertain harmful ones. The correct choice depends on risk. Document it before seeing a candidate’s result.
 
