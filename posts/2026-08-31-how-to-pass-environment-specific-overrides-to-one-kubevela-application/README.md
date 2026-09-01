@@ -10,7 +10,7 @@ Description: Keep one KubeVela component baseline while applying explicit topolo
 
 KubeVela separates a component baseline from placement and customization. A `topology` policy selects a cluster and namespace; an `override` policy patches selected components; and a `deploy` workflow step applies the relevant policy set. This is preferable to copying an entire Application per environment because unchanged fields remain visibly shared.
 
-The important boundary is that the official multi-cluster design treats `override` as a deployment policy used with `topology`. An override listed without a topology in a `deploy` step can produce no deployment rather than a useful local patch. Pair them explicitly and verify the resource tree.
+The important boundary is that the official multi-cluster design treats `override` as a deployment policy used with `topology`. In current KubeVela releases, a `deploy` step without a topology defaults to the hub cluster registered as `local` and the Application's namespace, so an override listed by itself can patch and deploy there unintentionally. Pair topology and override policies explicitly and verify the resource tree.
 
 ## Define a safe baseline
 
@@ -104,7 +104,7 @@ Use one override policy for each environment:
                   replicas: 3
 ```
 
-Override merge behavior is definition-aware. Lists such as `env` and `traits` deserve special testing because an override can replace, merge, or conflict depending on the policy and CUE schema. Render the final resources and confirm that required baseline entries were not dropped. When many environments repeat an array, consider exposing a map-shaped configuration in a custom component API or generating the Application from a typed source.
+In KubeVela v1.11, override policies recursively merge component property maps, replace non-empty property arrays such as `env`, and match trait entries by type before merging their properties. The installed CUE schema then validates and renders the result. Repeat every required environment entry in each override, render the final resources, and confirm that no baseline entry was dropped. When many environments repeat an array, consider exposing a map-shaped configuration in a custom component API or generating the Application from a typed source.
 
 Do not use overrides to bypass platform policy-for example, changing service accounts, security context, or public exposure without review. Limit the public component schema and validate allowed values.
 
@@ -112,6 +112,8 @@ Do not use overrides to bypass platform policy-for example, changing service acc
 
 ```yaml
   workflow:
+    mode:
+      steps: DAG
     steps:
       - name: deploy-dev
         type: deploy
@@ -125,7 +127,7 @@ Do not use overrides to bypass platform policy-for example, changing service acc
           policies: ["target-staging", "config-staging"]
 ```
 
-`dependsOn` declares execution dependency in KubeVela releases that support DAG workflow execution. It waits for the prior step's KubeVela success; it does not perform business validation. Add a manual `suspend` step or a dedicated verification workflow step when promotion needs approval, tests, or SLO checks.
+KubeVela 1.5 and later support the explicit DAG mode shown above. In this mode, `dependsOn` makes staging wait for the development step to complete successfully; it does not perform business validation. Insert a manual `suspend` step or a dedicated verification workflow step into the dependency chain when promotion needs approval, tests, or SLO checks.
 
 If both destinations may deploy concurrently, omit the dependency only after confirming they do not share mutable external state. Parallel rollout is a release decision, not a YAML optimization.
 
@@ -154,7 +156,7 @@ For a managed cluster, use KubeVela's cluster-aware status output or a read-only
 
 KubeVela supports external `Policy` and `Workflow` objects referenced by an Application. They reduce duplication across many Applications, and an internal same-named policy can override an external one. Official documentation notes that external policies and workflows must be in the Application's namespace.
 
-This is useful for platform-owned topology, but it introduces another versioned dependency. Store policy and Application changes in Git, coordinate rollout, and include policy revisions in validation. A change to a shared `target-production` policy can affect many Applications even when their manifests do not change.
+This is useful for platform-owned topology, but it introduces another versioned dependency. Store policy and Application changes in Git, coordinate rollout, and include policy revisions in validation. A change to a shared `target-production` policy can affect many Applications when they next publish a revision. For Applications using `app.oam.dev/publishVersion`, dependency changes do not take effect until that annotation is advanced.
 
 ## Choose overrides versus separate Applications
 
