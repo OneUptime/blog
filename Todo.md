@@ -148,7 +148,6 @@
 
 ## LLM Evaluation
 
-2. Why Did Your LLM Golden Dataset Go Stale? A Maintenance and Sampling Workflow
 4. Why Do LLM Eval Scores Change Between Runs? Measuring Variance Before Setting Thresholds
 6. How to Detect and Reduce Position Bias in Pairwise LLM Evaluations
 8. Pointwise vs Pairwise LLM Evaluation: How to Choose the More Reliable Scoring Method
