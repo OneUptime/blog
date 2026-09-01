@@ -8,11 +8,11 @@ Description: Diagnose missing Ragas answer-relevancy scores by checking API vers
 
 ---
 
-A Ragas answer-relevancy `NaN` is not a relevance verdict. It most often comes from a legacy evaluation path that could not produce a usable measurement or converted a row exception into `NaN`. Treat it as missing evaluation data and find which stage failed.
+A Ragas answer-relevancy `NaN` is not a relevance verdict. It can come from a legacy evaluation path that could not produce a usable measurement or converted a row exception into `NaN`. Treat it as missing evaluation data and find which stage failed.
 
-The first debugging step is version identification. Older Ragas examples use the singleton `answer_relevancy` or `ResponseRelevancy` with `evaluate()` and dataset columns such as `question` and `answer`. In that legacy implementation, an empty set of generated questions produces `NaN`, and batch evaluation can replace exceptions with `NaN` when exception propagation is disabled. Current documentation recommends the collections API, where the class is `AnswerRelevancy`, inputs are `user_input` and `response`, and the result is read from `.value`.
+The first debugging step is version identification. Ragas 0.1 examples use the singleton `answer_relevancy` with `evaluate()` and Hugging Face dataset columns such as `question` and `answer`. Later legacy examples instantiate `ResponseRelevancy` and call `single_turn_ascore()` with a `SingleTurnSample` containing `user_input` and `response`. In the legacy implementation, no usable generated questions—an empty result list or all-empty question strings—produces `NaN`, and batch evaluation can replace exceptions with `NaN` when `raise_exceptions=False`. Current documentation recommends the collections API, where the class is `AnswerRelevancy`, inputs are `user_input` and `response`, and the result is read from `.value`.
 
-The current collections implementation behaves differently: empty `user_input` or `response` values and dependency failures raise exceptions, while a run that yields no usable generated questions returns `0.0`. It also returns zero when every generated result is marked noncommittal. Therefore, a zero is not always proof of a successfully measured off-topic answer, and a `NaN` seen around a collections metric may have been introduced by a surrounding runner or by non-finite embedding arithmetic. Preserve API generation and failure details rather than interpreting either value in isolation.
+The Ragas 0.4.3 collections implementation behaves differently: zero-length `user_input` or `response` values, invalid dependencies, and ordinary LLM or embedding call failures raise exceptions, while a run that collects no non-empty generated questions returns `0.0`. With finite embedding arithmetic, it also returns zero when every collected result is marked noncommittal. Therefore, a zero is not always proof of a successfully measured off-topic answer, and a `NaN` seen around a collections metric may have been introduced by a surrounding runner or by non-finite embedding arithmetic. Preserve API generation and failure details rather than interpreting either value in isolation.
 
 ## Know What the Metric Calls
 
@@ -67,9 +67,9 @@ def validate(row):
             raise ValueError(f"{key} must be a non-empty string")
 ```
 
-Check the mapping from your stored schema. A legacy Hugging Face dataset may have `question` and `answer`; a modern `EvaluationDataset` commonly uses `user_input` and `response`. Renaming only one column can leave the metric with empty input.
+Check the mapping from your stored schema. A legacy Hugging Face dataset may have `question` and `answer`; a modern `EvaluationDataset` commonly uses `user_input` and `response`. Renaming only one column leaves a required field unmapped; Ragas's native `evaluate()` validation rejects a dataset missing that column, while custom runners may surface it differently.
 
-Also inspect unusually long answers, markup-only responses, unsupported languages, and content filtered by the provider. Test a short known-good row using the same clients. If that fails, the problem is configuration rather than the dataset.
+Also inspect unusually long answers, markup-only responses, unsupported languages, and content filtered by the provider. Test a short known-good row using the same clients. If that also fails, investigate the shared evaluator configuration and service path rather than the original row.
 
 ## Isolate the LLM and Embedding Stages
 
@@ -91,11 +91,11 @@ Embedding-stage failures include a missing embeddings object, mismatched endpoin
 “Token limit” can refer to several different problems:
 
 - the original answer plus metric prompt exceeds the judge’s context limit;
-- the judge’s output allowance is too small to return all generated questions;
+- the judge’s output allowance is too small to return a complete structured question on one or more generation calls;
 - a gateway applies a lower limit than the advertised model; or
 - an old client sends a parameter the selected model does not support.
 
-Capture the provider’s finish reason and error body. Reproduce with a short response, then increase length until failure. Do not immediately truncate production answers: truncation changes what is evaluated. If long answers are supported by the product, choose a compatible evaluator or a documented chunking/aggregation method and calibrate it separately.
+Capture the provider’s finish reason and error body where the SDK or wrapper exposes them. Reproduce with a short response, then increase length until failure. Do not immediately truncate production answers: truncation changes what is evaluated. If long answers are supported by the product, choose a compatible evaluator or a documented chunking/aggregation method and calibrate it separately.
 
 ## Stop Silent `NaN` Aggregation
 
