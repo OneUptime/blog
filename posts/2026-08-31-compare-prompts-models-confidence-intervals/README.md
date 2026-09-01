@@ -8,7 +8,7 @@ Description: Compare prompts or models with paired uncertainty estimates and pra
 
 ---
 
-An average score hides how uncertain an LLM comparison is. A candidate prompt may average 0.82 while the baseline averages 0.80, but that two-point lift could be stable across cases, caused by two outliers, or smaller than ordinary judge variation. A confidence interval around the **paired difference** makes those possibilities visible.
+An average score hides how uncertain an LLM comparison is. A candidate prompt may average 0.82 while the baseline averages 0.80, but that two-point lift could be stable across cases, caused by two outliers, or smaller than ordinary judge variation. A confidence interval around the **paired difference** makes case-sampling uncertainty visible, but diagnosing outliers or judge variability requires inspecting the differences or repeating judge calls.
 
 A confidence interval does not prove that a future production run must fall inside its bounds. Under its statistical procedure, it quantifies uncertainty in the estimated population effect from the sampled cases. Its usefulness depends on representative sampling, correct pairing, and an uncertainty method that matches the data-generating process.
 
@@ -21,7 +21,7 @@ difference_i = candidate_score_i - baseline_score_i
 estimated_lift = mean(difference_i)
 ```
 
-Pairing removes much of the variation caused by some questions being intrinsically harder than others. Bootstrapping the candidate and baseline as unrelated samples throws away that advantage and answers a less precise question.
+Pairing can remove much of the variation caused by some questions being intrinsically harder than others. Bootstrapping the candidate and baseline as unrelated samples throws away that covariance information and estimates uncertainty for an unpaired sampling design.
 
 Preserve failures in the data. A timeout or invalid output needs a predeclared treatment-often a failure score or a separately gated error rate. Silently dropping only one candidate's failures biases the comparison.
 
@@ -60,7 +60,7 @@ Five observations are intentionally too few for a serious decision. With tiny or
 
 ## Respect the Sampling Unit
 
-Rows are not independent when several come from one conversation, document, customer, or incident. Resampling individual rows then produces an interval that is too narrow. Bootstrap whole clusters: sample conversations, then include all turns inside each selected conversation. If production traffic is stratified, resample within the predefined strata and combine them using production weights.
+Rows may not be independent when several come from one conversation, document, customer, or incident. Resampling individual rows can then produce an interval that is too narrow. Bootstrap whole clusters: sample conversations, then include all turns inside each selected conversation. If production traffic is stratified, resample within the predefined strata and combine them using production weights.
 
 Repeated generations create another hierarchy. Separate questions answer different needs:
 
@@ -90,7 +90,7 @@ An interval entirely above zero can describe an improvement too small to justify
 
 ## Avoid Slice and Multiple-Comparison Traps
 
-Always show the overall paired result and predeclared critical slices, such as language, intent, safety category, or long-context queries. A positive overall lift can coexist with a harmful regression for a small high-risk group. Slice intervals will be wider because they contain fewer cases; that is information, not a reason to hide them.
+Always show the overall paired result and predeclared critical slices, such as language, intent, safety category, or long-context queries. A positive overall lift can coexist with a harmful regression for a small high-risk group. Slice intervals will often be wider because they contain fewer cases; that is information, not a reason to hide them.
 
 Searching dozens of models, prompts, thresholds, and slices and publishing only the best interval understates uncertainty. Keep an untouched confirmation set, preregister the primary comparison, or apply an appropriate multiple-comparison procedure. Prompt exploration and final confirmation should not reuse the same evidence without acknowledging selection.
 
@@ -101,7 +101,7 @@ Finally, publish the case count, number of clusters, mean lift, interval method 
 - [SciPy `bootstrap` reference](https://docs.scipy.org/doc/scipy/reference/generated/scipy.stats.bootstrap.html)
 - [NIST/SEMATECH e-Handbook: Confidence Limits for the Mean](https://www.itl.nist.gov/div898/handbook/eda/section3/eda352.htm)
 - [OpenAI Evaluation Best Practices](https://developers.openai.com/api/docs/guides/evaluation-best-practices)
-- [scikit-learn Resampling Strategies](https://scikit-learn.org/stable/modules/cross_validation.html)
+- [scikit-learn Cross-validation: Evaluating Estimator Performance](https://scikit-learn.org/stable/modules/cross_validation.html)
 
 ## Conclusion
 
