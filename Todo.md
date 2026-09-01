@@ -142,7 +142,6 @@
 
 ## KubeVela
 
-1. How to Install KubeVela with Helm and Fix “Failed to Download kubevela/vela-core”
 2. Why Does `helm list` Show No KubeVela Release? Checking Namespaces, Repositories, and Existing Names
 3. How to Run KubeVela on a kind Cluster with a Custom Pod CIDR
 4. How to Package a Multi-Service Kubernetes Application with KubeVela Components and Traits
