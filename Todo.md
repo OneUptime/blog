@@ -150,7 +150,6 @@
 
 6. How to Detect and Reduce Position Bias in Pairwise LLM Evaluations
 9. How to Write a Single-Criterion Rubric That an LLM Judge Can Apply Consistently
-15. How to Evaluate a RAG System with a Local LLM That Produces Invalid JSON
 
 ## Apache Geode
 
