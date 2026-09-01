@@ -37,11 +37,12 @@ The first word in `kubevela/vela-core` is a **local repository name**. It is not
 helm repo list
 ```
 
-If `kubevela` points somewhere else, replace only that entry with Helm's documented update behavior and refresh the index:
+If `kubevela` points somewhere else, remove and re-add only that local entry, then refresh the index:
 
 ```bash
-helm repo add kubevela https://kubevela.github.io/charts --force-update
-helm repo update kubevela
+helm repo remove kubevela
+helm repo add kubevela https://kubevela.github.io/charts
+helm repo update
 helm search repo kubevela/vela-core --versions
 ```
 
@@ -74,7 +75,7 @@ Pin the `vela` CLI to a compatible release as well. `vela install` is a convenie
 
 ## Classify a download failure
 
-Run these read-only checks before retrying:
+Run these non-installing checks before retrying:
 
 ```bash
 helm repo list
@@ -85,7 +86,7 @@ curl --fail --show-error --location https://kubevela.github.io/charts/index.yaml
 
 Interpret the first failing layer:
 
-- `no repository definition for kubevela` means the alias is absent from this user's Helm configuration.
+- `repo kubevela not found` means the alias is absent from this user's Helm configuration.
 - `chart "vela-core" not found` usually means the cached index lacks that chart or requested version. Refresh it and verify the exact version exists.
 - HTTP timeout, proxy, DNS, or TLS errors mean the machine running Helm cannot reach the repository correctly. Kubernetes pod networking is not involved yet.
 - A successful search but failed archive download can indicate a proxy blocking the chart URL referenced by `index.yaml`, not the index itself.
@@ -106,14 +107,14 @@ If a release already exists, `helm install` should not be repeated. Review its v
 
 ```bash
 helm get values kubevela --namespace vela-system --all
-helm get metadata kubevela --namespace vela-system
+helm list --namespace vela-system --all --filter '^kubevela$'
 ```
 
 Then use an intentional, version-controlled upgrade after reading the KubeVela upgrade guide. Do not delete Helm release secrets or CRDs just to clear a name; KubeVela CRDs can back existing Applications and definitions.
 
 ## Verify the control plane
 
-A `DEPLOYED` Helm status is necessary, but controller readiness is the useful outcome:
+A `DEPLOYED` status confirms that Helm completed the install successfully, but controller readiness is the useful outcome:
 
 ```bash
 helm status kubevela --namespace vela-system
@@ -128,6 +129,7 @@ If Helm times out after resources were created, inspect pod events and logs rath
 ```bash
 kubectl get events --namespace vela-system --sort-by=.lastTimestamp
 kubectl describe pods --namespace vela-system
+kubectl logs --namespace vela-system deployment/kubevela-vela-core --all-containers=true
 ```
 
 Image-pull failures, admission-policy denials, insufficient resources, and unsupported Kubernetes APIs are post-download failures and need different fixes. Preserve the original event and controller log because a second install can obscure it.
@@ -143,4 +145,4 @@ Image-pull failures, admission-policy denials, insufficient resources, and unsup
 
 ## Conclusion
 
-Treat `failed to download kubevela/vela-core` as a repository-resolution chain: verify context and compatibility, map the `kubevela` alias to the official URL, refresh and search the index, pin an available version, and only then install into the explicit `vela-system` namespace. Once the chart downloads, switch to Kubernetes events and controller readiness checks instead of continuing to troubleshoot Helm's local cache.
+Treat `failed to download kubevela/vela-core` as a repository-resolution chain: verify context and compatibility, map the `kubevela` alias to the official URL, refresh and search the index, pin an available version, and only then install into the explicit `vela-system` namespace. Once the chart downloads and Helm creates resources, switch to Kubernetes events and controller readiness checks instead of continuing to troubleshoot Helm's local cache.
