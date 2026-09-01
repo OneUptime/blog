@@ -16,33 +16,24 @@ Design three address planes explicitly:
 | --- | --- | --- |
 | Peer membership and distribution | `bind-address` and `locators` | Locators and servers |
 | Client listener | `server-bind-address` and `server-port` | Client TCP connections |
-| Advertised client endpoint | `hostname-for-clients` | Every client using locator discovery |
+| Advertised client endpoint | `hostname-for-clients` | Directly connecting clients using locator discovery |
 
-A bind address is local: the process must own that interface inside its container. Geode's bind-address guidance requires a numeric IPv4 or IPv6 address, not a hostname. An advertised hostname is remote-facing: it must resolve and route from the client network. Docker service names therefore belong in `locators` and `hostname-for-clients`, not in `bind-address` or `server-bind-address`.
+A bind address is local: the process must own that interface inside its container. Geode's bind-address guidance requires a numeric IPv4 or IPv6 address, not a hostname. For direct client connections, an advertised hostname is remote-facing: it must resolve and route from the client network. Docker service names therefore belong in `locators` and `hostname-for-clients`, not in `bind-address` or `server-bind-address`.
 
 ## Use Container DNS for an Internal-Only Cluster
 
 Assume a user-defined Docker network has services named `locator`, `server1`, and `app`. Docker DNS makes those names resolvable among containers on that network.
 
-For a normal single-network container, let the `gfsh start` launcher use its documented all-interface bind default and advertise the Docker service name to clients:
+For a normal single-network container, leave the bind options unset so Geode can use the container's default address selection, and advertise the Docker service name to clients:
 
 ```text
-gfsh> start locator \
-  --name=locator1 \
-  --hostname-for-clients=locator \
-  --port=10334 \
-  --dir=/data/locator1
+gfsh> start locator --name=locator1 --hostname-for-clients=locator --port=10334 --dir=/data/locator1
 ```
 
 Start the cache server from the `server1` container:
 
 ```text
-gfsh> start server \
-  --name=server1 \
-  --hostname-for-clients=server1 \
-  --server-port=40404 \
-  --locators=locator[10334] \
-  --dir=/data/server1
+gfsh> start server --name=server1 --hostname-for-clients=server1 --server-port=40404 --locators=locator[10334] --dir=/data/server1
 ```
 
 The application container can then use locator discovery:
@@ -55,39 +46,34 @@ ClientCache cache = new ClientCacheFactory()
 
 Here, `locator` is valid in the peer-discovery list, and `server1` is the client-reachable name advertised by the cache server. Do not substitute `localhost`: inside `server1`, it identifies `server1`; inside `app`, it identifies `app`.
 
-Binding to all local interfaces is usually appropriate in a single-network container. If a multi-homed container must bind one interface explicitly, pass that interface's numeric container IP and arrange for it to remain stable; do not pass the Docker DNS service name. Still set `hostname-for-clients` when the automatically selected host identity is not what clients should use. Advertising `0.0.0.0` is never useful to a remote client.
+Leaving Geode's default address selection in place is usually appropriate in a single-network container. If a multi-homed container must bind one interface explicitly, pass that interface's numeric container IP and arrange for it to remain stable; do not pass the Docker DNS service name. Still set `hostname-for-clients` when the automatically selected host identity is not what clients should use. Advertising `0.0.0.0` is never useful to a remote client.
 
 ## Understand the Two Server Bind Settings
 
-For `gfsh start server`, `--bind-address` is the member's general peer-facing address. `--server-bind-address` overrides it for the cache server that accepts client connections. Geode's documented precedence for client-server binding is:
+For `gfsh start server`, `--bind-address` is the member's general peer-facing address. `--server-bind-address` overrides it for the cache server that accepts client connections. Among `cache.xml`, `gfsh`, and `gemfire.properties` settings, Geode's documented precedence for client-server binding is:
 
 1. `<cache-server bind-address="...">` in `cache.xml`;
 2. `gfsh start server --server-bind-address=...`;
 3. the `server-bind-address` property; and
 4. the general `bind-address` property.
 
+Programmatic bind settings made through Geode APIs take precedence over these settings.
+
 This allows a multi-homed process to use one interface for peer distribution and another for clients. In a simple Docker bridge they can use the same container interface, but they remain different protocols.
 
-`--hostname-for-clients` does not change either listener. The cache server registers that advertised name and its `server-port` with locators. Locators return it to clients selecting a server. Changing only `server-bind-address` therefore cannot fix an address that is reachable inside Docker but unresolvable from a host-side application.
+`--hostname-for-clients` does not change either listener. The cache server registers that advertised name and its `server-port` with locators. Locators return it to clients selecting a server. When `hostname-for-clients` is unset, Geode derives the advertised host from the cache server's bind or external address. Set it explicitly when the client-facing identity must differ; changing the listener bind alone is not a reliable way to publish a host-side Docker endpoint.
 
 ## Publish the Same Advertised Endpoint for External Clients
 
 Suppose clients run outside Docker and use `geode.example.net`. Keep peer traffic on the Docker network, but advertise the external name:
 
 ```text
-gfsh> start locator \
-  --name=locator1 \
-  --hostname-for-clients=geode.example.net \
-  --port=10334
+gfsh> start locator --name=locator1 --hostname-for-clients=geode.example.net --port=10334
 
-gfsh> start server \
-  --name=server1 \
-  --hostname-for-clients=geode.example.net \
-  --server-port=40411 \
-  --locators=locator[10334]
+gfsh> start server --name=server1 --hostname-for-clients=geode.example.net --server-port=40411 --locators=locator[10334]
 ```
 
-Publish the ports without translating the advertised port:
+Add equal host/container port mappings to the existing service definitions:
 
 ```yaml
 services:
@@ -140,4 +126,4 @@ Typical symptoms map cleanly to the address planes:
 
 ## Conclusion
 
-Use the launcher's all-interface default or bind Geode listeners to numeric addresses they own inside the container, use container DNS for peer discovery, and advertise exactly the hostname and port that clients can reach. Checking the locator hop, peer-membership hop, and discovered server hop separately makes Docker networking failures predictable instead of intermittent.
+Leave the bind options unset in a single-network container or bind Geode listeners to numeric addresses they own inside the container, use container DNS for peer discovery, and advertise exactly the hostname and port that direct clients can reach. Clients configured with a Geode socket factory can instead route locator and server connections through a suitable proxy. Checking the locator hop, peer-membership hop, and discovered server hop separately makes Docker networking failures predictable instead of intermittent.
