@@ -1029,6 +1029,26 @@
 18. How to Roll Up Long-Range Metrics Without Making Grafana Queries Slow
 19. How to Test Prometheus Recording Rules and Aggregation Logic with `promtool`
 20. How to Decide Which Labels to Keep Before Aggregating Metrics
+21. How to Count Unique Active Series per Label with Nested PromQL Aggregations
+22. How to Return Zero for Missing Prometheus Series Without Masking a Failed Scrape
+23. How to Aggregate Sparse Counters Whose Label Sets Appear and Disappear Between Scrapes
+24. How to Compute a Weighted Average in PromQL from Separate Sum and Count Metrics
+25. How to Replace Unaggregatable Prometheus Summary Quantiles with Service-Wide Histograms
+26. How to Diagnose `histogram_quantile()` Monotonicity Warnings and Find Broken Classic Buckets
+27. How to Standardize Native Histogram Schemas Before Aggregation to Avoid Dropped Query Results
+28. How to Query a Series That Transitions from Float Samples to Native Histograms Without Silent Omissions
+29. How to Aggregate Gauges over Irregular Scrape Intervals Without Biasing the Average
+30. How to Keep `topk()` Results Stable Across Dashboard Time Ranges and Query Steps
+31. How to Count Label-Value Frequencies with `count_values()` Without Creating a New Cardinality Problem
+32. How to Enable Experimental PromQL `limitk()` and `limit_ratio()` for Deterministic Series Sampling
+33. How to Aggregate Metrics by Calendar Day When PromQL Has No Dynamic Offset
+34. How to Total Counter Increases over a Grafana Dashboard Range Without Summing Raw Samples
+35. How to Enable Experimental PromQL `histogram_quantiles()` and Fall Back to Multiple `histogram_quantile()` Queries
+36. How to Build Hierarchical Prometheus Rollups Without Mixing Raw and Pre-Aggregated Series
+37. How to Aggregate Across a Metric Label Rename During a Rolling Deployment Without Double-Counting
+38. How to Merge Selected OpenTelemetry Attribute Values into One Rollup with OTTL
+39. How to Detect `otel.metric.overflow=true` and Quantify Measurements Sent to the Overflow Series
+40. How to Aggregate OpenTelemetry Histograms in OTTL While Preserving Service and Resource Boundaries
 
 ## Single-Leader
 
@@ -4912,6 +4932,26 @@
 18. How to Connect Parca to Grafana and Plan for the Parca Data Source Deprecation
 19. How to Measure and Tune Parca Server Memory with Active Storage, WAL, and On-Disk Indexes
 20. How to Export a Parca Profile in pprof Format for Offline Analysis and Sharing
+21. How to Profile NVIDIA CUDA Workloads in Kubernetes with Parca Agent and `CUDA_INJECTION64_PATH`
+22. How to Enable CUDA PC Sampling in Parca Agent and Diagnose Warp Stall Reasons
+23. How to Correlate CPU Flame Charts with GPU Kernel Timelines in Polar Signals Cloud
+24. How to Restore Original TypeScript Frames in Polar Signals Cloud with JavaScript Source Maps
+25. How to Troubleshoot V8 Frames That Show `line=0, column=0` on Node.js 22+
+26. How to Recover Truncated Python and Native Frames from Deep PyTorch Stacks with Parca Agent
+27. How to Diagnose Missing Java Frames When Parca Agent Profiles JDK 25
+28. How to Profile Only Selected Processes with Parca Agent `keep` and `drop` Relabel Rules
+29. How to Run Parca Agent in LXD When `/proc/kallsyms` Addresses Are Hidden
+30. How to Verify Parca Agent’s Effective Sampling Frequency Under CPU Load
+31. How to Diagnose Go Profiles That Stop at `runtime.morestack`
+32. How to Diagnose Broken ARM64 Stacks Caused by DWARF Unwinding Errors in Parca Agent
+33. How to Enable Parca Source View with Matching Debug Files and Source Paths
+34. How to Export Alpha OpenTelemetry Profiles to Parca over OTLP Without Losing Resource Attributes
+35. How to Add Low-Cardinality Runtime Labels to Go, Rust, and C++ Profiles
+36. How to Query Polar Signals Profiling Data from Claude Code or Cursor with OAuth and MCP
+37. How to Trace a Hot Function’s Callers and Callees with Polar Signals Sandwich View
+38. How to View CPU, Allocation, and Off-CPU Annotations in VS Code with Polar Signals
+39. How to Capture a Go Process’s Final Allocation Profile Before an OOM Kill with Parca Agent OOMProf
+40. How to Record Parca Agent Profiles in Offline Mode and Upload Rotated `.padata` Files Later
 
 ## Crash Reporting
 
@@ -6384,3 +6424,187 @@
 18. How to Scan Vendored and Copied Libraries That Are Missing from Package Manifests
 19. How to Combine Dependency and Container Scanning Without Duplicating the Same Findings
 20. How to Measure Dependency Scan Coverage, Alert Noise, and Remediation Time
+
+## VictoriaLogs
+
+1. How to Ship Docker Container Logs to VictoriaLogs with the OpenTelemetry Collector Without Losing Container Metadata
+2. How to Collect Kubernetes Pod Logs in VictoriaLogs with Vector and Normalize Multiline Stack Traces
+3. How to Map `_time`, `_msg`, and Stream Fields Correctly When Ingesting NDJSON into VictoriaLogs
+4. How to Troubleshoot Missing VictoriaLogs Entries Caused by Retention Windows and Incorrect Timestamps
+5. How to Diagnose VictoriaLogs Write Timeouts During Storage Merges and Ingestion Backpressure
+6. How to Design VictoriaLogs Stream Fields That Avoid High Cardinality and Excessive Column Counts
+7. How to Set Time- and Disk-Based VictoriaLogs Retention Without Filling the Filesystem
+8. How to Backfill Historical Data into VictoriaLogs Without Dropping Old or Future-Dated Entries
+9. How to Back Up and Restore Individual VictoriaLogs Day Partitions with Snapshots and Object Storage
+10. How to Migrate a Single-Node VictoriaLogs Deployment to Cluster Mode Without Losing Query Access
+11. How to Build a Highly Available VictoriaLogs Cluster with `vlinsert`, `vlstorage`, and `vlselect`
+12. How to Secure VictoriaLogs Ingestion and Queries with `vmauth`, TLS, and Per-Tenant Routing
+13. How to Monitor VictoriaLogs Ingestion, Query Latency, Disk Merges, and Dropped Rows
+14. How to Find and Fix Slow LogsQL Queries with Stream Filters, Pipe Ordering, and Query Limits
+15. How to Build LogsQL Error-Rate and Top-Value Queries for Grafana Dashboards
+16. How to Configure VictoriaLogs Grafana Variables and Ad Hoc Filters Without Empty Results
+17. How to Correlate VictoriaLogs with Tempo Traces in Grafana Using Derived Fields
+18. How to Create Log-Based Alerts from VictoriaLogs with `vmalert` and LogsQL
+19. How to Migrate Loki Logs and Grafana Dashboards to VictoriaLogs While Translating LogQL to LogsQL
+20. How to Export Large VictoriaLogs Query Results Safely with Streaming APIs and Client Cancellation
+
+## Immutable Infrastructure
+
+1. How to Decide What to Bake into a Machine Image and What to Inject at Deploy or Runtime
+2. How to Patch an Immutable Server Fleet by Rebuilding Images and Rolling Instances Instead of Using SSH
+3. How to Rebuild Golden Images Automatically When a Base Image or Package Gains a Critical CVE
+4. How to Separate Image-Build and Infrastructure-Deploy Pipelines Without Creating Hidden Coupling
+5. How to Roll Out a New AMI with EC2 Auto Scaling Instance Refresh and Automatic Rollback
+6. How to Keep EC2 Auto Scaling from Launching an Older AMI During an Immutable Fleet Rollout
+7. How to Preserve Stable Endpoints, IAM Roles, and Data Volumes When Replacing Immutable Instances
+8. How to Keep Databases and Uploads Durable When Application Hosts Are Replaced on Every Release
+9. How to Sequence Database Migrations and Immutable Compute Replacements Without Running Migrations on Every Instance
+10. How to Inject Rotating Secrets into Immutable Hosts Without Baking Credentials into Images
+11. How to Add EDR and Compliance Agents to Immutable Images Without Restoring Mutable Configuration Management
+12. How to Debug an Immutable Production Host Without SSH or Making Persistent Changes
+13. How to Capture Forensic Evidence from a Suspect Immutable Instance Before Terminating It
+14. How to Detect Out-of-Band Package and File Drift on a Golden-Image VM Before Replacing It
+15. How to Test a Machine Image for Bootability, Security, and Application Readiness Before Promotion
+16. How to Produce SBOMs and Provenance for VM Images and Verify Them Before Deployment
+17. How to Make Machine-Image Builds Reproducible When Package Repositories and Base Images Keep Changing
+18. How to Shorten Slow Machine-Image Feedback Loops with Layered Builds and Disposable Test Instances
+19. How to Garbage-Collect Old Machine Images and Snapshots Without Deleting Active or Rollback Versions
+20. How to Limit SSH and Control-Plane Changes on Immutable VMs—and What Cloud IAM Cannot Prevent Inside the Guest
+
+## Catchpoint
+
+1. How to Choose Catchpoint Node Types and Locations That Represent Real Users Without Over-Alerting
+2. How to Choose Catchpoint Object, Emulated, Chrome, or WebPageTest Testing for the Same URL
+3. How to Build a Multi-Step Login and Checkout Journey with Catchpoint Playwright Tests
+4. How to Monitor MFA-Protected Applications in Catchpoint with Credential Library Secrets and TOTP
+5. How to Stabilize Flaky Catchpoint Playwright Tests with Resilient Locators, Explicit Conditions, and Debug Artifacts
+6. How to Build a Catchpoint API Test That Chains Requests, Extracts Tokens, and Validates JSON Responses
+7. How to Monitor Private Applications with Catchpoint Enterprise Nodes Through Firewalls and Proxies
+8. How to Set Catchpoint Alert Thresholds Across Multiple Nodes Without Paging on One Bad Probe
+9. How to Reduce Catchpoint Alert Noise with Inheritance, Trend Shifts, and Composite Alerts
+10. How to Deduplicate and Resolve Catchpoint Alerts in PagerDuty with Webhook Macros
+11. How to Diagnose DNS Latency in Catchpoint with Experience, Direct, and Traversal Tests
+12. How to Detect BGP Route Leaks, Origin Changes, and Prefix Mismatches with Catchpoint
+13. How to Find the Network Hop Causing Packet Loss with Catchpoint InSession Traceroute
+14. How to Monitor WebSocket Handshakes, Messages, and Response Assertions with Catchpoint
+15. How to Alert on TLS Certificate Expiry and Pinning Failures with Catchpoint SSL Tests
+16. How to Compare Origin, CDN, and Third-Party Bottlenecks in Catchpoint Waterfalls and Zones
+17. How to Build a Hybrid-Cloud Latency and Packet-Loss Mesh with Catchpoint Node-to-Node Tests
+18. How to Provision Catchpoint Synthetic Tests with the Preview Terraform Provider While Preserving Inherited Settings
+19. How to Inventory and Bulk-Update Catchpoint Tests Safely with the REST API
+20. How to Troubleshoot an Intermittent Catchpoint Test Failure with Records, Debug on Error, and Instant Tests
+
+## Message Ordering
+
+1. How to Preserve Entity Order When a Kafka Topic Gains Partitions
+2. How to Process Kafka Records Concurrently by Key Without Committing Past a Failed Offset
+3. How to Quarantine One Poisoned Kafka Key and Buffer Its Successors Without Pausing the Entire Partition
+4. How to Keep Kafka Consume-Transform-Produce Output Ordered Across Transaction Aborts and Rebalances
+5. How to Define a Bounded-Lateness Order When Merging Kafka Partitions with Per-Producer Sequences and Watermarks
+6. How to Detect Missing and Out-of-Order Events with Per-Aggregate Sequence Numbers and a Gap Buffer
+7. How to Repartition Existing Kafka Events Without Breaking Per-Key Sequence
+8. How to Requeue Unacknowledged RabbitMQ Deliveries Without Reversing Their Order
+9. How to Partition RabbitMQ Traffic by Entity with `x-modulus-hash` and Single Active Consumers
+10. How to Choose Between RabbitMQ Priority and FIFO Processing—and Bound Reordering from Prefetch and Requeues
+11. How to Scale SQS FIFO Lambda Consumers with `MessageGroupId` Without Serializing the Whole Queue
+12. How to Renew SQS FIFO Visibility Timeouts Without Releasing a Message Group Mid-Handler
+13. How to Drain and Rotate a Hot SQS FIFO `MessageGroupId` Without Overlapping Old and New Groups
+14. How to Resume Google Pub/Sub Publishing for an Ordering Key After a Non-Retryable Error
+15. How to Reject Stale Entity Updates with Compare-and-Set When Ordered Pub/Sub Replays an Older Version
+16. How to Reconcile Pub/Sub Ordering-Key Gaps After Best-Effort Dead-Letter Forwarding
+17. How to Fence an Azure Service Bus Session Handler After Lock Loss So Failover Cannot Overlap Processing
+18. How to Scale Azure Service Bus Sessions Without Starving Low-Traffic Session IDs
+19. How to Preserve Per-Key Order in Apache Pulsar with `Key_Shared` Subscriptions and Key-Based Batching
+20. How to Build a Property-Based Ordering Oracle for Duplicates, Gaps, and Cross-Key Interleaving
+
+## Azure Bicep
+
+1. How to Layer Dev, Test, and Prod Settings with Extendable `.bicepparam` Files
+2. How to Snapshot-Test a Bicep Deployment in CI with `az bicep snapshot --mode Validate`
+3. How to Reference a Cross-Resource-Group Existing Resource Without Triggering `NotFound`
+4. How to Create a Resource Group at Subscription Scope and Deploy Resource-Group Modules in One Bicep Run
+5. How to Fix BCP139 When Deploying Extension Resources at a Different Scope
+6. How to Pass an Existing Resource ID Between Bicep Modules Without Creating a False Dependency
+7. How to Collect Outputs from a Filtered Bicep Module Loop Without Invalid Collection References
+8. How to Serialize Bicep Loop Deployments with `@batchSize(1)` When a Resource Provider Rejects Parallel Writes
+9. How to Use Bicep `resourceInput<>` and `resourceOutput<>` Types Without Copying Azure Schemas
+10. How to Fix BCP318 on Conditional Resources with Safe Dereference Instead of Unsafe Null Suppression
+11. How to Pass Key Vault Secrets Directly to a Secure Bicep Module Parameter with `getSecret()`
+12. How to Keep Secrets Out of Bicep Outputs, Parameter Files, and Deployment History
+13. How to Create Idempotent Azure Role Assignments with Deterministic `guid()` Seeds and `principalType`
+14. How to Fix `RoleAssignmentUpdateNotPermitted` After a Scope or Principal Changes
+15. How to Bring Portal-Created Azure Resources Under Bicep Management Without an Import Step
+16. How to Update an Azure Resource with Bicep Without Mistaking Incremental Deployment for a Property-Level Patch
+17. How to Pin, Restore, and Upgrade Private Bicep Registry Modules Reproducibly in CI
+18. How to Resolve BCP081 and BCP037 When Bicep Types Lag a Valid Azure API Version
+19. How to Give Every Bicep Module Deployment a Collision-Free Name Across Parallel Pipeline Runs
+20. How to Decompile an ARM Template to Bicep and Refactor Generated Child Resources Safely
+
+## WAF
+
+1. How to Roll Out AWS WAF Managed Rules from Count to Block Without Breaking Legitimate Traffic
+2. How to Exempt One Request Path from One Cloudflare Managed WAF Rule Without Skipping the Whole Ruleset
+3. How to Trace an AWS WAF 403 to the Exact Rule with Sampled Requests and Logs
+4. How to Rate-Limit Login and API Routes Separately with AWS WAF Custom Keys and Scope-Down Statements
+5. How to Rate-Limit Real Clients Behind CDNs and NAT Without Trusting a Spoofed X-Forwarded-For Header
+6. How to Lock Down an Origin So Attackers Cannot Bypass the CDN and Its WAF
+7. How to Inspect GraphQL JSON Requests with a WAF Without Blocking Valid Queries and Variables
+8. How to Protect a WebSocket Endpoint When the WAF Can Inspect Only the HTTP Upgrade
+9. How to Protect gRPC APIs When Your WAF Cannot Parse Protobuf Message Bodies
+10. How to Set WAF Request-Body Limits for JSON and File Uploads Without Creating an Inspection Gap
+11. How to Chain AWS WAF Labels into Follow-Up Block, Challenge, and Rate-Limit Rules
+12. How to Raise OWASP CRS Paranoia Levels Safely with Separate Executing and Blocking Levels
+13. How to Write a ModSecurity CRS Exclusion for One Argument and Rule ID Without Creating a Bypass
+14. How to Redact Secrets and Personal Data from WAF Logs Without Losing Rule-Debugging Context
+15. How to Regression-Test WAF Changes with Malicious Payloads and Recorded Legitimate Requests
+16. How to Manage AWS WAFv2 Rule Priorities and WCU Capacity in Terraform Without Perpetual Drift
+17. How to Integrate AWS WAF CAPTCHA and Challenge Tokens into a Single-Page Application Without Breaking Fetch Calls
+18. How to Handle WAF Challenges for Mobile Apps and Machine-to-Machine API Clients That Cannot Run JavaScript
+19. How to Debug a Cloudflare WAF Rule That Never Runs Because an IP Access Allow or Earlier Skip or Block Changes Evaluation
+20. How to Return JSON and CORS Headers from an AWS WAF Custom Block Response
+
+## Bit Rot
+
+1. How to Read `zpool status -v` After a Scrub and Map Permanent Errors Back to Files
+2. How to Decide Whether ZFS Checksum Errors Point to a Disk, Cable, Controller, or Bad RAM
+3. How to Recover an Unrepairable ZFS File from a Known-Good Backup Without Clearing the Evidence First
+4. How to Prove a ZFS Mirror or RAIDZ Pool Can Self-Heal Corruption with Safe Fault Injection
+5. How to Scrub a Large ZFS Pool Without Starving Production I/O or Colliding with a Resilver
+6. How to Monitor ZFS Scrub Age, Repaired Bytes, and Rising CKSUM Counters in Prometheus
+7. How to Preserve ZFS Corruption Evidence Until Encryption Keys Can Be Loaded and Affected Files Resolved
+8. How to Verify and Repair Btrfs Data with `btrfs scrub`—and Know When Redundancy Is Missing
+9. How to Distinguish `btrfs scrub`, `btrfs check`, and `btrfs balance` During a Corruption Incident
+10. How to Restore One Btrfs File After an Uncorrectable Checksum Error Without Running `btrfs check --repair`
+11. How to Use `fs-verity` to Detect Bit Rot in Immutable Artifact Archives—and What It Cannot Repair
+12. How to Build a Linux RAID1 Array with `dm-integrity` So Either Mirror Leg Can Detect Silent Corruption
+13. How to Run Periodic Full Reads on LTO Tape Archives and Track Media Errors Before Migration
+14. How to Audit Last-Deep-Scrub Age Across Every Ceph Placement Group
+15. How to Schedule Every Restic `--read-data-subset=n/t` Partition and Detect Repository Changes Between Runs
+16. How to Choose Between `restic repair packs`, `repair index`, and `repair snapshots` from `restic check` Output
+17. How to Tell Harmless Unreferenced Restic Packs from Restore-Breaking Repository Corruption
+18. How to Build and Sign a SHA-256 Manifest That Detects Archive Bit Rot Without Flagging Intended Changes
+19. How to Revalidate Billions of S3 Objects at Rest with Batch Operations Compute Checksum
+20. How to Verify S3 Multipart Objects Without Mistaking the ETag for an MD5 Checksum
+
+## GPU Scheduling
+
+1. How to Diagnose `Insufficient nvidia.com/gpu` When `nvidia-smi` Sees a Healthy GPU
+2. How to Route Pods to Exact GPU Models, Memory Sizes, and MIG Profiles with Node Labels
+3. How to Combine Full GPUs and MIG Slices on One Node Without `UnexpectedAdmissionError`
+4. How to Choose Between MIG, CUDA Time-Slicing, and MPS for Isolation and Predictable QoS
+5. How to Stop Time-Sliced Pods from Exhausting GPU Memory and OOMing Their Neighbors
+6. How to Request Shared GPUs Without Assuming Two Replicas Mean Twice the Compute
+7. How to Request GPUs for Multiple Containers in One Pod When Extended Resources Must Be Declared per Container
+8. How to Reserve Some GPUs for Exclusive Jobs and Share Others on the Same Multi-GPU Node
+9. How to Drain GPU Workloads Safely Before Reconfiguring MIG Geometry with NVIDIA MIG Manager
+10. How to Defragment a GPU Cluster So Large Multi-GPU Jobs Can Be Scheduled
+11. How to Gang-Schedule Distributed Training So Partial Pods Do Not Hold Idle GPUs
+12. How to Configure Kueue Quotas and Borrowing for A100, H100, and Shared-GPU ResourceFlavors
+13. How to Apply Dominant Resource Fairness Across GPU, CPU, and Memory with Volcano
+14. How to Enable Gang-Aware GPU Preemption in Volcano Without Partially Evicting Training Jobs
+15. How to Recover a Gang-Scheduled GPU Job Stranded Below `minAvailable` After Node Remediation
+16. How to Tell Whether a Kueue GPU Workload Is Pending on Quota, Topology, or an AdmissionCheck
+17. How to Autoscale GPU Nodes from Pending Jobs Without Scaling for Quota-Blocked Workloads
+18. How to Debug Karpenter “No Instance Type Met the Scheduling Requirements” Errors for GPU Pods
+19. How to Cap Total GPU Capacity in a Karpenter NodePool and Account for Limit Overshoot During Rapid Scale-Out
+20. How to Verify `schedulerName`, PodGroup, and Queue Wiring When Volcano Ignores a GPU Job
