@@ -165,7 +165,6 @@
 2. Why Does `gfsh list members` Show the Locator but Not the Geode Server?
 5. Replicated vs Partitioned Regions in Apache Geode: How to Choose for Read and Write Workloads
 7. Why Does Geode Throw `TransactionDataNotColocatedException`? Fixing Keys and Partition Resolvers
-9. How to Speed Up Slow Apache Geode OQL Joins with Colocation, Keys, Indexes, and Functions
 10. Why Is an Apache Geode Query Ignoring the Region You Requested? `Region.query` vs `QueryService`
 11. How to Serialize Cross-Language Objects in Apache Geode with PDX
 12. Why Does a Geode Continuous Query Fail with a Serialization Mismatch? Checking CQ Dependencies and PDX
