@@ -8,7 +8,7 @@ Description: Evaluate RAG hallucinations claim by claim against the exact source
 
 ---
 
-For a grounded RAG product, a hallucination is best operationalized as a response claim that is not supported by the evidence supplied to the generator, or that contradicts that evidence. This is narrower than “a false statement about the world.” A claim may happen to be true but still be unsupported by the retrieved sources, which means the RAG pipeline cannot justify it.
+For a grounded RAG product, a hallucination is best operationalized as a response claim that is not supported by the evidence supplied to the generator, or that contradicts that evidence. This is different from evaluating whether a statement is false about the world. A claim may happen to be true but still be unsupported by the retrieved sources, which means the RAG pipeline cannot justify it.
 
 That distinction makes hallucination evaluation reproducible. Save the exact passages delivered to the model, not a later search result or the full document the retriever could have found. Source versions, ordering, metadata, and truncation are part of the test input.
 
@@ -43,7 +43,7 @@ Claim support precision is a useful starting point:
 supported factual claims / all assessable factual claims
 ```
 
-However, an empty or evasive answer makes the ratio undefined-and a naive implementation may mistakenly turn that empty denominator into a perfect score. Ragas v0.4.3 `Faithfulness`, for example, returns `NaN` when its collections pipeline extracts no statements. Report completeness or answer relevance beside support precision and define an explicit no-claim policy. Also track the percentage of responses with at least one unsupported claim and the percentage with a critical unsupported claim. A fabricated dosage and an unnecessary but harmless adjective should not have the same operational impact, so attach a severity class determined by domain policy.
+However, an empty or otherwise claim-free answer makes the ratio undefined-and a naive implementation may mistakenly turn that empty denominator into a perfect score. Ragas v0.4.3 `Faithfulness`, for example, returns `NaN` when its collections pipeline extracts no statements. Report completeness or answer relevance beside support precision and define an explicit no-claim policy. Also track the percentage of responses with at least one unsupported claim and the percentage with a critical unsupported claim. A fabricated dosage and an unnecessary but harmless adjective should not have the same operational impact, so attach a severity class determined by domain policy.
 
 Citation quality is separate again. Measure whether each citation resolves, whether it points to the stated passage, and whether that passage supports the nearby claim. A response can be faithful to the context yet attach the wrong citation number.
 
