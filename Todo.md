@@ -146,7 +146,6 @@
 3. How to Run KubeVela on a kind Cluster with a Custom Pod CIDR
 5. KubeVela ComponentDefinition vs TraitDefinition: How to Design a Reusable Platform API
 11. Why Is a KubeVela Multi-Cluster Application Stuck? Debugging Topology Policies and Placement
-12. How to Register, Label, and Select Managed Clusters in KubeVela
 14. Why Did a KubeVela Workflow Stop at `suspend` or `wait`? Inspecting Step Status and Conditions
 15. How to Roll Back a Failed KubeVela Application Revision Safely
 17. How to Use KubeVela with Argo CD Without Creating Two Competing Reconcilers
