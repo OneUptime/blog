@@ -83,13 +83,22 @@ The pointwise layer prevents a merely less-bad candidate from shipping. The pair
 
 For pointwise results, report the label distribution, per-slice pass rate, invalid outputs, and confidence interval over independent cases. Do not average ordinal labels unless the spacing has a defensible meaning.
 
-For pairwise results, report wins, losses, ties, and order-inconsistent pairs. A simple score can assign 1 for a win, 0.5 for a tie, and 0 for a loss, but retain the raw counts. With swapped presentations, count a strict win only if the candidate wins both orders, or declare in advance how inconsistent decisions are resolved.
+For pairwise results, report wins, losses, ties, `cannot_judge` outcomes, and order-inconsistent pairs. A simple score can assign 1 for a win, 0.5 for a tie, and 0 for a loss, but retain the raw counts. Treat `cannot_judge` as an abstention: report its count and rate, and exclude it from the scored denominator. With swapped presentations, count a strict win only if the candidate wins both orders, or declare in advance how inconsistent decisions are resolved.
 
 ```python
 def pair_points(outcome):
-    return {"candidate_win": 1.0, "tie": 0.5, "baseline_win": 0.0}[outcome]
+    return {
+        "candidate_win": 1.0,
+        "tie": 0.5,
+        "baseline_win": 0.0,
+        "cannot_judge": None,
+    }[outcome]
 
-score = sum(map(pair_points, outcomes)) / len(outcomes)
+points = [pair_points(outcome) for outcome in outcomes]
+judged_points = [point for point in points if point is not None]
+score = sum(judged_points) / len(judged_points) if judged_points else None
+cannot_judge_count = len(points) - len(judged_points)
+cannot_judge_rate = cannot_judge_count / len(points) if points else None
 ```
 
 Bootstrap paired case-level outcomes when estimating the candidate-baseline difference. If examples share a conversation or document, resample at that cluster level.
@@ -104,7 +113,7 @@ Keep judge development and final validation data separate. Every time prompt exa
 
 ## Cost and Operational Considerations
 
-Pointwise evaluation requires one judgment per response and allows results to be cached by response, rubric, and judge version. A full round-robin pairwise comparison grows quadratically with the number of candidates. Usually compare each candidate with a fixed baseline or use a staged tournament, then run selected direct matchups.
+Pointwise evaluation requires one judgment per response and allows results to be cached using the complete grading input and context, response, rubric or prompt version, and judge configuration or version. A full round-robin pairwise comparison grows quadratically with the number of candidates. Usually compare each candidate with a fixed baseline or use a staged tournament, then run selected direct matchups.
 
 Pairwise prompts also contain two outputs, increasing input tokens. Pointwise scores are easier to trend across releases, but only if the rubric and judge remain stable. When the judge changes, run an overlap set and avoid splicing the old and new scores into one unexplained time series.
 
