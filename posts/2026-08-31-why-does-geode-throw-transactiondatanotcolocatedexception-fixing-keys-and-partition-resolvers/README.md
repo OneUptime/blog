@@ -8,7 +8,7 @@ Description: Fix Geode transactions that span incompatible data hosts by alignin
 
 ---
 
-Apache Geode throws `TransactionDataNotColocatedException` when a hosted transaction tries to modify data that is not colocated on the transaction's data host. A transaction involving a partitioned region is anchored to a server by its first partitioned operation. Later transactional operations must be executable on that same host.
+Apache Geode throws `TransactionDataNotColocatedException` when a hosted transaction tries to modify data that is not colocated on the transaction's data host. A hosted transaction involving a partitioned region is anchored to a data host by its first region operation, so in a mixed partitioned-and-replicated transaction that first operation must be on a partitioned region. Later transactional operations must be executable on that same host.
 
 This is a data-model error more often than a transient network error. Adding a locator, raising a timeout, or increasing redundant copies does not make unrelated primary data transactional on one member.
 
@@ -103,9 +103,9 @@ public final class TenantResolver
 }
 ```
 
-Deploy the resolver JAR to all data members before region creation and configure the identical implementation everywhere. Geode checks resolver compatibility across members. For client single-hop routing, package the stateless, zero-argument resolver in the client application as well. The routing object's `equals` and `hashCode` must remain stable across JVMs and serialization.
+Deploy the resolver JAR to every member that defines the region, including accessors, before region creation and configure the identical implementation everywhere. Geode checks resolver compatibility across members. For client single-hop routing, package the stateless, zero-argument resolver in the client application as well. The routing object's `equals` and `hashCode` must remain stable across JVMs and serialization.
 
-Do not route from the value. Updating a value field could otherwise imply a different bucket while the entry's key remains unchanged. Do not return random, time-dependent, or process-local objects. A resolver that returns a constant avoids this exception by placing all data in one bucket, but creates a severe throughput and capacity hotspot.
+Do not route from the value. Updating a value field could otherwise imply a different bucket while the entry's key remains unchanged. Do not return random, time-dependent, or process-local objects. A resolver that returns a constant can avoid same-region cross-bucket failures by placing all data in one bucket, but it does not fix missing cross-region colocation or topology movement and creates a severe throughput and capacity hotspot.
 
 ## Keep All Operations on One Business Aggregate
 
@@ -147,12 +147,12 @@ Test more than one pair of sample keys:
 
 1. Assert that all key types for one business ID return equal routing objects.
 2. Assert that different business IDs distribute across many buckets rather than one.
-3. Use `describe region` to confirm the dependent region's colocation and matching partition attributes.
+3. Use `describe region` to confirm the dependent region's colocation and compare its reported non-default partition attributes; verify omitted settings against their documented defaults.
 4. Commit same-customer cross-region transactions repeatedly.
 5. Reject a deliberately cross-customer transaction in application code; unrelated buckets can temporarily share a host, so Geode failure is not a stable boundary check.
 6. Repeat the valid case after a controlled rebalance and member restart.
 
-If an existing region was created with the wrong resolver, treat the correction as a data migration. Create new correctly configured regions, copy data under new keys, verify counts and behavior, switch clients, and retire the old regions. Partitioning attributes are not a safe in-place rewrite of already distributed data.
+If an existing region was created with the wrong resolver, treat the correction as a data migration. Create new correctly configured regions, copy the data and transform keys if the key scheme changes, verify counts and behavior, switch clients, and retire the old regions. Partitioning attributes are not a safe in-place rewrite of already distributed data.
 
 ## Official Documentation
 
