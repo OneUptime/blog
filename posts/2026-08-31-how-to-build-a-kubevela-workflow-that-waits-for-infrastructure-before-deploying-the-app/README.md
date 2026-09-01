@@ -87,7 +87,7 @@ vela show apply-component
 
 ## Add a bounded wait
 
-KubeVela workflow steps support a `timeout`. Without a bound, a missing or permanently unhealthy dependency can leave a release running indefinitely. Choose a duration from the infrastructure SLO, not guesswork. When a step times out, later steps are skipped or blocked according to workflow semantics; it should not deploy the API anyway.
+KubeVela workflow steps support a `timeout`. Without a bound, an existing dependency that never reaches `running` can leave a release waiting indefinitely. If neither the Application nor a usable ConfigMap fallback is available, the step instead follows KubeVela's normal error and retry handling. Choose a duration from the infrastructure SLO, not guesswork. When a step times out, later steps are skipped or blocked according to workflow semantics; it should not deploy the API anyway.
 
 Timeout is failure handling, not cancellation of the infrastructure Application. Decide who owns cleanup of a partially provisioned database, load balancer, or cloud account. Automated deletion after a timeout can destroy a slow but valid resource and should be designed separately.
 
