@@ -169,7 +169,6 @@
 3. How to Turn LLM Evaluation into a Reliable CI Regression Gate
 4. Why Do LLM Eval Scores Change Between Runs? Measuring Variance Before Setting Thresholds
 6. How to Detect and Reduce Position Bias in Pairwise LLM Evaluations
-7. Why Do LLM Judges Prefer Longer Answers? Testing and Controlling Verbosity Bias
 8. Pointwise vs Pairwise LLM Evaluation: How to Choose the More Reliable Scoring Method
 9. How to Write a Single-Criterion Rubric That an LLM Judge Can Apply Consistently
 10. How to Evaluate an LLM Judge Before Trusting Its Scores
