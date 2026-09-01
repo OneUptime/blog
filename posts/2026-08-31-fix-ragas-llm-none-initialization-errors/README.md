@@ -8,7 +8,7 @@ Description: Fix Ragas metric initialization by matching API versions, creating 
 
 ---
 
-An “LLM is None” error means an LLM-based metric reached scoring without a usable evaluator model. It is a wiring problem, not a low evaluation score. The durable fix is to identify the installed Ragas API generation, build an explicit client and Ragas LLM, attach it to the metric, and verify one minimal call before evaluating a dataset.
+An “LLM is None” or “LLM is not set” error means an LLM-based metric was initialized or invoked without a usable evaluator model. Legacy metrics may report this during initialization or scoring; collections metrics reject a missing or incompatible LLM when the metric is constructed. It is a wiring problem, not a low evaluation score. The durable fix is to identify the installed Ragas API generation, build an explicit client and Ragas LLM, attach it to the metric, and verify one minimal call before evaluating a dataset.
 
 ## Do Not Mix Ragas API Generations
 
@@ -25,10 +25,10 @@ Ragas’ v0.3-to-v0.4 migration documentation changed several connected pieces:
 Copying an old metric import into a new factory example can produce deprecation warnings, type mismatches, or a missing LLM at runtime. First record versions:
 
 ```bash
-python -c 'import importlib.metadata as m; print(m.version("ragas")); print(m.version("openai"))'
+python -c 'import importlib.metadata as m; print(*(f"{p}=={m.version(p)}" for p in ("ragas", "openai", "instructor", "langchain-community")), sep="\n")'
 ```
 
-Then use the matching versioned documentation. Pin the working dependency set so CI and local machines do not silently select different APIs.
+Then use the matching versioned documentation. Pin the entire working dependency set so CI and local machines do not silently select different APIs or incompatible transitive packages. As of 2026-09-01, the latest releases do not all compose: Ragas 0.4.3 imports a module removed in `langchain-community` 0.4.2, and Instructor 1.16.0 declares `openai>=2,<3`, which excludes OpenAI Python 3.x. The example below was tested with `ragas==0.4.3`, `openai==2.54.0`, `instructor==1.16.0`, and `langchain-community==0.4.1`. Lock the rest of the resolved environment as well.
 
 ## Initialize the Modern Metric Explicitly
 
@@ -70,15 +70,7 @@ The current `llm_factory` reference expects a model, provider information when n
 - no variable named `llm` is reassigned to `None`; and
 - the metric instance being scored is the one initialized with the LLM.
 
-A simple construction assertion catches accidental shadowing:
-
-```python
-evaluator_llm = llm_factory("gpt-4o-mini", client=client)
-if evaluator_llm is None:
-    raise RuntimeError("evaluator factory returned no model")
-
-faithfulness = Faithfulness(llm=evaluator_llm)
-```
+`llm_factory` itself does not return `None`: it returns a Ragas LLM or raises an exception. The collections metric constructor also rejects `None` and incompatible legacy wrappers. If an application-level factory has an optional return type, validate that wrapper's result before passing it to `Faithfulness`; do not use a `None` check to diagnose `llm_factory` itself.
 
 Do not print API keys while debugging. Log endpoint host, provider, model ID, class names, and package versions.
 
@@ -94,7 +86,7 @@ def build_metrics(evaluator_llm):
     }
 ```
 
-This avoids module-level initialization before environment configuration, notebook cells executed out of order, and fixtures that close a client before scoring. In worker processes, initialize compatible clients inside the worker if the SDK does not support serialization across processes.
+This makes it easier to avoid module-level initialization before environment configuration, notebook cells executed out of order, and fixtures that close a client before scoring. In worker processes, initialize compatible clients inside the worker if the SDK does not support serialization across processes.
 
 If a configuration object allows evaluation to be disabled, use a distinct state such as `metrics=[]`. Do not represent “disabled” by constructing LLM metrics with `llm=None` and hoping they will be skipped.
 
@@ -119,7 +111,7 @@ For the modern API, configure timeouts and retries on the provider client as Rag
 
 ## Make Configuration Fail Fast
 
-At process startup, validate required environment variable names, endpoint configuration, and selected metric dependencies. Run one evaluator health control that must pass and one that must fail. If initialization or controls fail, stop the evaluation with an infrastructure status rather than emitting `NaN` or an empty report.
+At process startup, validate required environment variable names, endpoint configuration, and selected metric dependencies. Run one positive evaluator control expected to receive a high score and one negative control expected to receive a low score. If initialization fails or either control produces an unexpected result, stop the evaluation with an infrastructure status rather than emitting `NaN` or an empty report.
 
 Store the judge model, prompt or metric version, Ragas version, and provider client version with results. An evaluation score is not reproducible without the measurement configuration.
 
