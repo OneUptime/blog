@@ -14,7 +14,7 @@ One runtime Application can coordinate all three destinations, which is useful w
 
 ## Pin a release identity
 
-Use an immutable image and a unique publish version:
+Use an immutable image and a unique, DNS-1123-compatible publish version:
 
 ```yaml
 apiVersion: core.oam.dev/v1beta1
@@ -23,7 +23,7 @@ metadata:
   name: checkout
   namespace: delivery
   annotations:
-    app.oam.dev/publishVersion: "checkout-3.6.0+git.4f29c1a"
+    app.oam.dev/publishVersion: "checkout-3.6.0-git.4f29c1a"
 spec:
   components:
     - name: api
@@ -40,7 +40,7 @@ spec:
             replicas: 2
 ```
 
-Replace the placeholder with the real digest produced and signed by CI. Store the manifest, digest, source commit, test evidence, and publish version together. KubeVela's Application revision captures desired state and runtime dependencies, but it does not replace artifact provenance.
+Replace the placeholder with the real digest produced and signed by CI. KubeVela includes the publish version in a ResourceTracker name, so keep it compatible with Kubernetes DNS subdomain naming rules. Store the manifest, digest, source commit, test evidence, and publish version together. KubeVela's Application revision captures desired state and runtime dependencies, but it does not replace artifact provenance.
 
 ## Describe three destinations
 
@@ -66,6 +66,8 @@ Clusters can be named directly or selected by labels. Direct names make the exam
         clusters: ["prod-eu-1", "prod-eu-2"]
         namespace: checkout
 ```
+
+Create the `delivery` namespace on the hub and the `checkout` namespace in every destination before applying; a topology policy selects a target namespace but does not create it.
 
 Cluster-label selectors reduce repetition, but labels become deployment-critical configuration. Restrict who can change `environment=production`, audit label changes, and test that selectors match exactly the intended set before promotion.
 
@@ -152,9 +154,9 @@ The effective production release must retain the same digest used in dev and sta
 
 ## Decide failure behavior ahead of time
 
-If dev fails, do not resume. Fix the manifest and publish a new version so the audit trail reflects a changed release. If staging fails after dev succeeded, terminate or roll back according to the documented workflow procedure; do not edit the live staging Deployment because KubeVela will reconcile it.
+If dev fails, do not resume. Fix the manifest and publish a new version so the audit trail reflects a changed release. If staging fails after dev succeeded, terminate the workflow, or suspend it and roll back according to the documented procedure; do not edit the live staging Deployment because KubeVela will reconcile it.
 
-KubeVela's `vela workflow rollback` restores the latest succeeded Application revision, not an arbitrary hand-picked environment snapshot. With one Application spanning all environments, that rollback boundary may affect dispatched resources broadly. To republish a specific retained revision after review, name the Application and namespace explicitly: `vela up checkout --namespace delivery --revision <revision> --publish-version <new-version>`.
+For a publish-version Application such as this one, KubeVela's `vela workflow rollback` restores the latest succeeded Application revision, not an arbitrary hand-picked environment snapshot. With one Application spanning all environments, that rollback boundary may affect dispatched resources broadly. To republish a specific retained revision after review, name the Application and namespace explicitly: `vela up checkout --namespace delivery --revision <revision> --publish-version <new-version>`.
 
 For production, define:
 
