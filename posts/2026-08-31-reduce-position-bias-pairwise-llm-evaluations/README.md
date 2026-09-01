@@ -24,6 +24,7 @@ Map the judge’s A/B output back to the underlying candidate ID before aggregat
 - **consistent X win:** X wins in both presentations;
 - **consistent Y win:** Y wins in both presentations;
 - **consistent tie:** both presentations return tie;
+- **consistent cannot judge:** both presentations return `CANNOT_JUDGE`;
 - **position following:** the first or second position wins both times; or
 - **unstable:** the results disagree in another way.
 
@@ -31,7 +32,12 @@ Do not report only overall win rate. Report the order-consistency rate and the r
 
 ```python
 def canonical_winner(label, a_id, b_id):
-    return {"A": a_id, "B": b_id, "TIE": "TIE"}[label]
+    return {
+        "A": a_id,
+        "B": b_id,
+        "TIE": "TIE",
+        "CANNOT_JUDGE": "CANNOT_JUDGE",
+    }[label]
 
 def swapped_verdict(first, second):
     # first: A=X, B=Y; second: A=Y, B=X
@@ -42,6 +48,7 @@ def swapped_verdict(first, second):
             "X": "CONSISTENT_X_WIN",
             "Y": "CONSISTENT_Y_WIN",
             "TIE": "CONSISTENT_TIE",
+            "CANNOT_JUDGE": "CONSISTENT_CANNOT_JUDGE",
         }[w1]
     if first == second == "A":
         return "FIRST_POSITION_WINS"
@@ -50,15 +57,15 @@ def swapped_verdict(first, second):
     return "UNSTABLE"
 ```
 
-The A/A and B/B cases are important: after swapping candidate identities, they mean the judge followed the first or second position rather than preferring one candidate. Collapsing every disagreement into one `INCONSISTENT` bucket would hide that direct evidence of position bias.
+The A/A and B/B cases are important: after swapping candidate identities, they are first- or second-position-following patterns rather than candidate-consistent preferences. A single pattern does not establish systematic position bias, because stochastic variation can produce it. Collapsing every disagreement into one `INCONSISTENT` bucket would hide the signal that should be estimated across cases and repetitions.
 
-For a stochastic judge, repeat both orders the same number of times. Balance order within each case, not just across the whole dataset, because case difficulty and candidate quality may be unevenly distributed.
+For a stochastic judge, repeat both orders the same number of times. Measure same-order repetition stability, compare the outcome distributions between positions, and report uncertainty so ordinary sampling variation is not mistaken for an order effect. Balance order within each case, not just across the whole dataset, because case difficulty and candidate quality may be unevenly distributed.
 
 ## Remove Accidental Position Signals
 
 Use the same wrapper for both responses. Normalize headings, code fences, whitespace, citation rendering, and metadata. Do not label one output “new model” and the other “production,” expose provider names, or attach latency and cost unless those are evaluation criteria.
 
-Random opaque identifiers are safer than names with meaning, but the judge should still return `A`, `B`, or `TIE`; map those labels outside the prompt. Keep the user input, reference material, system requirements, and rubric identical in the swapped trial.
+Random opaque identifiers are safer than names with meaning, but the judge should still return `A`, `B`, `TIE`, or `CANNOT_JUDGE`; map those labels outside the prompt. Keep the user input, reference material, system requirements, and rubric identical in the swapped trial.
 
 Do not automatically truncate both responses to equal length. That can remove facts from one response and change the object being judged. Length is a separate potential confounder: either compare the real outputs with a rubric that penalizes irrelevant content, or construct a dedicated matched-length experiment.
 
@@ -69,9 +76,15 @@ Do not automatically truncate both responses to equal length. That can remove fa
 ```text
 Criterion: factual support by the supplied sources.
 
-Choose A if A contains fewer unsupported factual claims than B.
-Choose B if B contains fewer unsupported factual claims than A.
-Choose TIE if both contain the same number and severity of unsupported claims.
+Treat an unsupported claim as major if it could change the answer's conclusion;
+otherwise treat it as minor.
+
+Choose A if A has fewer major unsupported claims than B, or, if those counts
+are equal, fewer minor unsupported claims.
+Choose B if B has fewer major unsupported claims than A, or, if those counts
+are equal, fewer minor unsupported claims.
+Choose TIE if both contain the same number of major and minor unsupported claims.
+Choose CANNOT_JUDGE if required sources are missing or the input is malformed.
 Ignore writing style, response length, and facts not needed to apply this criterion.
 ```
 
@@ -81,7 +94,7 @@ Give `TIE` and `CANNOT_JUDGE` distinct meanings. `TIE` means the outputs are equ
 
 ## Choose a Conservative Aggregation Rule
 
-A strict rule counts a win only when the same candidate wins in both orders. Mark other pairs inconsistent and send them to more repetitions or human review. This reduces effective sample size but makes the evidence legible.
+A strict rule counts a win only when the same candidate wins in both orders. Report consistent `CANNOT_JUDGE` pairs separately and route them to data repair or evidence collection. Mark the remaining non-consistent pairs inconsistent and send them to more repetitions or human review. This reduces effective sample size but makes the evidence legible.
 
 A softer rule can allocate one point for a consistent win, half a point for a tie, and no decision for order-inconsistent pairs. If you instead break inconsistencies by majority vote, publish the rule and the number of judgments behind it. Never silently convert the first presentation into the deciding vote.
 
@@ -89,7 +102,7 @@ When comparing many systems, rotate positions evenly for every matchup. Pairwise
 
 ## Validate with Known-Outcome Pairs
 
-Create controls where qualified humans strongly prefer one response on the exact rubric:
+Create controls with expected outcomes established by qualified humans on the exact rubric:
 
 - a correct answer versus one with a clear factual error;
 - a supported answer versus one with an invented citation;
@@ -109,10 +122,10 @@ If swapping changes many decisions, inspect the full output and parse path. Comm
 - examples always place the winner in one position;
 - the output parser defaults malformed labels to A;
 - long context pushes the later response toward a context boundary;
-- the judge gives a rationale for A before reading B; or
+- the prompt elicits separate rationales in a fixed A-then-B order; or
 - one wrapper includes extra metadata.
 
-Fix these causes, then rerun the same held-out order test. Asking the model to “be unbiased” may help, but it is not evidence that bias is controlled. The measured swap consistency is the evidence.
+Fix these causes, then rerun the same held-out order test. Asking the model to “be unbiased” may help, but it is not evidence that bias is controlled. The evidence is the measured difference between balanced order distributions, interpreted alongside same-order repeatability.
 
 ## Operationalize the Check
 
@@ -129,4 +142,4 @@ Continue sampling swapped pairs in production evaluation. A provider or prompt c
 
 ## Conclusion
 
-Position bias is observable: present every pair in both orders, map decisions back to candidate identities, and count inconsistencies. Blinded symmetric formatting, atomic criteria, real ties, conservative aggregation, and human-calibrated controls turn pairwise preferences into evidence that can survive scrutiny.
+Position bias is observable: present every pair in both orders, map decisions back to candidate identities, and repeat trials to separate order effects from ordinary judge variability. Blinded symmetric formatting, atomic criteria, real ties, conservative aggregation, and human-calibrated controls turn pairwise preferences into evidence that can survive scrutiny.
