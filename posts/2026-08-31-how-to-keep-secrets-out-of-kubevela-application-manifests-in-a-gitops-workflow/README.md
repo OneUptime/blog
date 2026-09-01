@@ -17,9 +17,9 @@ KubeVela does not need to own the secret value. Its current `webservice` definit
 Common approaches are:
 
 - an external-secrets controller reads a managed vault and creates Kubernetes Secrets;
-- a secrets-store CSI driver mounts values from an external provider, optionally syncing a Secret;
+- the Secrets Store CSI Driver mounts values from an external provider and can optionally sync a Kubernetes Secret while at least one Pod mounts the CSI volume;
 - Sealed Secrets stores cluster-encrypted `SealedSecret` resources in Git; or
-- SOPS encrypts selected manifest fields and a trusted GitOps integration decrypts only during apply.
+- SOPS encrypts selected manifest fields and a trusted GitOps integration decrypts them during reconciliation before applying the resources.
 
 Choose according to threat model, rotation, disaster recovery, multi-cluster operation, and key custody. Do not layer several controllers over the same Secret name. One system should own each Secret.
 
@@ -50,7 +50,7 @@ spec:
         property: password
 ```
 
-Verify the API version against the installed CRD; older controller versions may use a different served version. The Git manifest contains a vault path, which can still reveal system structure, but not the password. Restrict access to `SecretStore` resources and provider identities so a tenant cannot redirect a high-privilege store to arbitrary remote keys.
+Verify the API version against the installed CRD; older controller versions may use a different served version. The Git manifest contains a vault path, which can still reveal system structure, but not the password. An author who can create or update an `ExternalSecret` can request any remote key that the referenced store identity may read. Restrict write access to `ExternalSecret`, `SecretStore`, and `ClusterSecretStore` resources, scope provider identities to allowed paths, and use admission policy where shared stores need key-prefix restrictions.
 
 Wait for the controller to materialize the Secret:
 
@@ -89,33 +89,36 @@ spec:
 
 Replace the image placeholder with a real digest. Confirm fields with `vela show webservice`, because component definitions can be customized. The `Secret` must be in the Pod's namespace; Kubernetes intentionally prevents ordinary cross-namespace Secret references.
 
-For file-based credentials, use the installed definition's secret volume schema and mount only the needed keys. Prefer files for credentials that can be re-read because environment variables usually remain fixed until the Pod restarts and can leak through crash reports or child processes.
+For file-based credentials, use the installed definition's secret volume schema and mount only the needed keys. Prefer files for credentials that can be re-read because a running container does not see Secret updates in its environment, and environment variables can leak through crash reports or child processes.
 
 ## Order reconciliation without embedding values
 
 GitOps should install in layers:
 
 1. secret-management CRDs and controller;
-2. provider identity and `SecretStore` managed by the platform team;
-3. namespace and `ExternalSecret` or encrypted secret object;
-4. KubeVela Application.
+2. namespace;
+3. provider identity and `SecretStore` managed by the platform team;
+4. `ExternalSecret` or encrypted secret object;
+5. KubeVela Application.
 
 Argo CD sync waves can order the first application of these Git objects, but readiness still matters. A custom KubeVela workflow can wait on an infrastructure Application, or the workload can fail safely until the Secret appears. Do not put the secret value into a workflow output or Application status to pass it.
 
-When a Secret is required at Pod admission, a missing key causes a clear Pod event. Inspect events without revealing data:
+When a Pod references a missing non-optional Secret or key, the affected container cannot start; the kubelet retries an unavailable Secret and reports the problem in a Pod event. Inspect events without revealing data:
 
 ```bash
 vela status orders --namespace orders --tree --detail
-kubectl get events --namespace orders --sort-by=.lastTimestamp
-kubectl describe pod --namespace orders <pod-name>
+kubectl get events --namespace orders --sort-by=.metadata.creationTimestamp
+kubectl describe pod --namespace orders POD_NAME
 ```
+
+Replace `POD_NAME` with the name shown by the status tree or events.
 
 ## Rotate without changing the Application manifest
 
 Rotate the value in the external vault. The secret controller refreshes the Kubernetes Secret according to its policy. Then decide how the workload observes it:
 
-- mounted Secret volumes update eventually, but the application must re-read the file;
-- environment variables require a new Pod;
+- mounted Secret volumes update eventually (except `subPath` mounts), but the application must re-read the file;
+- Secret-backed environment variables are refreshed only when the container restarts, normally by rolling out replacement Pods;
 - some operators watch Secret resource versions and trigger rollout; or
 - a controlled release can change a nonsecret restart annotation.
 
@@ -136,7 +139,7 @@ Anyone who can create a Pod in a namespace can generally cause that Pod to expos
 
 ## Multi-cluster considerations
 
-KubeVela can dispatch the same Application to several clusters, but a Secret reference is resolved in each destination. Install and authorize the secret controller per cluster, or use a supported central design, and ensure the same logical Secret name is materialized locally. Keep production vault access separate from dev even if the Application property is identical.
+KubeVela can dispatch resources rendered from one Application to several clusters, but a Secret reference is resolved in each destination. Install and authorize the secret controller per cluster, or use a supported central design, and ensure the same logical Secret name is materialized locally. Keep production vault access separate from dev even if the Application property is identical.
 
 Sealed Secrets ciphertext is tied to controller keys and, by default, the exact name and namespace. A blob sealed for one cluster generally cannot be copied to another unless key and scope design intentionally allows it. Back up sealing keys and prefer strict scope unless broader reuse is explicitly required.
 
@@ -151,7 +154,7 @@ Add pre-commit and CI secret scanning, but treat it as a last defense. Review Gi
 - [External Secrets `ExternalSecret` API](https://external-secrets.io/latest/api/externalsecret/)
 - [External Secrets `SecretStore` API](https://external-secrets.io/latest/api/secretstore/)
 - [Kubernetes Secrets good practices](https://kubernetes.io/docs/concepts/security/secrets-good-practices/)
-- [Sealed Secrets official repository and usage](https://github.com/bitnami-labs/sealed-secrets)
+- [Sealed Secrets official repository and usage](https://github.com/bitnami/sealed-secrets)
 
 ## Conclusion
 
