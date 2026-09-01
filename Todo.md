@@ -154,7 +154,6 @@
 10. How to Deploy One KubeVela Application to Multiple Kubernetes Clusters
 11. Why Is a KubeVela Multi-Cluster Application Stuck? Debugging Topology Policies and Placement
 12. How to Register, Label, and Select Managed Clusters in KubeVela
-13. How to Build a KubeVela Workflow That Waits for Infrastructure Before Deploying the App
 14. Why Did a KubeVela Workflow Stop at `suspend` or `wait`? Inspecting Step Status and Conditions
 15. How to Roll Back a Failed KubeVela Application Revision Safely
 16. How to Import and Customize a Helm Chart as a KubeVela Application
