@@ -8,7 +8,7 @@ Description: Place related entries from multiple Geode partitioned regions in ma
 
 ---
 
-Apache Geode colocation keeps buckets with the same ID from related partitioned regions on the same members. It is required when a transaction modifies entries across partitioned regions, and it enables Geode's supported equi-join pattern through `Query.execute(RegionFunctionContext)`.
+Apache Geode colocation keeps buckets with the same ID from related partitioned regions on the same members. With Geode's default non-distributed transaction mode (`distributed-transactions=false`), colocation is required when a transaction modifies entries across partitioned regions. It also enables Geode's supported equi-join pattern through the context-aware `Query.execute(...)` overloads.
 
 Setting `colocated-with` is only half the design. Related keys must also produce the same routing object. Two colocated regions can still place a customer's entries in different bucket IDs if their keys or partition resolvers route differently.
 
@@ -114,7 +114,7 @@ Point each dependent at the chosen central region. Do not try to retrofit a diff
 
 ## Run a Transaction on One Routing Object
 
-Now a transaction for one customer can modify both regions on one data host:
+With that default non-distributed mode, a transaction for one customer can modify both regions on one data host:
 
 ```java
 CacheTransactionManager tx = cache.getCacheTransactionManager();
@@ -134,9 +134,9 @@ try {
 }
 ```
 
-Colocation guarantees that corresponding bucket IDs stay together; it does not guarantee that different routing objects and bucket IDs share a host. A second order for `customer-99` may live on another host, so modifying it in the same transaction can raise `TransactionDataNotColocatedException`. Different buckets can happen to share a host under one placement and separate after a rebalance, so keep the atomic boundary aligned with one routing object rather than relying on current placement.
+Colocation guarantees that corresponding bucket IDs stay together; it does not guarantee that different routing objects and bucket IDs share a host. In the default non-distributed mode, a second order for `customer-99` may live on another host, so modifying it in the same transaction can raise `TransactionDataNotColocatedException`. Different buckets can happen to share a host under one placement and separate after a rebalance, so keep the atomic boundary aligned with one routing object rather than relying on current placement.
 
-For a transaction mixing replicated and partitioned regions, Geode's transaction design guidance says the first operation must be on the partitioned region. Queries and indexes also do not expose uncommitted transactional state, so do not use a query inside the transaction as proof that a prior write is visible.
+For a default non-distributed transaction mixing replicated and partitioned regions, Geode's transaction design guidance says the first operation must be on the partitioned region. Queries and indexes also do not expose uncommitted transactional state, so do not use a query inside the transaction as proof that a prior write is visible.
 
 ## Use the Supported Join-Like Pattern
 
@@ -145,7 +145,7 @@ Colocation alone does not enable arbitrary SQL-style joins from a client. Geode 
 - the partitioned regions are colocated;
 - the equality predicate includes the actual colocation columns;
 - the query is executed inside a region function; and
-- the function calls `Query.execute(RegionFunctionContext)`.
+- the function calls `Query.execute(RegionFunctionContext)` for an unparameterized query, or `Query.execute(RegionFunctionContext, Object[])` when the OQL has bind parameters.
 
 For example, the server-side query can be:
 
@@ -156,7 +156,7 @@ WHERE o.customerId = c.customerId
   AND o.customerId = $1
 ```
 
-Invoke the function on `/Orders` with a filter whose routing object is the target customer. Geode routes execution to the relevant bucket host; the function's `RegionFunctionContext` constrains the query to the local partitioned data and its colocated region. Calling `query.execute()` without that context is not the same operation and is unsupported for this partitioned-region join.
+Invoke the function on `/Orders` with a filter containing an `OrderKey` whose routing object is the target customer. Pass the customer ID as a separate function argument, and inside the function call `query.execute(context, new Object[] {customerId})` to bind `$1`; the filter only routes and scopes execution. Geode routes execution to the relevant bucket host, and the function's `RegionFunctionContext` constrains the query to the local partitioned data and its colocated region. Calling `query.execute()` without that context is not the same operation and is unsupported for this partitioned-region join.
 
 If the caller already knows exact region keys, prefer `get` or `getAll` over an OQL join. Colocation makes those related lookups local when code runs on the bucket host, which is often simpler and cheaper than constructing a result set.
 
@@ -184,4 +184,4 @@ Run the test after a rebalance and member restart. Geode moves colocated bucket 
 
 ## Conclusion
 
-Choose one central region, give every related region identical bucket-management settings, and make all related key types return the same immutable routing object. That creates the single-host boundary Geode needs for cross-region transactions and function-scoped equi-joins while preserving colocation through recovery and rebalance.
+Choose one central region, give every related region identical bucket-management settings, and make all related key types return the same immutable routing object. That creates the single-host boundary required by Geode's default non-distributed cross-region transactions and by function-scoped equi-joins while preserving colocation through recovery and rebalance.
