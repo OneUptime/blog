@@ -151,7 +151,6 @@
 
 ## OpenSearch Observability
 
-15. Why Are OpenSearch Dashboard Queries Slow During Incidents? Diagnosing Shards, Mappings, and Expensive Aggregations
 16. How to Normalize Kubernetes Log Fields Before Indexing Them in OpenSearch
 17. How to Troubleshoot Missing OpenTelemetry Spans Between the Collector and OpenSearch
 18. How to Design OpenSearch Index Templates for High-Cardinality Observability Data
