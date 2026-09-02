@@ -20,11 +20,11 @@ applications -> OTel Collector -> Data Prepper :21893 -> OpenSearch
              3 signal pipelines    route by event type
 ```
 
-The unified Data Prepper source is the simplest option on a current release. Older Data Prepper versions used separate `otel_logs_source`, `otel_metrics_source`, and `otel_trace_source` endpoints, so check the documentation for the version you run before copying this configuration.
+The unified Data Prepper source is available in Data Prepper 2.12 and later. Earlier versions used separate `otel_logs_source`, `otel_metrics_source`, and `otel_trace_source` endpoints, so check the documentation for the version you run before copying this configuration.
 
 ## Configure the Collector
 
-The following Collector configuration accepts OTLP over gRPC and HTTP, adds resource limits and batching, and sends every signal through the same exporter:
+The following Collector configuration accepts OTLP over gRPC and HTTP, adds memory limiting and batching, and sends every signal through the same exporter:
 
 ```yaml
 receivers:
@@ -43,7 +43,7 @@ processors:
   batch: {}
 
 exporters:
-  otlp/data_prepper:
+  otlp_grpc/data_prepper:
     endpoint: data-prepper:21893
     tls:
       insecure: true # Development only; use a trusted CA in production.
@@ -53,22 +53,22 @@ service:
     logs:
       receivers: [otlp]
       processors: [memory_limiter, batch]
-      exporters: [otlp/data_prepper]
+      exporters: [otlp_grpc/data_prepper]
     metrics:
       receivers: [otlp]
       processors: [memory_limiter, batch]
-      exporters: [otlp/data_prepper]
+      exporters: [otlp_grpc/data_prepper]
     traces:
       receivers: [otlp]
       processors: [memory_limiter, batch]
-      exporters: [otlp/data_prepper]
+      exporters: [otlp_grpc/data_prepper]
 ```
 
 Defining a receiver or exporter is not enough: it must be referenced by a pipeline under `service`. A missing reference is a common reason that one signal silently appears absent.
 
 ## Route signals in Data Prepper
 
-Data Prepper's `getEventType()` function distinguishes `LOG`, `METRIC`, and `TRACE` events. This abbreviated production-shaped example keeps credentials outside the file and shows the routing boundary:
+Data Prepper's `getEventType()` function distinguishes `LOG`, `METRIC`, and `TRACE` events. This abbreviated production-shaped example shows the routing boundary. It is a deployment template: Data Prepper does not expand ordinary `${VAR}` references in `pipelines.yaml`, so render the credential placeholders with your deployment or secret-management tooling before startup.
 
 ```yaml
 version: "2"
@@ -116,13 +116,13 @@ traces-pipeline:
     pipeline:
       name: otel-entry
   processor:
-    - otel_trace_raw: {}
+    - otel_traces: {}
   sink:
     - opensearch:
         hosts: ["https://opensearch:9200"]
         username: "${OPENSEARCH_USER}"
         password: "${OPENSEARCH_PASSWORD}"
-        index_type: trace-analytics-raw
+        index_type: trace-analytics-plain-raw
 ```
 
 For full Trace Analytics, add the service-map branch documented by OpenSearch rather than treating raw spans as the entire trace pipeline.
