@@ -151,7 +151,6 @@
 
 ## OpenSearch Observability
 
-4. How to Propagate Trace and Span IDs into OpenSearch Log Documents for Cross-Signal Correlation
 5. Why Is Filebeat Harvesting Files but Not Creating an OpenSearch Index? A Pipeline Debugging Guide
 6. How to Use OpenSearch Data Streams for Time-Series Logs Without Breaking Dashboard Index Patterns
 7. Why Does an OpenSearch Dashboard Show “Could Not Locate That Index Pattern”? Repairing Saved Objects Safely
