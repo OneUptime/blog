@@ -13,7 +13,7 @@ OpenSearch Dashboards authorization has two independent questions:
 1. May the user enter Dashboards and read saved objects in this tenant?
 2. May the user search the indexes referenced by the index pattern?
 
-Granting only one produces confusing failures: the user can open a dashboard but sees empty panels, or can query an index through the API but cannot open its index pattern. Least privilege means satisfying both layers without assigning the server identity or broad `all_access` role.
+Granting only one produces confusing failures: the user can open a dashboard but sees authorization errors (or empty panels when `do_not_fail_on_forbidden` filtering is configured), or can query an index through the API but cannot open its index pattern. Least privilege means satisfying both layers without assigning the server identity or broad `all_access` role.
 
 ## Define the data boundary first
 
@@ -61,13 +61,15 @@ prod_logs_reader:
   users: []
 ```
 
-Users also need the standard Dashboards sign-in/user capability, commonly supplied by the predefined `kibana_user` role or an equivalent custom role. Never assign `kibana_server` to a human; it is the service role used by the Dashboards server for its internal saved-object operations.
+The role above is the equivalent custom read-only Dashboards role for this workflow; do not additionally assign the predefined `kibana_user` role merely for sign-in because its effective permissions are broader. Never assign `kibana_server` to a human; it is the service role used by the Dashboards server for its internal saved-object operations.
 
 ## Create objects in the same tenant
 
-An administrator or curator with `kibana_all_write` can create the `logs-prod-*` index pattern in the `operations` tenant and choose the actual date field, normally `@timestamp`. Readers with `kibana_all_read` can use the object but cannot create or modify it.
+Create the `operations` custom tenant first using OpenSearch Dashboards, the Security REST API, or `tenants.yml`. An administrator or curator with Dashboards access, read access to `logs-prod-*`, and `kibana_all_write` for `operations` can create the index pattern there and choose the actual date field, normally `@timestamp`. Readers with `kibana_all_read` can use the object but cannot create or modify it.
 
 Private, global, and custom tenants are separate saved-object spaces. Verify that the index pattern and dashboard are in `operations`, not in the curator's private tenant.
+
+With the default multi-tenancy settings, each Dashboards user also has a writable Private tenant, and the Global tenant is enabled. The predefined `kibana_user` role can also grant implicit read/write access to Global when the legacy privilege evaluator is in use and no role explicitly grants Global access. If `operations` must be the only saved-object space, disable the built-in tenants as appropriate and verify the user's effective tenant memberships.
 
 ## Add DLS or FLS only when required
 
@@ -101,8 +103,8 @@ Then sign in to Dashboards as that user and verify:
 - the intended index pattern appears;
 - Discover returns a known document in a wide enough time range;
 - saved searches and dashboards render;
-- unrelated index names and tenants are inaccessible;
-- creating or editing a saved object is denied.
+- unrelated index names and custom tenants are inaccessible, and any enabled Global or Private access matches policy;
+- creating or editing a saved object in `operations` is denied.
 
 Dashboards uses composite operations such as `_msearch`, field capabilities, alias resolution, and saved-object reads. An API test limited to one `_search` call is not representative.
 
@@ -111,7 +113,7 @@ Dashboards uses composite operations such as `_msearch`, field capabilities, ali
 If the pattern is visible but no rows appear, compare the same query as admin and reader:
 
 - `403` suggests a missing index or cluster action.
-- `200` with zero hits can be DLS, the time range, or system-index protection.
+- `200` with zero hits can be DLS, the time range, `do_not_fail_on_forbidden` filtering, or system-index protection.
 - Missing fields suggest FLS or a mapping conflict.
 - A pattern visible only after switching tenant indicates saved-object scope, not index permission.
 
@@ -124,4 +126,6 @@ Use Security audit logs during a controlled test to identify the denied underlyi
 - [OpenSearch default action groups](https://docs.opensearch.org/latest/security/access-control/default-action-groups/)
 - [OpenSearch field-level security](https://docs.opensearch.org/latest/security/access-control/field-level-security/)
 - [OpenSearch Dashboards multi-tenancy](https://docs.opensearch.org/latest/security/multi-tenancy/tenant-index/)
+- [OpenSearch Dashboards multi-tenancy configuration](https://docs.opensearch.org/latest/security/multi-tenancy/multi-tenancy-config/)
 - [OpenSearch index-pattern permissions](https://docs.opensearch.org/latest/dashboards/management/index-patterns/)
+- [OpenSearch Security `kibana_user` Global tenant behavior](https://github.com/opensearch-project/security/issues/5356)
