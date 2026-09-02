@@ -28,7 +28,7 @@ PREPARED
   -> STABILIZED
 ~~~
 
-Failure transitions go to PAUSED_SAFE or ROLLBACK_REQUIRED, not blindly to the next command. Store the workflow state outside the failure domain being recovered.
+Failure transitions go to PAUSED_SAFE, RECONCILIATION_REQUIRED, or ROLLBACK_REQUIRED, not blindly to the next command. Use RECONCILIATION_REQUIRED when a provider outcome is unknown, such as after a timeout during an asynchronous mutation; do not call the state safe until re-observation proves it. Store the workflow state outside the failure domain being recovered.
 
 Each transition needs:
 
@@ -68,13 +68,13 @@ approval:
 
 ## Make Fencing a Hard Gate
 
-Before a second site can accept writes, prove that the old site cannot. Possible mechanisms are workload-specific:
+Before a second site can accept writes, prove that the old site cannot. Possible mechanisms are workload-specific and must block both existing and new write paths:
 
-- revoke or narrow writer credentials;
-- disable old-site listener or routing;
+- revoke or narrow writer credentials and terminate existing sessions authorized to write;
+- disable old-site write listeners and terminate existing write-capable connections;
 - enforce a database epoch or fencing token;
 - remove quorum participation;
-- isolate network paths;
+- isolate every write-capable network path;
 - shut down old writers when authority over them remains.
 
 Loss of visibility is not proof of shutdown. If fencing cannot be proven, the workflow should stop. A business risk decision can select a non-writing recovery mode, but approval alone must not substitute for data-plane fencing before a second site accepts writes.
@@ -91,20 +91,22 @@ Every action must declare whether it is:
 
 ~~~text
 create_target(run_id)        idempotent: return existing exact run target
-restore(recovery_point)      resumable: poll recorded operation ID
+restore(recovery_point, run_id) resumable: idempotent start; persist and poll operation ID
 validate_integrity()         repeatable read-only
 enable_writes(epoch)         conditional compare-and-set
 shift_traffic(plan_digest)   conditional; verify resulting routing
 delete_target(target_id)     irreversible; separate approval
 ~~~
 
+For an asynchronous operation, make the start request idempotent or reconcile by the run ID before starting it again. A timeout can mean that the provider accepted the first request even if no operation ID was recorded.
+
 Do not implement retry by rerunning the entire workflow. That can create duplicate targets, repeat migrations, or reverse a successful traffic change.
 
 ## Add Safety Rules Around Routing
 
-AWS Application Recovery Controller documents assertion rules that can require at least one routing control to remain on, and gating rules that can prevent a set of changes unless a separate control permits them. The general pattern is valuable beyond AWS:
+Amazon Application Recovery Controller (ARC) documents assertion rules that can require at least one routing control to remain on, and gating rules that can prevent a set of changes unless a separate control permits them. The general pattern is valuable beyond AWS:
 
-- never route to zero healthy sites accidentally;
+- never leave every routing destination disabled accidentally;
 - never enable two single-writer sites;
 - require application acceptance before traffic enablement;
 - cap traffic changes in stages;
@@ -134,13 +136,13 @@ Use two-person approval where one mistake can create unreconcilable writes. Appr
 On controller crash, timeout, lost lease, or conflicting operator:
 
 - stop issuing new mutations;
-- keep the target isolated or read-only;
+- before write enablement, keep the target isolated or read-only;
 - preserve current operation IDs and evidence;
 - revoke unused temporary credentials;
 - alert with current and last confirmed state;
 - require reconciliation before resume.
 
-Use a workflow lease so two controllers cannot drive the same recovery. A lease is not data fencing; it only coordinates orchestrators.
+Use a workflow lease to coordinate controllers, but do not rely on it for mutual exclusion: make workflow-state transitions conditional and require mutations to reject stale workflow generations. A lease is not data fencing.
 
 Do not make rollback automatic after writes have started. Reversing traffic without reconciling newly committed data can be worse than remaining on the recovery site.
 
@@ -172,8 +174,8 @@ Recovery automation is safe when:
 - write enablement cannot occur without proven fencing and integrity validation;
 - every mutation has defined retry and compensation semantics;
 - concurrent controllers and duplicate requests cannot duplicate action;
-- routing safety rules prevent zero-site and dual-writer states;
-- safe pause is the default for uncertainty;
+- routing safety rules prevent all-destinations-disabled states, and write-authority gates prevent dual-writer states;
+- a no-new-mutations pause and reconciliation are the default for uncertainty;
 - break-glass use is explicit and audited;
 - fault-injection tests demonstrate resume, stop, and reconciliation behavior.
 
@@ -181,8 +183,8 @@ The goal is not zero human involvement. It is a recovery system in which machine
 
 ## Official References
 
-- [AWS Application Recovery Controller: Safety rules for routing control](https://docs.aws.amazon.com/r53recovery/latest/dg/routing-control.safety-rules.html)
-- [AWS Well-Architected Framework: Automate recovery](https://docs.aws.amazon.com/wellarchitected/latest/framework/rel_planning_for_recovery_automated_recovery.html)
+- [Amazon Application Recovery Controller: Safety rules for routing control](https://docs.aws.amazon.com/r53recovery/latest/dg/routing-control.safety-rules.html)
+- [AWS Well-Architected Framework: Automate recovery](https://docs.aws.amazon.com/wellarchitected/latest/framework/rel_planning_for_recovery_auto_recovery.html)
 - [AWS Well-Architected Framework: Test resiliency using chaos engineering](https://docs.aws.amazon.com/wellarchitected/latest/framework/rel_testing_resiliency_failure_injection_resiliency.html)
 - [NIST SP 800-184: Guide for Cybersecurity Event Recovery](https://csrc.nist.gov/pubs/sp/800/184/final)
 - [Kubernetes: Leases](https://kubernetes.io/docs/concepts/architecture/leases/)
