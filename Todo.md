@@ -154,7 +154,6 @@
 
 ## Recovery Engineering
 
-13. How to Design Cross-Region Failover for Stateful Services Without Violating RPO
 14. How to Test DNS Cutover, Traffic Draining, and TTLs Before a Regional Failover
 15. How to Prevent Split-Brain and Stale Writes During Failover and Failback
 16. How to Plan a Safe Failback After the Disaster Recovery Site Becomes Primary
