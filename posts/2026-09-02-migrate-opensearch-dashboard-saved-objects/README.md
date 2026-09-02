@@ -14,7 +14,7 @@ Move the reference graph, then recreate the environment-specific data plane unde
 
 ## Inventory the source scope
 
-Saved objects belong to a tenant or workspace context. Before exporting, record:
+Dashboard-related saved objects are tenant-scoped or associated with one or more workspaces. Before exporting, record:
 
 - OpenSearch and OpenSearch Dashboards versions;
 - active tenant or workspace;
@@ -22,7 +22,7 @@ Saved objects belong to a tenant or workspace context. Before exporting, record:
 - index-pattern titles, time fields, and matched aliases/streams;
 - dashboard IDs/titles and dependent visualizations/searches;
 - relevant advanced settings and required plugins;
-- reader/curator roles for the destination scope.
+- read-only and read/write access for the destination scope.
 
 Do not assume a private-tenant dashboard is present in the global tenant. Switch to the exact source context before opening Saved Objects.
 
@@ -63,13 +63,13 @@ Use a disposable target tenant/workspace first:
 
 1. Open **Dashboards Management > Saved objects** in that target context.
 2. Select **Import** and upload the NDJSON.
-3. Choose the documented conflict policy deliberately; do not overwrite same-title production objects just to make the import complete.
+3. Choose the documented conflict policy deliberately; do not overwrite production objects with conflicting saved-object IDs just to make the import complete.
 4. When multiple data sources are enabled, choose the intended target data source during import.
 5. Review missing-reference and conflict results before accepting the bundle.
 
 OpenSearch's multiple-data-source workflow explicitly supports exporting NDJSON from one Saved Objects page and importing it into another while selecting a target data source.
 
-Keep source and target Dashboards versions compatible. Saved objects undergo migrations as Dashboards evolves; forward import into a tested newer version can differ from backward import. Never copy `.opensearch_dashboards*` system-index documents between environments as a substitute for the supported import workflow.
+Keep source and target Dashboards versions compatible. Saved objects undergo migrations as Dashboards evolves: older exports are migrated when imported into a compatible newer version, while exports whose migration version is newer than the target fail to import. Never copy `.opensearch_dashboards*` system-index documents between environments as a substitute for the supported import workflow.
 
 ## Repair index-pattern differences visibly
 
@@ -77,11 +77,11 @@ An index pattern has a saved-object ID as well as a title such as `logs-prod-*`.
 
 If the destination must use a different pattern, create it through Dashboards Management and update/re-save dependent visualizations in the test scope. Editing undocumented NDJSON internals by search-and-replace is risky: IDs can occur in structured references and embedded serialized state, and schemas are version-sensitive.
 
-For OpenSearch 3.5+ observability workspaces, datasets and correlations are separate configuration objects from classic index patterns. Recreate and validate logs/traces datasets, schema mappings, and trace-to-log correlations where the application uses them.
+For OpenSearch Dashboards 3.5+ observability workspaces with dataset management enabled, OpenSearch-backed logs and traces datasets store signal-specific configuration in `index-pattern` saved objects, while trace-to-logs correlations are separate, exportable saved objects. Include these objects in the migration—or recreate them where target-specific differences require it—and validate each logs dataset's schema mappings and correlations in the target environment. Because correlations reference datasets and dashboards do not reference the correlations, verify that the NDJSON contains them or select them explicitly for export.
 
 ## Validate every layer
 
-Run the target review as both curator and read-only operator:
+Run the target review with both read/write and read-only access:
 
 - every dashboard and visualization opens;
 - each panel uses the intended target data source;
@@ -112,7 +112,7 @@ Treat NDJSON as a build artifact even when import/export remains a UI-controlled
 - run target smoke queries after import;
 - record the exact Dashboards version that produced it.
 
-This provides reproducibility without depending on private saved-object routes or editing component system indexes.
+This provides reproducibility without editing component system indexes.
 
 ## Official References
 
