@@ -148,7 +148,6 @@
 
 ## Apache Geode
 
-12. Why Does a Geode Continuous Query Fail with a Serialization Mismatch? Checking CQ Dependencies and PDX
 13. How to Receive Server-Side Region Events in a Geode Client with Continuous Queries
 14. How to Configure Persistent Regions and Disk Stores Without Filling the Disk
 15. Why Doesn’t Geode Disk Usage Shrink After Entries Are Deleted? Oplogs and Compaction Explained
