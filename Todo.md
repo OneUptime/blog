@@ -151,7 +151,6 @@
 
 ## OpenSearch Observability
 
-19. Why Did an OpenSearch Alert Stop Firing After an Index Rollover? Fixing Aliases and Monitor Queries
 20. How to Export and Recreate OpenSearch Dashboards, Visualizations, and Index Patterns Across Environments
 
 ## Recovery Engineering
