@@ -29,12 +29,12 @@ POST logs-app-prod/_rollover?dry_run=true
 {
   "conditions": {
     "max_age": "1d",
-    "max_primary_shard_size": "30gb"
+    "max_size": "30gb"
   }
 }
 ```
 
-Choose the threshold from your workload and recovery tests. Rollover conditions are checked on the ISM job schedule, so a shard can grow beyond the threshold before the next evaluation.
+`max_size` is the combined size of the write index's primary shards; replicas are not counted. Choose the threshold from your workload and recovery tests. When rollover is driven by ISM, conditions are checked on the ISM job schedule, so the write index can grow beyond the threshold before the next evaluation.
 
 Do not compensate for poor rollover with dozens of speculative primary shards. A shard that is too small wastes overhead; one that is too large slows movement and recovery.
 
@@ -83,11 +83,11 @@ PUT _plugins/_ism/policies/observability-30d
 }
 ```
 
-Creating the policy does not by itself manage any index. Attach it with a reviewed ISM template or the Add Policy API, and verify the attachment with the ISM Explain API. If you associate a policy with an existing data stream, it applies to future backing indexes; audit existing backing indexes separately.
+Creating the policy does not by itself manage any index. Use a reviewed ISM template so future matching indexes are managed; use the Add Policy API for existing indexes, and verify the attachment with the ISM Explain API. If you associate a policy with an existing data stream, it applies to future backing indexes; audit existing backing indexes separately.
 
-For a regular rollover alias, the initial index name must end in digits (for example, `logs-app-000001`) and be the alias's write index. Put `index.plugins.index_state_management.rollover_alias` in the matching index template so every new generation inherits it; setting it only on the bootstrap index can leave a later generation unable to roll over. Data streams infer rollover information, so do not copy the alias setting into their backing-index policy.
+For a regular rollover alias, the initial index name must end in a hyphen followed by digits (for example, `logs-app-000001`) and be the alias's write index. Put `index.plugins.index_state_management.rollover_alias` in the matching index template so every new generation inherits it; setting it only on the bootstrap index can leave a later generation unable to roll over. Data streams infer rollover information, so do not add the alias setting to their backing indexes.
 
-Policy age semantics deserve a test: transitions use index age, and rollover changes lifecycle timing. Use the ISM Explain API to confirm the effective state, action, and transition for representative indexes.
+Policy age semantics deserve a test: the transitions above use `min_index_age`, which is measured from index creation and is not reset by rollover. Use `min_rollover_age` when transition timing should start after rollover. Use the ISM Explain API to confirm the effective state, action, and transition for representative indexes.
 
 ## Use real warm capacity
 
