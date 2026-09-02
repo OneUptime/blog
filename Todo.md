@@ -154,7 +154,6 @@
 
 ## Recovery Engineering
 
-15. How to Prevent Split-Brain and Stale Writes During Failover and Failback
 16. How to Plan a Safe Failback After the Disaster Recovery Site Becomes Primary
 17. How to Build an Isolated Recovery Test Environment with Limited Cloud Budget
 18. How Often Should You Run Restore Tests, Tabletop Exercises, and Full Failover Drills?
