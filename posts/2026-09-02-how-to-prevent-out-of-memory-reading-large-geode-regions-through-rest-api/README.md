@@ -104,7 +104,7 @@ Keyset pagination has no `OFFSET` cost and avoids retaining all prior keys. It s
 - deletes before their page produce no row; and
 - retrying a page can return changed values.
 
-For a repeatable export, quiesce writes, scan a versioned immutable key range, or use Geode's snapshot export rather than claiming the live REST walk is a point-in-time snapshot.
+For a repeatable export, quiesce writes before a REST scan or snapshot export, or scan a versioned immutable key range. Geode's snapshot export is a better bulk-transfer primitive, but it does not provide a consistency guarantee while updates are occurring.
 
 If string lexicographic order does not match business order, introduce an immutable sortable key contract. Do not cast or invoke arbitrary methods in OQL simply to force an ordering; that adds query cost and security-authorizer surface.
 
@@ -154,7 +154,7 @@ gfsh> start server --name=server-1 \
   --critical-heap-percentage=85
 ```
 
-The critical threshold enables Geode's low-memory protection. OQL queries and index creation can be canceled with `QueryExecutionLowMemoryException` when the member crosses it. The threshold is a circuit breaker, not capacity for large requests. Leave sufficient memory between normal peaks and the threshold for recovery and garbage collection.
+The critical threshold enables Geode's low-memory protection. When the member crosses it, OQL queries can be canceled with `QueryExecutionLowMemoryException`; index creation can be canceled with `InvalidIndexException`. The threshold is a circuit breaker, not capacity for large requests. Leave sufficient memory between normal peaks and the threshold for recovery and garbage collection.
 
 Do not disable the low-memory query monitor. Also do not assume it bounds every stage of `GET /region?limit=ALL`; raw region retrieval, JSON serialization, web buffers, and client parsing still need bounded application requests.
 
