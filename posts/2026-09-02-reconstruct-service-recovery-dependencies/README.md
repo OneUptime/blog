@@ -10,14 +10,14 @@ Description: Reconstruct hard and soft service dependencies from runtime evidenc
 
 Starting services in the order shown on an architecture slide often fails. Slides omit identity, DNS, secrets, certificate authorities, migration jobs, queues, feature flags, and the observability needed to decide whether a step succeeded. They also confuse request direction with recovery order.
 
-A reliable runbook uses a tested dependency graph. Azure Site Recovery recovery plans explicitly support grouping and ordering application components; the difficult part is discovering the correct graph first.
+A reliable runbook uses a tested dependency graph. Azure Site Recovery recovery plans explicitly support grouping protected machines and sequencing their failover and startup to model application dependencies; the difficult part is discovering the correct graph first.
 
 ## Define a Dependency Precisely
 
 Represent each relationship as a directed edge:
 
 ~~~text
-A -> B means A cannot meet its recovery acceptance criteria until B is ready
+A -> B means A relies on B to reach full recovery
 ~~~
 
 Attach attributes rather than storing only two names:
@@ -25,8 +25,12 @@ Attach attributes rather than storing only two names:
 ~~~yaml
 from: checkout-api
 to: orders-database
-class: hard
-phase: startup-and-runtime
+criticality: hard
+roles:
+  - data
+phases:
+  - startup
+  - runtime
 readiness: SELECT recovery_probe() returns expected schema version
 timeout_seconds: 30
 degraded_behavior: none
@@ -36,10 +40,13 @@ evidence:
   - runtime-connection-inventory
 ~~~
 
-Useful classes are:
+Record criticality as:
 
-- **hard:** the critical capability cannot pass without it;
-- **soft:** the service can meet a documented degraded mode;
+- **hard:** the service cannot meet its recovery acceptance criteria until the prerequisite is ready;
+- **soft:** the service can meet a documented degraded-mode acceptance criterion while the prerequisite is unavailable.
+
+Also record one or more roles:
+
 - **bootstrap:** needed to create, configure, or authenticate another component;
 - **control-plane:** needed to change the environment but not necessarily serve steady-state traffic;
 - **data:** must reach a compatible schema and recovery point;
@@ -49,7 +56,7 @@ Record whether the dependency exists at build, startup, runtime, recovery, or fa
 
 ## Gather Evidence from Several Planes
 
-No single telemetry source is complete. Reconstruct the graph by intersecting evidence.
+No single telemetry source is complete. Reconstruct the graph by combining and corroborating evidence.
 
 ### Request and message telemetry
 
@@ -57,7 +64,7 @@ Distributed traces reveal synchronous calls and some asynchronous producer/consu
 
 ### Network and DNS telemetry
 
-Flow logs, socket inventories, proxy logs, firewall rules, and DNS query logs reveal connections even when application tracing is absent. Distinguish periodic health or telemetry traffic from an acceptance-path dependency.
+Flow logs, socket inventories, and proxy logs reveal observed flows, sockets, and requests; firewall rules describe permitted or blocked paths, and DNS query logs reveal name-resolution attempts even when application tracing is absent. Distinguish periodic health or telemetry traffic from an acceptance-path dependency.
 
 ### Configuration and identity
 
@@ -88,19 +95,19 @@ Look explicitly for:
 
 ### Deal with cycles
 
-Run a strongly connected component analysis. A cycle such as identity -> secrets -> database -> identity has no topological order. Break it by design:
+For each recovery phase, run a strongly connected component analysis on the subgraph of hard edges. A hard-edge cycle such as identity -> secrets -> database -> identity has no topological order. Break it by design:
 
 - pre-provision an offline bootstrap identity;
 - split read-only startup from write-enabled operation;
 - restore a minimum trusted configuration bundle;
-- define a manual, audited bootstrap gate;
-- change a service to tolerate a temporarily unavailable soft dependency.
+- define a manual, audited bootstrap procedure and gate that temporarily supplies or relaxes one prerequisite;
+- change a hard dependency to soft by making the service tolerate its temporary unavailability.
 
 Do not encode a cycle as arbitrary sleeps. Time passing does not establish readiness.
 
 ## Convert the Graph into Recovery Waves
 
-After cycles are resolved, order every prerequisite before its dependents. With the dependent -> prerequisite edge notation used above, that is the reverse of the usual topological output. Parallelize independent nodes inside a wave.
+After hard-edge cycles are resolved, order every hard prerequisite before its dependents. With the dependent -> prerequisite edge notation used above, that is the reverse of the usual topological output. Preserve soft edges in the evidence graph, but do not make them ordering constraints when the documented degraded mode is accepted. Parallelize nodes whose hard prerequisites are all satisfied inside a wave.
 
 ~~~text
 Wave 0: isolated network, time, emergency identity, evidence collector
@@ -139,13 +146,13 @@ In an isolated recovery environment:
 1. begin with no inherited shared services except documented external prerequisites;
 2. execute one wave at a time;
 3. block undeclared east-west and outbound connections;
-4. record every denied connection and DNS query;
+4. capture denied connection attempts and DNS queries with logging whose coverage and limitations you have verified;
 5. prove each gate from inside the consuming workload's identity and network;
 6. inject slow and failed dependencies to confirm bounded behavior;
 7. test the documented degraded mode for soft edges;
 8. run critical business transactions before enabling external side effects.
 
-An unexpected denied connection is evidence of a missing or misclassified edge. A service that appears healthy while silently dropping work has a bad readiness condition.
+An unexpected denied connection attempt is evidence of a missing or misclassified edge. A service that appears healthy while silently dropping work has a bad readiness condition.
 
 ## Keep the Graph Operational
 
@@ -157,12 +164,12 @@ Assign every node and external edge an owner, recovery objective, contact path, 
 
 The recovery order is credible when:
 
-- every critical transaction maps to a graph of hard, soft, bootstrap, control-plane, data, and validation dependencies;
-- edges include phase, readiness condition, owner, and evidence;
-- all hard-edge cycles are broken by design or a documented bootstrap gate;
+- every critical transaction maps to a graph of dependencies labeled hard or soft and assigned bootstrap, control-plane, data, and observability roles;
+- edges include applicable phases, readiness condition, owner, and evidence;
+- all hard-edge cycles are broken by design or a documented bootstrap procedure that safely supplies or relaxes a prerequisite;
 - independent services recover in parallel without violating prerequisites;
 - transitions depend on semantic readiness, not fixed sleeps;
-- blocked-network testing finds no unexplained connections;
+- blocked-network testing finds no unexplained observed connection attempts within verified logging coverage;
 - soft dependencies demonstrate their degraded behavior;
 - an isolated full recovery follows the generated order and passes business acceptance within RTO.
 
