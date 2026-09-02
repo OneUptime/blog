@@ -37,10 +37,10 @@ For a fully secured cluster, start with `all`. If a deployment intentionally exp
 Use an organizational CA or a dedicated internal CA, not one shared self-signed key copied to every process. Give each process or workload its own private key and certificate. At minimum:
 
 - put every DNS name or IP address used to connect to the process in its subject alternative name (SAN);
-- include the certificate usages required for both TLS server and client authentication;
+- include both TLS server- and client-authentication usages for Geode members that accept and initiate TLS connections, and client-authentication usage for client-only workloads;
 - use a currently approved key algorithm and size;
 - keep the private key readable only by the Geode process owner; and
-- distribute only CA certificates through trust stores.
+- put only intended public trust material, never private keys, in truststores.
 
 Endpoint identification validates the hostname used by a client against the peer certificate. If clients connect to `locator-a.example.net`, a certificate containing only `CN=locator-a` is not sufficient for modern hostname verification; include `DNS:locator-a.example.net` in the SAN.
 
@@ -51,7 +51,7 @@ keytool -list -v -storetype PKCS12 -keystore /etc/geode/tls/server-a.p12
 keytool -list -v -storetype PKCS12 -keystore /etc/geode/tls/geode-trust.p12
 ```
 
-Do not put a private key in a truststore, and do not use a public truststore as evidence that every publicly issued certificate should be allowed to join a private cluster. Trust only the intended internal issuers or exact certificates.
+Do not put a private key in a truststore, and do not use a public truststore as evidence that every publicly issued certificate should be allowed to join a private cluster. Put only the intended internal CA certificates or deliberately pinned public leaf certificates in it.
 
 ## Configure mTLS on Locators and Servers
 
