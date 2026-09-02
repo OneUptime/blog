@@ -1,4 +1,4 @@
-# Validation Summary: How to Write a Recovery Runbook an Unfamiliar On-Call Engineer Can Execute at 3 A.M.
+# Validation Summary: Write a Recovery Runbook Anyone Can Execute at 3 A.M.
 
 ## Status
 

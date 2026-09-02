@@ -1,4 +1,4 @@
-# How to Receive Server-Side Region Events in a Geode Client with Continuous Queries
+# Receive Server-Side Events in Geode with Continuous Queries
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

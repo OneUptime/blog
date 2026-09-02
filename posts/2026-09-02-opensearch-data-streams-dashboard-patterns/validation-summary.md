@@ -1,4 +1,4 @@
-# Validation Summary: How to Use OpenSearch Data Streams for Time-Series Logs Without Breaking Dashboard Index Patterns
+# Validation Summary: Use OpenSearch Data Streams Without Breaking Dashboards
 
 ## Status
 validated

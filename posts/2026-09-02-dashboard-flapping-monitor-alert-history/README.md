@@ -1,4 +1,4 @@
-# How to Query OpenSearch Alert History and Build a Dashboard for Flapping Monitors
+# Build a Flapping Monitor Dashboard from OpenSearch Alert History
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

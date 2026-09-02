@@ -1,4 +1,4 @@
-# How to Back Up and Restore Apache Geode Persistent Regions with `gfsh backup disk-store`
+# Back Up and Restore Geode Persistent Regions with `gfsh`
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

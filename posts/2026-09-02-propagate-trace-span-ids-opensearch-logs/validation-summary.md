@@ -1,4 +1,4 @@
-# Validation Summary: How to Propagate Trace and Span IDs into OpenSearch Log Documents for Cross-Signal Correlation
+# Validation Summary: Add Trace and Span IDs to OpenSearch Logs
 
 ## Status
 validated

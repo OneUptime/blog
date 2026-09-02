@@ -1,4 +1,4 @@
-# Validation Summary: How to Keep Disaster Recovery Runbooks Current as Infrastructure and Credentials Change
+# Validation Summary: Keep Disaster Recovery Runbooks Current
 
 ## Status
 validated

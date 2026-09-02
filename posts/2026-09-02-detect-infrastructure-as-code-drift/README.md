@@ -1,4 +1,4 @@
-# Why Does Infrastructure as Code Fail to Rebuild Production? Detecting Drift Before a Disaster
+# Detect Infrastructure as Code Drift Before Disaster Recovery
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -1,4 +1,4 @@
-# Validation Summary: How to Reduce OpenSearch Observability Costs with Rollover, Retention, and Tiered Storage
+# Validation Summary: Reduce OpenSearch Costs with Rollover, Retention, and Tiers
 
 ## Status
 

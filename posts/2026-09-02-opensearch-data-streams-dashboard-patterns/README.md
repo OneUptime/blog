@@ -1,4 +1,4 @@
-# How to Use OpenSearch Data Streams for Time-Series Logs Without Breaking Dashboard Index Patterns
+# Use OpenSearch Data Streams Without Breaking Dashboards
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -1,4 +1,4 @@
-# How to Alert Only When an OpenSearch Monitor Changes State and Avoid Repeat Notifications
+# Alert Only on OpenSearch Monitor State Changes
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -1,4 +1,4 @@
-# Validation Summary: How Often Should You Run Restore Tests, Tabletop Exercises, and Full Failover Drills?
+# Validation Summary: Choose a Disaster Recovery Testing Cadence
 
 ## Status
 

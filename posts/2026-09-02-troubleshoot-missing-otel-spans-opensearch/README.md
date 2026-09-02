@@ -1,4 +1,4 @@
-# How to Troubleshoot Missing OpenTelemetry Spans Between the Collector and OpenSearch
+# Troubleshoot Missing OpenTelemetry Spans in OpenSearch
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
@@ -112,7 +112,7 @@ GET otel-v1-apm-span*/_search
 }
 ```
 
-Adjust the index and field to the actual Data Prepper version/mapping. If Data Prepper shows output but the document is absent, first verify the sink's `hosts` setting and resolved target index. Then inspect the bulk response's top-level `errors` flag and individual item errors—not just the HTTP status—for:
+Adjust the index and field to the actual Data Prepper version/mapping. If Data Prepper shows output but the document is absent, first verify the sink's `hosts` setting and resolved target index. Then inspect the bulk response's top-level `errors` flag and individual item errors-not just the HTTP status-for:
 
 - mapping conflicts;
 - `403` index permissions;

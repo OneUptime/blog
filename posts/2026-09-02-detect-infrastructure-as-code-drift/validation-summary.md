@@ -1,4 +1,4 @@
-# Validation Summary: Why Does Infrastructure as Code Fail to Rebuild Production? Detecting Drift Before a Disaster
+# Validation Summary: Detect Infrastructure as Code Drift Before Disaster Recovery
 
 ## Status
 

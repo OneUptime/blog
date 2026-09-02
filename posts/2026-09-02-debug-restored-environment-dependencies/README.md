@@ -1,4 +1,4 @@
-# Why Did the Restored Environment Start but the Application Still Fail? Finding Missing Secrets, DNS, and Certificates
+# Find Missing Dependencies in a Restored Environment
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

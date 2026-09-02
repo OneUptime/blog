@@ -1,4 +1,4 @@
-# Validation Summary: Why Did an OpenSearch Alert Stop Firing After an Index Rollover? Fixing Aliases and Monitor Queries
+# Validation Summary: Fix OpenSearch Alerts After an Index Rollover
 
 ## Status
 validated

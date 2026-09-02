@@ -1,4 +1,4 @@
-# Why Doesn’t Geode Disk Usage Shrink After Entries Are Deleted? Oplogs and Compaction Explained
+# Why Geode Disk Usage Stays High After Deletes and Compaction
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

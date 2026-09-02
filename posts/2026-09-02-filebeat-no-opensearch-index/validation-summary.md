@@ -1,4 +1,4 @@
-# Validation Summary: Why Is Filebeat Harvesting Files but Not Creating an OpenSearch Index? A Pipeline Debugging Guide
+# Validation Summary: Debug Filebeat Missing an OpenSearch Index
 
 ## Status
 validated

@@ -1,4 +1,4 @@
-# Validation Summary: How to Automate a Disaster Recovery Runbook Without Creating a Dangerous One-Click Failover
+# Validation Summary: Safely Automate Disaster Recovery Runbooks
 
 ## Status
 validated

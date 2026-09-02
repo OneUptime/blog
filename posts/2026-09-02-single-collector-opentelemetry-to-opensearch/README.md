@@ -1,4 +1,4 @@
-# How to Send OpenTelemetry Logs, Metrics, and Traces to OpenSearch Through a Single Collector
+# Send All OpenTelemetry Signals to OpenSearch Through One Collector
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

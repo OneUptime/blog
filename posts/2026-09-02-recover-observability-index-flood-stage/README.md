@@ -1,4 +1,4 @@
-# Why Is the `.opensearch-observability` Index Read-Only? Recovering from Flood-Stage Disk Watermarks
+# Recover a Read-Only OpenSearch Observability Index
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

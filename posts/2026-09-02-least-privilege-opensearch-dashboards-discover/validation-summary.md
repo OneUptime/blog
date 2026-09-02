@@ -1,4 +1,4 @@
-# Validation Summary: How to Grant Least-Privilege Access to OpenSearch Dashboards Without Hiding Discover Data
+# Validation Summary: Grant Least-Privilege OpenSearch Dashboards Access
 
 ## Status
 validated

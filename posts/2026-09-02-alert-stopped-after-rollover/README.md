@@ -1,4 +1,4 @@
-# Why Did an OpenSearch Alert Stop Firing After an Index Rollover? Fixing Aliases and Monitor Queries
+# Fix OpenSearch Alerts After an Index Rollover
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

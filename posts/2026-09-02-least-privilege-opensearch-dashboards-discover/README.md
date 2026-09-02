@@ -1,4 +1,4 @@
-# How to Grant Least-Privilege Access to OpenSearch Dashboards Without Hiding Discover Data
+# Grant Least-Privilege OpenSearch Dashboards Access
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

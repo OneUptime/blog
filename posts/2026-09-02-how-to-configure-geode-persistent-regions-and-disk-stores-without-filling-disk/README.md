@@ -27,19 +27,20 @@ The terms solve different problems:
 - **Overflow** evicts selected values from memory to disk; keys remain in memory.
 - **Persistent overflow** persists every entry and evicts colder values from memory under the configured eviction policy.
 
-Do not enable overflow as a substitute for sizing heap and disk. An overflow miss reads the value back from disk and may overflow another value; a workload larger than both resources still fails.
+Do not enable overflow as a substitute for sizing heap and disk. An overflow miss reads the value back from disk and may overflow another value. Keys and metadata still have to fit in memory, overflowed values must fit on disk, and a persistent-overflow region's complete data set must fit on disk.
 
-For a partitioned region with one redundant copy:
+After creating `OrdersStore` on the `orders-servers` group as shown below, create a partitioned region with one redundant copy on the same group:
 
 ```text
 gfsh> create region --name=orders \
   --type=PARTITION_PERSISTENT \
+  --groups=orders-servers \
   --redundant-copies=1 \
   --disk-store=OrdersStore \
   --enable-synchronous-disk=true
 ```
 
-Use `REPLICATE_PERSISTENT` when every host must keep a full copy, and `PARTITION_PERSISTENT_OVERFLOW` when the region also needs heap-based overflow. Partitioning usually gives a more scalable per-member disk footprint; each member persists its primary and redundant buckets rather than a full replica.
+Use `REPLICATE_PERSISTENT` when every member hosting the region must keep a full copy, and `PARTITION_PERSISTENT_OVERFLOW` when the region also needs heap-based overflow. Partitioning usually gives a more scalable per-member disk footprint; each member persists its primary and redundant buckets rather than a full replica.
 
 ## Estimate More Than the Live Data Size
 
@@ -65,14 +66,14 @@ Then apply the oplog, compaction, and growth multipliers. Measure serialized ent
 
 Never point two Geode members at the same disk-store directory. A disk store is owned and locked by one member, and all files in all of its directories form one unit. Do not rename individual oplog files or copy only selected extensions.
 
-Use dedicated volumes when practical, away from the operating system, swap, logs, and unrelated databases. If a store has multiple directories, put them on independent physical devices for useful throughput and failure-domain planning; multiple paths on the same full filesystem do not provide capacity isolation.
+Use dedicated volumes when practical, away from the operating system, swap, logs, and unrelated databases. If a store has multiple directories, put them on independent physical devices for useful throughput, but treat the directories as one failure unit: losing any directory leaves the store incomplete. Multiple paths on the same full filesystem do not provide capacity isolation, and multiple directories do not provide redundancy.
 
-Create the directories and set ownership before starting production members. This example creates the same logical store on the `orders-servers` group, while each host resolves the path locally:
+Create the directories and set ownership before starting production members. This example creates the same logical store on the `orders-servers` group and assumes that the group has only one member per host, so each member resolves the path to its own host-local directory:
 
 ```text
 gfsh> create disk-store --name=OrdersStore \
   --groups=orders-servers \
-  --dir=/data/geode/orders#1536000 \
+  --dir=/data/geode/orders#3072000 \
   --max-oplog-size=512 \
   --auto-compact=true \
   --compaction-threshold=50 \
@@ -81,13 +82,13 @@ gfsh> create disk-store --name=OrdersStore \
   --disk-usage-critical-percentage=90
 ```
 
-The value after `#` is the configured directory capacity in megabytes. It is a Geode accounting limit for the store, not a filesystem quota and not a reservation. The warning and critical percentages refer to actual volume use. At the critical threshold Geode generates an error and closes the member's cache rather than continuing into total disk exhaustion.
+The value after `#` is the configured directory capacity in megabytes. It is a Geode accounting limit for oplog files in that directory, not a filesystem quota and not a reservation. The warning and critical percentages refer to actual volume use. When volume use exceeds the critical threshold, Geode generates an error and closes the member's cache rather than continuing into total disk exhaustion.
 
 Pick thresholds from response time, not convention. If the volume can consume 100 GB per hour during a burst and responders need two hours, a warning at only 5% free is already too late. Leave enough free space for compaction and other essential host activity below the critical threshold.
 
 ## Tune Oplog Rolling and Compaction Together
 
-`max-oplog-size` controls the maximum size of an oplog before it rolls. The default is 1 GB. At creation, Geode preallocates the current oplog at its maximum size and shrinks it to used space when the log closes. A newly started store can therefore appear to consume a large block immediately.
+`max-oplog-size` controls the maximum size of an oplog before it rolls. The default is 1 GB. By default, at creation Geode preallocates the current oplog at its maximum size and shrinks it to used space when the log closes. A newly started store can therefore appear to consume a large block immediately.
 
 Smaller oplogs roll more often and make obsolete data eligible for compaction sooner, but create more files and management overhead. Larger oplogs reduce roll frequency but can leave more garbage trapped in the active log and require more headroom. Start with a measured value such as 512 MB rather than blindly changing it to fix apparent preallocation.
 
@@ -99,15 +100,15 @@ With `auto-compact=true`, a closed oplog becomes eligible when its live percenta
 gfsh> compact disk-store --name=OrdersStore --groups=orders-servers
 ```
 
-The command first makes appropriate logs eligible and compacts according to the configured threshold. Do not schedule it continuously. Compaction consumes disk bandwidth and CPU and can contend with region writes. If automatic compaction cannot keep up, first inspect write amplification, storage latency, live-data growth, and thresholds instead of piling on concurrent manual runs.
+Manual compaction uses each member's configured threshold. If the active oplog is itself compactable, Geode rolls it before compacting eligible oplogs. Do not schedule it continuously. Compaction consumes disk bandwidth and CPU and can contend with region writes. If automatic compaction cannot keep up, first inspect write amplification, storage latency, live-data growth, and thresholds instead of piling on concurrent manual runs.
 
 ## Select Synchronous Writes from the Recovery Requirement
 
-`--enable-synchronous-disk=true` writes the persistent operation to disk before the cache operation completes. Asynchronous disk writes can improve foreground latency by queueing operations and flushing based on `queue-size` and `time-interval`, but they enlarge the window of operations not yet durable if the process or host fails.
+`--enable-synchronous-disk=true` places the persistent operation in the filesystem buffer before the cache operation completes; it is not, by itself, a stable-media guarantee across a power loss. Asynchronous disk writes can improve foreground latency by queueing operations and flushing based on `queue-size` and `time-interval`, but they enlarge the window in which an acknowledged operation has not yet reached that member's filesystem buffer. A member crash can therefore lose it from that member's persisted copy.
 
 Choose this setting from the acceptable recovery point, then benchmark it on production-like storage. Redundant in-memory copies can improve availability but do not make an unflushed disk operation durable across a correlated power or site failure.
 
-Do not mix persistence expectations unintentionally across hosts. Start persistent replicated members before non-persistent replicas. For partitioned persistence, keep region attributes, bucket count, colocation, redundancy, disk-store name, and PDX configuration consistent across the intended members.
+Do not mix persistence expectations unintentionally across hosts. Start persistent replicated members before non-persistent replicas. For partitioned persistence, make every data-store member persistent and keep shared partition attributes such as total bucket count, colocation, redundancy, and partition resolver consistent. `local-max-memory` and disk-store placement are member-specific.
 
 ## Persist PDX Metadata When the Data Uses PDX
 
@@ -117,7 +118,7 @@ PDX bytes depend on registry metadata. When persistent regions contain PDX data,
 gfsh> configure pdx --read-serialized=true --disk-store=PdxMetadata
 ```
 
-Create and capacity-plan `PdxMetadata` on the relevant members, or use the default store deliberately. Back up PDX metadata together with the region stores. If PDX objects are used as persistent region keys, Geode requires their PDX metadata to use a different disk store from the region data; simple non-PDX keys remain the safer design.
+Create and capacity-plan `PdxMetadata` on every server that receives this cluster-wide PDX configuration, or use the default store deliberately. Back up PDX metadata together with the region stores. If PDX objects are used as persistent region keys, Geode requires their PDX metadata to use a different disk store from the region data; simple non-PDX keys remain the safer design.
 
 ## Monitor the Filesystem and the Store
 
@@ -125,11 +126,12 @@ Alert on trend and rate, not just a single percentage. Collect:
 
 - filesystem total, used, and free bytes for every disk directory;
 - Geode `DiskDirStatistics` such as `diskSpace`, `volumeFreeSpace`, and `volumeSize`;
-- oplog count and growth rate;
-- compactions, bytes compacted, and compaction backlog;
-- pending asynchronous disk tasks and flush latency;
+- `DiskStoreStatistics` such as `openOplogs`, `inactiveOplogs`, `compactableOplogs`, `compacts`, `compactsInProgress`, and `compactTime`;
+- asynchronous-write `queueSize`, `flushes`, and `flushTime`, using count and time deltas to derive flush latency;
 - server cache closures and disk warning log messages; and
 - per-member region and bucket skew.
+
+Geode's sampled statistics require `statistic-sampling-enabled=true`; time-based fields such as `compactTime` and `flushTime` also require `enable-time-statistics=true`.
 
 Use Geode inspection commands during diagnosis:
 
@@ -161,7 +163,7 @@ The ordered shutdown synchronizes persistent partitioned data and improves the n
 
 Do not revoke a missing disk store merely to make startup proceed. Revocation is for a store known to be unrecoverable and can discard the cluster's only newest copy. Once revoked, that store cannot be reintroduced.
 
-Finally, schedule online backups to storage outside the member's data volume:
+Finally, schedule online backups to storage outside the member's data volume. The target directory must already exist and be writable on every member, and all members with persistent data should be online for a complete cluster backup:
 
 ```text
 gfsh> backup disk-store --dir=/mnt/geode-backups

@@ -1,4 +1,4 @@
-# How Often Should You Run Restore Tests, Tabletop Exercises, and Full Failover Drills?
+# Choose a Disaster Recovery Testing Cadence
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -1,4 +1,4 @@
-# Validation Summary: Why Does an OpenSearch Per-Document Monitor Omit Source Fields? Fixing Trigger Context and Templates
+# Validation Summary: Restore Source Fields in OpenSearch Per-Document Monitors
 
 ## Status
 validated

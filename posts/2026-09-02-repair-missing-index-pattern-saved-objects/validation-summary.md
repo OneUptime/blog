@@ -1,4 +1,4 @@
-# Validation Summary: Why Does an OpenSearch Dashboard Show “Could Not Locate That Index Pattern”? Repairing Saved Objects Safely
+# Validation Summary: Repair Missing OpenSearch Dashboard Index Patterns
 
 ## Status
 validated

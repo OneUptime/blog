@@ -1,4 +1,4 @@
-# Validation Summary: Why a Successful Backup Job Does Not Prove Recoverability: Designing Automated Restore Tests
+# Validation Summary: Prove Backups with Automated Restore Tests
 
 ## Status
 

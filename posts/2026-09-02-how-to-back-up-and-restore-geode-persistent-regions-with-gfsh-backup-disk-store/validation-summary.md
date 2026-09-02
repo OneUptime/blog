@@ -1,4 +1,4 @@
-# Validation Summary: How to Back Up and Restore Apache Geode Persistent Regions with `gfsh backup disk-store`
+# Validation Summary: Back Up and Restore Geode Persistent Regions with `gfsh`
 
 ## Status
 validated

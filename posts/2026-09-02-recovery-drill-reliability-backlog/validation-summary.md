@@ -1,4 +1,4 @@
-# Validation Summary: How to Turn Recovery Drill Failures into Reliability Backlog with Owners and Deadlines
+# Validation Summary: Turn Recovery Drill Failures into an Owned Backlog
 
 ## Status
 

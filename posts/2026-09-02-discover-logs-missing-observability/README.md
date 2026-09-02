@@ -1,4 +1,4 @@
-# Why Are OpenSearch Logs Visible in Discover but Missing from Observability? Fixing Data Source and Field Mapping
+# Fix OpenSearch Logs Missing from Observability
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

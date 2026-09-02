@@ -1,4 +1,4 @@
-# How to Automate a Disaster Recovery Runbook Without Creating a Dangerous One-Click Failover
+# Safely Automate Disaster Recovery Runbooks
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

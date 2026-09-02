@@ -1,4 +1,4 @@
-# Validation Summary: How to Prove a Recovered Service Is Ready with Synthetic Transactions and Data Reconciliation
+# Validation Summary: Validate a Recovered Service with Synthetic Transactions
 
 ## Status
 

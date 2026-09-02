@@ -1,4 +1,4 @@
-# Validation Summary: How to Create OpenSearch Alert Messages That Include Matching Log Fields and a Dashboard Link
+# Validation Summary: Add Log Fields and Dashboard Links to OpenSearch Alerts
 
 ## Status
 validated

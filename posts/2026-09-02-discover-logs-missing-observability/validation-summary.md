@@ -1,4 +1,4 @@
-# Validation Summary: Why Are OpenSearch Logs Visible in Discover but Missing from Observability? Fixing Data Source and Field Mapping
+# Validation Summary: Fix OpenSearch Logs Missing from Observability
 
 ## Status
 validated

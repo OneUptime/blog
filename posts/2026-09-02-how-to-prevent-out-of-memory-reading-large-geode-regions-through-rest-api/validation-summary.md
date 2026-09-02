@@ -1,4 +1,4 @@
-# Validation Summary: How to Prevent Out-of-Memory Errors When Reading Large Geode Regions Through the REST API
+# Validation Summary: Prevent Out-of-Memory Errors in the Geode REST API
 
 ## Status
 validated

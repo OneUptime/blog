@@ -1,4 +1,4 @@
-# Why Is Filebeat Harvesting Files but Not Creating an OpenSearch Index? A Pipeline Debugging Guide
+# Debug Filebeat Missing an OpenSearch Index
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

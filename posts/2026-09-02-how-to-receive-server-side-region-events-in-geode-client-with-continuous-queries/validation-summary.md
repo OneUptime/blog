@@ -1,4 +1,4 @@
-# Validation Summary: How to Receive Server-Side Region Events in a Geode Client with Continuous Queries
+# Validation Summary: Receive Server-Side Events in Geode with Continuous Queries
 
 ## Status
 validated

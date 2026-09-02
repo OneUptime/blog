@@ -1,4 +1,4 @@
-# Validation Summary: How to Configure Active-Active WAN Replication with Geode Gateway Senders and Receivers
+# Validation Summary: Configure Active-Active Geode WAN Replication
 
 ## Status
 

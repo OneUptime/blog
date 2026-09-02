@@ -1,4 +1,4 @@
-# Validation Summary: How to Troubleshoot Missing OpenTelemetry Spans Between the Collector and OpenSearch
+# Validation Summary: Troubleshoot Missing OpenTelemetry Spans in OpenSearch
 
 ## Status
 validated

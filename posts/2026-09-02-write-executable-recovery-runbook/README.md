@@ -1,4 +1,4 @@
-# How to Write a Recovery Runbook an Unfamiliar On-Call Engineer Can Execute at 3 A.M.
+# Write a Recovery Runbook Anyone Can Execute at 3 A.M.
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

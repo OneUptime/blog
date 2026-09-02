@@ -1,4 +1,4 @@
-# Validation Summary: Why Is the `.opensearch-observability` Index Read-Only? Recovering from Flood-Stage Disk Watermarks
+# Validation Summary: Recover a Read-Only OpenSearch Observability Index
 
 ## Status
 validated

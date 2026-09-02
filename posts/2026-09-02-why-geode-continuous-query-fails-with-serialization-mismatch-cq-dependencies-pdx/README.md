@@ -1,4 +1,4 @@
-# Why Does a Geode Continuous Query Fail with a Serialization Mismatch? Checking CQ Dependencies and PDX
+# Why Geode Continuous Queries Fail with Serialization Mismatches
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

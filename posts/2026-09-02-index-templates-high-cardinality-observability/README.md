@@ -10,8 +10,8 @@ Description: Separate mapping growth from value cardinality and use explicit, qu
 
 “High cardinality” describes two different OpenSearch risks:
 
-1. **Many field names**—for example arbitrary Kubernetes labels—cause mapping explosion.
-2. **Many values in one field**—for example trace IDs—make terms/global-ordinal aggregations expensive.
+1. **Many field names**-for example arbitrary Kubernetes labels-cause mapping explosion.
+2. **Many values in one field**-for example trace IDs-make terms/global-ordinal aggregations expensive.
 
 An index template must address both. Raising `index.mapping.total_fields.limit` only postpones the first problem and does nothing for the second.
 

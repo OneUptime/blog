@@ -1,4 +1,4 @@
-# How to Configure Active-Active WAN Replication with Geode Gateway Senders and Receivers
+# Configure Active-Active Geode WAN Replication
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

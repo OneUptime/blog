@@ -1,4 +1,4 @@
-# Why Does an OpenSearch Per-Document Monitor Omit Source Fields? Fixing Trigger Context and Templates
+# Restore Source Fields in OpenSearch Per-Document Monitors
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

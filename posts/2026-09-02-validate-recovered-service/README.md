@@ -1,4 +1,4 @@
-# How to Prove a Recovered Service Is Ready with Synthetic Transactions and Data Reconciliation
+# Validate a Recovered Service with Synthetic Transactions
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -1,4 +1,4 @@
-# How to Keep Disaster Recovery Runbooks Current as Infrastructure and Credentials Change
+# Keep Disaster Recovery Runbooks Current
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

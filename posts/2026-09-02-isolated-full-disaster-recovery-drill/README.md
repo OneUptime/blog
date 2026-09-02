@@ -1,4 +1,4 @@
-# How to Run a Full Disaster Recovery Drill Without Sending Restored Services to Production Dependencies
+# Run an Isolated Full Disaster Recovery Drill
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

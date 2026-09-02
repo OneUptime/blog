@@ -1,4 +1,4 @@
-# Validation Summary: Why Does a Geode Continuous Query Fail with a Serialization Mismatch? Checking CQ Dependencies and PDX
+# Validation Summary: Why Geode Continuous Queries Fail with Serialization Mismatches
 
 ## Status
 validated

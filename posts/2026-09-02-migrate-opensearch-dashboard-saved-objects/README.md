@@ -1,4 +1,4 @@
-# How to Export and Recreate OpenSearch Dashboards, Visualizations, and Index Patterns Across Environments
+# Migrate OpenSearch Dashboards and Saved Objects
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
@@ -77,7 +77,7 @@ An index pattern has a saved-object ID as well as a title such as `logs-prod-*`.
 
 If the destination must use a different pattern, create it through Dashboards Management and update/re-save dependent visualizations in the test scope. Editing undocumented NDJSON internals by search-and-replace is risky: IDs can occur in structured references and embedded serialized state, and schemas are version-sensitive.
 
-For OpenSearch Dashboards 3.5+ observability workspaces with dataset management enabled, OpenSearch-backed logs and traces datasets store signal-specific configuration in `index-pattern` saved objects, while trace-to-logs correlations are separate, exportable saved objects. Include these objects in the migration—or recreate them where target-specific differences require it—and validate each logs dataset's schema mappings and correlations in the target environment. Because correlations reference datasets and dashboards do not reference the correlations, verify that the NDJSON contains them or select them explicitly for export.
+For OpenSearch Dashboards 3.5+ observability workspaces with dataset management enabled, OpenSearch-backed logs and traces datasets store signal-specific configuration in `index-pattern` saved objects, while trace-to-logs correlations are separate, exportable saved objects. Include these objects in the migration-or recreate them where target-specific differences require it-and validate each logs dataset's schema mappings and correlations in the target environment. Because correlations reference datasets and dashboards do not reference the correlations, verify that the NDJSON contains them or select them explicitly for export.
 
 ## Validate every layer
 

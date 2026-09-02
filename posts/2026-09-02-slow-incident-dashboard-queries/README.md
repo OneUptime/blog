@@ -1,4 +1,4 @@
-# Why Are OpenSearch Dashboard Queries Slow During Incidents? Diagnosing Shards, Mappings, and Expensive Aggregations
+# Diagnose Slow OpenSearch Dashboard Queries During Incidents
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

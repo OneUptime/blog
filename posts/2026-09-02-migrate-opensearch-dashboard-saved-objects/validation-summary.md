@@ -1,4 +1,4 @@
-# Validation Summary: How to Export and Recreate OpenSearch Dashboards, Visualizations, and Index Patterns Across Environments
+# Validation Summary: Migrate OpenSearch Dashboards and Saved Objects
 
 ## Status
 

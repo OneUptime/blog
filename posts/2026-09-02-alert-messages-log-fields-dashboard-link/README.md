@@ -1,4 +1,4 @@
-# How to Create OpenSearch Alert Messages That Include Matching Log Fields and a Dashboard Link
+# Add Log Fields and Dashboard Links to OpenSearch Alerts
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

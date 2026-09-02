@@ -1,4 +1,4 @@
-# How to Turn Recovery Drill Failures into Reliability Backlog with Owners and Deadlines
+# Turn Recovery Drill Failures into an Owned Backlog
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

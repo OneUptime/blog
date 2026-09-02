@@ -13,8 +13,9 @@ Split-brain occurs when disconnected parts of a system each believe they are aut
 The safety invariant is simple to state:
 
 ~~~text
-For each protected key or partition, at most one valid writer epoch
-may commit at any moment.
+For each protected key or partition, only the current writer epoch may
+commit, and the accepted epoch never decreases. Once superseded, an
+epoch may never commit again.
 ~~~
 
 DNS, health checks, and an orchestration lock do not enforce this invariant on their own.
@@ -23,16 +24,17 @@ DNS, health checks, and an orchestration lock do not enforce this invariant on t
 
 A leader-election service can tell cooperative processes which leader it currently recognizes. That is not enough if an old process pauses, loses contact, resumes, and can still write to an external database or device.
 
-etcd's documentation makes this boundary explicit: its lease and lock can safely coordinate etcd keys, but an external resource must itself provide version validation and consistent replicas. Use a **fencing token** that the protected write path checks.
+etcd's documentation makes this boundary explicit: its lease-backed lock can safely coordinate etcd-key updates only when lock ownership is validated in the same etcd transaction, but an external resource must itself provide version validation and consistent replicas. Use a **fencing token** that the protected write path checks.
 
 ~~~text
 epoch 41: region A may write
-failover allocates epoch 42
-storage accepts writes only when request_epoch == current_epoch
+failover allocates epoch 42 and conditionally advances storage from 41 to 42
+storage rejects any activation that does not advance current_epoch
+storage atomically commits a mutation only when request_epoch == current_epoch
 late region A request with epoch 41 is rejected
 ~~~
 
-The epoch must increase monotonically in a strongly consistent authority and must be validated at the final durable mutation boundary. Checking it only in an API gateway does not protect direct database workers or already-open connections.
+The epoch must increase monotonically in a linearizable authority and never be reused, including after recovery. Before writes begin, the protected resource must atomically advance its durable active epoch only when the proposed epoch is newer, using a compare-and-swap against the expected prior epoch or an equivalent conditional update. It must reject delayed or reordered activation requests and preserve this monotonicity across restore. The protected resource must then validate that epoch atomically with every durable mutation. Checking it only in an API gateway does not protect direct database workers or already-open connections.
 
 ## Use Product-Supported Quorum Correctly
 
@@ -61,17 +63,20 @@ Promotion should be a state machine:
 4. Verify fence from an independent path.
 5. Select a valid recovery position.
 6. Allocate a new writer epoch.
-7. Promote recovery data service.
-8. Enable application writes carrying the new epoch.
-9. Shift traffic.
+7. Promote recovery data service with application writes disabled.
+8. Atomically advance the protected resource to the new epoch with a conditional update, and verify prior epochs are rejected.
+9. Enable application writes carrying the new epoch.
+10. Shift traffic.
 ~~~
+
+In this sequence, steps 3 and 4 require a fence already enforced at every old durable commit path. The epoch advance in step 8 is an additional fence at the recovery resource; it cannot replace that pre-promotion prerequisite.
 
 Fencing mechanisms include:
 
 - power or hypervisor fencing;
 - storage fabric or volume access revocation;
 - database demotion through surviving quorum;
-- revoking old-site write credentials;
+- revoking old-site write credentials and invalidating existing authenticated sessions;
 - network isolation as a supplementary layer;
 - writer epochs enforced by storage.
 
@@ -129,7 +134,7 @@ old_epoch: 41
 new_epoch: 42
 old_history: committed
 new_history: absent
-resolution: replay-with-same-idempotency-key
+resolution: verify-side-effects-before-replay-or-import
 owner: orders
 ~~~
 
@@ -143,26 +148,26 @@ A power-off test does not exercise split-brain. Inject:
 - loss of consensus while workloads still reach storage;
 - paused old leader that resumes after lease expiry;
 - delayed in-flight write from the old epoch;
-- duplicate promotion request;
+- duplicate, delayed, or reordered epoch-activation request;
 - recovery controller restart;
 - DNS caches sending traffic to both sites;
 - source region returning after recovery writes;
 - failed reverse replication during failback.
 
-Assert that only one epoch commits and that stale attempts are visibly rejected. Preserve a per-epoch write ledger and compare it with durable state.
+Assert that writes commit only under the currently active epoch, that the accepted epoch never decreases, and that attempts from superseded epochs are visibly rejected. Preserve a per-epoch write ledger and compare it with durable state.
 
 ## Acceptance Criteria
 
 The design prevents split-brain when:
 
 - write authority is scoped per key or partition and represented by a monotonic epoch;
-- the final durable resource rejects stale epochs;
+- the final durable resource only advances its active epoch and rejects mutations from every other epoch;
 - consensus topology and failure tolerance follow current vendor documentation;
 - promotion cannot enable writes before independently verified fencing;
 - connection pools, jobs, queues, and retries cannot bypass the epoch;
 - returning old primaries remain fenced and rejoin only through rebuild or supported resynchronization;
 - uncertain writes have idempotency and domain reconciliation procedures;
-- partition and paused-leader exercises show exactly one committing epoch;
+- partition and paused-leader exercises show at most one active committing epoch, including expected intervals with no valid writer;
 - failback repeats the same fencing and authority-transfer discipline.
 
 Availability may require refusing writes during uncertainty. That is often safer than accepting two incompatible truths.

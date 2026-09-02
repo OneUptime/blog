@@ -1,4 +1,4 @@
-# How to Build an OpenSearch Dashboard That Links a Metric Spike to Its Logs and Traces
+# Link OpenSearch Metric Spikes to Logs and Traces
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

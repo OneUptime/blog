@@ -1,4 +1,4 @@
-# Validation Summary: How to Alert Only When an OpenSearch Monitor Changes State and Avoid Repeat Notifications
+# Validation Summary: Alert Only on OpenSearch Monitor State Changes
 
 ## Status
 validated

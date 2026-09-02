@@ -1,4 +1,4 @@
-# How to Validate Kubernetes Recovery by Restoring etcd and Rebuilding the Control Plane
+# Validate Kubernetes Recovery with etcd and Control Plane Restore
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
@@ -87,7 +87,7 @@ Choose the bump from measured write rate and maximum snapshot age according to t
 
 ## Rebuild the Control Plane
 
-Recreate hosts, networking, runtime, binaries, kubeconfigs, and static Pod manifests from pinned, reviewed configuration. Restore the original Kubernetes, etcd, and, where used, front-proxy CA trust bundles and leaf certificate/key pairs; retain the required CA signing keys or external-CA access when certificates must be reissued. Restore the deployed ServiceAccount signing and verification mechanism—local keys or external JWT-signer configuration and connectivity—or execute a separately tested trust migration. For kubeadm-managed clusters, use supported kubeadm phases or the organization's tested reconstruction procedure; do not run an unreviewed fresh kubeadm init over restored state.
+Recreate hosts, networking, runtime, binaries, kubeconfigs, and static Pod manifests from pinned, reviewed configuration. Restore the original Kubernetes, etcd, and, where used, front-proxy CA trust bundles and leaf certificate/key pairs; retain the required CA signing keys or external-CA access when certificates must be reissued. Restore the deployed ServiceAccount signing and verification mechanism-local keys or external JWT-signer configuration and connectivity-or execute a separately tested trust migration. For kubeadm-managed clusters, use supported kubeadm phases or the organization's tested reconstruction procedure; do not run an unreviewed fresh kubeadm init over restored state.
 
 Verify before startup:
 

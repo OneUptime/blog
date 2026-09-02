@@ -1,4 +1,4 @@
-# Validation Summary: How to Send OpenTelemetry Logs, Metrics, and Traces to OpenSearch Through a Single Collector
+# Validation Summary: Send All OpenTelemetry Signals to OpenSearch Through One Collector
 
 ## Status
 

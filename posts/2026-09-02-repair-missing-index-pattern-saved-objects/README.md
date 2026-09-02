@@ -1,4 +1,4 @@
-# Why Does an OpenSearch Dashboard Show “Could Not Locate That Index Pattern”? Repairing Saved Objects Safely
+# Repair Missing OpenSearch Dashboard Index Patterns
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

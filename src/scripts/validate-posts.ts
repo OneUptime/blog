@@ -240,7 +240,13 @@ async function main(): Promise<void> {
         // The Codex Linux sandbox can fail to start in restricted hosts where
         // bubblewrap cannot create user namespaces. Use Codex's noninteractive
         // no-sandbox mode here, matching Claude's permission-bypass mode below.
-        ? ['exec', '--dangerously-bypass-approvals-and-sandbox', '-']
+        ? [
+            'exec',
+            '--dangerously-bypass-approvals-and-sandbox',
+            '--config',
+            'model_reasoning_effort="low"',
+            '-',
+          ]
         : ['-p', '--dangerously-skip-permissions', prompt];
 
       const child = spawn(cmd, args, {

@@ -1,4 +1,4 @@
-# Validation Summary: Why Did the Restored Environment Start but the Application Still Fail? Finding Missing Secrets, DNS, and Certificates
+# Validation Summary: Find Missing Dependencies in a Restored Environment
 
 ## Status
 validated

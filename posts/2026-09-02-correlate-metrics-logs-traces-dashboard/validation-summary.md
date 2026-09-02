@@ -1,4 +1,4 @@
-# Validation Summary: How to Build an OpenSearch Dashboard That Links a Metric Spike to Its Logs and Traces
+# Validation Summary: Link OpenSearch Metric Spikes to Logs and Traces
 
 ## Status
 validated

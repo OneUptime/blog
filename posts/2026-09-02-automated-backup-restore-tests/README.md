@@ -1,4 +1,4 @@
-# Why a Successful Backup Job Does Not Prove Recoverability: Designing Automated Restore Tests
+# Prove Backups with Automated Restore Tests
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

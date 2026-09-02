@@ -1,4 +1,4 @@
-# Validation Summary: How to Validate Kubernetes Recovery by Restoring etcd and Rebuilding the Control Plane
+# Validation Summary: Validate Kubernetes Recovery with etcd and Control Plane Restore
 
 ## Status
 validated

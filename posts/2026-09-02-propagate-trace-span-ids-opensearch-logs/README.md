@@ -1,4 +1,4 @@
-# How to Propagate Trace and Span IDs into OpenSearch Log Documents for Cross-Signal Correlation
+# Add Trace and Span IDs to OpenSearch Logs
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
@@ -130,7 +130,7 @@ These queries use Data Prepper's `traceId` span field and the legacy log schema 
 
 ## Common correlation failures
 
-- **Logs outside a span:** logs emitted without an active context—for example, from uninstrumented startup, background, or asynchronously detached work—have no current span.
+- **Logs outside a span:** logs emitted without an active context-for example, from uninstrumented startup, background, or asynchronously detached work-have no current span.
 - **Context was not extracted:** downstream service starts a new trace instead of continuing the incoming one.
 - **IDs are buried in text:** parse structured JSON or use an OTLP bridge.
 - **IDs changed type:** a numeric or analyzed-text mapping corrupts exact lookup behavior.

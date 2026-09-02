@@ -1,4 +1,4 @@
-# How to Reduce OpenSearch Observability Costs with Rollover, Retention, and Tiered Storage
+# Reduce OpenSearch Costs with Rollover, Retention, and Tiers
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

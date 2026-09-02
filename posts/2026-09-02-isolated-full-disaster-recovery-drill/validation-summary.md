@@ -1,4 +1,4 @@
-# Validation Summary: How to Run a Full Disaster Recovery Drill Without Sending Restored Services to Production Dependencies
+# Validation Summary: Run an Isolated Full Disaster Recovery Drill
 
 ## Status
 validated

@@ -1,4 +1,4 @@
-# How to Prevent Out-of-Memory Errors When Reading Large Geode Regions Through the REST API
+# Prevent Out-of-Memory Errors in the Geode REST API
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
