@@ -151,7 +151,6 @@
 
 ## OpenSearch Observability
 
-3. How to Build an OpenSearch Dashboard That Links a Metric Spike to Its Logs and Traces
 4. How to Propagate Trace and Span IDs into OpenSearch Log Documents for Cross-Signal Correlation
 5. Why Is Filebeat Harvesting Files but Not Creating an OpenSearch Index? A Pipeline Debugging Guide
 6. How to Use OpenSearch Data Streams for Time-Series Logs Without Breaking Dashboard Index Patterns
