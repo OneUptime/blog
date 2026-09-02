@@ -151,7 +151,6 @@
 
 ## OpenSearch Observability
 
-20. How to Export and Recreate OpenSearch Dashboards, Visualizations, and Index Patterns Across Environments
 
 ## Recovery Engineering
 
