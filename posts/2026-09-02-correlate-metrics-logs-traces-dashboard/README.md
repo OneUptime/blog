@@ -25,7 +25,7 @@ span ID
 event timestamp
 ```
 
-Metrics usually carry these values as labels or resource attributes. Spans carry them as OpenTelemetry resource and span attributes. Logs must include the active trace and span IDs if you want an exact pivot; time and service alone produce only a broad approximation.
+Metrics should carry the stable service, environment, and namespace dimensions as labels or as resource attributes that the Prometheus ingestion path promotes to labels. Spans carry those stable dimensions as OpenTelemetry resource attributes and their IDs as trace context. Logs must include the active trace ID for an exact trace-to-log pivot; include the span ID as well for span-level correlation. Time and service alone produce only a broad approximation.
 
 Avoid high-cardinality values such as trace IDs as metric labels. Keep them on spans and log records, and use stable service/environment labels to move from the metric series to a bounded trace search.
 
@@ -34,8 +34,8 @@ Avoid high-cardinality values such as trace IDs as metric labels. Keep them on s
 Use an OpenTelemetry Collector as the application-facing OTLP endpoint. In the OpenSearch 3.6 APM architecture:
 
 - traces and logs flow through Data Prepper into OpenSearch;
-- metrics flow through OTLP into Prometheus;
-- Data Prepper creates raw span and service-map data, including RED metrics used by APM.
+- application metrics flow from the Collector over OTLP/HTTP into Prometheus;
+- Data Prepper processes raw spans for OpenSearch and uses `otel_apm_service_map` to generate service-map topology and APM RED metrics; it writes the topology to OpenSearch and remote-writes the RED metrics to Prometheus.
 
 Confirm the expected OpenSearch data before configuring the UI:
 
@@ -63,18 +63,18 @@ In an Observability workspace:
 6. Add the Prometheus data source to the workspace.
 7. In APM settings, select the trace dataset, service-map index pattern, and Prometheus data source.
 
-OpenSearch 3.5 introduced datasets and trace/log correlations. The integrated APM service workflow described in this section is 3.6+. On an older version, build the same investigation path with Trace Analytics and explicit dashboard links, using that version's documentation.
+OpenSearch 3.5 introduced datasets and dataset-based trace-to-log correlations. The integrated APM service workflow described in this section is 3.6+. On an older version, build the same investigation path with Trace Analytics and explicit dashboard links, using that version's documentation.
 
 ## Build the landing dashboard
 
 Use panels that answer progressively narrower questions:
 
-- Request rate, error ratio, and duration by `service.name` from Prometheus.
+- Request rate, error ratio, and duration from Prometheus, grouped by the service label (`service` for Data Prepper-generated APM RED metrics).
 - Error log count over time, grouped by service and severity.
 - Slow or failed operations from trace data.
 - A service map for dependency context.
 
-Keep the dashboard time range global and use a dashboard variable or filter for the stable service name. A useful log visualization can start with PPL similar to:
+Keep the dashboard time range global. On OpenSearch 3.6, filter each panel's query using that signal's actual service field or label; on 3.7+, a dashboard variable can carry one stable service value across PPL and PromQL panels. A useful log visualization can start with PPL similar to:
 
 ```text
 source = logs-otel-v1-*
@@ -89,7 +89,7 @@ Adjust field names to your indexed schema. The source expression, timestamp, and
 
 When a metric spike identifies `checkout` during a five-minute interval:
 
-1. Open **APM > Services** with that service and time interval.
+1. In **APM > Services**, select `checkout`, apply the same environment filter, and set the same five-minute interval.
 2. Select the affected metric or operation to open its related trace spans.
 3. Choose a failed or slow trace and inspect its span hierarchy.
 4. Open related logs from the trace or span details.
@@ -101,13 +101,13 @@ GET logs-otel-v1-*/_search
 {
   "query": {
     "term": {
-      "trace_id.keyword": "0123456789abcdef0123456789abcdef"
+      "traceId": "0123456789abcdef0123456789abcdef"
     }
   }
 }
 ```
 
-Use the exact mapped field. A `keyword` suffix is appropriate only if the mapping actually defines one.
+Use the exact mapped field. The default Data Prepper log template maps `traceId` directly as a `keyword`; a `.keyword` suffix is appropriate only if the mapping actually defines one.
 
 ## Validate the operator experience
 
