@@ -148,7 +148,6 @@
 
 ## Apache Geode
 
-14. How to Configure Persistent Regions and Disk Stores Without Filling the Disk
 15. Why Doesn’t Geode Disk Usage Shrink After Entries Are Deleted? Oplogs and Compaction Explained
 16. How to Back Up and Restore Apache Geode Persistent Regions with `gfsh backup disk-store`
 17. How to Configure Active-Active WAN Replication with Geode Gateway Senders and Receivers
