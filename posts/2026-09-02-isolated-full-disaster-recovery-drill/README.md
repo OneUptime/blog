@@ -59,7 +59,7 @@ Give the drill its own resolver and private zone. Map required service names to 
 
 ### Identity boundary
 
-Use a dedicated drill account, project, subscription, or narrowly scoped role. Production secrets should be unavailable even if network policy is accidentally weakened. Issue short-lived credentials tagged with the exercise ID.
+Use a dedicated drill account, project, subscription, or narrowly scoped role. Production secrets should be unavailable even if network policy is accidentally weakened. Issue short-lived credentials and associate each identity or session with the exercise ID.
 
 ### Application boundary
 
@@ -69,8 +69,9 @@ Set an unmistakable environment marker and force side-effecting adapters into dr
 if environment == "drill":
     assert payment_mode == "sandbox"
     assert mail_transport == "capture"
-    assert webhook_base_url ends_with ".drill.internal"
-    assert production_credential_fingerprints intersection loaded_secrets is empty
+    assert parse_url(webhook_base_url).scheme == "https"
+    assert parse_url(webhook_base_url).hostname in approved_drill_webhook_hosts
+    assert production_credential_fingerprints intersection fingerprints(loaded_secrets) is empty
 ~~~
 
 ### Data boundary
@@ -86,14 +87,14 @@ preflight:
   - no_route: production_cidrs
   - dns_must_fail: prod-write.internal.example
   - tcp_must_fail: production_database:5432
-  - identity_must_deny: production-object-store-write
+  - identity_policy_must_deny: production-object-store-write
   - required_sinks_healthy: [mail, sms, webhook, payment]
   - unique_run_id_present: true
   - cleanup_owner_present: true
   - stop_authority_present: true
 ~~~
 
-Run a continuous escape canary during the drill, not only at startup. Cloud routes and identity policies can change while an exercise is running.
+Evaluate production write permissions with a non-mutating policy simulator or equivalent authorization analysis. If a live probe is required, target a dedicated non-production canary; do not test a denial by attempting a real production write. Run a continuous, non-mutating escape canary during the drill, not only at startup. Cloud routes and identity policies can change while an exercise is running.
 
 ## Execute the Full Drill
 
@@ -104,7 +105,7 @@ Run a continuous escape canary during the drill, not only at startup. Cloud rout
 5. **Recover in documented order.** Restore data, rebuild foundations, start control services, then application tiers.
 6. **Exercise degraded modes.** Do not silently replace missing required dependencies; observe whether the service fails safely.
 7. **Validate business flows.** Drive synthetic transactions through the normal ingress path and inspect sink outputs.
-8. **Measure RTO and RPO.** Use captured event timestamps and data watermarks.
+8. **Evaluate RTO and RPO.** Measure the achieved recovery duration and determine the achieved recovery point from captured event timestamps and data watermarks, then compare them with the objectives.
 9. **Test stop and rollback.** Confirm the incident commander can halt automation and revoke drill access.
 10. **Export evidence and clean up.** Destroy exact run-tagged resources, revoke identities, and verify that no route, record, or temporary secret remains.
 
@@ -124,7 +125,7 @@ The drill passes only when:
 - network, DNS, identity, application, and data isolation checks remain green throughout;
 - all outbound side effects appear only in approved sinks or sandboxes;
 - synthetic business flows and integrity checks pass;
-- measured RTO and RPO meet their contracts;
+- measured recovery duration is within the RTO, and the achieved recovery point is within the RPO;
 - abort and credential-revocation paths work;
 - every temporary resource is attributable to one run ID and cleanup is verified;
 - an after-action report assigns owners and deadlines to gaps.
