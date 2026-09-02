@@ -14,8 +14,9 @@ Start by locating the phase:
 
 | Failure point | Typical dependency |
 | --- | --- |
-| `newCq` or `execute` fails | Region, legal CQ syntax, server-side field access, authentication |
-| `executeWithInitialResults` fails | Everything above plus client deserialization of result values |
+| `newCq` fails | Legal CQ syntax and shape, a unique CQ name, valid arguments |
+| `execute` fails | Region existence and type, pool and subscription connectivity, authentication and authorization |
+| `executeWithInitialResults` fails | Everything above plus evaluation of current entries, result serialization, client deserialization, or a read timeout |
 | CQ runs but listener `onError` fires | Serialization or query evaluation for a particular changed entry |
 | `onEvent` throws | Client class/serializer or an unsafe listener cast |
 | Only one server fails | JAR, PDX, region, index, or security configuration drift on that server |
@@ -24,7 +25,7 @@ That distinction prevents a common mistake: repeatedly changing the client's lis
 
 ## Confirm That the Query Is a Legal CQ
 
-A CQ is not an arbitrary OQL query. Current Geode CQ rules require a `SELECT` over one replicated or partitioned region. The query cannot use cross-region joins, nested-collection drill-downs, `DISTINCT`, projections, bind parameters, `ORDER BY`, `GROUP BY`, or aggregate functions.
+A CQ is not an arbitrary OQL query. Current Geode CQ rules require a `SELECT` over one partitioned region, or one replicated region that does not use local-destroy eviction. The query cannot use cross-region joins, nested-collection drill-downs, `DISTINCT`, projections, bind parameters, `ORDER BY`, `GROUP BY`, or aggregate functions.
 
 Use a minimal query first:
 
@@ -68,7 +69,7 @@ Check all of these processes, not just the registering client:
 For class-based serialization, deploy the same domain and serializer JAR to every relevant server:
 
 ```text
-gfsh> deploy --jar=/opt/geode/app/order-model.jar
+gfsh> deploy --jars=/opt/geode/app/order-model.jar
 gfsh> list deployed
 ```
 
@@ -79,7 +80,7 @@ gfsh> start server --name=server-1 \
   --classpath=/opt/geode/app/order-model.jar
 ```
 
-`deploy` updates member classpaths and cluster configuration, whereas an ad hoc local `CLASSPATH` can easily differ between servers. Restart or redeploy consistently after replacing a JAR; a single stale server can make a CQ fail only after failover.
+`deploy` updates the targeted member classpaths and, when the cluster configuration service is enabled, persists the JAR in cluster configuration. An ad hoc local `CLASSPATH` can easily differ between servers. Restart or redeploy consistently after replacing a JAR; a single stale server can make a CQ fail only after failover.
 
 ## Do Not Mix Serialization Contracts Under One Region
 
@@ -88,7 +89,7 @@ A region can technically contain heterogeneous values, but a CQ predicate assume
 - one producer writes `total` as a PDX `DOUBLE`, another writes it as a string;
 - an old object uses `amount`, while the CQ queries `total`;
 - one client writes Java-serialized objects and another writes PDX under the same keys;
-- two `PdxSerializer` implementations use different PDX type or field names;
+- different writers use different PDX class names for values that consumers expect to share one domain type, or their `PdxSerializer` implementations use different field names;
 - the same PDX field changes from `INT` to `LONG`; or
 - the server evaluates a domain method whose class is absent or blocked by the method invocation authorizer.
 
@@ -101,8 +102,10 @@ if (value instanceof PdxInstance pdx) {
   System.out.println("type=" + pdx.getClassName());
   System.out.println("fields=" + pdx.getFieldNames());
   System.out.println("total=" + pdx.getField("total"));
-} else {
+} else if (value != null) {
   System.out.println("runtimeType=" + value.getClass().getName());
+} else {
+  System.out.println("value=<missing-or-invalid>");
 }
 ```
 
@@ -110,13 +113,13 @@ Compare multiple writers and old data, not only a newly inserted happy-path reco
 
 ## Use PDX to Remove Unnecessary Server Class Dependencies
 
-PDX lets the query engine access named fields without fully deserializing the value. Configure it before starting data servers:
+PDX lets the query engine access named fields without fully deserializing the value. With the cluster configuration service enabled, configure it before starting data servers:
 
 ```text
 gfsh> configure pdx --read-serialized=true
 ```
 
-An already running server will not adopt a new `configure pdx` setting until restart. The equivalent embedded-server setting must be made before cache creation:
+`configure pdx` fails when the cluster configuration service is disabled; in that case configure each server through cache XML or the API. An already running server will not adopt a new `configure pdx` setting until restart. The equivalent embedded-server setting must be made before cache creation:
 
 ```java
 Cache cache = new CacheFactory()
@@ -140,11 +143,22 @@ Then handle the event defensively:
 final class OrderCqListener implements CqListener {
   @Override
   public void onEvent(CqEvent event) {
-    Object value = event.getNewValue();
+    Operation queryOperation = event.getQueryOperation();
 
-    if (value == null) { // destroy in the base region or query results
+    if (queryOperation.isClear() || queryOperation.isRegionInvalidate()) {
+      clearView();
+      return;
+    }
+
+    if (queryOperation.isDestroy()) {
       removeFromView(event.getKey());
       return;
+    }
+
+    Object value = event.getNewValue();
+
+    if (value == null) {
+      throw new IllegalStateException("CQ create/update event has no new value");
     }
 
     if (!(value instanceof PdxInstance order)) {
@@ -157,13 +171,14 @@ final class OrderCqListener implements CqListener {
       throw new IllegalStateException("orders.total is not numeric: " + rawTotal);
     }
 
-    applyToView(event.getKey(), total.doubleValue(), event.getQueryOperation());
+    applyToView(event.getKey(), total.doubleValue(), queryOperation);
   }
 
   @Override
   public void onError(CqEvent event) {
     log.error("CQ error key={} baseOp={} queryOp={}",
-        event.getKey(), event.getBaseOperation(), event.getQueryOperation());
+        event.getKey(), event.getBaseOperation(), event.getQueryOperation(),
+        event.getThrowable());
   }
 
   @Override
@@ -171,28 +186,31 @@ final class OrderCqListener implements CqListener {
 }
 ```
 
-PDX solves class availability only if every writer follows one PDX contract. The same named PDX field cannot change physical type. Add a new field when changing representation, deploy readers that understand both, and migrate data deliberately.
+PDX removes the domain-class dependency only for entries actually encoded as PDX; writers still need a compatible query-facing contract for fields the predicate relies on. For versions of the same PDX class, the physical type of an existing named field cannot change. Add a new field when changing representation, deploy readers that understand both, and migrate data deliberately.
 
 ## Separate Server Evaluation from Client Deserialization
 
-Register the same query in two ways during diagnosis:
+Run the same CQ in two modes during diagnosis. A running CQ must be stopped before it can be executed again:
 
 ```java
 CqQuery cq = queryService.newCq("large-orders", query, attributes);
 
-// Tests registration and future event delivery without returning current values.
+// Starts event delivery without returning current values.
 cq.execute();
 ```
 
-If `execute()` works but this call fails, focus on the initial-result return path and client deserialization:
+If `execute()` works, stop that run before testing initial results:
 
 ```java
+cq.stop();
 CqResults<?> initial = cq.executeWithInitialResults();
 ```
 
+If `execute()` works but `executeWithInitialResults()` fails, investigate both the server-side evaluation of current entries and the result-return path. Run the equivalent ordinary server query against a small, known population to expose field-access errors, then check result serialization and client deserialization.
+
 `executeWithInitialResults()` returns rows containing keys and values and can also take long enough to hit the pool read timeout on a large data set. A timeout is not a serialization mismatch, so correlate the client exception with server logs and CQ statistics before changing types. If initial state is required, restrict region size or raise the read timeout based on a measured upper bound; do not blindly use a huge timeout for an unbounded result.
 
-If both execute modes fail, run a normal server query against a small, known key population to expose field-access errors. Remember that a successful ordinary OQL query does not prove the full CQ is legal; it only tests the server's ability to evaluate the value.
+If plain `execute()` also fails, focus on the common registration prerequisites: CQ legality, region availability and type, pool subscriptions and connectivity, and security. Remember that a successful ordinary OQL query does not prove the full CQ is legal; it only tests the server's ability to evaluate the value.
 
 ## Understand PDX Versioning Boundaries
 
@@ -200,7 +218,7 @@ Adding or removing a PDX field is supported. A missing field can produce a defau
 
 For a rolling addition, first query a field common to all versions. If a new predicate depends on a new field, backfill old entries or design the expression and data so missing fields have intentional behavior. Do not assume that comparing `UNDEFINED`, null, a primitive default, and a real value gives the same result.
 
-Leave `ignore-unread-fields` false on members that deserialize and reserialize evolving values. Otherwise an older member can discard a field that it did not understand. Persist the PDX metadata registry when PDX is combined with persistent regions or gateway senders.
+Leave `ignore-unread-fields` false on members that deserialize and reserialize evolving values. Otherwise an older member can discard a field that it did not understand. Persist the PDX metadata registry when PDX is combined with persistent regions or regions that use a gateway sender.
 
 ## Check Security Errors Before Blaming Serialization
 
@@ -212,7 +230,7 @@ Prefer direct PDX field access in CQ predicates. It needs less classpath surface
 
 Use this order to avoid changing several variables at once:
 
-1. Verify the region exists on every eligible server and is replicated or partitioned.
+1. Verify the region exists on every eligible server and is partitioned, or is replicated without local-destroy eviction.
 2. Reduce the CQ to `SELECT * FROM /region alias WHERE alias.simpleField = literal`.
 3. Confirm the pool has `subscription-enabled=true`.
 4. Compare `execute()` with `executeWithInitialResults()`.
@@ -220,7 +238,7 @@ Use this order to avoid changing several variables at once:
 6. Identify the exact key and producer for the failing value.
 7. Inspect its PDX type name, field names, and field value classes.
 8. Compare deployed JARs and PDX settings on every server, including redundancy targets.
-9. Put one known-good value, update it across the predicate boundary, then destroy it.
+9. Put one known-good non-matching value, update it to matching, update it again while it still matches, then update it to non-matching. Move it back into the result and destroy it to test a base-region destroy as well.
 10. Fail over the primary subscription server and repeat the test.
 
 A correct test covers three CQ transitions: non-match to match produces a query `CREATE`, match to match produces `UPDATE`, and match to non-match produces `DESTROY`. The base-region operation can differ from the query-result operation, so log both.
@@ -237,6 +255,6 @@ A CQ serialization mismatch is best treated as a pipeline failure, not a listene
 - [Querying serialized objects](https://geode.apache.org/docs/guide/latest/developing/query_select/the_where_clause.html)
 - [Programming applications to use PdxInstance](https://geode.apache.org/docs/guide/latest/developing/data_serialization/program_application_for_pdx.html)
 - [Setting up the server classpath](https://geode.apache.org/docs/guide/latest/getting_started/setup_classpath.html)
-- [Implementing authorization](https://geode.apache.org/docs/guide/latest/managing/security/implementing_authorization.html)
+- [Implementing authorization](https://geode.apache.org/docs/guide/latest/security/implementing_authorization.html)
 - [`CqQuery` Java API](https://geode.apache.org/releases/latest/javadoc/org/apache/geode/cache/query/CqQuery.html)
 - [`PdxInstance` Java API](https://geode.apache.org/releases/latest/javadoc/org/apache/geode/pdx/PdxInstance.html)
