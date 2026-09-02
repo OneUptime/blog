@@ -154,7 +154,6 @@
 
 ## Recovery Engineering
 
-14. How to Test DNS Cutover, Traffic Draining, and TTLs Before a Regional Failover
 15. How to Prevent Split-Brain and Stale Writes During Failover and Failback
 16. How to Plan a Safe Failback After the Disaster Recovery Site Becomes Primary
 17. How to Build an Isolated Recovery Test Environment with Limited Cloud Budget
