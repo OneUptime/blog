@@ -24,7 +24,7 @@ critical_schemas: [orders, ledger, outbox]
 required_extensions: [pgcrypto]
 minimum_schema_version: 2026090201
 source_watermark_query: SELECT max(commit_sequence) FROM recovery_watermark
-physical_check: pg_amcheck --all
+structural_check: pg_amcheck --all
 invariants:
   - every_order_has_ledger_entries
   - captured_amount_equals_ledger_amount
@@ -56,7 +56,7 @@ Keep external side effects blocked when an application later connects. Use a rea
 
 Verify manifests, object presence, stored hashes, encryption access, and the complete full/incremental/log chain. This finds transfer and retention failures before database startup.
 
-For PostgreSQL base backups, pg_verifybackup compares files with the backup manifest and checks required WAL where configured. PostgreSQL explicitly states that verification is not a substitute for test restores.
+For plain-format PostgreSQL backups created by `pg_basebackup` with a backup manifest, or tar-format backups after extraction, `pg_verifybackup` compares the files with that manifest. Unless WAL parsing is disabled, it also verifies that the manifest-declared WAL needed to recover the backup is present and parseable; it does not check extra archived WAL needed to reach a later point-in-time recovery target. WAL verification must use the `pg_verifybackup` version that matches the backup. PostgreSQL explicitly states that verification is not a substitute for test restores.
 
 ### 2. Physical and storage-engine integrity
 
@@ -122,10 +122,10 @@ Start a compatible application against the restored database with side effects r
 
 1. authenticate as a test user;
 2. read a known sentinel;
-3. create a uniquely tagged synthetic transaction;
+3. create and commit a uniquely tagged synthetic transaction under the required durability policy;
 4. read it back through a separate connection;
 5. verify database, outbox, cache, and sink effects;
-6. roll back or retain it according to the isolated-test policy.
+6. clean it up in a new transaction or retain it according to the isolated-test policy.
 
 This catches prepared statements, permissions, schema expectations, connection TLS, and transaction behavior that database-native checks cannot.
 
@@ -173,8 +173,8 @@ Startup is the beginning of validation, not its conclusion.
 
 ## Official References
 
-- [PostgreSQL: pg_verifybackup](https://www.postgresql.org/docs/current/app-pgverifybackup.html)
-- [PostgreSQL: amcheck](https://www.postgresql.org/docs/current/amcheck.html)
+- [PostgreSQL 17: pg_verifybackup](https://www.postgresql.org/docs/17/app-pgverifybackup.html)
+- [PostgreSQL 17: amcheck](https://www.postgresql.org/docs/17/amcheck.html)
 - [Microsoft SQL Server: DBCC CHECKDB](https://learn.microsoft.com/en-us/sql/t-sql/database-console-commands/dbcc-checkdb-transact-sql)
 - [Microsoft SQL Server: RESTORE VERIFYONLY](https://learn.microsoft.com/en-us/sql/t-sql/statements/restore-statements-verifyonly-transact-sql)
 - [MongoDB: validate command](https://www.mongodb.com/docs/manual/reference/command/validate/)
