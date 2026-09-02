@@ -154,7 +154,6 @@
 
 ## Recovery Engineering
 
-18. How Often Should You Run Restore Tests, Tabletop Exercises, and Full Failover Drills?
 19. How to Turn Recovery Drill Failures into Reliability Backlog with Owners and Deadlines
 20. How to Prove a Recovered Service Is Ready with Synthetic Transactions and Data Reconciliation
 
