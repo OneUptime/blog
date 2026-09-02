@@ -26,7 +26,7 @@ The example uses two partitioned, persistent `/orders` regions and parallel gate
 
 ## Give Each Site a Unique Distributed-System ID
 
-WAN discovery requires locators. Configure every locator in a site with the same local `distributed-system-id`, and give each site a different ID.
+WAN discovery requires locators. Configure every member in a site, including its locators and data servers, with the same local `distributed-system-id`, and give each site a different ID.
 
 Site A `gemfire.properties`:
 
@@ -52,7 +52,7 @@ Start each site's locators before its data servers. Keep the default `conserve-s
 
 ## Select Parallel or Serial Senders from the Region Type
 
-A parallel gateway sender is deployed on every member hosting the attached partitioned region. Members owning primary buckets send those bucket events concurrently. This scales with the partitioned region and preserves ordering for events delivered to a particular partition.
+A parallel gateway sender is deployed on every member hosting the attached partitioned region. Members owning primary buckets send those bucket events concurrently. This scales with the partitioned region; it does not preserve region-wide ordering, although ordering within a particular partition can be preserved.
 
 A replicated region cannot use a parallel sender; use a serial sender. Multiple instances of the same serial sender provide high availability, but only one is primary at a time. A serial sender offers stronger centralized ordering control at lower horizontal throughput.
 
@@ -66,7 +66,7 @@ PDX is the safest format for independently deployed sites. It lets the receiver 
 gfsh> configure pdx --read-serialized=true --disk-store=DEFAULT
 ```
 
-Run the command in each site's cluster configuration. The default PDX store is separate from the named `WanDataStore` used below. Use exactly compatible PDX type names, field names, physical field types, and identity fields in both sites.
+Run the command in each site's cluster configuration. The default PDX store is separate from the named `WanDataStore` used below. Use compatible PDX schemas in both sites: keep logical type names, each existing field's physical type, and identity-field choices consistent. PDX supports schema evolution by adding or removing fields.
 
 If a server was already running when PDX was configured, restart it before admitting data. Back up PDX metadata with the region and queue stores.
 
@@ -192,11 +192,11 @@ The default gives eventual convergence, not application-specific merging. It can
 - store field-level or domain version information and merge in the application; or
 - deploy a custom `GatewayConflictResolver` on every relevant member.
 
-A custom resolver receives potentially conflicting cross-site events and decides whether to apply the remote event. It must be deterministic across sites and versions. Test equal timestamps, clock skew, deletes, reconnect bursts, and rolling deployments. A resolver does not turn WAN replication into a distributed lock.
+A custom resolver receives potentially conflicting cross-site events and decides whether to apply the remote event. It must be deterministic across sites and versions and make the same decision for a pair of events regardless of arrival order. Test equal timestamps, clock skew, deletes, reconnect bursts, and rolling deployments. A resolver does not turn WAN replication into a distributed lock.
 
 ## Avoid Topology Loops and Duplicate Paths
 
-For two sites, one sender per direction is a direct mesh and is easy to reason about. Geode tracks distributed-system IDs to avoid forwarding an event back to a site known to have seen it. In larger topologies, some non-mesh paths can still deliver more than one copy to a site. Prefer a fully connected mesh when the site count and network policy permit it, or validate the official ring and hub-and-spoke rules before adding indirect forwarding.
+For two sites, one sender per direction is a direct mesh and is easy to reason about. Geode tracks distributed-system IDs to avoid forwarding an event back to a site known to have seen it. Messages do not accumulate the IDs of every transit site, however, so any topology that can deliver the same update twice to a site does not work and is unsupported. Prefer a fully connected mesh when the site count and network policy permit it; otherwise use a supported ring or hybrid/tree topology from the official rules.
 
 Never reuse a `distributed-system-id` across two independent sites. Conflict metadata and forwarding decisions depend on those IDs being unique.
 
@@ -217,6 +217,8 @@ ssl-truststore-password=${PROTECTED_SECRET}
 ```
 
 Property files do not interpolate shell variables automatically; the placeholder illustrates secret injection by the process supervisor. Protect the real `gfsecurity.properties` file or use the JSSE default-context mechanism supported by the deployment. Certificate subject alternative names must match advertised receiver hosts when endpoint identification is enabled.
+
+The `gateway` component covers sender-to-receiver replication sockets. If remote-locator discovery also crosses an untrusted network, enable the separate `locator` SSL component consistently on locators and on every process that contacts them.
 
 Gateway senders and receivers use their server member's Geode security credentials for integrated authentication. TLS trust and Geode authorization solve different layers; configure both where required.
 
