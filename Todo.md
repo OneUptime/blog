@@ -154,7 +154,6 @@
 
 ## Recovery Engineering
 
-7. How to Keep Disaster Recovery Runbooks Current as Infrastructure and Credentials Change
 8. How to Write a Recovery Runbook an Unfamiliar On-Call Engineer Can Execute at 3 A.M.
 9. How to Automate a Disaster Recovery Runbook Without Creating a Dangerous One-Click Failover
 10. How to Test Database Restores for Data Integrity, Not Just Startup Success
