@@ -60,7 +60,7 @@ The synthetic must use the normal ingress, authorization, application, and persi
 }
 ~~~
 
-Use run-specific data and idempotency keys. Never reuse a real customer identity or a transaction that can charge, notify, ship, or modify production.
+Use run-specific data and idempotency keys. Never use a real customer identity or a transaction that can charge a real payment method, notify a real recipient, ship goods, or make uncontrolled production changes.
 
 ## Test Reads and Writes Separately
 
@@ -72,11 +72,11 @@ Start with read-only checks while the recovered service remains isolated:
 - search or cache freshness fits degraded-mode policy;
 - error responses do not expose restored secrets.
 
-Before enabling recovery writes during a real failover, independently prove that the old writer is fenced or that the protected write path rejects its stale epoch. Then approve write enablement and run the synthetic write. Read it from a new process or connection so an in-memory response cannot masquerade as durability. For asynchronous systems, define a bounded convergence time and poll by business ID; do not use an arbitrary sleep.
+Before enabling recovery writes during a real failover, independently prove that the old writer is fenced or that the protected write path rejects its stale epoch. Then approve write enablement and run the synthetic write. Read it from a new process or connection so the request path cannot simply reuse its in-memory result. This check does not by itself prove crash durability: also verify the datastore's configured durability guarantee and, where the recovery contract requires failover survival, confirm the transaction after a restart or primary handoff. For asynchronous systems, define a bounded convergence time and poll by business ID; do not use an arbitrary sleep.
 
 ## Reconcile the Recovery Point
 
-Capture a source cutoff before the exercise or from an independent immutable producer ledger:
+Capture the final acknowledged source cutoff at the planned service-interruption or fencing boundary; for an unplanned event, derive the final pre-interruption acknowledged cutoff from an independent immutable producer ledger:
 
 ~~~yaml
 source_cutoff:
@@ -91,7 +91,7 @@ acknowledged_write_loss_span_seconds: 36.588
 lost_write_count: 11
 ~~~
 
-Recovery-point age compares the declared failure time with the last recovered commit and is the direct time-based RPO measurement. The acknowledged-write loss span compares source and recovered cutoffs. Sequence subtraction is valid here only because the example assumes one common gap-free sequence and suffix loss. Otherwise, reconcile explicit business IDs. Verify the highest **continuous** valid sequence; a later row does not compensate for an unexplained gap.
+Recovery-point age compares the service-interruption time with the last recovered commit and is the observed recovery-point gap to compare against the RPO. The acknowledged-write loss span compares the final acknowledged source cutoff with the recovered cutoff. Sequence subtraction is valid here only because the example assumes one common gap-free sequence and suffix loss. Otherwise, reconcile explicit business IDs. Verify the highest **continuous** valid sequence; a later row does not compensate for an unexplained gap.
 
 Use several reconciliation layers:
 
@@ -138,9 +138,12 @@ For a real recovery, use read-only provider queries and domain-approved correcti
 ~~~yaml
 recovery_acceptance:
   run_id: dr-2026-09-02-01
-  release_digest: sha256:example
+  release_digest: "sha256:a2121d055ea5b86a107713b4cc87b1ba2a8aaf9b26de69935c9f57cc2c9cc17b"
+  configuration_digest: "sha256:89d965368fcb06db3741fe39b6832c500b7888b83545ad33327e7de587000290"
   recovery_point: backup-4812
-  rto_started_at: 2026-09-02T01:00:00Z
+  recovery_target: checkout-recovery-eu-west-2
+  writer_epoch: 17
+  service_interrupted_at: 2026-09-02T01:00:10.000Z
   business_accepted_at: 2026-09-02T01:22:14.602Z
   infrastructure: pass
   control_plane: pass
@@ -153,7 +156,7 @@ recovery_acceptance:
   cross_store_reconciliation: pass
   external_side_effects: captured-only
   capacity_headroom_percent: 42
-  actual_rto_seconds: 1334.602
+  actual_recovery_time_seconds: 1324.602
   approved_by: [incident-commander, service-owner, data-owner]
   traffic_limit_percent: 5
 ~~~
@@ -190,7 +193,7 @@ The recovered service is ready when:
 - pre-recovery sentinels and a new run-tagged transaction are independently readable;
 - old-writer fencing is proven before recovery writes are enabled during failover;
 - the new write is durable and all required side effects reconcile;
-- failure time and the recovered point prove recovery-point age, while source and recovered watermarks quantify acknowledged-write loss;
+- interruption time and the recovered point measure recovery-point age for comparison with RPO, while the final acknowledged source and recovered watermarks quantify acknowledged-write loss;
 - structural, aggregate, invariant, and cross-store checks pass;
 - external dependencies are sandboxed in tests and reconciled in real recovery;
 - acceptance is bound to exact recovery inputs and approved roles;
