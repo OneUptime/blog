@@ -154,7 +154,6 @@
 
 ## Recovery Engineering
 
-16. How to Plan a Safe Failback After the Disaster Recovery Site Becomes Primary
 17. How to Build an Isolated Recovery Test Environment with Limited Cloud Budget
 18. How Often Should You Run Restore Tests, Tabletop Exercises, and Full Failover Drills?
 19. How to Turn Recovery Drill Failures into Reliability Backlog with Owners and Deadlines
