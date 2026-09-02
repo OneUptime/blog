@@ -40,7 +40,7 @@ Place non-negotiable warnings before the first action:
 
 - old writers must be fenced before enabling new writers;
 - restored workloads must remain isolated until side-effect checks pass;
-- all resource selectors must include the exact incident or exercise ID;
+- selectors for recovery-created resources must include the exact incident or exercise ID;
 - no step may disable TLS verification or expose credentials in logs.
 
 ### 3. Roles and communication
@@ -57,6 +57,8 @@ SOURCE_SITE       Failed or isolated site identifier
 TARGET_SITE       Approved recovery site
 RECOVERY_POINT    Immutable backup or log position approved by data owner
 ARTIFACT_RELEASE  Signed application release
+EXPECTED_TARGET_ACCOUNT  Exact target account ID approved for this run
+APPROVED_MINIMUM_SEQUENCE  Oldest acceptable restored sequence approved by data owner
 ~~~
 
 Provide examples that are unmistakably non-production and explain how to verify each value.
@@ -93,7 +95,7 @@ Command:
     --confirm-target-account EXPECTED_TARGET_ACCOUNT
 
 Expected:
-  operation_id is returned;
+  operation_id is returned and captured as OPERATION_ID;
   target name includes RECOVERY_RUN_ID;
   final state is RESTORED_READ_ONLY.
 
@@ -174,7 +176,7 @@ The runbook is ready for an unfamiliar on-call engineer when:
 - destructive and write-enabling actions have explicit approvals;
 - target context and recovery point cannot be silently inferred;
 - a cold reader completes an isolated recovery without private coaching;
-- the procedure produces an evidence bundle and measured RTO/RPO;
+- the procedure produces an evidence bundle and measures actual recovery time and achieved recovery point against the RTO and RPO;
 - all discovered ambiguity becomes an owned correction and is retested.
 
 The standard is not literary completeness. It is safe, observable execution under pressure.
