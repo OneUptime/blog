@@ -148,7 +148,6 @@
 
 ## Apache Geode
 
-17. How to Configure Active-Active WAN Replication with Geode Gateway Senders and Receivers
 18. Why Does Geode Reject Inconsistent Gateway Sender IDs Across Region Hosts?
 19. How to Add Mutual TLS and Certificate-Based Authentication to Apache Geode
 20. How to Prevent Out-of-Memory Errors When Reading Large Geode Regions Through the REST API
