@@ -2700,6 +2700,26 @@
 18. How to Delay Argo Rollouts ReplicaSet Scale-Down Until In-Flight Connections Drain
 19. How to Separate Stable and Canary Pods Across Nodes with Argo Rollouts Anti-Affinity
 20. How to Build Custom Argo Rollouts Notification Triggers with `when` Conditions
+21. How to Install the Argo Rollouts Controller and kubectl Plugin with Helm
+22. How to Convert a Kubernetes Deployment to an Argo Rollout with `workloadRef`
+23. How to Build a Staged Canary Rollout with Traffic Weights, Pauses, and Manual Promotion
+24. How to Configure Blue-Green Deployments with Active and Preview Services in Argo Rollouts
+25. How to Fix Argo Rollouts Canary Traffic Stuck at 50/50 with NGINX Ingress
+26. How to Route Employee or Test Traffic to an Argo Rollouts Canary with Istio Headers
+27. How to Run Zero-Downtime Argo Rollouts Canaries with AWS ALB Target Groups
+28. How to Automate Canary Promotion and Rollback with Prometheus `AnalysisTemplates`
+29. How to Write Reliable Argo Rollouts `successCondition` and `failureCondition` Expressions
+30. How to Pass Secrets, Labels, and Stable/Canary Pod Hashes into an `AnalysisTemplate`
+31. How to Run Kubernetes Integration Tests Before Sending Live Traffic to a Canary
+32. How to Reduce Canary Surge Capacity with Argo Rollouts `dynamicStableScale` Without Dropping Traffic
+33. How to Abort, Roll Back, Retry, and Recover a Degraded Argo Rollout
+34. How to Prevent Argo CD Syncs and PostSync Hooks from Stalling on a Paused Rollout
+35. How to Autoscale Argo Rollouts Safely with HPA and `setCanaryScale`
+36. How to Combine Manual Approval with Timed Auto-Promotion in Argo Rollouts
+37. How to Debug an Argo Rollout Stuck in Paused, Progressing, or `ProgressDeadlineExceeded`
+38. How to Prevent Connection Drops with `scaleDownDelaySeconds` and Delayed ReplicaSet Cleanup
+39. How to Build Reusable Helm Templates for Canary and Blue-Green Argo Rollouts
+40. How to Send Slack Notifications for Paused, Failed, Aborted, and Completed Argo Rollouts
 
 ## Data Volume
 
@@ -6558,3 +6578,210 @@
 18. How to Debug Karpenter “No Instance Type Met the Scheduling Requirements” Errors for GPU Pods
 19. How to Cap Total GPU Capacity in a Karpenter NodePool and Account for Limit Overshoot During Rapid Scale-Out
 20. How to Verify `schedulerName`, PodGroup, and Queue Wiring When Volcano Ignores a GPU Job
+
+## Native Histograms
+
+1. How to Enable Prometheus Native Histograms in Prometheus 3.9 and Later
+2. How to Instrument Go HTTP Latency with Prometheus Native Histograms
+3. How to Add Native Histograms to a Java Application with the Prometheus Client
+4. How to Choose `NativeHistogramBucketFactor` Without Creating Excessive Buckets
+5. How to Cap Native Histogram Resolution and Bucket Growth at Scrape Time
+6. How to Calculate p50, p95, and p99 Latency from Native Histograms in PromQL
+7. How to Measure Latency SLO Compliance with `histogram_fraction()`
+8. How to Calculate Request Rate, Count, Sum, and Average from Native Histograms
+9. How to Visualize Prometheus Native Histograms as Grafana Heatmaps
+10. How to Build Recording Rules and Alerts for Native Histogram Latency
+11. How to Migrate from Classic to Native Histograms Without Breaking Dashboards
+12. How to Convert Classic Histograms into Native Histograms with Custom Buckets
+13. How to Send Native Histograms Through Prometheus Remote Write to Grafana Mimir
+14. How to Troubleshoot Native Histograms Disappearing After a Prometheus Helm Upgrade
+15. How to Federate Native Histograms Between Prometheus Servers
+16. How to Read Native Histogram Samples from the Prometheus Query API
+17. How to Unit-Test Native Histogram Recording and Alerting Rules with `promtool`
+18. How to Diagnose PromQL Warnings from Mixed Classic and Native Histogram Samples
+19. How to Measure the Cardinality and Storage Savings of Native Histograms
+20. How to Verify Native Histogram Support Across Prometheus and Long-Term Metrics Storage
+
+## Tyk
+
+1. How to Run Tyk Open Source API Gateway Locally with Docker Compose
+2. How to Route Tyk in Docker to an API Running on the Host Machine
+3. How to Install Tyk Gateway and Redis on Kubernetes with Helm
+4. How to Fix Tyk Gateway’s “Redis Is Either Down or Was Not Configured” Error
+5. How to Prevent Clients from Bypassing Tyk and Calling an Upstream API Directly
+6. How to Inject an Upstream Authorization Header Without Exposing Backend Credentials in Tyk
+7. How to Extract Custom JWT Claims and Forward Them as Headers in Tyk
+8. How to Map JWT Claims and Scopes to Tyk Access Policies
+9. How to Configure Per-Endpoint Rate Limits in a Tyk OpenAPI Definition
+10. How to Rate-Limit Tyk Requests by IP Address, Tenant, or Custom Header
+11. How to Combine Tyk API-Level Limits, Key-Level Limits, and Quotas Correctly
+12. How to Configure CORS and Fix Failed Preflight Requests in Tyk
+13. How to Transform JSON Request and Response Bodies with Tyk Middleware
+14. How to Route One Tyk API to Multiple Upstream Services with URL Rewrites
+15. How to Aggregate Responses from Multiple REST APIs Behind Tyk
+16. How to Short-Circuit a Request and Return a Custom Error from a Tyk Go Plugin
+17. How to Integrate an External Authentication Service with a Tyk Custom Auth Plugin
+18. How to Fix API and Policy Synchronization Between Tyk Dashboard and Developer Portal
+19. How to Manage Tyk Configuration and Secrets with Environment Variables
+20. How to Monitor Tyk Request Rates, Latency, and Errors with Pump and Grafana
+
+## AWS CodeBuild
+
+1. How to Run AWS CodeBuild Without Committing a `buildspec.yml` to the Repository
+2. How to Use a Buildspec Outside the Repository Root with CDK and CodePipeline
+3. How to Pass and Export Environment Variables Between CodePipeline and CodeBuild
+4. How to Read AWS Secrets Manager and Parameter Store Values from a CodeBuild Buildspec
+5. How to Connect AWS CodeBuild to a Private RDS Database Through a VPC
+6. How to Assume a Cross-Account IAM Role Safely from AWS CodeBuild
+7. How to Build, Tag, and Push a Docker Image from CodeBuild to Amazon ECR
+8. How to Avoid Docker Hub Pull-Rate Limits in AWS CodeBuild
+9. How to Fix CodeBuild Builds Stuck in Queued State or Blocked by a Zero Build Quota
+10. How to Speed Up CodeBuild with S3, Dependency, and Docker Layer Caches
+11. How to Run Parallel Test and Build Jobs with CodeBuild Batch Builds
+12. How to Trigger CodeBuild Only for Changed Packages in a Monorepo
+13. How to Skip an AWS CodeBuild Run When a Branch, Pull Request, or File Condition Is Not Met
+14. How to Identify the Git Branch, Tag, Pull Request, and Commit Inside CodeBuild
+15. How to Fetch Full Git History and Run `git describe` in AWS CodeBuild
+16. How to Pass Primary and Secondary Build Artifacts Between CodePipeline Actions
+17. How to Publish JUnit, Cucumber, and Coverage Reports from AWS CodeBuild
+18. How to Make CodeBuild Fail Immediately When a Shell or Python Command Errors
+19. How to Reproduce and Debug an AWS CodeBuild Job Locally with the CodeBuild Agent
+20. How to Build and Package an AWS SAM Lambda Application in CodeBuild
+
+## Deployment Frequency
+
+1. How to Measure Deployment Frequency Accurately Across Multiple CI/CD Pipelines
+2. How to Define a “Deployment” for DORA Metrics Without Skewing the Data
+3. How to Calculate Deployment Frequency for Microservices at Team, Service, and Product Level
+4. How to Track Kubernetes Deployment Frequency with Prometheus and kube-state-metrics
+5. How to Build a Deployment Frequency Dashboard in Grafana with BigQuery
+6. How to Collect Production Deployment Events from GitHub Actions for DORA Reporting
+7. How to Query GitLab’s DORA API for Daily and Monthly Deployment Frequency
+8. How to Measure Deployment Frequency in a Monorepo Without Counting Unchanged Services
+9. How to Count Multi-Region and Multi-Cluster Rollouts as One Logical Deployment
+10. How to Handle Failed Deployments, Rollbacks, Hotfixes, and Redeployments in Frequency Metrics
+11. How to Increase Deployment Frequency Without Raising Your Change Failure Rate
+12. How to Remove Manual Approval Bottlenecks Without Breaking Security or Compliance
+13. How to Use Trunk-Based Development and Feature Flags to Deploy Every Day
+14. How to Replace Manual QA Gates with Automated Checks and Preview Environments
+15. How to Break Large Releases into Small, Low-Risk Production Deployments
+16. How to Shorten CI Pipelines by Parallelizing Tests and Promoting One Immutable Artifact
+17. How to Deploy a Monolith More Frequently Without Creating Merge or QA Chaos
+18. How to Improve Deployment Frequency in Regulated Environments with Fixed Change Windows
+19. How to Adapt DORA Deployment Frequency for Mobile Apps, Firmware, and Other Non-SaaS Products
+20. How to Use Deployment Frequency Without Incentivizing Teams to Game the Metric
+
+## tfsec
+
+1. How to Install, Pin, and Verify tfsec on macOS, Linux, and Windows
+2. How to Run tfsec in Docker Without Installing It on the Host
+3. How to Run tfsec Before Every Commit with pre-commit Hooks
+4. How to Add tfsec to GitHub Actions and Upload SARIF Findings to Code Scanning
+5. How to Make tfsec a Security Gate in a GitLab CI Terraform Pipeline
+6. How to Scan Only Changed Terraform Stacks with tfsec in a Monorepo
+7. How to Pass Multiple tfvars Files and Workspace-Specific Values to tfsec
+8. How to Scan Local, Remote, and Private Terraform Modules with tfsec
+9. How to Exclude Downloaded Modules, Generated Code, and Vendor Directories from tfsec
+10. How to Suppress a tfsec Finding with Expiring and Workspace-Scoped Ignore Comments
+11. How to Centralize tfsec Severity Thresholds, Rule Exclusions, and Version Requirements
+12. How to Write tfsec Custom Checks for Nested Terraform Blocks in YAML or JSON
+13. How to Validate and Unit-Test Custom tfsec Rules with `tfsec-checkgen`
+14. How to Enforce Organization-Specific Terraform Policies with tfsec and Rego
+15. How to Diagnose tfsec False Positives Caused by Variables, `for_each`, and Dynamic Blocks
+16. How to Export tfsec Results as JSON, JUnit, Checkstyle, Markdown, and SARIF
+17. How to Introduce tfsec with Soft-Fail Mode Before Enforcing Pull-Request Gates
+18. How to Combine tfsec with Secret and Provider-Vulnerability Scanning
+19. How to Upgrade tfsec Without Breaking Legacy Rule IDs and Ignore Comments
+20. How to Migrate from tfsec to Trivy Without Losing tfvars, SARIF, Ignores, or Custom Policies
+
+## Helmfile
+
+1. How to Pass CI Environment Variables into Helmfile `.gotmpl` Values Without Missing-Key Errors
+2. How to Share Environment Values with Release-Level Templates in Helmfile Without Scope Surprises
+3. How to Layer Helmfile State Files Without Accidentally Replacing Release Arrays
+4. How to Split a Monolithic Helmfile into Sub-Helmfiles While Keeping Relative Paths Correct
+5. How to Control Selector Inheritance Across Nested Helmfiles
+6. How to Deploy One Helmfile Release and Include Only the Dependencies It Needs
+7. How to Order Helmfile Releases with `needs` and Run Independent Charts in Parallel
+8. How to Preview Helmfile Changes in CI with `helm-diff` and Gate Production Applies
+9. How to Diff First-Time Helmfile Installs That Include CRDs and Custom Resources
+10. How to Manage SOPS-Encrypted Helmfile Secrets Without Exposing Plaintext in Git or CI Logs
+11. How to Resolve Helmfile Values from Vault, AWS Secrets Manager, or SSM with `vals`
+12. How to Pin Helm Chart Dependencies with Helmfile Lock Files for Reproducible Deployments
+13. How to Prefetch Helmfile Charts for Air-Gapped and Offline Deployments
+14. How to Make Helmfile Hooks Idempotent for Database Migrations and Custom Manifests
+15. How to Patch a Third-Party Helm Chart with Helmfile JSON and Strategic-Merge Patches
+16. How to Enable Optional Helmfile Releases and Values Files Per Environment
+17. How to Run Helmfile in a Container with Kubeconfig, Plugins, and Cache Persistence
+18. How to Recover Safely When Helmfile Applies Some Releases but a Later Release Fails
+19. How to Switch Kubernetes Contexts and Namespaces Safely Across Helmfile Environments
+20. How to Migrate Helmfile v0 Configurations to v1.1 and Helm 4 Without Breaking Deployments
+
+## Events
+
+1. How to Filter Kubernetes Warning Events for One Resource with `kubectl events --for`
+2. How to Watch Kubernetes Events Across All Namespaces Without Losing the Initial Snapshot
+3. How to Build an Accurate Kubernetes Incident Timeline from `eventTime`, `series`, and Deprecated Timestamps
+4. How to Query Kubernetes Events by Object UID and Avoid Mixing Recreated Pods with the Same Name
+5. How to Retrieve Node Events Across Namespaces with Field Selectors
+6. How to Keep Kubernetes Events Beyond the One-Hour TTL with Grafana Alloy and Loki
+7. How to Deploy Kubernetes Event Exporter with Least-Privilege RBAC and Loki Output
+8. How to Route Actionable Kubernetes Warning Events to Slack Without Alerting on Every Normal Event
+9. How to Deduplicate Repeated Kubernetes Events Using `series.count` and `lastObservedTime`
+10. How to Alert When a Kubernetes Warning Event Keeps Repeating with Loki and LogQL
+11. How to Enrich Kubernetes Events with Workload, Cluster, and Owner Labels Before Storage
+12. How to Drop Noisy Argo CD and Scheduler Events Without Hiding Production Failures
+13. How to Consume Kubernetes Events Reliably with a `client-go` Informer and Recover from Expired Watches
+14. How to Emit Custom Kubernetes Events from a Controller with the `EventRecorder` API
+15. How to Migrate Event Producers from `core/v1` to `events.k8s.io/v1`
+16. How to Tune Kubernetes `--event-ttl` Without Overloading etcd
+17. How to Configure the Kubernetes `EventRateLimit` Admission Controller to Stop Event Floods
+18. How to Debug Missing Kubernetes Events Caused by TTL, RBAC, Namespace, or API-Version Issues
+19. How to Correlate Kubernetes Events with Pod Logs and Audit Logs During an Incident
+20. How to Load-Test a Kubernetes Event Pipeline with Synthetic Events and Backpressure Checks
+
+## LINSTOR
+
+1. How to Build a Three-Node Proxmox Cluster with LINSTOR, LVM-Thin, and DRBD
+2. How to Migrate Proxmox VM Disks from Local Storage to LINSTOR with a Controlled Cutover
+3. How to Add a Diskless LINSTOR Node as a DRBD Quorum Tie-Breaker
+4. How to Design LINSTOR Resource Groups for Replica Counts, Failure Domains, and Storage Tiers
+5. How to Fix LINSTOR “Not Enough Available Nodes” Auto-Placement Errors
+6. How to Make the LINSTOR Controller Highly Available with DRBD Reactor
+7. How to Back Up and Restore the LINSTOR Controller Database After a Failed Upgrade
+8. How to Perform a Rolling LINSTOR and DRBD Upgrade on a Proxmox Cluster
+9. How to Evacuate and Decommission a LINSTOR Node Without Losing Redundancy
+10. How to Recover a LINSTOR Resource Stuck in Outdated, Inconsistent, or Unknown State
+11. How to Resolve DRBD Split Brain in a LINSTOR Cluster Without Overwriting the Good Replica
+12. How to Clean Up LINSTOR Resources Stuck in DELETING or CloningFailed State
+13. How to Configure a Dedicated Replication Network for LINSTOR and DRBD
+14. How to Monitor LINSTOR with Prometheus and Alert on Capacity, Disconnects, and Resyncs
+15. How to Encrypt LINSTOR Volumes with LUKS and Manage the Cluster Passphrase Safely
+16. How to Deploy LINSTOR on Kubernetes with Piraeus Operator v2 and a CSI StorageClass
+17. How to Keep LINSTOR Volumes Local to Kubernetes Workloads with Topology and Affinity
+18. How to Expand a LINSTOR Kubernetes PVC and Grow Its Filesystem Safely
+19. How to Take and Restore LINSTOR CSI VolumeSnapshots for Stateful Workloads
+20. How to Ship Incremental LINSTOR Backups to S3 and Test a Point-in-Time Restore
+
+## ZeroMQ
+
+1. How to Recover a ZeroMQ REQ Client After a Timeout Without “Operation Cannot Be Accomplished in Current State”
+2. How to Serve Concurrent ZeroMQ Clients with ROUTER/DEALER Instead of Blocking REQ/REP
+3. How to Send Multiple Asynchronous Replies for One ZeroMQ Request
+4. How to Load-Balance ZeroMQ Jobs Across a Dynamic Worker Pool
+5. How to Stop ZeroMQ PUB/SUB from Losing the First Messages to the Slow Joiner
+6. How to Build Reliable ZeroMQ PUB/SUB with Sequence Numbers, Replay, and Gap Detection
+7. How to Tune ZeroMQ High-Water Marks for Slow Subscribers Without Unbounded Memory
+8. How to Keep ZeroMQ PUSH Producers Responsive When All PULL Workers Disconnect
+9. How to Build an XPUB/XSUB Proxy That Forwards Subscription Events Correctly
+10. How to Filter ZeroMQ Multipart PUB/SUB Messages with Hierarchical Topic Prefixes
+11. How to Cache the Last Value for Late-Joining ZeroMQ Subscribers
+12. How to Detect Dead ZeroMQ Peers with ZMTP Heartbeats and Socket Monitoring
+13. How to Tune ZeroMQ Reconnect Backoff for Servers That Restart or Disappear
+14. How to Shut Down ZeroMQ Cleanly Without `LINGER` or `context.term` Hangs
+15. How to Use ZeroMQ Sockets Safely Across Threads with `inproc` Control Channels
+16. How to Multiplex ZeroMQ Sockets and Timers with a Poller Without Busy-Waiting
+17. How to Secure ZeroMQ TCP Connections with CurveZMQ and a ZAP Client Allowlist
+18. How to Diagnose ZeroMQ CURVE Handshake and Protocol Failures with Socket Monitor Events
+19. How to Design a Versioned ZeroMQ Multipart Protocol That Works Across Languages
+20. How to Run ZeroMQ Across Kubernetes Pod Restarts Without Hard-Coding Pod IPs
