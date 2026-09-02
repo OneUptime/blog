@@ -154,7 +154,6 @@
 
 ## Recovery Engineering
 
-9. How to Automate a Disaster Recovery Runbook Without Creating a Dangerous One-Click Failover
 10. How to Test Database Restores for Data Integrity, Not Just Startup Success
 11. Why Did the Restored Environment Start but the Application Still Fail? Finding Missing Secrets, DNS, and Certificates
 12. How to Validate Kubernetes Recovery by Restoring etcd and Rebuilding the Control Plane
