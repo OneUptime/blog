@@ -28,7 +28,7 @@ An operator reads and steps through preconditions, decisions, commands, expected
 
 ### Tabletop exercise
 
-A facilitator introduces a scenario and decision injects. Teams exercise authority, communication, dependencies, legal or customer obligations, and recovery choices. CISA provides planner, facilitator, feedback, and after-action templates.
+A facilitator introduces a scenario and decision injects. Teams exercise authority, communication, dependencies, legal or customer obligations, and recovery choices. CISA provides exercise-planner and facilitator/evaluator handbooks, feedback forms, and an after-action report/improvement plan template.
 
 ### Component failover or game day
 
@@ -75,8 +75,8 @@ Adjust from measured results. If a daily restore is cheap and catches meaningful
 
 Published vendor guidance illustrates why cadence is contextual:
 
-- Azure Site Recovery's recovery-plan guidance recommends testing each application plan every quarter because applications and dependencies change.
-- Azure's monitoring guidance recommends a test failover at least every six months for replicated machines.
+- Azure Site Recovery's recovery-plan guidance recommends running a test failover for each app every quarter because apps and their dependencies change frequently.
+- Azure Site Recovery's monitoring guidance recommends running a test failover at least every six months for replicated machines.
 - AWS Elastic Disaster Recovery recommends drilling as often as practical and at least several times a year, with failback included in initial and some regular drills.
 - NIST SP 800-53 contingency-plan testing uses an organization-defined frequency rather than one universal interval.
 
@@ -129,7 +129,7 @@ A recent tabletop does not refresh a database restore claim. Evidence type must 
 
 ## Schedule Around Detection Time
 
-Cadence determines how long a latent recovery failure can exist:
+For failures that a recurring test can detect, cadence determines how long the failure can exist before the next scheduled detection opportunity:
 
 ~~~text
 maximum scheduled detection interval approximately equals test interval
@@ -161,7 +161,7 @@ The cadence is defensible when:
 - regulatory and product-specific minimums are documented;
 - event-driven tests invalidate stale evidence;
 - representative-volume RTO/RPO tests occur, not only small functional restores;
-- failover and failback are both exercised;
+- where the recovery strategy includes them, failover and failback are both exercised;
 - failures trigger timely retest after remediation;
 - evidence status and next due date are visible to service owners;
 - leadership explicitly accepts any interval in which a broken path could remain undetected.
