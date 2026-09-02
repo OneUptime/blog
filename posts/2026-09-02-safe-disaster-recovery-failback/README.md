@@ -63,7 +63,7 @@ Never create unsupported bidirectional replication merely to accelerate failback
 
 Compare more than a replication-lag dashboard:
 
-- highest continuous transaction or event sequence;
+- each store's highest authoritative transaction/log position or event offset, checking continuity only where the source guarantees it;
 - table, partition, tenant, and object counts;
 - business totals and ledger balances;
 - queue offsets and dead-letter counts;
@@ -94,7 +94,7 @@ Use an isolated ingress or explicit address override:
 - run TLS with the production hostname and correct SNI;
 - resolve recovery-private dependencies;
 - read sentinels and recent transactions;
-- exercise application startup, caches, migrations, and feature flags;
+- exercise application startup, caches, migration compatibility, and feature flags;
 - send email, payment, and webhook side effects to sinks;
 - test load at the capacity required for cutover;
 - confirm no write can bypass the current-primary authority.
@@ -109,8 +109,8 @@ Use gates:
 1. Announce and enter the approved change window.
 2. Stop or drain new writes at the DR primary.
 3. Let in-flight transactions finish within a bounded interval.
-4. Record the final source watermark and writer epoch.
-5. Flush and verify reverse replication to that exact watermark.
+4. Record the final source watermark for each critical store and the writer epoch.
+5. Flush and verify reverse replication to those exact watermarks.
 6. Reconcile critical stores and uncertain writes.
 7. Fence the DR site's writers.
 8. Allocate a new monotonic writer epoch to the original site.
@@ -118,7 +118,7 @@ Use gates:
 10. Run a durable, reconciled synthetic transaction.
 11. Start and verify protection in the normal direction when the product supports doing so before traffic growth; otherwise record and approve the measured unprotected window.
 12. Shift new traffic in controlled stages.
-13. Drain old sessions without reopening old-site writes.
+13. Drain sessions from the former primary without re-enabling writes at the DR site.
 ~~~
 
 If the system cannot pause writes, use its documented zero- or low-downtime switchover protocol and prove its ordering guarantees in rehearsal. Do not invent a dual-write window.
@@ -173,7 +173,7 @@ Failback is safe when:
 
 - the DR site remains acknowledged as authoritative until a gated transfer;
 - the original site is rebuilt or resynchronized through a supported process;
-- every critical store reconciles to the final source watermark;
+- every critical store reconciles to its final source watermark or equivalent boundary;
 - old and new writers are fenced with monotonic epochs;
 - passive-site business and capacity tests pass before cutover;
 - write pause, replication flush, validation, and traffic stages fit the failback RTO;
@@ -186,7 +186,7 @@ The correct endpoint is not “back where we started.” It is a fully protected
 ## Official References
 
 - [Microsoft Azure: Failover and failback concepts](https://learn.microsoft.com/en-us/azure/reliability/concept-failover-failback)
-- [Azure Site Recovery: Fail back VMware VMs and physical servers](https://learn.microsoft.com/en-us/azure/site-recovery/vmware-azure-failback)
-- [Azure Site Recovery: Execute failover and reprotect operations](https://learn.microsoft.com/en-us/azure/resiliency/recovery-orchestration-plan-execute)
+- [Azure Site Recovery: Failover and failback for on-premises machines (modernized)](https://learn.microsoft.com/en-us/azure/site-recovery/failover-failback-overview-modernized)
+- [Azure Resiliency: Execute failover and reprotect operations using a Recovery Orchestration Plan (preview)](https://learn.microsoft.com/en-us/azure/resiliency/recovery-orchestration-plan-execute)
 - [Azure Site Recovery: About recovery plans](https://learn.microsoft.com/en-us/azure/site-recovery/recovery-plan-overview)
 - [AWS Well-Architected Framework: Test disaster recovery implementation](https://docs.aws.amazon.com/wellarchitected/latest/framework/rel_planning_for_recovery_dr_tested.html)
