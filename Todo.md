@@ -154,7 +154,6 @@
 
 ## Recovery Engineering
 
-20. How to Prove a Recovered Service Is Ready with Synthetic Transactions and Data Reconciliation
 
 ## Kube-hunter
 
