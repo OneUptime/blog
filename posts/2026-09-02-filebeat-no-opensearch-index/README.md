@@ -97,7 +97,7 @@ The requested index may not be the one you expect. Export the config and check `
 
 ```http
 GET _cat/indices?v&expand_wildcards=open,hidden&s=index
-GET _cat/data_stream?v
+GET _data_stream
 GET _cluster/settings?include_defaults=true&flat_settings=true
 ```
 
