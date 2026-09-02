@@ -151,7 +151,6 @@
 
 ## OpenSearch Observability
 
-5. Why Is Filebeat Harvesting Files but Not Creating an OpenSearch Index? A Pipeline Debugging Guide
 6. How to Use OpenSearch Data Streams for Time-Series Logs Without Breaking Dashboard Index Patterns
 7. Why Does an OpenSearch Dashboard Show “Could Not Locate That Index Pattern”? Repairing Saved Objects Safely
 8. How to Grant Least-Privilege Access to OpenSearch Dashboards Without Hiding Discover Data
