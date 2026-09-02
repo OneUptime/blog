@@ -151,7 +151,6 @@
 
 ## OpenSearch Observability
 
-2. Why Are OpenSearch Logs Visible in Discover but Missing from Observability? Fixing Data Source and Field Mapping
 3. How to Build an OpenSearch Dashboard That Links a Metric Spike to Its Logs and Traces
 4. How to Propagate Trace and Span IDs into OpenSearch Log Documents for Cross-Signal Correlation
 5. Why Is Filebeat Harvesting Files but Not Creating an OpenSearch Index? A Pipeline Debugging Guide
