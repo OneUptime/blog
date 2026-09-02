@@ -151,7 +151,6 @@
 
 ## OpenSearch Observability
 
-16. How to Normalize Kubernetes Log Fields Before Indexing Them in OpenSearch
 17. How to Troubleshoot Missing OpenTelemetry Spans Between the Collector and OpenSearch
 18. How to Design OpenSearch Index Templates for High-Cardinality Observability Data
 19. Why Did an OpenSearch Alert Stop Firing After an Index Rollover? Fixing Aliases and Monitor Queries
