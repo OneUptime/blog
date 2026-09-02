@@ -148,7 +148,6 @@
 
 ## Apache Geode
 
-16. How to Back Up and Restore Apache Geode Persistent Regions with `gfsh backup disk-store`
 17. How to Configure Active-Active WAN Replication with Geode Gateway Senders and Receivers
 18. Why Does Geode Reject Inconsistent Gateway Sender IDs Across Region Hosts?
 19. How to Add Mutual TLS and Certificate-Based Authentication to Apache Geode
