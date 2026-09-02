@@ -36,14 +36,14 @@ A dedicated cloud account, project, or subscription gives stronger identity, quo
 - provide private endpoints for artifacts, backup, logging, time, and secret services where appropriate;
 - run dedicated private DNS;
 - replace email, SMS, payment, and webhook systems with capturing sinks or vendor sandboxes;
-- deny production resource ARNs or IDs through identity policy;
+- deny production writes with identity and organization guardrails, using production resource ARNs or IDs where the provider supports resource-level policy controls;
 - use short-lived, run-scoped credentials.
 
 AWS drill guidance recommends a drill subnet with no route to the source or production environment. Azure recommends an isolated virtual network for test failover.
 
 ## Make the Environment Ephemeral
 
-Create all test resources from versioned code and label them with immutable metadata:
+Create all test resources from versioned code, record immutable run metadata in a protected manifest, and mirror provider-compatible identifiers to resource tags or labels where supported:
 
 ~~~yaml
 recovery_test:
@@ -56,9 +56,9 @@ recovery_test:
   cleanup_policy: retain-failed-evidence-then-destroy
 ~~~
 
-Use a lifecycle controller that reports expired resources and requests scoped cleanup. Destruction must select the exact run ID and account; avoid broad prefixes and recursive deletion. Preserve logs and manifests in a separate evidence store before cleanup.
+Use a lifecycle controller that records exact provider resource IDs in a protected run inventory, reports expired resources, and requests scoped cleanup. Destruction must resolve the resource IDs from that inventory and verify the exact run ID and account; avoid broad prefixes and recursive deletion. Preserve logs and manifests in a separate evidence store before cleanup.
 
-Keep low-cost foundations only when they materially reduce risk: network definitions, account policy, backup replicas, small staging resources, and capacity reservations where required. AWS describes a low-cost staging area for Elastic Disaster Recovery, while recovery instances are created for drills or events.
+Keep persistent foundations only when they materially reduce risk: low-cost network definitions, account policy, backup replicas, and small staging resources, plus capacity reservations where required. AWS describes a low-cost staging area for Elastic Disaster Recovery, while recovery instances are created for drills or events.
 
 ## Reduce Cost Without Hiding Failure
 
@@ -70,7 +70,7 @@ One or two instances can validate deployment, service discovery, side effects, a
 
 For functional runs, restore the real format and a consistent subset or smaller protected system where vendor tooling supports it. Include schema complexity, large objects, partition edges, and recent migrations.
 
-For RTO/RPO certification, use representative production volume and write rate. Snapshot lazy loading, log replay, index rebuild, and cache warm-up can dominate duration.
+For evidence that the implementation meets RTO and RPO, use representative production data volume and write rate. Measure recovery from the defined start event through validated service readiness for RTO, verify the recovered point's age against RPO, and check its completeness and consistency. Snapshot lazy loading, log replay, index rebuild, and cache warm-up can dominate recovery time.
 
 ### Schedule expensive windows
 
@@ -98,7 +98,7 @@ Before provisioning:
 - deny unapproved GPU, oversized database, and premium network resources;
 - cap auto-scaling in the test account;
 - alert on anomalous network egress;
-- require run ID and expiry tags;
+- require provider-compatible run ID and expiry tags or labels on resources that support them and track every resource ID in the run inventory;
 - provide a separate emergency path to raise limits for an approved full-scale test.
 
 Create actual and forecast budget alerts, but do not treat them as a hard cap. Google Cloud explicitly notes that alerts-only budgets do not automatically cap usage or spending. AWS also notes that billing data used by Budgets is updated at least daily, so a short drill can spend money before an alert reflects it.
@@ -110,9 +110,10 @@ Avoid an automatic “delete everything when cost exceeds X” action. It can de
 ~~~text
 assert target_account == approved_recovery_test_account
 assert no_route_to(production_cidrs)
-assert identity_denies(production_write_resources)
+assert production_write_guardrails_are_effective()
 assert side_effect_sinks_are_healthy()
-assert every_resource_has(run_id, owner, expires_at)
+assert every_taggable_resource_has_compatible(run_id, owner, expires_at)
+assert every_resource_id_is_in_run_inventory()
 assert estimated_cost <= approved_profile_budget
 assert quota_supports(profile_required_capacity)
 assert cleanup_controller_is_healthy()
@@ -151,7 +152,7 @@ The environment is useful and economical when:
 - reduced scale never supports an unsupported RTO or capacity claim;
 - expensive resources exist only for planned measurement windows;
 - budgets, policy limits, tags, expiry, and anomaly alerts are active;
-- cleanup targets exact run-scoped resources and preserves evidence;
+- cleanup targets exact run-scoped resource IDs and preserves evidence;
 - periodic representative-volume and full-transition tests still occur;
 - cost per profile and reliability findings are tracked together.
 
