@@ -22,12 +22,12 @@ Define objectives per business capability and failure mode. “The platform” i
 | --- | --- |
 | Capability | Accept a paid order and return its order ID |
 | Scenario | Primary region is unavailable |
-| RTO origin | First failed eligible checkout at 09:00 UTC |
-| RTO target | Checkout accepted by recovery site by 09:30 UTC |
-| RPO target | At most 60 seconds of acknowledged orders absent |
+| RTO origin | Capability becomes unavailable at 09:00 UTC |
+| RTO target | Synthetic checkout durably accepted and reconciled by recovery site by 09:30 UTC |
+| RPO target | Recovered acknowledged-order state is no older than 60 seconds before the disruption |
 | Minimum mode | New orders work; recommendations may be disabled |
-| Integrity rule | No duplicate charge and no order without a payment record |
-| Evidence | Synthetic receipt, ledger reconciliation, event sequence IDs |
+| Integrity rule | No duplicate charge, no order without a payment record, and no charge without an order |
+| Evidence | Synthetic receipt, acknowledgment log, commit timestamps, ledger reconciliation |
 | Owner | Commerce service owner |
 
 Do this for corruption, credential loss, operator error, and regional loss as separate scenarios. Replication that helps with regional loss can faithfully replicate corruption, so the same design rarely covers every scenario by itself.
@@ -42,9 +42,9 @@ RTO budget =
   reconnect_dependencies + shift_traffic + validate
 ~~~
 
-This is a budgeting model, not the definition of RTO. When stages overlap, actual RTO is still wall-clock time from the contract's start event to its stop event; do not add overlapping durations. Model the longest dependency path, and retain per-stage spans to show where the wall-clock time went.
+This is a budgeting model, not the definition of RTO. When stages overlap, observed recovery time is still wall-clock time from the contract's start event to its stop event; do not add overlapping durations. Model the longest dependency path, and retain per-stage spans to show where the wall-clock time went.
 
-For a 30-minute RTO, an engineering budget might be:
+For a 30-minute RTO, the following zero-margin allocation illustrates a design that needs revision:
 
 | Stage | Budget |
 | --- | ---: |
@@ -55,7 +55,7 @@ For a 30-minute RTO, an engineering budget might be:
 | Shift traffic | 3 min |
 | Validate critical transaction | 5 min |
 
-The total must fit the objective with margin. A design that needs 25 minutes in ideal conditions for a 30-minute objective has little room for a slow operator, exhausted quota, or a cold image pull.
+This allocation consumes the entire objective, so it fails the margin requirement. The critical-path stage total must fit inside the objective with documented margin. A design that needs 25 minutes in ideal conditions for a 30-minute objective has little room for a slow operator, exhausted quota, or a cold image pull.
 
 The architecture follows from the bottleneck. If data restoration alone takes two hours, optimizing DNS from five minutes to one minute does not make a 30-minute RTO credible.
 
@@ -76,7 +76,7 @@ For each store, record:
 2. the replication or backup mechanism;
 3. its normal and worst observed lag;
 4. the recoverable point exposed by the product;
-5. how an exercise will identify the newest recovered business record.
+5. how an exercise will identify the newest recovered business record and its authoritative commit timestamp.
 
 Do not equate “replication every minute” with a one-minute RPO. Queues, batching, throttling, a broken replication credential, and unobserved lag can make the actual recovery point older. Point-in-time backups are still needed where replication can copy accidental deletion or corruption.
 
@@ -106,14 +106,16 @@ objective:
   rto_seconds: 1800
   rpo_seconds: 60
 clock:
-  starts_at: first_failed_eligible_checkout
+  starts_at: capability_becomes_unavailable
   stops_at: synthetic_order_reconciled
 recovery_point:
-  source: orders.commit_sequence
-  compare: source_watermark_before_injection
+  sequence: orders.commit_sequence
+  committed_at: orders.commit_timestamp
+  age_origin: capability_unavailable_at
+  acknowledgments: external-test-driver-log
 degraded_mode:
   allowed: [recommendations-disabled]
-  forbidden: [duplicate-charge, untracked-order]
+  forbidden: [duplicate-charge, order-without-payment, charge-without-order]
 dependencies:
   hard: [dns, identity, payments, orders-db, signing-keys]
   soft: [recommendations, analytics]
@@ -122,6 +124,7 @@ approvals:
   shift_writes: database-owner
 evidence:
   - event-timeline.json
+  - acknowledged-writes.json
   - synthetic-receipt.json
   - reconciliation-report.json
 owner: commerce-platform
@@ -133,13 +136,13 @@ owner: commerce-platform
 
 Run the production procedure in an isolated or safely partitioned environment:
 
-1. Record the source write watermark and synchronized wall-clock time.
-2. Inject or simulate the exact scenario.
-3. Start all timers from the contract's defined event.
+1. Start continuous timestamped canary writes. Using synchronized clocks, record each acknowledged order ID and acknowledgment time outside the injected failure domain, together with the source commit sequence and authoritative commit timestamp.
+2. Inject or simulate the exact scenario and capture the contract's start event.
+3. Use the contract's defined start event as the origin for all timers.
 4. Execute the runbook without undocumented operator knowledge.
 5. Route synthetic traffic through the same public or internal path users take.
 6. perform a write, read it back, and reconcile cross-service side effects.
-7. Calculate actual RTO, recovery-point age, and acknowledged-write loss from captured evidence.
+7. Calculate observed recovery time and recovery-point age, and compare recovered records with the acknowledgment log to identify acknowledged-write loss.
 8. Record manual interventions, retries, and degraded functionality.
 
 Passing “the servers are up” is insufficient. The stop condition should be a business transaction that is durable and internally consistent.
@@ -154,7 +157,7 @@ The architecture is testable when:
 - a recovery exercise meets both objectives under representative data volume and capacity;
 - integrity invariants and a synthetic business transaction pass;
 - the exercise can produce an evidence bundle without reconstructing timestamps afterward;
-- gaps have owners and deadlines, and the result expires after material architecture changes.
+- gaps have owners and deadlines, and the result expires on a defined schedule and after material architecture changes.
 
 An objective unsupported by a measured exercise is an aspiration. The useful outcome is not simply a low number; it is an explicit, affordable contract that the system and its operators have demonstrated together.
 
