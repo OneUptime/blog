@@ -8,7 +8,7 @@ Description: Diagnose and correct Geode region hosts whose gateway-sender ID set
 
 ---
 
-Apache Geode treats a region's gateway sender IDs as distributed region attributes, not a private choice made by each server. Every member that creates the same region path must advertise the same **set** of sender IDs. If one new host creates `/orders` with `[to-site-b]` while an existing host has `[]`, region creation is rejected with a message like:
+Apache Geode treats a distributed region's gateway sender IDs as cluster-consistency attributes, not a private choice made by each server. Every peer member that creates the same distributed region path must advertise the same **set** of sender IDs. If one new host creates `/orders` with `[to-site-b]` while an existing host has `[]`, region creation is rejected with a message like:
 
 ```text
 Cannot create Region /orders with [to-site-b] gateway sender ids
@@ -99,7 +99,7 @@ If the mismatch appears while a new server starts, leave the healthy members unc
 1. Stop the rejected server.
 2. Determine the canonical sender-ID set from the running region and reviewed deployment configuration.
 3. Correct that server's group membership, `cache.xml`, or API configuration.
-4. Ensure the sender definition exists on the server before the region is created.
+4. If the sender is parallel, ensure its definition exists on the server before the region is created.
 5. Restart it and re-run `describe region` and `list gateways`.
 
 For a parallel sender created through Java APIs, creation order matters:
@@ -171,7 +171,7 @@ Uniform IDs are necessary but not sufficient:
 - PDX metadata must be persisted for PDX values in WAN regions; and
 - each remote receiver host must define the matching region path.
 
-For a persistent partitioned region with a persistent parallel sender:
+For a persistent partitioned region with a persistent parallel sender, assuming `WanDataStore` has already been created on every `wan-data` member:
 
 ```text
 gfsh> create gateway-sender \
