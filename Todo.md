@@ -151,7 +151,6 @@
 
 ## OpenSearch Observability
 
-9. How to Create OpenSearch Alert Messages That Include Matching Log Fields and a Dashboard Link
 10. Why Does an OpenSearch Per-Document Monitor Omit Source Fields? Fixing Trigger Context and Templates
 11. How to Alert Only When an OpenSearch Monitor Changes State and Avoid Repeat Notifications
 12. How to Query OpenSearch Alert History and Build a Dashboard for Flapping Monitors
