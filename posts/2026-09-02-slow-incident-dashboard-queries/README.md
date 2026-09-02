@@ -19,7 +19,7 @@ Use the panel's inspection capability or browser network tools to capture the `_
 Record:
 
 - target indexes and total shards;
-- `took`, timeout, and partial shard failures;
+- `took`, `timed_out`, and partial shard failures;
 - query and aggregation tree;
 - requested date range and refresh interval;
 - response size and number of buckets.
@@ -44,11 +44,11 @@ During an incident, reduce dashboard auto-refresh and narrow the time range befo
 
 ## Measure shard fan-out
 
-A search runs against a copy of every matching shard. Patterns that span thousands of tiny daily indexes create coordination overhead even when each shard holds little data.
+Without custom routing, a search normally targets one primary-or-replica copy of each shard in every resolved index, although the `can_match` prefilter can skip shards that cannot match. Patterns that span thousands of tiny daily indexes create coordination overhead even when each shard holds little data.
 
 ```http
 GET _resolve/index/logs-*
-GET _search_shards/logs-*
+GET logs-*/_search_shards
 ```
 
 Repair the lifecycle instead of hiding the symptom:
@@ -59,7 +59,7 @@ Repair the lifecycle instead of hiding the symptom:
 - use stable aliases/data streams for the intended retention window;
 - avoid panels that query cold history by default.
 
-`max_concurrent_shard_requests` can cap per-request concurrency, and `action.search.shard_count.limit` can reject dangerously broad searches, but both are guardrails rather than a fix for oversharding.
+`max_concurrent_shard_requests` can cap each search's concurrent shard requests per node, and `action.search.shard_count.limit` can reject dangerously broad searches, but both are guardrails rather than a fix for oversharding.
 
 ## Verify mappings used by filters and aggregations
 
