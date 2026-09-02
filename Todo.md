@@ -151,7 +151,6 @@
 
 ## OpenSearch Observability
 
-7. Why Does an OpenSearch Dashboard Show “Could Not Locate That Index Pattern”? Repairing Saved Objects Safely
 8. How to Grant Least-Privilege Access to OpenSearch Dashboards Without Hiding Discover Data
 9. How to Create OpenSearch Alert Messages That Include Matching Log Fields and a Dashboard Link
 10. Why Does an OpenSearch Per-Document Monitor Omit Source Fields? Fixing Trigger Context and Templates
