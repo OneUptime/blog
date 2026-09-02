@@ -148,7 +148,6 @@
 
 ## Apache Geode
 
-20. How to Prevent Out-of-Memory Errors When Reading Large Geode Regions Through the REST API
 
 ## OpenSearch Observability
 
