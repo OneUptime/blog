@@ -151,7 +151,6 @@
 
 ## OpenSearch Observability
 
-8. How to Grant Least-Privilege Access to OpenSearch Dashboards Without Hiding Discover Data
 9. How to Create OpenSearch Alert Messages That Include Matching Log Fields and a Dashboard Link
 10. Why Does an OpenSearch Per-Document Monitor Omit Source Fields? Fixing Trigger Context and Templates
 11. How to Alert Only When an OpenSearch Monitor Changes State and Avoid Repeat Notifications
