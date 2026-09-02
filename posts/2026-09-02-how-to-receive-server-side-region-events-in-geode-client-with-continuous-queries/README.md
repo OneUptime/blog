@@ -134,7 +134,7 @@ final class ReadyOrderListener implements CqStatusListener {
 }
 ```
 
-Do not perform slow HTTP calls, database transactions, or unbounded retries on the subscription callback thread. Hand off to a bounded executor or queue, define an overload policy, and make downstream processing idempotent. A new primary can resend events after failover; the client normally discards them, but an expired client message-tracking entry can let a duplicate through. Durable reconnects replay retained events, and application restarts can also cause an initial snapshot plus an event to describe the same logical state.
+Do not perform slow HTTP calls, database transactions, or unbounded retries on the subscription callback thread. Hand off to a bounded executor or queue, define an overload policy, and make downstream processing idempotent. A new primary can resend events after failover; the client normally discards them, but an expired client message-tracking entry can let a duplicate through. Durable reconnects replay retained events, and application restarts can also cause an initial-result row plus an event to describe the same logical state.
 
 For destroy-like query transitions, `getNewValue()` can be null. Branch on `getQueryOperation()` before casting the value.
 
@@ -158,7 +158,7 @@ readyOrders.execute();
 
 `execute()` starts notifications without returning existing matches. Use it when the listener cares only about changes after registration.
 
-When the client needs a consistent starting result, use `executeWithInitialResults()`:
+When the client needs an initial result set, use `executeWithInitialResults()`:
 
 ```java
 CqResults<?> initial = readyOrders.executeWithInitialResults();
@@ -171,7 +171,7 @@ for (Object result : initial) {
 }
 ```
 
-Geode registers the CQ while producing the initial result so events can continue after the snapshot. Still make the materialization logic idempotent: an event may supersede an initial row before the application finishes applying the snapshot. Large initial result sets can run long enough to hit the pool read timeout and can consume substantial client memory; choose a selective CQ or build initial state through a separately bounded workflow.
+Geode does not block region operations while registering the CQ and producing the initial result. The returned result may therefore already reflect a change that is also delivered as an event. Make the materialization logic idempotent, because an event may supersede an initial row before the application finishes applying the result set. Large initial result sets can run long enough to hit the pool read timeout and can consume substantial client memory; choose a selective CQ or build initial state through a separately bounded workflow.
 
 Close the CQ when its lifecycle ends:
 
@@ -255,7 +255,7 @@ Enable subscriptions on the CQ's pool, use a supported one-region `SELECT *` pre
 
 - [How continuous querying works](https://geode.apache.org/docs/guide/latest/developing/continuous_querying/how_continuous_querying_works.html)
 - [Implementing continuous querying](https://geode.apache.org/docs/guide/latest/developing/continuous_querying/implementing_continuous_querying.html)
-- [Managing continuous querying](https://geode.apache.org/docs/guide/latest/developing/continuous_querying/continuous_querying_manage.html)
+- [Managing continuous querying](https://geode.apache.org/docs/guide/latest/developing/continuous_querying/continuous_querying_whats_next.html)
 - [Configuring highly available servers](https://geode.apache.org/docs/guide/latest/developing/events/configuring_highly_available_servers.html)
 - [Implementing durable client/server messaging](https://geode.apache.org/docs/guide/latest/developing/events/implementing_durable_client_server_messaging.html)
 - [Implementing authorization](https://geode.apache.org/docs/guide/latest/managing/security/implementing_authorization.html)
