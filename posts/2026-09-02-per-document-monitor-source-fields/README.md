@@ -8,7 +8,7 @@ Description: Use the document-level alert context and nested sample-document loo
 
 ---
 
-A per-document monitor does not expose matching documents through the same context as a query-level monitor. For document-level actions, newly created alerts are in `ctx.alerts`, and each alert can contain `sample_documents`. The original JSON payload is under each sample document's `_source`.
+A per-document monitor does not expose matching documents through the same context as a query-level monitor. For document-level actions, newly created alerts are in `ctx.alerts`, and each alert can contain `sample_documents`. Retrieved source fields are under each sample document's `_source`. The `associated_queries` and `sample_documents` fields require OpenSearch 2.13 or later.
 
 Templates that look in `ctx.results.0.hits.hits` or `ctx.alert._source` can therefore trigger successfully while rendering blank source fields.
 
@@ -22,11 +22,10 @@ ctx.alerts[]
   sample_documents[]
     _index
     _id
-    _score
     _source
 ```
 
-`ctx.alerts` contains newly created document alerts for that execution. It is not a permanent list of every currently active alert. OpenSearch also stores findings separately in `.opensearch-alerting-finding*`.
+`ctx.alerts` contains newly created document alerts for that execution. It is not a permanent list of every currently active alert. By default, OpenSearch also stores findings separately in `.opensearch-alerting-finding*`.
 
 ## Use nested Mustache sections
 
@@ -65,38 +64,35 @@ Sample documents:
 {{/ctx.alerts}}
 ```
 
-The leading dots are not needed inside a Mustache section; the current context is already one alert or sample document.
+You do not repeat the outer path inside a Mustache section; the current context is already one alert or sample document.
 
-Test one field at a time. Begin with `_index` and `_id`, then add `_source.message`, then nested paths. If metadata renders but `_source` does not, the loop is correct and the issue is source availability or permissions.
+Test one field at a time. Begin with `_index` and `_id`, then add `_source.message`, then nested paths. If metadata renders but `_source` does not, the loop is correct; check source retrieval and permissions next.
 
 ## Verify source is actually available
 
-Search for a known matching document with the monitor creator's identity:
+Retrieve a known matching document from its concrete index using an identity with the same effective permissions captured from the user who created or last modified the saved monitor:
 
 ```http
-GET logs-prod-*/_search
+GET logs-prod-000123/_mget
 {
-  "query": {
-    "ids": {
-      "values": ["DOCUMENT_ID"]
-    }
-  }
+  "ids": ["DOCUMENT_ID"]
 }
 ```
 
 Check these conditions:
 
-- `_source` is enabled in the index mapping.
+- `_source` is retrievable, either because it is stored or because derived source is enabled, and mapping-level `_source` includes or excludes retain the desired fields.
 - Field-level security permits the desired fields.
-- The monitor creator can read the concrete rollover index containing the document.
-- The mapping represents `service.name` as a nested object path rather than a differently named field.
+- The monitor's effective permissions include multi-get access to the concrete rollover index containing the document.
+- The returned `_source` contains a `service` object with a `name` member; Mustache dots traverse objects rather than addressing a literal key named `service.name`.
 - The source field exists on the matching document, not only on a newer schema version.
+- Documents indexed with custom routing are affected by [an open Alerting retrieval bug through OpenSearch 3.8](https://github.com/opensearch-project/alerting/issues/2149) because the follow-up multi-get omits the routing value; template changes do not fix that case.
 
-OpenSearch monitors use the permissions of the user who created them. Reassigning the notification channel or giving the recipient broader permissions does not expand the monitor's source access.
+OpenSearch monitors use the permissions captured from the user who created or last modified them. A recipient's permissions do not expand source access; editing the monitor, including changing its channel, can change the effective permissions to those of the editor.
 
 ## Confirm the action execution scope
 
-Document-level monitors can produce many alerts. Configure the action for the intended per-alert behavior and test volume carefully. The message context for per-document alerts is `ctx.alerts`; query-level `ctx.alert` and bucket-level `ctx.newAlerts` are different objects.
+Document-level monitors can produce many alerts. Choose per-alert or per-execution action scope deliberately and test volume carefully. A per-alert action normally receives a one-element `ctx.alerts`, while a per-execution action can receive several. Query-level `ctx.alert` and bucket-level `ctx.newAlerts` are different objects.
 
 Use the Alerting API dry run on the saved monitor:
 
@@ -104,7 +100,7 @@ Use the Alerting API dry run on the saved monitor:
 POST _plugins/_alerting/monitors/MONITOR_ID/_execute?dryrun=true
 ```
 
-Inspect the execution response and `ctx.error` before enabling a notification. A dry run avoids sending actions, but run it against a safe time window because the monitor query still consumes cluster resources.
+Inspect the response's top-level and per-trigger `error` fields, and `input_results.error` when present, before enabling a notification. Inside a template, the corresponding context variable is `ctx.error`. A dry run does not send action messages, but run it against a safe time window because the monitor query still consumes cluster resources.
 
 ## Avoid the common non-fixes
 
@@ -126,3 +122,5 @@ If a sample field can contain arbitrary user text, remember that Mustache does n
 - [OpenSearch per-document monitors](https://docs.opensearch.org/latest/observing-your-data/alerting/per-document-monitors/)
 - [OpenSearch Alerting API and findings search](https://docs.opensearch.org/latest/observing-your-data/alerting/api/)
 - [OpenSearch alerting security](https://docs.opensearch.org/latest/observing-your-data/alerting/security/)
+- [OpenSearch source metadata field](https://docs.opensearch.org/latest/mappings/metadata-fields/source/)
+- [OpenSearch Multi-get Documents API](https://docs.opensearch.org/latest/api-reference/document-apis/multi-get/)
