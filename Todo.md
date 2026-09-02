@@ -154,7 +154,6 @@
 
 ## Recovery Engineering
 
-19. How to Turn Recovery Drill Failures into Reliability Backlog with Owners and Deadlines
 20. How to Prove a Recovered Service Is Ready with Synthetic Transactions and Data Reconciliation
 
 ## Kube-hunter
