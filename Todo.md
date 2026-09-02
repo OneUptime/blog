@@ -154,7 +154,6 @@
 
 ## Recovery Engineering
 
-12. How to Validate Kubernetes Recovery by Restoring etcd and Rebuilding the Control Plane
 13. How to Design Cross-Region Failover for Stateful Services Without Violating RPO
 14. How to Test DNS Cutover, Traffic Draining, and TTLs Before a Regional Failover
 15. How to Prevent Split-Brain and Stale Writes During Failover and Failback
