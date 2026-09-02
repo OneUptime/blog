@@ -8,7 +8,7 @@ Description: Locate missing spans hop by hop across instrumentation, the OpenTel
 
 ---
 
-“The trace is missing” can mean several different things: the application never ended the span, a sampler intentionally dropped it, the Collector did not enable its receiver in a pipeline, an exporter retried and exhausted its queue, Data Prepper rejected it, OpenSearch rejected a bulk item, or Dashboards queried the wrong time/index.
+“The trace is missing” can mean several different things: the application never ended the span, a sampler intentionally dropped it, the Collector did not enable its receiver in a pipeline, an exporter could not enqueue it because its sending queue was full or dropped it after exhausting its retry window, Data Prepper rejected it, OpenSearch rejected a bulk item, or Dashboards queried the wrong time/index.
 
 Use one known trace ID and prove each boundary in order.
 
@@ -20,7 +20,7 @@ Confirm the span is ended and the SDK flushes before a short-lived process exits
 
 ## 2. Prove the Collector receives the span
 
-A Collector component is active only when referenced from a service pipeline:
+A receiver, processor, or exporter is active only when referenced from a service pipeline:
 
 ```yaml
 receivers:
@@ -41,7 +41,9 @@ processors:
 exporters:
   debug:
     verbosity: detailed
-  otlp/data_prepper:
+    use_internal_logger: false
+    output_paths: [stderr]
+  otlp_grpc/data_prepper:
     endpoint: data-prepper:21893
     tls:
       ca_file: /etc/otel/certs/data-prepper-ca.pem
@@ -51,7 +53,7 @@ service:
     traces:
       receivers: [otlp]
       processors: [memory_limiter, batch]
-      exporters: [debug, otlp/data_prepper]
+      exporters: [debug, otlp_grpc/data_prepper]
 ```
 
 Enable the detailed debug exporter briefly and protect its output: span attributes can contain sensitive data. If the known ID never appears, check application endpoint/protocol, DNS, NetworkPolicy/firewall, TLS trust and hostname, authentication, and whether the receiver is in the traces pipeline.
@@ -60,7 +62,7 @@ OTLP/gRPC normally uses 4317 and OTLP/HTTP 4318. Sending HTTP to a gRPC endpoint
 
 ## 3. Compare Collector internal telemetry
 
-Scrape the Collector's own metrics and compare receiver-accepted, processor-refused/dropped, exporter-sent, exporter-failed, queue size/capacity, and retry behavior for spans. Metric names can evolve with Collector releases, so use the internal telemetry documentation for your installed version instead of hard-coding an old dashboard.
+Scrape the Collector's own metrics and compare receiver accepted/refused spans, processor incoming/outgoing items, exporter sent/send-failed/enqueue-failed spans, queue size/capacity, and in-flight requests; inspect logs for retry activity. Metric names can evolve with Collector releases, so use the internal telemetry documentation for your installed version instead of hard-coding an old dashboard.
 
 Common patterns:
 
@@ -71,19 +73,19 @@ Common patterns:
 
 Use a `memory_limiter` and batching, then size the Collector and exporter queue from observed throughput. Increasing queues without enough memory only delays failure.
 
-The `zpages` extension and Collector logs can provide live receiver/exporter diagnostics, but expose diagnostic endpoints only on a protected interface.
+When configured under `extensions` and enabled in `service.extensions`, the `zpages` extension can provide live receiver/exporter diagnostics; Collector logs can also help. Expose diagnostic endpoints only on a protected interface.
 
 ## 4. Check sampling and processing explicitly
 
-Head sampling in the SDK or Collector makes an early decision. Tail sampling waits for spans and decides at the trace level, which requires enough memory and correct routing so all spans for a trace reach the decision point.
+Head sampling in the SDK or Collector makes an early decision. Tail sampling waits for spans and decides at the trace level, which requires enough memory and trace-ID-aware routing so all spans for a trace reach the same tail-sampling Collector instance.
 
-Review every processor in the traces pipeline:
+Review every processor and routing stage in the traces path:
 
 - filter expressions that drop health checks or services;
 - probabilistic/tail sampling policies;
 - attribute transforms that affect routing;
 - memory limiter refusal under pressure;
-- load balancing that separates trace fragments.
+- load balancing that sends spans from one trace to different tail-sampling Collector instances.
 
 An unsampled trace ID may still appear in correlated logs even though no spans are stored. That is expected, not proof of an OpenSearch loss.
 
@@ -110,13 +112,12 @@ GET otel-v1-apm-span*/_search
 }
 ```
 
-Adjust the index and field to the actual Data Prepper version/mapping. If Data Prepper shows output but the document is absent, inspect individual OpenSearch bulk item errors—not just the HTTP request status—for:
+Adjust the index and field to the actual Data Prepper version/mapping. If Data Prepper shows output but the document is absent, first verify the sink's `hosts` setting and resolved target index. Then inspect the bulk response's top-level `errors` flag and individual item errors—not just the HTTP status—for:
 
 - mapping conflicts;
 - `403` index permissions;
 - flood-stage read-only blocks;
-- rejected writes/backpressure;
-- an index expression routed to a different cluster.
+- rejected writes/backpressure.
 
 Configure a DLQ and finite retry behavior appropriate to your source/acknowledgement design so permanent mapping failures do not retry forever unnoticed.
 
