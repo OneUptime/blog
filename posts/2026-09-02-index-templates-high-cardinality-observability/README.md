@@ -28,7 +28,7 @@ Before writing mappings, inventory actual filters, full-text searches, aggregati
 | Numeric measurements | duration, bytes, status code | appropriate numeric type |
 | Unbounded attributes | user labels, arbitrary baggage | allow-list, non-dynamic object, or `flat_object` with limitations |
 
-`doc_values: false` can save columnar storage/heap pressure for a keyword used only in exact term queries and never sorted or aggregated. That is a query-contract decision; dashboards that later group on the field will fail.
+`doc_values: false` can reduce on-disk columnar storage for a keyword used only in exact term queries and never sorted, aggregated, or accessed through doc values in scripts. That is a query-contract decision; dashboards that later group on the field will fail.
 
 ## Create an explicit template
 
@@ -80,7 +80,7 @@ PUT _index_template/observability-logs-v1
 }
 ```
 
-OpenSearch normally expands dotted names as object paths. Validate the resulting mapping with your current release, especially if using the newer `disable_objects` mapping behavior for flat metric-style names.
+OpenSearch normally expands dotted names as object paths. OpenSearch 3.5+ also provides the `disable_objects` mapping parameter for literal flat dotted names; validate the resulting mapping with your current release.
 
 `dynamic: false` preserves unknown fields in `_source` but does not index them. It protects the mapping while allowing gradual schema discovery. `dynamic: strict` rejects unknown fields and is appropriate only when rejection/DLQ handling is tested.
 
@@ -92,7 +92,7 @@ OpenSearch 2.7+ provides `flat_object` for objects with many or unknown keys. It
 "labels": {"type": "flat_object"}
 ```
 
-It is not a transparent substitute for normal fields. Flat-object subfields do not provide the same efficient typed filtering, numerical operations, sorting, or aggregations. Promote the small allow-list used by dashboards into explicit keyword/numeric fields and keep the long tail flat.
+It is not a transparent substitute for normal fields. Flat-object subfields are not indexed for fast lookup and do not provide type-specific parsing, numerical operations or numerical sorting, efficient subfield filtering, or subfield aggregations using dot notation. Promote the small allow-list used by dashboards into explicit keyword/numeric fields and keep the long tail flat.
 
 ## Control high-cardinality aggregations
 
