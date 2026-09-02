@@ -154,7 +154,6 @@
 
 ## Recovery Engineering
 
-11. Why Did the Restored Environment Start but the Application Still Fail? Finding Missing Secrets, DNS, and Certificates
 12. How to Validate Kubernetes Recovery by Restoring etcd and Rebuilding the Control Plane
 13. How to Design Cross-Region Failover for Stateful Services Without Violating RPO
 14. How to Test DNS Cutover, Traffic Draining, and TTLs Before a Regional Failover
