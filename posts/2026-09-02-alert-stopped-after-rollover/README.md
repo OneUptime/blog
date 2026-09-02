@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenSearch, Alerting, Index Management, Monitoring, Troubleshooting
 
-Description: Keep OpenSearch monitors on a stable data stream or rollover alias and verify query, mapping, and creator permissions after each generation change.
+Description: Keep OpenSearch monitors on a stable data stream or rollover alias and verify query, mapping, and monitor execution permissions after each generation change.
 
 ---
 
-A monitor stores its own search input. If that input names `logs-app-000001`, it keeps querying that concrete index after rollover writes move to `logs-app-000002`. Updating a Dashboards index pattern does not update the monitor.
+A query-level or bucket-level monitor that uses an extraction query stores its own search input. If that input names `logs-app-000001`, it keeps querying that concrete index after rollover writes move to `logs-app-000002`. Updating a Dashboards index pattern does not update the monitor.
 
 The durable target is a data stream or an index alias that continues to cover the intended generations.
 
@@ -22,13 +22,13 @@ GET _data_stream/logs-app
 
 One of the last two requests should identify the stable abstraction. For an alias pointing to multiple indexes, exactly one must have `is_write_index: true` if clients write through the alias.
 
-Fetch the monitor and inspect its `inputs[].search.indices` array:
+Fetch the monitor and inspect `monitor.inputs[].search.indices` in the response:
 
 ```http
 GET _plugins/_alerting/monitors/MONITOR_ID
 ```
 
-Then run the monitor without actions:
+Then run the monitor in dry-run mode so its actions do not send messages:
 
 ```http
 POST _plugins/_alerting/monitors/MONITOR_ID/_execute?dryrun=true
@@ -38,7 +38,7 @@ Compare that result with the same search against the newest concrete index. This
 
 ## Repair a rollover alias
 
-A durable regular-index rollover family puts the rollover-alias setting in a template so future generations inherit it, then bootstraps the first write index:
+A durable ISM-managed regular-index rollover family puts the rollover-alias setting in a template so future generations inherit it, then bootstraps the first write index:
 
 ```http
 PUT _index_template/logs-app-rollover
@@ -111,11 +111,11 @@ A new generation may have missed the intended template or mapped a field to a co
 
 ### Time field and time zone
 
-Confirm new documents carry the field used by the monitor's range query and that it is a `date`. Compare the newest event timestamp with `ctx.periodStart`/`ctx.periodEnd` from the dry run.
+Confirm new documents carry the field used by the monitor's range query and that it is a `date`. Compare the newest event timestamp with the dry-run response's `period_start`/`period_end` values; the corresponding trigger and action context variables are `ctx.periodStart`/`ctx.periodEnd`.
 
-### Creator permissions
+### Execution permissions
 
-Alerting monitors use the permissions of the user who created them. That user may have access only to the original concrete index, while the new generation falls outside its role. Grant read access to the stable, narrowly scoped pattern (for example, `logs-app-*`) and recreate/update the monitor under the intended service identity according to your security process.
+When the Security plugin is enabled, Alerting monitors run with the permissions of the user who created or last modified them. That identity may have access only to the original concrete index, while the new generation falls outside its role. Grant read access to the stable, narrowly scoped pattern (for example, `logs-app-*`) and update or recreate the monitor under the intended service identity according to your security process.
 
 ### ISM state
 
@@ -123,15 +123,15 @@ Alerting monitors use the permissions of the user who created them. That user ma
 GET _plugins/_ism/explain/logs-app-*?validate_action=true
 ```
 
-Check for “missing alias,” “not the write index,” a missing rollover-alias setting, a blocked index, or a policy not attached to the new generation.
+The normal Explain output shows policy attachment and current state. Error-prevention validation details from `validate_action=true` require the cluster setting `plugins.index_state_management.action_validation.enabled` to be `true`. Check for “missing alias,” “not the write index,” a missing rollover-alias setting, a blocked index, or a policy not attached to the new generation.
 
 ### Notification health
 
-If the dry run says the trigger is true, the index query is no longer the problem. Inspect action results and Notifications channel status. Keep query failures, trigger false, throttled actions, and delivery failures as distinct alert-health signals.
+If the dry run has no input or trigger error, says the trigger is true, and searched the expected generation, the input and trigger worked. Inspect any dry-run action results for rendering errors, then verify delivery in the Notifications dashboard or with a test notification; dry-run mode does not send messages. Keep query failures, trigger false, throttled actions, and delivery failures as distinct alert-health signals.
 
 ## Regression-test rollover
 
-In staging, index a matching event, force or manually perform a controlled rollover, index another matching event through the stable write name, and execute the monitor dry. Verify that both generations are searchable and the new event can trigger. Repeat this whenever changing the template, alias, data stream, ISM policy, or monitor creator role.
+In staging, index a matching event, force or manually perform a controlled rollover, index another matching event through the stable write name, and execute the monitor dry. Verify that both generations are searchable and the new event can trigger. Repeat this whenever changing the template, alias, data stream, ISM policy, or monitor execution identity.
 
 ## Official References
 
