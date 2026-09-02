@@ -8,7 +8,7 @@ Description: Test DNS cache behavior, staged traffic cutover, connection drainin
 
 ---
 
-A DNS record change is not an instantaneous traffic move. Recursive resolvers cache answers, clients may cache beyond the resolver, and established TCP, TLS, HTTP/2, WebSocket, or database connections do not consult DNS again until they reconnect.
+A DNS record change is not an instantaneous traffic move. Recursive resolvers cache answers, clients may cache beyond the resolver, and a DNS change does not reroute established TCP, TLS, HTTP/2, WebSocket, or database connections. Clients generally use new DNS answers only when they open new or replacement connections.
 
 Treat DNS propagation, new-connection routing, and old-connection draining as three different mechanisms.
 
@@ -71,13 +71,14 @@ dig @resolver-one.example app-drill.example.com A +noall +answer
 dig @resolver-two.example app-drill.example.com A +noall +answer
 
 # Test TLS and HTTP while forcing the intended address.
-curl --resolve app.example.com:443:RECOVERY_IP \
+# Set RECOVERY_IP to the recovery endpoint's numeric IPv4 address.
+curl --resolve "app.example.com:443:${RECOVERY_IP:?RECOVERY_IP is not set}" \
   https://app.example.com/health/critical
 ~~~
 
 The curl override tests HTTP host and TLS SNI against a chosen address without relying on DNS. It does not test resolver behavior, so use both forms.
 
-Where the provider supports weighted, latency, failover, or routing controls, verify its documented behavior. For Amazon Route 53 failover records, the primary and secondary records share name and type. Route 53 returns the primary while it is healthy, and returns a healthy secondary when the primary is unhealthy. If the secondary is unhealthy, Route 53 returns the primary even when the primary is also unhealthy. Health checks therefore influence failover responses but do not guarantee that every returned endpoint is healthy. This is vendor-specific; other providers differ.
+Where the provider supports weighted, latency, failover, or routing controls, verify its documented behavior. For Amazon Route 53 failover records, the primary and secondary records share a name and type. When health evaluation is configured for both records, Route 53 returns only the primary while the primary is healthy, returns the secondary when the primary is unhealthy and the secondary is healthy, and returns the primary if both are unhealthy. If the secondary has no health evaluation configured, Route 53 returns it whenever the primary is unhealthy, even if the secondary endpoint itself is unhealthy. Health evaluation therefore influences failover responses but does not guarantee that every returned endpoint is healthy. This is vendor-specific; other providers differ.
 
 ## Separate Cutover from Draining
 
@@ -129,7 +130,7 @@ business_transaction_id
 
 Graph new connections and requests reaching each site over time. Identify persistent source-site traffic rather than declaring success after the median client moves.
 
-Test rollback before the event. A DNS rollback has the same caching delay as the forward change and may conflict with new data written in recovery. Traffic direction can be reversed quickly only when the stateful failback plan says it is safe.
+Test rollback before the event. A DNS rollback is subject to the same cache-expiry constraints as the forward change and may conflict with new data written in recovery. Traffic direction can be reversed quickly only when the stateful failback plan says it is safe.
 
 ## Failure Cases to Rehearse
 
@@ -165,6 +166,6 @@ The goal is not “DNS updated.” It is a bounded, observable transition of cli
 
 - [RFC 8767: Serving Stale Data to Improve DNS Resiliency](https://www.rfc-editor.org/rfc/rfc8767.html)
 - [RFC 2308: Negative Caching of DNS Queries](https://www.rfc-editor.org/rfc/rfc2308.html)
-- [Amazon Route 53: Values specific to failover records](https://docs.aws.amazon.com/Route53/latest/DeveloperGuide/resource-record-sets-values-failover.html)
+- [Amazon Route 53: How Route 53 chooses records when health checking is configured](https://docs.aws.amazon.com/Route53/latest/DeveloperGuide/health-checks-how-route-53-chooses-records.html)
 - [Microsoft Azure: Failover and failback concepts](https://learn.microsoft.com/en-us/azure/reliability/concept-failover-failback)
-- [AWS Application Recovery Controller: Safety rules for routing control](https://docs.aws.amazon.com/r53recovery/latest/dg/routing-control.safety-rules.html)
+- [Amazon Application Recovery Controller (ARC): Safety rules for routing control](https://docs.aws.amazon.com/r53recovery/latest/dg/routing-control.safety-rules.html)
