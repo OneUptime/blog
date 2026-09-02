@@ -62,21 +62,22 @@ Dump effective non-sensitive configuration through a supported diagnostic endpoi
 
 For every required secret, verify four separate facts:
 
-1. **The source object exists.** Check the approved secret manager or recovery Kubernetes API by exact name and version.
-2. **The workload identity may retrieve it.** Test with the workload's service account or cloud identity, not an administrator.
+1. **The source object exists.** Check the approved secret manager by exact name and version, or the recovery Kubernetes API by exact Secret name and an approved version annotation or deployment ID.
+2. **The retrieving identity may retrieve it.** Test with the workload, node, controller, CSI driver, or agent identity used by that delivery path, not an administrator.
 3. **The delivery mechanism succeeded.** Inspect controller, CSI driver, agent, init container, or mount events.
-4. **The application loaded the intended version.** Compare a non-sensitive version ID or one-way fingerprint exposed specifically for diagnostics.
+4. **The application loaded the intended version.** Compare a non-sensitive version ID or an approved keyed fingerprint generated specifically for diagnostics.
 
 In Kubernetes:
 
 ~~~bash
 kubectl -n recovery describe pod checkout-abc123
-kubectl -n recovery get events --sort-by=.lastTimestamp
+kubectl -n recovery get events --sort-by=.metadata.creationTimestamp
+# Only if the application reads the Kubernetes Secret API directly:
 kubectl auth can-i get secret/checkout-db \
   --as=system:serviceaccount:recovery:checkout -n recovery
 ~~~
 
-The authorization check is only one signal. Kubernetes documents that Secret access needs careful least-privilege design and that base64 encoding is not encryption. Avoid printing Secret objects to the terminal or logs.
+The authorization check uses impersonation, requires the caller to have impersonation permission, and applies only to direct Kubernetes API reads. Native Secret volumes and environment variables are fetched by the kubelet, so the Pod's service account normally does not need `get` permission on the Secret. It is only one signal. Kubernetes documents that Secret access needs careful least-privilege design and that base64 encoding is not encryption. Avoid printing Secret objects to the terminal or logs.
 
 Common recovery failures include:
 
@@ -84,7 +85,7 @@ Common recovery failures include:
 - an external secret store endpoint or its workload identity was not recovered;
 - the secret was restored, but the external system already rotated or revoked it;
 - an environment-variable secret changed but the Pod was never restarted;
-- the key encryption service or CA needed to unwrap the secret exists only in the failed site;
+- the key management service or decryption key needed to decrypt the secret exists only in the failed site;
 - broad administrator tests pass while the workload's narrow role fails.
 
 After correcting delivery, restart or reload only as documented by the application. Do not assume every process watches secret files.
@@ -142,7 +143,7 @@ Then verify:
 - revocation behavior matches organizational policy and required endpoints are reachable;
 - mutual TLS clients present the expected client chain and identity.
 
-RFC 5280 defines certification-path validation around a chain to a trust anchor. Copying only a leaf certificate, or trusting a new private CA only on the operator host, does not repair the application path.
+RFC 5280 defines certification-path validation around a chain to a trust anchor. Replacing a server's leaf certificate works only when the server also has its corresponding private key and any required intermediates. Likewise, trusting a new private CA only on the operator host does not repair the application path.
 
 Also inspect certificate issuance. A restored ingress may request a new certificate before DNS points to it, hit CA rate limits, or lack DNS-provider credentials. Pre-provision and test recovery certificate paths where RTO cannot absorb issuance delay.
 
@@ -196,7 +197,7 @@ The application dependency path is recovered when:
 - TLS path, name, time, usage, and trust validation pass without bypasses;
 - token audience, roles, and database grants fit the restored environment;
 - the same critical transaction that failed now completes and reconciles;
-- evidence contains metadata and fingerprints but no secret values.
+- evidence contains metadata, certificate fingerprints, and only approved keyed fingerprints for secrets, never secret values or raw secret hashes.
 
 Infrastructure startup is a prerequisite. Dependency validation is what turns it into a service.
 
