@@ -14,7 +14,7 @@ NIST SP 800-184 treats recovery as a cycle of planning, testing, and continuous 
 
 ## Give Every Runbook an Explicit Contract
 
-Place machine-readable metadata at the top or beside the document:
+Place machine-readable, organization-defined metadata at the top or beside the document:
 
 ~~~yaml
 runbook_id: commerce-region-loss
@@ -30,8 +30,8 @@ infrastructure_revision: 8f2c91d
 credential_paths:
   - vault://recovery/cloud-bootstrap
   - vault://recovery/database-restore
-last_full_exercise: 2026-06-14
-evidence: evidence://dr-2026-06-14-commerce
+last_full_exercise: 2026-08-14
+evidence: evidence://dr-2026-08-14-commerce
 review_after: 2026-09-14
 invalidating_changes:
   - recovery architecture
@@ -39,6 +39,8 @@ invalidating_changes:
   - identity, secret, CA, or DNS control
   - stateful engine major version
 ~~~
+
+The schema and URI schemes above are illustrative. Define and validate how custom references such as `vault://` and `evidence://` resolve in your tooling; `vault://` is not a HashiCorp Vault CLI or API path.
 
 The document should never contain live secret values. It should identify a secret path, required role, retrieval method, approval path, and a non-sensitive fingerprint or version that lets an operator confirm what was retrieved.
 
@@ -142,7 +144,7 @@ Show this status in the service catalog and alert the accountable owner. Do not 
 
 ## Write Procedures That Survive Rotation
 
-Prefer stable discovery over copied identifiers when discovery itself is independently recoverable. For example:
+Prefer stable discovery over copied identifiers when discovery itself is independently recoverable. For example, a hypothetical organization-specific recovery wrapper might expose a preflight like this:
 
 ~~~bash
 # The runbook defines RECOVERY_RUN_ID and TARGET_ACCOUNT first.
