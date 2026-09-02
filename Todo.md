@@ -154,7 +154,6 @@
 
 ## Recovery Engineering
 
-3. How to Run a Full Disaster Recovery Drill Without Sending Restored Services to Production Dependencies
 4. How to Measure Actual RTO and RPO During a Recovery Exercise
 5. Why Does Infrastructure as Code Fail to Rebuild Production? Detecting Drift Before a Disaster
 6. How to Reconstruct Service Dependency Order for a Reliable Recovery Runbook
