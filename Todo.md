@@ -151,7 +151,6 @@
 
 ## OpenSearch Observability
 
-1. How to Send OpenTelemetry Logs, Metrics, and Traces to OpenSearch Through a Single Collector
 2. Why Are OpenSearch Logs Visible in Discover but Missing from Observability? Fixing Data Source and Field Mapping
 3. How to Build an OpenSearch Dashboard That Links a Metric Spike to Its Logs and Traces
 4. How to Propagate Trace and Span IDs into OpenSearch Log Documents for Cross-Signal Correlation
