@@ -151,7 +151,6 @@
 
 ## OpenSearch Observability
 
-14. How to Reduce OpenSearch Observability Costs with Rollover, Retention, and Tiered Storage
 15. Why Are OpenSearch Dashboard Queries Slow During Incidents? Diagnosing Shards, Mappings, and Expensive Aggregations
 16. How to Normalize Kubernetes Log Fields Before Indexing Them in OpenSearch
 17. How to Troubleshoot Missing OpenTelemetry Spans Between the Collector and OpenSearch
