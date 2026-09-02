@@ -67,7 +67,7 @@ The local class names do not have to match if a native client's PDX type mapper 
 
 ## Fix the Field Types Before Shipping
 
-Every PDX field has one `FieldType`. Once a type definition says that `loyaltyPoints` is `LONG`, another client must not write it as `INT`, `DOUBLE`, `STRING`, or generic `OBJECT` under the same PDX type and field name. A later writer that changes the field type can receive `PdxFieldTypeMismatchException` or introduce a second incompatible type definition.
+Every PDX field has one `FieldType`. Once a type definition says that `loyaltyPoints` is `LONG`, another client must not write it as `INT`, `DOUBLE`, `STRING`, or generic `OBJECT` under the same PDX type and field name. Writing the field with another `FieldType` under the same PDX class name can create a distinct, incompatible type definition. A reader that uses the old typed accessor, or a `WritablePdxInstance` update with an incompatible value, can receive `PdxFieldTypeMismatchException`.
 
 Use the narrow, explicit writer method that matches the contract:
 
@@ -128,11 +128,11 @@ FROM /customers c
 WHERE c.loyaltyPoints >= 500
 ```
 
-The server therefore does not need `com.acme.Customer` on its classpath for this field-based query. Server functions or listeners that call `PdxInstance.getObject()`, cast values to a domain class, or invoke domain behavior do need the class and compatible serialization code.
+The server therefore does not need `com.acme.Customer` on its classpath for this field-based query. Calling `getObject()` on an instance created with `neverDeserialize()` returns that `PdxInstance` itself. Otherwise, server functions or listeners that call `getObject()` to obtain a domain object, cast values to a domain class, or invoke domain behavior need the class and compatible deserialization code.
 
 ## Evolve the Schema Additively
 
-PDX supports versions that add or remove fields. An old reader sees the default value for a field it does not have; a reader can use `PdxInstance.hasField()` to distinguish an absent field from a present field whose value is null or the primitive default.
+PDX supports versions that add or remove fields. During class-based deserialization, `PdxReader` returns the Java default when the serialized version lacks a requested field. A `PdxInstance` retains the exact field set of its serialized version; use `hasField()` to distinguish an absent field from a present field whose value is null or the primitive default.
 
 Use an additive rollout:
 
