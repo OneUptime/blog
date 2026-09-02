@@ -10,7 +10,7 @@ Description: Detect configuration drift and hidden rebuild dependencies before i
 
 Infrastructure as code (IaC) can reproduce only what it declares and can still access. Production often accumulates manual changes, imported resources, provider defaults, data created outside the stack, and dependencies that no longer exist. A normal deployment succeeding against an established environment does not prove a clean-region rebuild.
 
-HashiCorp defines drift as changes to infrastructure outside the Terraform workflow. A refresh-aware plan can expose differences for managed attributes, but even a perfectly clean plan cannot detect an unmanaged certificate, a missing bootstrap secret, or an exhausted regional quota.
+HashiCorp defines drift as changes to infrastructure outside the Terraform workflow. A refresh-aware plan can expose differences for managed attributes, but even a perfectly clean plan against the established environment does not prove that an unmanaged certificate or bootstrap secret will be available, or that the recovery region has sufficient quota.
 
 ## Understand the Three Different Views
 
@@ -20,12 +20,12 @@ For a Terraform-style workflow, compare:
 2. **State:** the tool's recorded mapping to remote objects;
 3. **Observed infrastructure:** what provider APIs return now.
 
-Drift exists when these differ, but the consequences vary:
+These views can differ for several reasons, only some of which are drift:
 
-- configuration and state agree, remote object differs: out-of-band change;
+- configuration and state agree, remote object differs: out-of-band drift;
 - configuration and remote object agree, state differs: state-management problem;
-- state and remote object agree, configuration omits it: unmanaged dependency;
-- all three agree, clean rebuild fails: external prerequisite, nondeterminism, or unavailable artifact.
+- configuration and state omit a remote object that production depends on: unmanaged dependency;
+- all three agree for managed objects, clean rebuild fails: external prerequisite, nondeterminism, or unavailable artifact.
 
 Do not collapse all four into “Terraform drift.”
 
@@ -43,7 +43,7 @@ An image tag moved, a package repository dropped a version, a Helm chart disappe
 
 ### Hidden provider and platform defaults
 
-Critical attributes omitted from configuration may inherit a changing default. HashiCorp notes that drift detection reports changes to attributes defined in configuration; explicitly declare operationally critical settings.
+Critical attributes omitted from configuration may inherit a changing default. HashiCorp notes that HCP Terraform health-assessment drift detection reports changes only to resource attributes defined in configuration; explicitly declare operationally critical settings.
 
 ### Credentials and trust
 
@@ -104,11 +104,11 @@ On a schedule and after material platform changes:
 
 1. create a new isolated account, project, subscription, or region boundary;
 2. start with only documented bootstrap identity and state access;
-3. pin IaC CLI, provider, module, image, chart, and package versions;
+3. pin IaC CLI, provider, module, chart, and package versions, and pin container images by digest;
 4. run the recovery stack without borrowing production resources;
-5. restore representative data through the runbook;
+5. restore a representative recovery point and production-like data volume through the runbook;
 6. start the application and execute synthetic business transactions;
-7. measure time from authorization through acceptance;
+7. measure time from the simulated service interruption through acceptance, including detection and authorization;
 8. destroy exact test-run resources and retain evidence.
 
 This finds missing declarations and circular prerequisites that a plan against production cannot.
@@ -143,7 +143,7 @@ For each difference, choose deliberately:
 
 - **revert remote change** by applying reviewed configuration;
 - **accept change** by updating configuration and then reconciling state;
-- **import existing resource** under management;
+- **import existing resource** by declaring it in configuration and importing it into state;
 - **declare external prerequisite** with monitoring and recovery ownership;
 - **remove obsolete dependency** after runtime validation.
 
@@ -155,7 +155,7 @@ The recovery IaC is credible when:
 
 - scheduled read-only comparisons have no unowned drift;
 - critical runtime dependencies map to code, restore steps, or explicit prerequisites;
-- providers, modules, images, and packages are pinned and retrievable;
+- IaC CLI, provider, module, chart, and package versions are pinned, container images are digest-pinned, and all are retrievable;
 - state, secrets, certificates, repositories, and bootstrap runners are recoverable independently;
 - target-region quota, address space, names, and capacity are checked;
 - a clean-room build plus data restore completes inside RTO;
