@@ -151,7 +151,6 @@
 
 ## OpenSearch Observability
 
-10. Why Does an OpenSearch Per-Document Monitor Omit Source Fields? Fixing Trigger Context and Templates
 11. How to Alert Only When an OpenSearch Monitor Changes State and Avoid Repeat Notifications
 12. How to Query OpenSearch Alert History and Build a Dashboard for Flapping Monitors
 13. Why Is the `.opensearch-observability` Index Read-Only? Recovering from Flood-Stage Disk Watermarks
