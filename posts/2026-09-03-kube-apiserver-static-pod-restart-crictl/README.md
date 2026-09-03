@@ -1,4 +1,4 @@
-# kube-apiserver Static Pod Keeps Restarting: Recover It with `crictl` When `kubectl` Is Unavailable
+# Recover a Restarting kube-apiserver Static Pod with `crictl`
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
@@ -8,7 +8,7 @@ Description: Diagnose and recover a crash-looping kube-apiserver static Pod from
 
 ---
 
-In a kubeadm cluster, kube-apiserver is normally a static Pod. The local kubelet watches `/etc/kubernetes/manifests`, asks the configured CRI runtime to run the Pod, and later creates a mirror Pod in the API. When the API server is unavailable, that mirror is inaccessible—but the real container and its logs are still visible through the runtime.
+In a kubeadm cluster, kube-apiserver is normally a static Pod. The local kubelet watches `/etc/kubernetes/manifests`, asks the configured CRI runtime to run the Pod, and later creates a mirror Pod in the API. When the API server is unavailable, that mirror is inaccessible-but the real container and its logs are still visible through the runtime.
 
 Use `crictl` to recover evidence. Do not try to recreate kube-apiserver with `crictl run`; the kubelet owns the static Pod and will reconcile it from the manifest.
 

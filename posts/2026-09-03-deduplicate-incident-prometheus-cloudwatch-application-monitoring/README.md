@@ -1,4 +1,4 @@
-# How to Deduplicate the Same Incident Across Prometheus, CloudWatch, and Application Monitoring
+# Deduplicate Incidents Across Prometheus, CloudWatch, and App Monitoring
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
@@ -34,9 +34,9 @@ Create a canonical alert envelope while retaining the payload:
 
 For Prometheus/Alertmanager, the complete label set identifies an alert instance, and current webhook payloads can include an alert fingerprint and group key. Annotations are descriptive and should not define identity. Clients resend firing alerts until resolution, so repeated delivery is expected.
 
-For CloudWatch, use the alarm ARN from `resources` or account/region/alarm name as the source alert identity. CloudWatch alarm state-change events delivered through EventBridge contain an EventBridge event `id`, state, previous state, timestamps, configuration, and alarm name. The event ID identifies that event delivery unit; the alarm ARN identifies the enduring source alarm.
+For CloudWatch, use the alarm ARN from `resources` or account/region/alarm name as the source alert identity. CloudWatch alarm state-change events delivered through EventBridge contain an EventBridge event `id`, state, previous state, timestamps, configuration, and alarm name. The event ID identifies the EventBridge event; the alarm ARN identifies the enduring source alarm.
 
-For an application monitor, use its stable monitor/check identifier plus scope—not its display name. Store vendor occurrence IDs when available.
+For an application monitor, use its stable monitor/check identifier plus scope-not its display name. Store vendor occurrence IDs when available.
 
 ## Make Ingestion Idempotent
 
@@ -97,7 +97,7 @@ incident INC-2041
   Synthetic   checkout-submit-eu     failing
 ~~~
 
-Resolving one source does not resolve the incident while material symptoms remain. Define closure policy explicitly—such as all paging signals resolved plus a stability period—and preserve partial recovery.
+Resolving one source does not resolve the incident while material symptoms remain. Define closure policy explicitly-such as all paging signals resolved plus a stability period-and preserve partial recovery.
 
 ## Use Native Noise Controls Carefully
 

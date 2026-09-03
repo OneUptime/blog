@@ -1,4 +1,4 @@
-# Kubernetes API Server Returns 401 Unauthorized: Trace Token Issuer, Audience, and Clock Skew
+# Kubernetes API 401: Trace Token Issuer, Audience, and Clock Skew
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
@@ -22,7 +22,7 @@ kubectl config view --minify
 kubectl --v=6 get --raw=/version
 ```
 
-The view should identify the expected HTTPS server and user without revealing secret data. Check whether the user entry uses a token, client certificate, `exec` credential plugin, or legacy auth provider. An `exec` plugin can fail, return an expired credential, or choose the wrong cloud account even when the kubeconfig names look correct.
+By default, the view redacts raw certificate and credential data, but inspect its output before sharing because `exec` arguments or environment entries can themselves contain sensitive values. The view should identify the expected HTTPS server and user. Check whether the user entry uses a token, client certificate, `exec` credential plugin, or legacy auth provider. An `exec` plugin can fail, return an expired credential, or choose the wrong cloud account even when the kubeconfig names look correct.
 
 Compare through and around the load balancer only when you can preserve both TLS name verification and the intended hostname. A proxy-generated 401 is not an API server authentication verdict. Response timing, load-balancer logs, API server audit records, and a request ID can establish which hop produced it.
 
@@ -59,7 +59,7 @@ For external JWT/OIDC authentication, the API server obtains signing keys throug
 
 - the issuer's HTTPS name resolves and is reachable;
 - its certificate chains to the CA trusted by the API server;
-- `/.well-known/openid-configuration` advertises the expected issuer and JWKS URI; and
+- the configured discovery endpoint (normally the issuer URL with `/.well-known/openid-configuration` appended) advertises the expected issuer and JWKS URI; and
 - the JWKS contains the token header's `kid` and supported signing algorithm.
 
 A key-rotation race often has a distinctive shape: tokens signed with an old key work while newly issued tokens fail, or only some API server replicas reject the same token. Compare authenticator configuration, mounted CA files, reachability, and logs on every replica. Do not copy a private signing key into Kubernetes; the API server needs the issuer's public verification keys.

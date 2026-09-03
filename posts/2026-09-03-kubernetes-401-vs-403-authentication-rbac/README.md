@@ -1,4 +1,4 @@
-# 401 or 403? How to Separate Kubernetes API Authentication Failures from RBAC Denials
+# Kubernetes 401 vs 403: Authentication or RBAC Denial?
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -1,4 +1,4 @@
-# How to Carry Trace and Correlation IDs Through Kafka or RabbitMQ Without Breaking Async Traces
+# Carry Trace and Correlation IDs Through Kafka or RabbitMQ
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -1,4 +1,4 @@
-# How to Health-Check an HA Kubernetes API Server Without Routing to an Unready Control-Plane Node
+# Health-Check an HA Kubernetes API Server Without Routing to Unready Nodes
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
@@ -10,7 +10,7 @@ Description: Design per-replica TLS-verified readiness checks so an HA Kubernete
 
 An HA API endpoint is only as reliable as its backend selection. A control-plane node can accept a TCP connection while kube-apiserver is still initializing, cannot reach etcd, is waiting for watch caches, or has entered graceful shutdown. A port-open check sees all of those states as healthy.
 
-Kubernetes' kubeadm HA guide uses TCP forwarding and describes a TCP check on the API server port as a broadly compatible baseline. If the requirement is stricter—never intentionally select a replica that Kubernetes reports unready—the load balancer must evaluate `/readyz`, either directly or through a narrowly scoped health-check agent.
+Kubernetes' kubeadm HA guide uses TCP forwarding and describes a TCP check on the API server port as a broadly compatible baseline. If the requirement is stricter-never intentionally select a replica that Kubernetes reports unready-the load balancer must evaluate `/readyz`, either directly or through a narrowly scoped health-check agent.
 
 ## Keep the Data Path and Probe Path Distinct
 

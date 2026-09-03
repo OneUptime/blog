@@ -86,7 +86,7 @@ Stay passive when the scanner can reach shared etcd, the behavior is not pinned 
 
 ## Conclusion
 
-Scope active hunting by code path, dependency chain, target, network, workload, time, and evidence—not just by a CIDR flag. Pin and list the exact hunters, prefer a disposable replica, select only reviewed behavior and prerequisites with `--custom`, enforce an external egress allowlist, and verify cleanup independently. If those controls cannot be demonstrated, a passive production scan plus an active lab proof is the safer and stronger result.
+Scope active hunting by code path, dependency chain, target, network, workload, time, and evidence-not just by a CIDR flag. Pin and list the exact hunters, prefer a disposable replica, select only reviewed behavior and prerequisites with `--custom`, enforce an external egress allowlist, and verify cleanup independently. If those controls cannot be demonstrated, a passive production scan plus an active lab proof is the safer and stronger result.
 
 ## Official References
 

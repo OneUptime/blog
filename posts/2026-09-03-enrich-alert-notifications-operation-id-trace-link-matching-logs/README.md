@@ -1,4 +1,4 @@
-# How to Enrich Alert Notifications with the Operation ID, Trace Link, and Matching Logs
+# Enrich Alerts with Operation IDs, Trace Links, and Matching Logs
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
@@ -67,7 +67,7 @@ The alert path must not depend on every observability backend being healthy. Enr
 A notification can then say:
 
 ~~~text
-Checkout errors — production / eu-west-primary
+Checkout errors - production / eu-west-primary
 Started: 2026-09-03T10:14:00Z
 Workflow: wf_8J3M2 (from failed-job label)
 Trace: representative error trace, selected at 10:18:22Z

@@ -1,4 +1,4 @@
-# Why Does kube-hunter Time Out While kubectl Works? Troubleshooting DNS, Routing, and API Endpoint Access
+# kube-hunter Times Out but kubectl Works: Network Troubleshooting
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
@@ -75,7 +75,7 @@ A connection timeout precedes TLS. A certificate error means routing worked; rep
 
 ### HTTP and authentication
 
-An HTTP `401` or `403` is not a network timeout. It proves the request reached an API. kube-hunter remote scanning is normally unauthenticated, while `kubectl` may execute a cloud credential plugin and send a valid token. If the purpose is attack-surface testing, the unauthenticated denial is expected evidence—not something to bypass with an admin token.
+An HTTP `401` or `403` is not a network timeout. It proves the request reached an API. kube-hunter remote scanning is normally unauthenticated, while `kubectl` may execute a cloud credential plugin and send a valid token. If the purpose is attack-surface testing, the unauthenticated denial is expected evidence-not something to bypass with an admin token.
 
 ## Understand kube-hunter Timeout Controls
 

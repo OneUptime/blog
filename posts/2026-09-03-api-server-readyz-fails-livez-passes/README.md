@@ -1,4 +1,4 @@
-# `/readyz` Fails While `/livez` Passes: Reading Kubernetes API Server Health Checks
+# `/readyz` Fails While `/livez` Passes: API Server Health Checks
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

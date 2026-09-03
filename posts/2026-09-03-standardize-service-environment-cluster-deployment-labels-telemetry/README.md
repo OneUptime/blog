@@ -1,4 +1,4 @@
-# How to Standardize Service, Environment, Cluster, and Deployment Labels Across Telemetry Signals
+# Standardize Telemetry Labels Across Services and Environments
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
@@ -23,7 +23,7 @@ Start with this contract:
 | Running instance | `service.instance.id` | opaque UUID or instance ID |
 | Built artifact | `service.version` | `4f6a2c1` |
 | Deployment tier | `deployment.environment.name` | `production` |
-| Cluster | `k8s.cluster.name` and/or `k8s.cluster.uid` | `eu-west-primary` |
+| Cluster | `k8s.cluster.name` and/or `k8s.cluster.uid` | `eu-west-primary` and/or a UUID |
 | Kubernetes namespace | `k8s.namespace.name` | `storefront` |
 | Workload controller | `k8s.deployment.name` | `checkout` |
 | Pod | `k8s.pod.name` and `k8s.pod.uid` | runtime values |
@@ -58,7 +58,7 @@ k8s.cluster.name              cluster inventory
 k8s.* runtime identity        Kubernetes API enrichment
 ~~~
 
-Do not let application defaults, Helm release names, scrape jobs, and log-agent remapping all compete. The OpenTelemetry SDK falls back to `unknown_service` when `service.name` is not configured; treat that value as a quality failure in production rather than a legitimate service.
+Do not let application defaults, Helm release names, scrape jobs, and log-agent remapping all compete. The OpenTelemetry SDK falls back to `unknown_service:<process executable name>` when the executable name is available, and to `unknown_service` otherwise; treat either form as a quality failure in production rather than a legitimate service.
 
 In Kubernetes, standard application labels and OpenTelemetry resource annotations can seed the values. The non-normative OpenTelemetry Kubernetes guidance describes a precedence order, including annotations such as:
 
@@ -108,7 +108,7 @@ Run a telemetry conformance check for every production service:
 1. emit a synthetic span, log, and metric;
 2. query each backend and extract its resource identity;
 3. compare values with the service catalog and deployment record;
-4. reject `unknown_service`, empty environment, and unrecognized cluster aliases;
+4. reject `unknown_service` and `unknown_service:*`, empty environment, and unrecognized cluster aliases;
 5. detect one instance reporting multiple service identities;
 6. detect one logical service split across accidental spellings;
 7. verify version changes only with artifact rollouts.

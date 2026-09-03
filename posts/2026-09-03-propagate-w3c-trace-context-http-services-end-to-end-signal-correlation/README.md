@@ -1,4 +1,4 @@
-# How to Propagate W3C Trace Context Across HTTP Services for End-to-End Signal Correlation
+# Propagate W3C Trace Context Across HTTP Services
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
@@ -44,15 +44,18 @@ The language API varies, but the framework-independent logic looks like this:
 remote = propagator.extract(root_context, request.headers, header_getter)
 server = tracer.start_server_span("GET /checkout", parent=remote)
 
-with make_current(server):
-    client = tracer.start_client_span("POST payment-api")
-    with make_current(client):
-        outbound_headers = {}
-        propagator.inject(current_context(), outbound_headers, header_setter)
-        response = http.post(payment_url, headers=outbound_headers)
-    client.end()
-
-server.end()
+try:
+    with make_current(server):
+        client = tracer.start_client_span("POST payment-api")
+        try:
+            with make_current(client):
+                outbound_headers = {}
+                propagator.inject(current_context(), outbound_headers, header_setter)
+                response = http.post(payment_url, headers=outbound_headers)
+        finally:
+            client.end()
+finally:
+    server.end()
 ~~~
 
 Use your OpenTelemetry HTTP server and client instrumentation where it exists. It already handles framework lifecycle details such as exceptions, redirects, streaming responses, and asynchronous completion. Manual instrumentation is most useful at a proprietary boundary or as a test oracle.

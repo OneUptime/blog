@@ -1,4 +1,4 @@
-# How to Measure Whether Signal Correlation Reduces Noise Without Silencing Important Alerts
+# Measure Whether Signal Correlation Reduces Alert Noise
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
@@ -122,7 +122,7 @@ operator correction rate        falling across successive weeks
 black-box alert path             continuously healthy
 ~~~
 
-Exact thresholds depend on risk and sample size. Publish confidence intervals or event counts; “0% misses” over two incidents is weak evidence. Automatically disable only the correlation action—not raw alert collection—when safety checks fail.
+Exact thresholds depend on risk and sample size. Publish confidence intervals or event counts; “0% misses” over two incidents is weak evidence. Automatically disable only the correlation action-not raw alert collection-when safety checks fail.
 
 Review metrics after every significant catalog, topology, source integration, or rule change. Watch for Goodhart's law: if teams are rewarded only for page reduction, they may reclassify or hide alerts rather than improve signal.
 

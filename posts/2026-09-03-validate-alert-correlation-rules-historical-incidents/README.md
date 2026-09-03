@@ -1,4 +1,4 @@
-# How to Validate Alert Correlation Rules Against Historical Incidents Before Production
+# Validate Alert Correlation Rules Against Historical Incidents
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
@@ -134,7 +134,7 @@ After promotion, retain source events and continue sampling decisions for review
 
 ## Conclusion
 
-Production-safe correlation requires a replayable event history, curated incident truth, deterministic state-machine tests, and separate validation of source alert rules. Score false merges, false splits, detection delay, and hidden important alerts—not notification reduction alone. Shadow every policy with explainable decisions, holdout incidents, and a fast rollback before it can alter paging.
+Production-safe correlation requires a replayable event history, curated incident truth, deterministic state-machine tests, and separate validation of source alert rules. Score false merges, false splits, detection delay, and hidden important alerts-not notification reduction alone. Shadow every policy with explainable decisions, holdout incidents, and a fast rollback before it can alter paging.
 
 ## Official References
 

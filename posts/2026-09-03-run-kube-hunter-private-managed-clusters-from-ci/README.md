@@ -10,7 +10,7 @@ Description: Place ephemeral CI runners on provider-supported private network pa
 
 A CI runner with only a public-internet path cannot reach a private cluster endpoint. Some CI platforms offer deliberate private-network connectivity, but the safe solution is not to temporarily publish the endpoint. Run an ephemeral self-hosted runner or supported private-network runner inside an approved VPC/VNet or connected network, give it private DNS and routes, and restrict its egress to the authorized cluster targets.
 
-Also decide what “against the cluster” means. kube-hunter's remote mode can target API endpoints, node addresses, or a CIDR. Reaching a private Kubernetes API does not automatically make private kubelet or etcd endpoints reachable. Each target type needs its own route and firewall approval.
+Also decide what “against the cluster” means. kube-hunter's remote mode can target API endpoints or node addresses, while its network scanning mode accepts a CIDR. Reaching a private Kubernetes API does not automatically make private kubelet or etcd endpoints reachable. Each target type needs its own route and firewall approval.
 
 ## Common CI Architecture
 

@@ -1,4 +1,4 @@
-# How to Run kube-hunter Remotely Against a Kubernetes Cluster Without Exposing the Scanner
+# Run kube-hunter Remotely Without Exposing the Scanner
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

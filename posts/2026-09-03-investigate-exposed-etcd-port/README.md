@@ -10,7 +10,7 @@ Description: Investigate a reachable etcd client endpoint without reading or wri
 
 etcd holds Kubernetes' backing state. Kubernetes security guidance notes that information accessible through the API is generally present in etcd and that etcd access can provide significant visibility. Treat an exposed `2379` finding as high priority, but distinguish network reachability from authenticated database access.
 
-Current kube-hunter discovery labels an open port `2379` as etcd. Its passive hunter then tries version and legacy v2 key endpoints over HTTPS, falling back to HTTP when it receives an insecure version response. Its active hunter can attempt a key write. Do not enable active mode during a production investigation.
+Current kube-hunter discovery labels an open port `2379` as etcd. Its passive hunter first probes the version endpoint over HTTP; if that succeeds, it uses HTTP, and otherwise it uses HTTPS, without certificate verification, for version and legacy v2 key requests. Its active hunter can attempt a key write. Do not enable active mode during a production investigation.
 
 ## Preserve and Scope the Finding
 
@@ -31,7 +31,7 @@ timeout 5 openssl s_client \
   > tls.txt 2>&1
 ~~~
 
-A completed handshake does not prove read access. A server can present its certificate before requiring a client certificate. Inspect issuer, subject alternative names, validity, and protocol; do not disable verification in a routine client test.
+A completed handshake does not prove read access. A server can present its certificate before requiring a client certificate. Inspect issuer, subject alternative names, validity, and protocol. This diagnostic command displays verification errors but, without `-verify_return_error` and an appropriate trust store, does not establish certificate trust; do not disable verification in a routine client test.
 
 If plain HTTP was reported, capture only the status and small version response from an isolated authorized host. Do not request `/v2/keys`, `/v3/kv/range`, secrets, registry keys, or a write. Production data access is not needed to establish insecure transport.
 
@@ -93,4 +93,3 @@ Investigate an etcd finding in stages: confirm ownership and reachability, inspe
 - [etcd configuration options](https://etcd.io/docs/v3.6/op-guide/configuration/)
 - [Kubernetes ports and protocols](https://kubernetes.io/docs/reference/networking/ports-and-protocols/)
 - [Kubernetes security checklist](https://kubernetes.io/docs/concepts/security/security-checklist/)
-

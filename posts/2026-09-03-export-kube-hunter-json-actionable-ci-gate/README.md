@@ -54,8 +54,13 @@ jq -e '
   (.vulnerabilities | type == "array") and
   all(.vulnerabilities[]?;
     (.vid | type == "string") and
-    (.severity | type == "string") and
+    (.category | type == "string") and
+    (.severity == "low" or .severity == "medium" or .severity == "high") and
     (.location | type == "string") and
+    (.vulnerability | type == "string") and
+    (.description | type == "string") and
+    (.evidence | type == "string") and
+    (.avd_reference | type == "string") and
     (.hunter | type == "string"))
 ' kube-hunter.raw.json >/dev/null || {
   echo "Unexpected kube-hunter JSON schema" >&2
@@ -92,6 +97,7 @@ Severity alone is rarely enough. An actionable item normally combines:
 Prefer an allowlist of VIDs that your team has reviewed against the pinned source. The example below is intentionally illustrative; replace the IDs with your policy, review their meaning for your scanner revision, and keep the list in version control:
 
 ~~~bash
+set +e
 jq -e '
   def policy_vid:
     . == "KHV031" or
@@ -103,7 +109,6 @@ jq -e '
     .vulnerabilities[]?
     | select(.vid | policy_vid)
     | select(
-        .severity == "critical" or
         .severity == "high" or
         .severity == "medium")
   ] as $actionable
@@ -115,6 +120,14 @@ jq -e '
       | halt_error(1)
     end
 ' kube-hunter.raw.json
+policy_rc=$?
+set -e
+
+case "$policy_rc" in
+  0) ;;
+  1) exit 1 ;;
+  *) echo "kube-hunter policy evaluation failed: $policy_rc" >&2; exit 2 ;;
+esac
 ~~~
 
 A simpler and more portable pipeline can write the actionable array to a second file, test its length, and exit `1`. Avoid logging `.evidence` to a public CI console.
@@ -123,7 +136,7 @@ Do not fail merely because `.services` is nonempty. Service rows mean kube-hunte
 
 ## Handle Baselines and Exceptions Safely
 
-Do not suppress by mutable display text. Use VID plus cluster ID, target/vantage class, and—only when stable—location. Exceptions should include owner, reason, ticket, creation time, and expiry. Expired exceptions fail closed.
+Do not suppress by mutable display text. Use VID plus cluster ID, target/vantage class, and-only when stable-location. Exceptions should include owner, reason, ticket, creation time, and expiry. Expired exceptions fail closed.
 
 Keep “known” separate from “accepted.” A baseline prevents duplicate paging; it must not turn an unresolved vulnerability into a permanent pass. Report new, changed, persistent, and resolved findings to different channels.
 
@@ -143,7 +156,7 @@ Review policy after scanner upgrades. Diff `--list`, parser flags, reporter sour
 
 ## Test the Gate Itself
 
-Keep sanitized fixtures for four cases: no findings, an actionable VID, a non-actionable service-only report, and malformed or incomplete JSON. Run the policy against them on every change and assert the three distinct exit classes. Add a fixture with an unknown severity or extra field so forward-compatible additions do not bypass required validation. Fixtures test your wrapper, not kube-hunter; refresh them only after reviewing the pinned reporter source, and never derive them by copying live secrets or internal evidence into the repository.
+Keep sanitized fixtures for four cases: no findings, an actionable VID, a non-actionable service-only report, and malformed or incomplete JSON. Run the policy against them on every change and assert the three distinct exit classes. Add fixtures proving that an unknown severity fails validation while an extra field remains accepted. Fixtures test your wrapper, not kube-hunter; refresh them only after reviewing the pinned reporter source, and never derive them by copying live secrets or internal evidence into the repository.
 
 ## Conclusion
 

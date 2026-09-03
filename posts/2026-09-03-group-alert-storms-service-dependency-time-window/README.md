@@ -1,4 +1,4 @@
-# How to Group Alert Storms by Service, Dependency, and Time Window Without Hiding Root Causes
+# Group Alert Storms Without Hiding Root Causes
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
@@ -28,7 +28,7 @@ If different monitoring systems call the same service `payments-api`, `payment`,
 
 ## Use a Hierarchical Routing Tree
 
-An Alertmanager configuration can start broad and specialize critical paths:
+An Alertmanager routing-tree fragment can start broad and specialize critical paths (a complete configuration must also define the named receivers):
 
 ~~~yaml
 route:

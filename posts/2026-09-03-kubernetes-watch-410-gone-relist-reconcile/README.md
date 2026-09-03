@@ -1,4 +1,4 @@
-# Why Kubernetes Watches Return 410 Gone—and How Controllers Should Relist and Reconcile Current State
+# Kubernetes Watch 410 Gone: Relist and Reconcile Current State
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
@@ -10,7 +10,7 @@ Description: Explain expired Kubernetes watch history and design controllers tha
 
 A Kubernetes watch is a stream of changes after a particular `resourceVersion`, not a permanent event log. API servers are not required to retain every old version. When the version requested by a client is older than the available history, the server may return HTTP `410 Gone`, often described as “too old resource version.”
 
-This is a normal recovery condition that every long-running controller must tolerate. The safe response is to obtain a fresh snapshot, replace local knowledge, and reconcile current state—not retry the expired version forever and not assume missed edge events can be reconstructed.
+This is a normal recovery condition that every long-running controller must tolerate. The safe response is to obtain a fresh snapshot, replace local knowledge, and reconcile current state-not retry the expired version forever and not assume missed edge events can be reconstructed.
 
 ## Understand the List-Then-Watch Contract
 
@@ -72,7 +72,7 @@ Keep the list and watch scopes identical: API group/version/resource, namespace,
 
 ## Make Reconciliation Level-Driven
 
-A controller that requires seeing every transition—“send an action only when event X follows event Y”—cannot recover safely after history is gone. Kubernetes controller design should be level-driven:
+A controller that requires seeing every transition-“send an action only when event X follows event Y”-cannot recover safely after history is gone. Kubernetes controller design should be level-driven:
 
 ```text
 desired = read desired objects from informer cache
@@ -92,7 +92,7 @@ After a relist, the controller may not know whether an object passed through int
 
 Wait for cache synchronization before workers treat lister results as authoritative. Handlers should enqueue stable keys and return quickly; slow network calls in a watch handler can create backpressure. Workers should fetch the latest cached object and reconcile, coalescing repeated notifications naturally.
 
-Choose the right watch helper for non-controller code. `RetryWatcher` can resume timeouts and lost connections from the last version but explicitly cannot recover when that version has fallen out of history. `watch.Until` preserves event ordering and likewise fails on an old resource version. `UntilWithSync` can relist and recover, but may skip intermediate events—appropriate only when the condition is level-driven. For normal controllers, use informers rather than assembling these primitives manually.
+Choose the right watch helper for non-controller code. `RetryWatcher` can resume timeouts and lost connections from the last version but explicitly cannot recover when that version has fallen out of history. `watch.Until` preserves event ordering and likewise fails on an old resource version. `UntilWithSync` can relist and recover, but may skip intermediate events-appropriate only when the condition is level-driven. For normal controllers, use informers rather than assembling these primitives manually.
 
 Pin the `client-go` minor version according to Kubernetes' compatibility guidance instead of importing an arbitrary latest version.
 
@@ -125,7 +125,7 @@ The success criterion is eventual agreement with the current API state and desir
 
 ## Official References
 
-- [Kubernetes: API Concepts—Efficient Detection of Changes](https://kubernetes.io/docs/reference/using-api/api-concepts/#efficient-detection-of-changes)
+- [Kubernetes: API Concepts-Efficient Detection of Changes](https://kubernetes.io/docs/reference/using-api/api-concepts/#efficient-detection-of-changes)
 - [Kubernetes: Resource Version Semantics](https://kubernetes.io/docs/reference/using-api/api-concepts/#resource-versions)
 - [Kubernetes client-go: cache Package](https://pkg.go.dev/k8s.io/client-go/tools/cache)
 - [Kubernetes client-go: watch Package](https://pkg.go.dev/k8s.io/client-go/tools/watch)

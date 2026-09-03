@@ -1,4 +1,4 @@
-# kubeadm Says "API Server Is Not Healthy": Check Kubelet, cgroups, etcd, and Static-Pod Logs
+# kubeadm API Server Not Healthy: Check Kubelet, etcd, and Pod Logs
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
@@ -67,7 +67,7 @@ sudo grep -E '^(cgroupDriver|containerRuntimeEndpoint):' \
 sudo crictl --runtime-endpoint="$CRI_ENDPOINT" info
 ```
 
-For containerd, compare the effective `SystemdCgroup` setting using the runtime's documented configuration for its major version. Do not paste a containerd 1.x configuration stanza into 2.x—or the reverse. If drivers must be migrated on an existing cluster, follow the Kubernetes node-by-node migration procedure rather than changing one service during a bootstrap retry.
+For containerd, compare the effective `SystemdCgroup` setting using the runtime's documented configuration for its major version. Do not paste a containerd 1.x configuration stanza into 2.x-or the reverse. If drivers must be migrated on an existing cluster, follow the Kubernetes node-by-node migration procedure rather than changing one service during a bootstrap retry.
 
 Review kubelet logs for swap and cgroup errors too. Kubernetes supports specific swap configurations in current releases, but an unplanned swap state can still conflict with the kubelet's `failSwapOn` and memory-swap settings. Make host state match the chosen, documented kubelet configuration.
 

@@ -1,4 +1,4 @@
-# Why Does kube-hunter Report “No Vulnerabilities” but List Open Kubelet and etcd Services?
+# Why kube-hunter Finds Open Services but No Vulnerabilities
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
@@ -77,7 +77,7 @@ timeout 5 openssl s_client \
   -showcerts </dev/null
 ~~~
 
-A TLS handshake without a client certificate is not proof of database access. Validate firewall sources, listener addresses, peer versus client endpoints, certificate requirements, and etcd audit/connection logs. Current kube-hunter etcd code also probes legacy v2 HTTP paths; an empty finding can reflect API-version behavior rather than a complete security assessment.
+A TLS handshake without a client certificate is not proof of database access. Validate firewall sources, listener addresses, peer versus client endpoints, certificate requirements, available etcd server logs, and network telemetry. Current kube-hunter etcd code also probes legacy v2 HTTP paths; an empty finding can reflect API-version behavior rather than a complete security assessment.
 
 ## Explain the Gap Systematically
 

@@ -1,4 +1,4 @@
-# How to Jump from an Alert to the Exact Logs and Trace Using a Correlation-Aware Dashboard
+# Link Alerts to Exact Logs and Traces with Correlation Dashboards
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
@@ -8,7 +8,7 @@ Description: Design alert payloads and dashboards that preserve entity, time, an
 
 ---
 
-An alert should open an investigation already scoped to the affected entity and interval. “CPU high—open the dashboard” forces the responder to reconstruct service, environment, cluster, and time by hand. A correlation-aware workflow carries those dimensions from the alert instance into a dashboard, then provides links from metrics to traces and from traces to logs.
+An alert should open an investigation already scoped to the affected entity and interval. “CPU high-open the dashboard” forces the responder to reconstruct service, environment, cluster, and time by hand. A correlation-aware workflow carries those dimensions from the alert instance into a dashboard, then provides links from metrics to traces and from traces to logs.
 
 The alert itself rarely identifies one exact request. Start with the affected population and time window; use an exemplar or a trace-aware log to reach individual traces without pretending a random trace caused the aggregate symptom.
 
@@ -123,7 +123,7 @@ Repeat for grouped notifications containing several alert instances. A single �
 
 ## Conclusion
 
-A reliable alert-to-evidence jump carries stable entity labels and the real incident interval into a consistently parameterized dashboard. From there, exemplars and trace-aware structured logs provide request-level navigation. Treat every link and mapping as a tested interface—complete with sampling, retention, tenancy, and grouped-alert fallbacks—so responders reach relevant evidence rather than merely another screen.
+A reliable alert-to-evidence jump carries stable entity labels and the real incident interval into a consistently parameterized dashboard. From there, exemplars and trace-aware structured logs provide request-level navigation. Treat every link and mapping as a tested interface-complete with sampling, retention, tenancy, and grouped-alert fallbacks-so responders reach relevant evidence rather than merely another screen.
 
 ## Official References
 

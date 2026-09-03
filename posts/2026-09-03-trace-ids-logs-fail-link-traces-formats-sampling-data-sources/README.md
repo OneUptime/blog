@@ -1,4 +1,4 @@
-# Why Do Trace IDs in Logs Fail to Link to Traces? Checking Formats, Sampling, and Data Sources
+# Why Trace IDs in Logs Fail to Link: Formats, Sampling, and Sources
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
@@ -87,7 +87,7 @@ For a JSON log rendered as text, a derived field can extract one capture group:
 jsonData:
   derivedFields:
     - name: TraceID
-      matcherRegex: '"trace_id":"([0-9a-f]{32})"'
+      matcherRegex: '"trace_id"\s*:\s*"([0-9a-f]{32})"'
       datasourceUid: tempo
       url: '$${__value.raw}'
 ~~~

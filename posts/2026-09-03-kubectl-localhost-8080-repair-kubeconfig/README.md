@@ -1,4 +1,4 @@
-# `kubectl` Falls Back to localhost:8080: How to Repair a Missing or Mis-Merged Kubeconfig
+# `kubectl` Uses localhost:8080: Repair a Missing Kubeconfig
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

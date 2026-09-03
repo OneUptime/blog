@@ -1,4 +1,4 @@
-# How to Correlate a Metric Spike with Deployments, Configuration Changes, and Kubernetes Events
+# Correlate Metric Spikes with Deployments and Kubernetes Events
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
@@ -69,7 +69,7 @@ sum by (service_version) (
 )
 ~~~
 
-Metric and label names are deployment-specific. Handle zero denominators and counter resets in the real rule. Breaking down by immutable version is more persuasive than observing only a fleet-wide spike.
+Metric and label names are deployment-specific. Handle zero denominators in the real rule; `rate()` already adjusts for counter resets when it is applied before aggregation, as above. Breaking down by immutable version is more persuasive than observing only a fleet-wide spike.
 
 ## Distinguish Configuration Publication from Use
 

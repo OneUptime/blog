@@ -1,4 +1,4 @@
-# Why Do Multiple Queue Messages Share One Trace ID? Modeling Producer and Consumer Span Links Correctly
+# Model Queue Fan-Out with Trace IDs and Span Links
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
@@ -39,7 +39,7 @@ The usual causes are a leaked thread-local scope, context captured when a produc
 
 ## Give Every Message a Creation Context
 
-For a single message, a producer or create span can provide the context injected into its headers. For a batch, OpenTelemetry defines a create span so each message can remain individually traceable even when one client call sends all of them.
+For a single message, a producer Send span or a Create span can provide the context injected into its headers. For a batch, OpenTelemetry defines a Create span so each message can remain individually traceable even when one client call sends all of them.
 
 Conceptually:
 
@@ -98,7 +98,7 @@ Run a concurrency test with two unrelated root contexts, then publish interleave
 
 1. `traceparent` parses successfully.
 2. Its trace ID matches the active context at creation time.
-3. Its parent span ID identifies that message's producer/create span.
+3. Its parent span ID identifies the producer Send or Create span whose context was injected for that message.
 4. Its message ID is unique according to the domain contract.
 5. A batch send has links to every per-message context.
 6. A batch consumer has links to every extracted input context.
@@ -114,7 +114,7 @@ If operational teams need one view per message, build lookup by message ID and b
 
 ## Conclusion
 
-Multiple messages sharing a trace ID is normal when they arise from one traced operation. Correctness comes from unique message identity, per-message creation context, the recommended creation-context links, and honest parent selection. Fresh carriers, scope cleanup, concurrency tests, and explicit batch links prevent a legitimate fan-out from being confused with context leakage or arbitrary ancestry.
+Multiple messages sharing a trace ID is normal when they arise from one traced operation. Correctness comes from distinct message identity where available, per-message creation context, the recommended creation-context links, and honest parent selection. Fresh carriers, scope cleanup, concurrency tests, and explicit batch links prevent a legitimate fan-out from being confused with context leakage or arbitrary ancestry.
 
 ## Official References
 

@@ -1,4 +1,4 @@
-# Kubernetes API Connections Reset Intermittently: Find Socket Saturation, Restarts, and Broken Load-Balancer Health Checks
+# Kubernetes API Resets: Find Saturation, Restarts, and Load-Balancer Issues
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
@@ -121,7 +121,7 @@ HAProxy's official guidance distinguishes active health checks, connection limit
 
 If logs remain ambiguous, capture packets simultaneously at an authorized client, load balancer, and backend with narrow host/port filters. TLS protects application content, but captures still contain sensitive topology and traffic metadata; handle them as incident data. Compare TCP sequence and reset timing to identify the first hop that emitted or synthesized the RST.
 
-Also test MTU, asymmetric routing, firewall session capacity, NAT port allocation, and NIC errors when evidence points between hosts. Avoid changing several timeouts and kernel tunables at once—you lose the causal signal.
+Also test MTU, asymmetric routing, firewall session capacity, NAT port allocation, and NIC errors when evidence points between hosts. Avoid changing several timeouts and kernel tunables at once-you lose the causal signal.
 
 After the repair, repeat short requests and watches through both direct and shared paths, verify stable `/readyz`, and confirm restart, reset, listen-drop, and 429 rates remain normal through a representative load period.
 

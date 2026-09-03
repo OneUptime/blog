@@ -1,4 +1,4 @@
-# How to Preserve Signal Correlation Across Retries, Dead-Letter Queues, and Redeliveries
+# Preserve Signal Correlation Across Retries and Dead-Letter Queues
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
@@ -49,7 +49,7 @@ Add links when creating the new span if the prior context is known; OpenTelemetr
 
 RabbitMQ sets the `redelivered` flag when a delivery may have been seen before. Its reliability guide notes the useful asymmetry: if the flag is false, the message definitely has not been seen; if true, a consumer should assume it may have been processed and use idempotency. A requeue returns the delivery rather than proving the prior application transaction rolled back.
 
-RabbitMQ dead-letter exchanges republish messages after rejection without requeue, expiry, queue-length limits, or quorum-queue delivery limits. Dead-lettering can change exchange and routing key and records history in headers such as `x-death`, plus first/last-death metadata. Preserve and parse that broker evidence, but do not depend on its human presentation as your cross-broker contract.
+RabbitMQ dead-letter exchanges republish messages after rejection without requeue, expiry, queue-length limits, or quorum-queue delivery limits. Dead-lettering can change exchange and routing key and records history in the AMQP 0.9.1 `x-death` header plus first/last-death headers; AMQP 1.0 uses the `x-opt-deaths` message annotation and corresponding first/last-death annotations. Preserve and parse that broker evidence, but do not depend on its human presentation as your cross-broker contract.
 
 Kafka's default processing model is commonly at least once: a consumer can process a record and fail before its offset is committed, causing the record to be read again. Retry and dead-letter topics are usually application or framework patterns that create new Kafka records. Preserve the source topic, partition, offset, original message ID, and causation relationship when republishing.
 

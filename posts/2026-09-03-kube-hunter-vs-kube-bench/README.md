@@ -1,4 +1,4 @@
-# kube-hunter vs kube-bench: How to Combine Attack-Surface Testing with CIS Configuration Audits
+# kube-hunter vs kube-bench: Combine Attack-Surface and CIS Audits
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
@@ -103,4 +103,3 @@ kube-hunter measures observable attack surface from a network position; kube-ben
 - [kube-bench flags and commands](https://github.com/aquasecurity/kube-bench/blob/main/docs/flags-and-commands.md)
 - [kube-bench platform documentation](https://github.com/aquasecurity/kube-bench/blob/main/docs/platforms.md)
 - [Kubernetes security checklist](https://kubernetes.io/docs/concepts/security/security-checklist/)
-

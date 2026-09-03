@@ -1,4 +1,4 @@
-# How to Test Network Policies with kube-hunter from Multiple Namespaces and Network Zones
+# Test Network Policies with kube-hunter Across Network Zones
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

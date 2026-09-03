@@ -45,8 +45,7 @@ The OpenTelemetry Metrics Data Model defines an exemplar as a recorded measureme
 For a request-duration histogram, an instrumented request with an active sampled span can produce an exemplar:
 
 ~~~text
-http.server.request.duration_bucket{service_name="checkout",le="1"} 981
-# exemplar near 0.842 seconds -> trace_id=4bf92f... span_id=00f067...
+http_server_request_duration_seconds_bucket{service_name="checkout",le="1"} 981 # {trace_id="4bf92f3577b34da6a3ce929d0e0e4736",span_id="00f067aa0ba902b7"} 0.842
 ~~~
 
 OpenTelemetry's Prometheus/OpenMetrics compatibility rules map trace and span IDs to exemplar labels named `trace_id` and `span_id`. Grafana can display exemplars as markers beside a metric graph and query a configured trace data source when an operator selects one.
@@ -59,7 +58,7 @@ Span-derived metrics create a consistent bridge for request rate, errors, and du
 
 This improves schema alignment because service, operation, status, and selected dimensions originate from spans. It does not remove sampling bias: metrics derived from a sampled trace population do not necessarily equal independently instrumented request counters. Know whether your source sees all spans, sampled spans, or adjusted estimates before using it for an SLO.
 
-Keep dimensions bounded. Adding customer ID, URL, trace ID, message ID, or raw SQL creates unacceptable cardinality. Route templates such as `/orders/{id}` are safer than literal paths.
+Keep dimensions bounded. Adding customer ID, literal URL, trace ID, message ID, or raw SQL creates unacceptable cardinality. Route templates such as `/orders/{id}` are safer than literal paths.
 
 ## Build a Correlation-Aware Dashboard
 

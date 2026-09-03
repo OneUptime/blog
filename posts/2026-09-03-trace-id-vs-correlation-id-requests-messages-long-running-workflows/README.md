@@ -1,4 +1,4 @@
-# Trace ID vs Correlation ID: How to Choose Identifiers for Requests, Messages, and Long-Running Workflows
+# Trace ID vs Correlation ID for Requests, Messages, and Workflows
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
@@ -8,7 +8,7 @@ Description: Choose trace, correlation, message, and causation identifiers by li
 
 ---
 
-A trace ID and a correlation ID can have the same superficial purpose—finding related records—but they represent different relationships. Treating them as interchangeable makes traces too large, makes retries ambiguous, and couples business data to a telemetry implementation.
+A trace ID and a correlation ID can have the same superficial purpose-finding related records-but they represent different relationships. Treating them as interchangeable makes traces too large, makes retries ambiguous, and couples business data to a telemetry implementation.
 
 Use the trace ID for one distributed execution graph. Use a correlation ID for a domain-level conversation that may include several executions. Add message and causation IDs when asynchronous delivery needs precise lineage.
 
@@ -49,7 +49,7 @@ One event can legitimately carry all of them. Redundancy is useful when every fi
 
 ## Model Common Flows
 
-For a synchronous chain—browser to API to inventory to database—continue one W3C trace through instrumented HTTP or RPC boundaries. If the browser supplies an application request ID, retain it only as a validated correlation attribute; do not replace the tracing library's trace ID.
+For a synchronous chain-browser to API to inventory to database-continue one W3C trace through instrumented HTTP or RPC boundaries. If the browser supplies an application request ID, retain it only as a validated correlation attribute; do not replace the tracing library's trace ID.
 
 For a short asynchronous continuation, the producer can inject trace context into the message, and the consumer can continue that trace. Give the message its own ID because it can be redelivered even though the trace relationship remains the same.
 
@@ -91,7 +91,7 @@ Baggage can make a workflow ID available downstream, but it is not automatically
 
 Document who generates each ID and what happens when it is absent or invalid:
 
-1. The tracing SDK generates trace and span IDs unless a valid trusted remote context is continued.
+1. The tracing SDK generates a new span ID for every span and a new trace ID for each root span. A child span inherits the trace ID from its valid parent context, including an accepted remote context.
 2. The workflow owner generates the correlation ID once and persists it.
 3. The producing application generates a message ID before publish.
 4. A retry of the same logical message preserves its message ID and increments attempt metadata.

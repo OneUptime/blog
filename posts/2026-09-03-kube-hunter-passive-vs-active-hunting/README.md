@@ -61,7 +61,7 @@ If any condition is false, stay passive and reproduce the finding in a lab.
 
 ### 1. Define the claim
 
-“Can the internet reach the kubelet?” needs passive reachability and endpoint evidence. “Can an unauthenticated caller execute in a container?” is an exploitation claim and may require an active proof—but not first in production.
+“Can the internet reach the kubelet?” needs passive reachability and endpoint evidence. “Can an unauthenticated caller execute in a container?” is an exploitation claim and may require an active proof-but not first in production.
 
 ### 2. Establish passive evidence
 
@@ -73,7 +73,7 @@ Match the reported `hunter` and VID to the exact source revision and Aqua vulner
 
 ### 4. Reproduce safely
 
-Build a disposable cluster with representative configuration and synthetic workloads. Use canary data and a dedicated network. Run the same passive command first, then enable only approved active behavior. The parser supports `--custom` hunter names, but obtain valid names from your build with `--list --raw-hunter-names`; never invent names from display labels.
+Build a disposable cluster with representative configuration and synthetic workloads. Use canary data and a dedicated network. Run the same passive command first, then enable only approved active behavior. The parser supports `--custom` hunter names, but obtain valid active hunter names from your build with `--list --active --raw-hunter-names`, and combine `--active` with `--custom` when running an approved active hunter; never invent names from display labels.
 
 ### 5. Decide on production confirmation
 
@@ -93,7 +93,7 @@ Likewise, “no vulnerabilities” means this tool revision, mode, scope, and pa
 
 ## Record the Decision
 
-Put the chosen mode in the change or assessment record along with who approved it and why it is sufficient for the stated claim. For active approval, attach the exact `--list --active` output and reviewed source paths, not merely the tool name. For passive selection, state which impact claims remain untested. This small record prevents a later reviewer from interpreting a deliberate safety limit as accidental coverage loss—or assuming an old active-test review applies after an image upgrade.
+Put the chosen mode in the change or assessment record along with who approved it and why it is sufficient for the stated claim. For active approval, attach the exact `--list --active` output and reviewed source paths, not merely the tool name. For passive selection, state which impact claims remain untested. This small record prevents a later reviewer from interpreting a deliberate safety limit as accidental coverage loss-or assuming an old active-test review applies after an image upgrade.
 
 ## Conclusion
 

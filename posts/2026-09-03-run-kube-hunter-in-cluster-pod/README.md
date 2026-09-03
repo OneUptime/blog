@@ -88,7 +88,7 @@ kubectl -n kube-hunter-scan logs job/kube-hunter > kube-hunter.json
 
 Kubernetes presents a container's standard output and error through its log stream. Because kube-hunter normally writes operational logs to standard error and its report to standard output, `kubectl logs` can combine both. The example uses `--log NONE` so the captured stream is one JSON document. For a diagnostic rerun, retain logs separately in a protected writable volume rather than mixing them into the report.
 
-The upstream Job uses `--pod`; current parser source says this mode automatically enables Kubernetes node auto-discovery and uses in-cluster configuration by default. Turning token mounting off therefore makes API-based node enumeration unavailable. That is intentional for a tokenless baseline; kube-hunter can still observe whatever its network discovery can reach. If you specifically want to model a real application's service account, use a purpose-built account with the same effective permissions—not a cluster-admin token—and treat the report as sensitive.
+The upstream Job uses `--pod`; current parser source says this mode automatically enables Kubernetes node auto-discovery and uses in-cluster configuration by default. Turning token mounting off therefore makes API-based node enumeration unavailable. That is intentional for a tokenless baseline; kube-hunter can still observe whatever its network discovery can reach. If you specifically want to model a real application's service account, use a purpose-built account with the same effective permissions-not a cluster-admin token-and treat the report as sensitive.
 
 ## Control Active Behavior
 

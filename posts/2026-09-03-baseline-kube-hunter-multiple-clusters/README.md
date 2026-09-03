@@ -1,4 +1,4 @@
-# How to Baseline kube-hunter Results Across Multiple Clusters Without Duplicating Noise
+# Baseline kube-hunter Results Across Multiple Clusters
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
@@ -47,13 +47,15 @@ status
 raw_report_hash
 ~~~
 
-The current reporter provides `vid`, `location`, `hunter`, severity, display name, description, evidence, and reference. It does not provide your organization’s cluster or vantage identifiers; the orchestration pipeline must attach those.
+The current reporter provides `vid`, `location`, `hunter`, `category`, `severity`, `vulnerability` (the display name), `description`, `evidence`, and `avd_reference`. It does not provide your organization’s cluster or vantage identifiers; the orchestration pipeline must attach those.
 
 A reasonable primary fingerprint is:
 
 ~~~text
-SHA256(cluster_id | vantage_id | vid | canonical_target)
+SHA256(canonical_encode(cluster_id, vantage_id, vid, canonical_target))
 ~~~
+
+Use an unambiguous canonical encoding, such as a canonical JSON array or length-prefixed fields, rather than simply concatenating unchecked values with a delimiter.
 
 Do not key only by VID: one fixed node should not close the finding on other nodes. Do not key by the entire evidence string: counts, ordering, IP formatting, or response text can change without changing the weakness. Keep scanner revision outside or alongside the logical key so upgrades can be analyzed rather than silently creating a new universe.
 
@@ -88,11 +90,11 @@ Likewise, group the same VID across dev clusters only if the owner and root caus
 
 An accepted baseline is not an exception. Store exceptions separately with fingerprint scope, owner, justification, compensating controls, ticket, approval, and expiration. An expired exception becomes actionable automatically. A scanner upgrade, cluster rebuild, widened network vantage, or severity change should trigger review.
 
-Never suppress by display name alone. kube-hunter provides VIDs and Aqua references specifically suited to stable identification, but their implementation and severity still need review at the pinned revision.
+Never suppress by display name alone. kube-hunter provides VIDs for identification and `avd_reference` links to the corresponding Aqua vulnerability documentation, but each VID's implementation and severity still need review at the pinned revision.
 
 ## Roll Out the Baseline
 
-Start with one cluster and two vantage points. Manually reconcile normalized rows against raw JSON and inventory. Then backfill other clusters without alerting until ownership is assigned. On the first live comparison, alert on new and changed actionable findings, coverage failures, and reopened items—not every persistent row.
+Start with one cluster and two vantage points. Manually reconcile normalized rows against raw JSON and inventory. Then backfill other clusters without alerting until ownership is assigned. On the first live comparison, alert on new and changed actionable findings, coverage failures, and reopened items-not every persistent row.
 
 Publish coverage alongside risk: targets expected, targets reached, reports valid, and last successful run. A quiet dashboard with 30% coverage is not a healthy baseline.
 
@@ -107,4 +109,3 @@ Deduplicate kube-hunter notifications using a contextual fingerprint of cluster,
 - [kube-hunter report collector](https://github.com/aquasecurity/kube-hunter/blob/main/kube_hunter/modules/report/collector.py)
 - [kube-hunter vulnerability types and severity mapping](https://github.com/aquasecurity/kube-hunter/blob/main/kube_hunter/core/events/types.py)
 - [Kubernetes object names and UIDs](https://kubernetes.io/docs/concepts/overview/working-with-objects/names/)
-

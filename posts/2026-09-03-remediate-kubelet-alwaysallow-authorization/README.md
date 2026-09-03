@@ -98,7 +98,7 @@ After rollout, alert on sustained TokenReview or SubjectAccessReview errors and 
 
 ## Conclusion
 
-Replace `AlwaysAllow` with `Webhook`, but treat the migration as an authentication, API connectivity, and RBAC change—not a one-line flag flip. Audit powerful `nodes/proxy` grants, prepare required control-plane permissions, canary the rollout, restrict port `10250`, and validate both allowed and denied paths. That fixes the authorization boundary without using production containers as proof targets.
+Replace `AlwaysAllow` with `Webhook`, but treat the migration as an authentication, API connectivity, and RBAC change-not a one-line flag flip. Audit powerful `nodes/proxy` grants, prepare required control-plane permissions, canary the rollout, restrict port `10250`, and validate both allowed and denied paths. That fixes the authorization boundary without using production containers as proof targets.
 
 ## Official References
 

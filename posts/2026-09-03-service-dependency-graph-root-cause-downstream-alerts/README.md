@@ -1,4 +1,4 @@
-# How to Use a Service Dependency Graph to Separate Root-Cause Alerts from Downstream Symptoms
+# Separate Root-Cause Alerts with a Service Dependency Graph
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

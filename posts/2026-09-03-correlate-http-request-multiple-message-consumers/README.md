@@ -1,4 +1,4 @@
-# How to Correlate One HTTP Request with Multiple Message Consumers at Both Request and Message Level
+# Correlate One HTTP Request with Multiple Message Consumers
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
@@ -71,7 +71,7 @@ Do not interpret the same message ID in multiple consumers as duplication. It ma
 
 ### Continue the request trace
 
-Each consumer extracts its message's creation context, links its processing span to that context, and—for a single-message process operation—may also use it as the remote parent. All consumer branches then share trace T1. This gives a direct end-to-end graph for bounded, promptly processed work.
+Each consumer extracts its message's creation context, links its processing span to that context, and-for a single-message process operation-may also use it as the remote parent. All consumer branches then share trace T1. This gives a direct end-to-end graph for bounded, promptly processed work.
 
 ### Start consumer traces with links
 

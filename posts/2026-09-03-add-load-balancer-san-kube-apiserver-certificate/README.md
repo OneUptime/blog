@@ -1,4 +1,4 @@
-# Add a Load-Balancer Address to kube-apiserver Certificates Without Breaking TLS SAN Validation
+# Add a Load-Balancer SAN to kube-apiserver Certificates
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
@@ -22,7 +22,7 @@ openssl s_client -connect api.example.net:6443 \
   openssl x509 -noout -subject -issuer -dates -ext subjectAltName
 ```
 
-If the load balancer terminates TLS, its certificate—not kube-apiserver's—must cover the public name, and the backend TLS/authentication design requires separate review. The procedure below applies when the load balancer passes TLS through and clients receive a kube-apiserver certificate.
+If the load balancer terminates TLS, its certificate-not kube-apiserver's-must cover the public name, and the backend TLS/authentication design requires separate review. The procedure below applies when the load balancer passes TLS through and clients receive a kube-apiserver certificate.
 
 Confirm that the load balancer is already reachable, forwards to every intended control-plane backend, and uses readiness-aware health checks. In an HA cluster, the load-balancer address should match kubeadm's `controlPlaneEndpoint`. Adding a field or certificate does not convert an unsupported single-control-plane topology into HA.
 

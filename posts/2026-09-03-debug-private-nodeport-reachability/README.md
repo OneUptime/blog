@@ -1,4 +1,4 @@
-# Why Can kube-hunter Reach a Node Port That Should Be Private? Debugging Firewalls and Security Groups
+# Why kube-hunter Reaches a Private NodePort: Firewall Debugging
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
@@ -8,7 +8,7 @@ Description: Trace unexpected NodePort reachability through DNS, routes, cloud f
 
 ---
 
-A Kubernetes `NodePort` is designed to be reachable on node addresses unless another control restricts the path. Kubernetes allocates a port—by default from `30000-32767`—and each node proxies that same port to ready Service endpoints. Therefore “private” must be enforced by node addressing, routes, firewalls, and Service design; the label is not inherent in `type: NodePort`.
+A Kubernetes `NodePort` is designed to be reachable on node addresses unless another control restricts the path. Kubernetes allocates a port-by default from `30000-32767`-and each node proxies that same port to ready Service endpoints. Therefore “private” must be enforced by node addressing, routes, firewalls, and Service design; the label is not inherent in `type: NodePort`.
 
 If kube-hunter reaches one unexpectedly, trace the packet path before changing rules.
 
@@ -65,7 +65,7 @@ Resolve the scanner's **observed egress address**, not merely its Pod or VM addr
 
 ### Host and Kubernetes dataplane
 
-Review the node firewall and kube-proxy or replacement dataplane. Kubernetes documents the `--nodeport-addresses` kube-proxy option for limiting which local address blocks serve NodePorts; an empty/default setting accepts all local interfaces. Whether your distribution exposes that setting, and how an eBPF dataplane implements NodePort, is provider-specific.
+Review the node firewall and kube-proxy or replacement dataplane. Kubernetes documents the `--nodeport-addresses` kube-proxy option for limiting which local address blocks serve NodePorts. When unset, it defaults to all node addresses in iptables and IPVS modes, but to the node's primary address or dual-stack primary addresses in nftables mode. Whether your distribution exposes that setting, and how an eBPF dataplane implements NodePort, is provider-specific.
 
 Do not assume a host `LISTEN` socket must appear. iptables, nftables, IPVS, or eBPF can forward traffic before a conventional process listener. Use the supported diagnostics for the installed dataplane.
 
@@ -100,7 +100,7 @@ Retain flow logs showing the enforcing rule and target. Add a continuous check f
 
 ## Conclusion
 
-Unexpected NodePort reachability usually comes from an incorrect assumption about a route, source address, firewall attachment, load balancer, or dataplane—not from NodePort secretly being private. Confirm the exact port, trace each translation layer, remediate the owner of exposure, and validate from both denied and allowed zones.
+Unexpected NodePort reachability usually comes from an incorrect assumption about a route, source address, firewall attachment, load balancer, or dataplane-not from NodePort secretly being private. Confirm the exact port, trace each translation layer, remediate the owner of exposure, and validate from both denied and allowed zones.
 
 ## Official References
 

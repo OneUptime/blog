@@ -1,4 +1,4 @@
-# Why Does Time-Window Alert Correlation Merge Unrelated Incidents? Tuning Keys and Boundaries
+# Fix Time-Window Alert Correlation Keys and Boundaries
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -27,7 +27,7 @@ Use a clean environment and explicit CA:
 ~~~bash
 API=api.example.invalid:6443
 env -i PATH="$PATH" \
-  curl --silent --show-error \
+  curl -q --silent --show-error \
   --cacert ./cluster-ca.pem \
   --dump-header headers.txt \
   --output version.json \
@@ -41,7 +41,7 @@ Test only the paths cited in the finding plus a minimal, preapproved matrix. Rea
 
 ~~~bash
 for path in / /version /api /apis; do
-  code=$(curl --silent --show-error \
+  code=$(curl -q --silent --show-error \
     --cacert ./cluster-ca.pem \
     --output "response-${path//\//_}.txt" \
     --write-out '%{http_code}' \

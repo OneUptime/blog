@@ -1,4 +1,4 @@
-# How to Validate kube-hunter Remediation with a Targeted Rescan and Regression Gate
+# Validate kube-hunter Remediation with a Targeted Rescan
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
@@ -100,7 +100,7 @@ fi
 
 Match against a canonical target identity in your orchestration layer when IPs are ephemeral. Do not suppress solely by vulnerability display name or evidence text. Preserve the raw report and produce a normalized comparison copy.
 
-An absent VID with absent coverage exits `2`, not `0`. Build that condition from the expected target manifest, scanner logs, DNS/route evidence, and—where applicable—the `services` array.
+An absent VID with absent coverage exits `2`, not `0`. Build that condition from the expected target manifest, scanner logs, DNS/route evidence, and-where applicable-the `services` array.
 
 ## Test Legitimate Operations
 

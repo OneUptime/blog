@@ -1,4 +1,4 @@
-# Why Do Correlation IDs Disappear in Async Threads? Preserving Context Across Executors and Callbacks
+# Preserve Correlation IDs Across Async Executors and Callbacks
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
