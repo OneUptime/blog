@@ -157,7 +157,6 @@
 
 ## Kube-hunter
 
-8. How to Remediate Kubelet `AlwaysAllow` Authorization Findings from kube-hunter
 9. How to Investigate an Exposed etcd Port Reported by kube-hunter
 10. How to Confirm Kubernetes API Anonymous Access After a kube-hunter Finding
 11. How to Test Network Policies with kube-hunter from Multiple Namespaces and Network Zones
