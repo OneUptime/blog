@@ -160,7 +160,6 @@
 
 ## Signal Correlation
 
-2. How to Carry Trace and Correlation IDs Through Kafka or RabbitMQ Without Breaking Async Traces
 3. Trace ID vs Correlation ID: How to Choose Identifiers for Requests, Messages, and Long-Running Workflows
 4. Why Do Correlation IDs Disappear in Async Threads? Preserving Context Across Executors and Callbacks
 5. Why Do Trace IDs in Logs Fail to Link to Traces? Checking Formats, Sampling, and Data Sources
