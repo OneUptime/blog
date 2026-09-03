@@ -44,12 +44,14 @@ Use the body only during diagnosis. Kubernetes documents the status code as the 
 A direct operator test can preserve the certified hostname while selecting a particular address:
 
 ```bash
-curl --fail --silent --show-error \
-  --resolve api-1.example.net:6443:10.0.0.11 \
-  --cacert /secure/cluster-ca.crt \
-  --cert /secure/health-check.crt \
-  --key /secure/health-check.key \
-  https://api-1.example.net:6443/readyz
+http_status="$(
+  curl --silent --show-error --output /dev/null --write-out '%{http_code}' \
+    --resolve api-1.example.net:6443:10.0.0.11 \
+    --cacert /secure/cluster-ca.crt \
+    --cert /secure/health-check.crt \
+    --key /secure/health-check.key \
+    https://api-1.example.net:6443/readyz
+)" && test "$http_status" = 200
 ```
 
 The certificate and key locations are examples. Never copy `/etc/kubernetes/admin.conf` or another cluster-admin credential onto a load balancer merely to run a health check.

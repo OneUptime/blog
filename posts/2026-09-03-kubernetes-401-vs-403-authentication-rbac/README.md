@@ -44,7 +44,7 @@ Common causes include:
 - an exec credential plugin using the wrong account or failing to refresh;
 - an expired client certificate or one signed by an untrusted client CA;
 - a ServiceAccount token read once and cached beyond its projected lifetime; and
-- a token-authentication webhook that is unreachable or rejects the credential.
+- a token-authentication webhook that rejects the credential.
 
 Fix the credential source and retry with a newly issued credential. Do not create a RoleBinding yet: authorization is downstream and was not reached successfully.
 
