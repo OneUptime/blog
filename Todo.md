@@ -157,7 +157,6 @@
 
 ## Kube-hunter
 
-3. kube-hunter Passive vs Active Hunting: How to Choose a Safe Scan Mode
 4. How to Scope kube-hunter Active Tests to Avoid Disrupting Production Workloads
 5. Why Does kube-hunter Report “No Vulnerabilities” but List Open Kubelet and etcd Services?
 6. How to Verify Whether a kube-hunter Open Kubelet Finding Is Actually Exploitable
