@@ -157,7 +157,6 @@
 
 ## Kube-hunter
 
-6. How to Verify Whether a kube-hunter Open Kubelet Finding Is Actually Exploitable
 7. How to Fix Anonymous Kubelet Access Detected by kube-hunter
 8. How to Remediate Kubelet `AlwaysAllow` Authorization Findings from kube-hunter
 9. How to Investigate an Exposed etcd Port Reported by kube-hunter
