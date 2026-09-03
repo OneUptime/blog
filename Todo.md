@@ -157,7 +157,6 @@
 
 ## Kube-hunter
 
-10. How to Confirm Kubernetes API Anonymous Access After a kube-hunter Finding
 11. How to Test Network Policies with kube-hunter from Multiple Namespaces and Network Zones
 12. Why Can kube-hunter Reach a Node Port That Should Be Private? Debugging Firewalls and Security Groups
 13. How to Run kube-hunter Against Private EKS, AKS, or GKE Endpoints from CI
