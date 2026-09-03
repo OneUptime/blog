@@ -160,7 +160,6 @@
 
 ## Signal Correlation
 
-4. Why Do Correlation IDs Disappear in Async Threads? Preserving Context Across Executors and Callbacks
 5. Why Do Trace IDs in Logs Fail to Link to Traces? Checking Formats, Sampling, and Data Sources
 6. Why Do Multiple Queue Messages Share One Trace ID? Modeling Producer and Consumer Span Links Correctly
 7. How to Correlate Logs, Metrics, and Traces When Metrics Have No Trace ID
