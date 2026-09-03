@@ -160,7 +160,6 @@
 
 ## Signal Correlation
 
-9. How to Jump from an Alert to the Exact Logs and Trace Using a Correlation-Aware Dashboard
 10. How to Enrich Alert Notifications with the Operation ID, Trace Link, and Matching Logs
 11. How to Correlate a Metric Spike with Deployments, Configuration Changes, and Kubernetes Events
 12. How to Group Alert Storms by Service, Dependency, and Time Window Without Hiding Root Causes
