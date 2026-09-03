@@ -160,7 +160,6 @@
 
 ## Signal Correlation
 
-20. How to Measure Whether Signal Correlation Reduces Noise Without Silencing Important Alerts
 
 ## API Server
 
