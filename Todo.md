@@ -157,7 +157,6 @@
 
 ## Kube-hunter
 
-1. How to Run kube-hunter Remotely Against a Kubernetes Cluster Without Exposing the Scanner
 2. How to Run kube-hunter as an In-Cluster Pod for an Attacker’s-Eye View
 3. kube-hunter Passive vs Active Hunting: How to Choose a Safe Scan Mode
 4. How to Scope kube-hunter Active Tests to Avoid Disrupting Production Workloads
