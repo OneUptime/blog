@@ -157,7 +157,6 @@
 
 ## Kube-hunter
 
-17. How to Reproduce a kube-hunter Finding Safely in an Isolated Kubernetes Lab
 18. How to Distinguish kube-hunter Service Discovery from a Confirmed Vulnerability
 19. kube-hunter vs kube-bench: How to Combine Attack-Surface Testing with CIS Configuration Audits
 20. How to Validate kube-hunter Remediation with a Targeted Rescan and Regression Gate
