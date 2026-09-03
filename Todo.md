@@ -157,7 +157,6 @@
 
 ## Kube-hunter
 
-20. How to Validate kube-hunter Remediation with a Targeted Rescan and Regression Gate
 
 ## Signal Correlation
 
