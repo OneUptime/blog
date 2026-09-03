@@ -160,7 +160,6 @@
 
 ## Signal Correlation
 
-16. How to Correlate Partial Traces After Head or Tail Sampling Drops Spans
 17. How to Preserve Signal Correlation Across Retries, Dead-Letter Queues, and Redeliveries
 18. How to Correlate One HTTP Request with Multiple Message Consumers at Both Request and Message Level
 19. How to Validate Alert Correlation Rules Against Historical Incidents Before Production
