@@ -163,7 +163,6 @@
 
 ## API Server
 
-3. 401 or 403? How to Separate Kubernetes API Authentication Failures from RBAC Denials
 4. `/readyz` Fails While `/livez` Passes: Reading Kubernetes API Server Health Checks
 5. How to Health-Check an HA Kubernetes API Server Without Routing to an Unready Control-Plane Node
 6. kube-apiserver Static Pod Keeps Restarting: Recover It with `crictl` When `kubectl` Is Unavailable
