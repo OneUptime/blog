@@ -163,7 +163,6 @@
 
 ## API Server
 
-1. `kubectl` Falls Back to localhost:8080: How to Repair a Missing or Mis-Merged Kubeconfig
 2. Kubernetes API Server Returns 401 Unauthorized: Trace Token Issuer, Audience, and Clock Skew
 3. 401 or 403? How to Separate Kubernetes API Authentication Failures from RBAC Denials
 4. `/readyz` Fails While `/livez` Passes: Reading Kubernetes API Server Health Checks
