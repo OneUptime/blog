@@ -163,7 +163,6 @@
 
 ## API Server
 
-6. kube-apiserver Static Pod Keeps Restarting: Recover It with `crictl` When `kubectl` Is Unavailable
 7. kubeadm Says "API Server Is Not Healthy": Check Kubelet, cgroups, etcd, and Static-Pod Logs
 8. Add a Load-Balancer Address to kube-apiserver Certificates Without Breaking TLS SAN Validation
 9. Kubernetes API Connections Reset Intermittently: Find Socket Saturation, Restarts, and Broken Load-Balancer Health Checks
