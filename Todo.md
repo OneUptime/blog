@@ -157,7 +157,6 @@
 
 ## Kube-hunter
 
-16. Why Does kube-hunter Time Out While kubectl Works? Troubleshooting DNS, Routing, and API Endpoint Access
 17. How to Reproduce a kube-hunter Finding Safely in an Isolated Kubernetes Lab
 18. How to Distinguish kube-hunter Service Discovery from a Confirmed Vulnerability
 19. kube-hunter vs kube-bench: How to Combine Attack-Surface Testing with CIS Configuration Audits
