@@ -34,7 +34,7 @@ kubectl --kubeconfig="$HOME/.kube/config" config current-context
 kubectl --kubeconfig="$HOME/.kube/config" config view --minify
 ```
 
-If the explicit command is correct but the ordinary command is not, the cluster is healthy; the loading path or shell environment is wrong. If both are empty, missing, or name a nonexistent context, restore the file itself.
+If the explicit command shows the expected configuration but the ordinary command does not, the expected file is intact; the loading path or shell environment is wrong. This inspection does not contact the cluster, so verify reachability with an API request after fixing the loading path. If both are empty, missing, or name a nonexistent context, restore the file itself.
 
 ## Apply the Kubeconfig Loading Rules
 
