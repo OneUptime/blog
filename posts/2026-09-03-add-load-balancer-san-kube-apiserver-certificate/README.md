@@ -127,7 +127,7 @@ kubectl --server=https://api.example.net:6443 \
   get --raw='/version'
 ```
 
-These commands retain credentials and CA data from the active kubeconfig while overriding only the server. Test multiple fresh connections so every backend is exercised. Update long-lived kubeconfigs to the shared endpoint only after all replicas pass; changing their CA data is unnecessary when the same cluster CA signed the new certificates.
+These commands retain credentials and CA data from the active kubeconfig while overriding only the server. Test multiple fresh connections, and use load-balancer logs, metrics, or another deterministic method to confirm that every backend is exercised; repeated connections alone do not guarantee backend coverage. Update long-lived kubeconfigs to the shared endpoint only after all replicas pass; changing their CA data is unnecessary when the same cluster CA signed the new certificates.
 
 ## Conclusion
 
