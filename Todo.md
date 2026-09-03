@@ -160,7 +160,6 @@
 
 ## Signal Correlation
 
-12. How to Group Alert Storms by Service, Dependency, and Time Window Without Hiding Root Causes
 13. How to Deduplicate the Same Incident Across Prometheus, CloudWatch, and Application Monitoring
 14. Why Does Time-Window Alert Correlation Merge Unrelated Incidents? Tuning Keys and Boundaries
 15. How to Use a Service Dependency Graph to Separate Root-Cause Alerts from Downstream Symptoms
