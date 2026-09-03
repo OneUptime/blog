@@ -163,7 +163,6 @@
 
 ## API Server
 
-10. Why Kubernetes Watches Return 410 Gone—and How Controllers Should Relist and Reconcile Current State
 11. How to Prevent Controller List-Watch Storms from Overloading the Kubernetes API Server
 12. "Couldn't Get Current Server API Group List": Clear Stale Discovery and Find Broken APIService Registrations
 13. Which Admission Webhook Is Blocking `kubectl`? Trace the API Request and Test Control-Plane Reachability
