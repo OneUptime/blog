@@ -126,10 +126,11 @@ Test locally with the correct TLS name and administrative kubeconfig:
 
 ```bash
 kubectl --kubeconfig=/etc/kubernetes/admin.conf \
-  --server=https://127.0.0.1:6443 get --raw='/readyz?verbose'
+  --server=https://127.0.0.1:6443 \
+  --tls-server-name=kubernetes get --raw='/readyz?verbose'
 ```
 
-Use a certified node address if `127.0.0.1` is not a SAN. Then verify the shared endpoint and, for HA, keep the repaired node out of rotation until readiness remains stable.
+The explicit TLS server name is one of kubeadm's default API server certificate SANs while the connection remains local. Then verify the shared endpoint and, for HA, keep the repaired node out of rotation until readiness remains stable.
 
 ## Conclusion
 
