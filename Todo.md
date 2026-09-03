@@ -163,7 +163,6 @@
 
 ## API Server
 
-7. kubeadm Says "API Server Is Not Healthy": Check Kubelet, cgroups, etcd, and Static-Pod Logs
 8. Add a Load-Balancer Address to kube-apiserver Certificates Without Breaking TLS SAN Validation
 9. Kubernetes API Connections Reset Intermittently: Find Socket Saturation, Restarts, and Broken Load-Balancer Health Checks
 10. Why Kubernetes Watches Return 410 Gone—and How Controllers Should Relist and Reconcile Current State
