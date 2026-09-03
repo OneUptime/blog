@@ -157,7 +157,6 @@
 
 ## Kube-hunter
 
-15. How to Baseline kube-hunter Results Across Multiple Clusters Without Duplicating Noise
 16. Why Does kube-hunter Time Out While kubectl Works? Troubleshooting DNS, Routing, and API Endpoint Access
 17. How to Reproduce a kube-hunter Finding Safely in an Isolated Kubernetes Lab
 18. How to Distinguish kube-hunter Service Discovery from a Confirmed Vulnerability
