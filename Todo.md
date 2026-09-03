@@ -160,7 +160,6 @@
 
 ## Signal Correlation
 
-1. How to Propagate W3C Trace Context Across HTTP Services for End-to-End Signal Correlation
 2. How to Carry Trace and Correlation IDs Through Kafka or RabbitMQ Without Breaking Async Traces
 3. Trace ID vs Correlation ID: How to Choose Identifiers for Requests, Messages, and Long-Running Workflows
 4. Why Do Correlation IDs Disappear in Async Threads? Preserving Context Across Executors and Callbacks
