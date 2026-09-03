@@ -163,7 +163,6 @@
 
 ## API Server
 
-5. How to Health-Check an HA Kubernetes API Server Without Routing to an Unready Control-Plane Node
 6. kube-apiserver Static Pod Keeps Restarting: Recover It with `crictl` When `kubectl` Is Unavailable
 7. kubeadm Says "API Server Is Not Healthy": Check Kubelet, cgroups, etcd, and Static-Pod Logs
 8. Add a Load-Balancer Address to kube-apiserver Certificates Without Breaking TLS SAN Validation
