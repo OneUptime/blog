@@ -160,7 +160,6 @@
 
 ## Signal Correlation
 
-6. Why Do Multiple Queue Messages Share One Trace ID? Modeling Producer and Consumer Span Links Correctly
 7. How to Correlate Logs, Metrics, and Traces When Metrics Have No Trace ID
 8. How to Standardize Service, Environment, Cluster, and Deployment Labels Across Telemetry Signals
 9. How to Jump from an Alert to the Exact Logs and Trace Using a Correlation-Aware Dashboard
