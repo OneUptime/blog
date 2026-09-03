@@ -160,7 +160,6 @@
 
 ## Signal Correlation
 
-18. How to Correlate One HTTP Request with Multiple Message Consumers at Both Request and Message Level
 19. How to Validate Alert Correlation Rules Against Historical Incidents Before Production
 20. How to Measure Whether Signal Correlation Reduces Noise Without Silencing Important Alerts
 
