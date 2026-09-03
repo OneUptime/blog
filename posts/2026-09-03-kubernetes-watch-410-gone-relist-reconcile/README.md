@@ -19,7 +19,7 @@ A conventional controller establishes state in two steps:
 1. `LIST` the selected resource collection and store the **collection's** `.metadata.resourceVersion`.
 2. `WATCH` the same scope and selectors starting from that version.
 
-The watch then reports changes after the snapshot version. Each returned object has a new resource version that the client can retain for reconnection.
+The watch then reports changes after the snapshot version. Each returned object carries a resource version that the client can retain for reconnection.
 
 Treat `resourceVersion` as opaque. Do not parse it as an integer, calculate lag by subtraction, compare versions from unrelated resources, or invent the “next” value. Use the exact string returned by the API server.
 
@@ -50,6 +50,8 @@ repeat until stopped:
 
     while connected:
         stream = WATCH(same scope and selectors, resourceVersion)
+        if opening the watch fails with HTTP 410:
+            break to the outer LIST
         for each event:
             if event is ERROR with code 410:
                 break to the outer LIST
