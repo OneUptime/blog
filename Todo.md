@@ -166,7 +166,6 @@
 
 ## CloudStack
 
-12. How to Replace or Readdress CloudStack Secondary Storage Without Breaking Templates
 13. How to Create a Reusable CloudStack Template from a VM Root Volume
 14. How to Fix `InsufficientServerCapacity` When Deploying from a Custom CloudStack Template
 15. How to Attach a Data Volume When CloudStack Reports a QEMU or NFS Path Error
