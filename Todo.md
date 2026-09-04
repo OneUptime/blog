@@ -169,7 +169,6 @@
 
 ## Erasure Coding
 
-8. How to Size MinIO Parity So a Full Node Failure Stays Within Write Quorum
 9. How to Prevent MinIO Healing from Saturating the Storage Network
 10. How to Estimate Stranded Capacity When Erasure Coding Uses Mixed-Size Drives
 11. How to Build PAR2 Recovery Files for Long-Term Archives and Test a Restore
