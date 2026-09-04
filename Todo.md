@@ -166,7 +166,6 @@
 
 ## CloudStack
 
-17. How to Back Up CloudStack VMs with Recurring Volume Snapshots and Off-Cluster Copies
 18. How to Sign CloudStack API Requests Correctly When Parameters Contain URLs
 19. How to Deploy Multiple CloudStack VMs in Parallel Through the API
 20. How to Deploy CloudStack VMs with Custom CPU, vCPU, and Memory Through the API
