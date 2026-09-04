@@ -166,7 +166,6 @@
 
 ## CloudStack
 
-11. How to Diagnose a Secondary Storage VM That Cannot Download System Templates
 12. How to Replace or Readdress CloudStack Secondary Storage Without Breaking Templates
 13. How to Create a Reusable CloudStack Template from a VM Root Volume
 14. How to Fix `InsufficientServerCapacity` When Deploying from a Custom CloudStack Template
