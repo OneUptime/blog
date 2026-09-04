@@ -163,7 +163,6 @@
 
 ## API Server
 
-15. Kubernetes Rejects a 3 MB Object: Redesign Oversized ConfigMaps and Custom Resources
 16. Kubernetes Events Never Expire: Verify `--event-ttl` and Reclaim etcd Space Safely
 17. How to Rate-Limit Kubernetes Event Floods Before They Saturate the API Server
 18. `kubectl get` Works but `logs` and `exec` Fail: Repair the API Server-to-Kubelet Certificate Path
