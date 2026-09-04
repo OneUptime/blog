@@ -166,7 +166,6 @@
 
 ## CloudStack
 
-9. How to Repair VM Network Rules After a CloudStack Upgrade
 10. How to Register an ISO or Template That Never Becomes Ready in CloudStack
 11. How to Diagnose a Secondary Storage VM That Cannot Download System Templates
 12. How to Replace or Readdress CloudStack Secondary Storage Without Breaking Templates
