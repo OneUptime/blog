@@ -169,7 +169,6 @@
 
 ## Erasure Coding
 
-10. How to Estimate Stranded Capacity When Erasure Coding Uses Mixed-Size Drives
 11. How to Build PAR2 Recovery Files for Long-Term Archives and Test a Restore
 12. How to Update PAR2 Parity After Archived Files Change Without Losing Recoverability
 13. How to Detect Which Reed-Solomon Shards Are Corrupt Before Decoding
