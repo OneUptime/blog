@@ -163,7 +163,6 @@
 
 ## API Server
 
-19. kube-apiserver Cannot Create the Storage Backend: Trace etcd DNS, Certificates, and Port 2379
 20. How to Benchmark Kubernetes API Server Capacity with Realistic LIST, WATCH, and Mutation Workloads
 
 ## CloudStack
