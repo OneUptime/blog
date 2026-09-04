@@ -166,7 +166,6 @@
 
 ## CloudStack
 
-13. How to Create a Reusable CloudStack Template from a VM Root Volume
 14. How to Fix `InsufficientServerCapacity` When Deploying from a Custom CloudStack Template
 15. How to Attach a Data Volume When CloudStack Reports a QEMU or NFS Path Error
 16. How to Choose Local, NFS, or Ceph Primary Storage for CloudStack VM High Availability
