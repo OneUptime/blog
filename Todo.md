@@ -169,7 +169,6 @@
 
 ## Erasure Coding
 
-18. How to Implement Reed-Solomon Encoding and Decoding in Java
 19. How to Choose Reed-Solomon Shard Size and Packet Size for CPU-Efficient Encoding
 20. How to Benchmark Erasure-Coding Throughput Before Deploying It on SSD Storage
 
