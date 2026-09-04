@@ -169,7 +169,6 @@
 
 ## Erasure Coding
 
-9. How to Prevent MinIO Healing from Saturating the Storage Network
 10. How to Estimate Stranded Capacity When Erasure Coding Uses Mixed-Size Drives
 11. How to Build PAR2 Recovery Files for Long-Term Archives and Test a Restore
 12. How to Update PAR2 Parity After Archived Files Change Without Losing Recoverability
