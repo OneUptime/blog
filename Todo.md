@@ -169,7 +169,6 @@
 
 ## Erasure Coding
 
-6. How to Verify MinIO Recognizes a Replacement Drive After Healing
 7. How to Keep MinIO Writes Durable While an Erasure Set Is Degraded
 8. How to Size MinIO Parity So a Full Node Failure Stays Within Write Quorum
 9. How to Prevent MinIO Healing from Saturating the Storage Network
