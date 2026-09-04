@@ -169,7 +169,6 @@
 
 ## Erasure Coding
 
-12. How to Update PAR2 Parity After Archived Files Change Without Losing Recoverability
 13. How to Detect Which Reed-Solomon Shards Are Corrupt Before Decoding
 14. How to Recover Missing Reed-Solomon Shards and Verify the Reconstructed File
 15. How to Decode Reed-Solomon Data When Errors and Erasures Occur Together
