@@ -169,7 +169,6 @@
 
 ## Erasure Coding
 
-19. How to Choose Reed-Solomon Shard Size and Packet Size for CPU-Efficient Encoding
 20. How to Benchmark Erasure-Coding Throughput Before Deploying It on SSD Storage
 
 ## Data Plane
