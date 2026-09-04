@@ -166,7 +166,6 @@
 
 ## CloudStack
 
-6. How to Restore Console Access When CloudStack System VMs Are Running but Unreachable
 7. How to Fix a CloudStack VM That Has Console Access but No Ping or SSH Connectivity
 8. How to Let CloudStack Guest VMs Reach the Physical Gateway
 9. How to Repair VM Network Rules After a CloudStack Upgrade
