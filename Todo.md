@@ -166,7 +166,6 @@
 
 ## CloudStack
 
-1. How to Install Apache CloudStack with KVM on a Small Linux Lab
 2. How to Fix libvirtd Startup Failures When Adding a KVM Host to CloudStack
 3. How to Troubleshoot a CloudStack Host That Fails to Join a Cluster
 4. How to Recover CloudStack System VMs Stuck in the Starting State
