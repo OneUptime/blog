@@ -163,7 +163,6 @@
 
 ## API Server
 
-16. Kubernetes Events Never Expire: Verify `--event-ttl` and Reclaim etcd Space Safely
 17. How to Rate-Limit Kubernetes Event Floods Before They Saturate the API Server
 18. `kubectl get` Works but `logs` and `exec` Fail: Repair the API Server-to-Kubelet Certificate Path
 19. kube-apiserver Cannot Create the Storage Backend: Trace etcd DNS, Certificates, and Port 2379
