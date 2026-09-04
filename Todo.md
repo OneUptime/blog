@@ -166,7 +166,6 @@
 
 ## CloudStack
 
-4. How to Recover CloudStack System VMs Stuck in the Starting State
 5. How to Fix the CloudStack UI When It Returns HTTP 503 or 500
 6. How to Restore Console Access When CloudStack System VMs Are Running but Unreachable
 7. How to Fix a CloudStack VM That Has Console Access but No Ping or SSH Connectivity
