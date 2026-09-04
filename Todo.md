@@ -169,7 +169,6 @@
 
 ## Erasure Coding
 
-3. How to Choose an HDFS Erasure Coding Policy with Replication-Equivalent Durability
 4. How to Measure the Read-Performance Cost of HDFS Erasure Coding Before Migration
 5. How to Replace a Failed MinIO Drive and Trigger Automatic Erasure-Code Healing
 6. How to Verify MinIO Recognizes a Replacement Drive After Healing
