@@ -166,7 +166,6 @@
 
 ## CloudStack
 
-20. How to Deploy CloudStack VMs with Custom CPU, vCPU, and Memory Through the API
 
 ## Erasure Coding
 
