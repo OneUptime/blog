@@ -163,7 +163,6 @@
 
 ## API Server
 
-18. `kubectl get` Works but `logs` and `exec` Fail: Repair the API Server-to-Kubelet Certificate Path
 19. kube-apiserver Cannot Create the Storage Backend: Trace etcd DNS, Certificates, and Port 2379
 20. How to Benchmark Kubernetes API Server Capacity with Realistic LIST, WATCH, and Mutation Workloads
 
