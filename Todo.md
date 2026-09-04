@@ -163,7 +163,6 @@
 
 ## API Server
 
-12. "Couldn't Get Current Server API Group List": Clear Stale Discovery and Find Broken APIService Registrations
 13. Which Admission Webhook Is Blocking `kubectl`? Trace the API Request and Test Control-Plane Reachability
 14. kube-apiserver Is OOMKilled During Large LIST Requests: Measure Watch-Cache and Serialization Memory
 15. Kubernetes Rejects a 3 MB Object: Redesign Oversized ConfigMaps and Custom Resources
