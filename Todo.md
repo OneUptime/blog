@@ -169,7 +169,6 @@
 
 ## Erasure Coding
 
-16. How to Calculate the Reed-Solomon Error-and-Erasure Correction Limit
 17. How to Split a File into Reed-Solomon Data and Parity Shards in JavaScript
 18. How to Implement Reed-Solomon Encoding and Decoding in Java
 19. How to Choose Reed-Solomon Shard Size and Packet Size for CPU-Efficient Encoding
