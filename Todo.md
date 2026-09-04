@@ -163,7 +163,6 @@
 
 ## API Server
 
-20. How to Benchmark Kubernetes API Server Capacity with Realistic LIST, WATCH, and Mutation Workloads
 
 ## CloudStack
 
