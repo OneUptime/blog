@@ -166,7 +166,6 @@
 
 ## CloudStack
 
-15. How to Attach a Data Volume When CloudStack Reports a QEMU or NFS Path Error
 16. How to Choose Local, NFS, or Ceph Primary Storage for CloudStack VM High Availability
 17. How to Back Up CloudStack VMs with Recurring Volume Snapshots and Off-Cluster Copies
 18. How to Sign CloudStack API Requests Correctly When Parameters Contain URLs
