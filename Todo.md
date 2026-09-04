@@ -1442,6 +1442,26 @@
 18. Cloud Quota Preflight Checks: Fail Before Provisioning Leaves a Half-Built Environment
 19. The Cloud Control Plane Says “Succeeded” but the Resource Is Not Ready: Verify Data-Plane Health Before Continuing
 20. Building a Kill Switch for Runaway Cloud Automation Without Losing the Audit Trail
+21. How to Authenticate GitHub Actions to AWS, Azure, and GCP with OIDC Instead of Long-Lived Cloud Keys
+22. GitHub OIDC Cloud Login Fails: Debug Audience, Subject, Branch, Environment, and Reusable-Workflow Claims
+23. How to Derive Least-Privilege Cloud IAM for Automation from Audit Logs Before Removing Administrator Access
+24. Terraform State Lock Is Stuck in CI: Prove the Writer Is Gone Before Running `force-unlock`
+25. How to Queue Terraform Applies per State File Without Serializing Every Cloud Environment
+26. How to Detect Cloud Drift on a Schedule Without Automatically Applying Destructive Changes
+27. How to Import Existing Cloud Resources in CI with Terraform Import Blocks and a No-Change Gate
+28. How to Bootstrap the Remote State Backend and CI Identity Without a Terraform Chicken-and-Egg Loop
+29. How to Refactor Terraform State in CI with `moved` Blocks and Auditable One-Time Migrations
+30. EventBridge Rule Is Enabled but Lambda Never Runs: Debug Target ARNs, Resource Policies, and `FailedInvocations`
+31. EventBridge Delivered the Event but Lambda Failed: Configure Async Destinations and DLQs at the Correct Boundary
+32. How to Replay a Cloud Automation DLQ Without Repeating Side Effects That Already Succeeded
+33. How to Secure Azure Automation Webhooks: Rotate Tokenized URLs, Validate Payloads, and Keep Secrets Out of Job Logs
+34. How to Promote Azure Automation Runbooks from Git Without Deploying an Unpublished or Stale Draft
+35. How to Rotate a Cloud Application Secret with Dual Versions and Zero Authentication Downtime
+36. How to Automate Daily, Weekly, and Monthly Snapshot Retention Across Azure Subscriptions with Tags
+37. How to Prove Automated Cloud Backups Are Restorable with Ephemeral Restore Drills and Integrity Checks
+38. How to Patch Linux VMs Across AWS, Azure, and GCP in Canary Rings with Reboot and Rollback Gates
+39. Cloud APIs Return 429 or `ThrottlingException`: Coordinate Queues, `Retry-After`, Concurrency, and Full-Jitter Backoff
+40. How to Schedule Cloud Automation Across Time Zones Without DST Double-Runs or Missed Maintenance Windows
 
 ## File Storage
 
@@ -6909,3 +6929,210 @@
 18. How to Reconfigure a Paxos Acceptor Set Without Losing Quorum Intersection
 19. How to Model-Check Paxos Safety Invariants with TLA+ and TLC
 20. How to Fault-Test a Paxos Implementation with Message Loss, Crashes, and Network Partitions
+
+## Codefresh
+
+1. How to Validate `codefresh.yml` Locally and Untangle Conflicting YAML Linter Errors
+2. How to Pass Runtime-Generated Environment Variables Between Codefresh Steps with `cf_export`
+3. How to Add a Safe Environment Selector to a Manually Triggered Codefresh Pipeline
+4. How to Send Codefresh `on_fail` Slack Alerts Only for Failures on the Main Branch
+5. How to Run Playwright E2E Tests in Codefresh and Preserve Screenshots, Traces, and HTML Reports
+6. How to Preserve Allure History Between Codefresh Builds So Trend Charts Actually Appear
+7. How to Fix “Chrome Failed to Start: Exited Abnormally” in Codefresh Selenium Containers
+8. How to Share Test Fixtures and Generated Files Between Isolated Codefresh Steps
+9. How to Stop Intentionally Skipped Codefresh Pull-Request Runs from Reporting Failed to GitHub
+10. How to Publish Packages from Codefresh to GitLab with a Deploy Token Instead of a Personal Token
+11. How to Connect Codefresh to Amazon ECR with an Assumable IAM Role and Temporary Credentials
+12. How to Pull Images from the Codefresh Private Registry with Kubernetes `imagePullSecrets`
+13. How to List Repositories and Tags in a Codefresh Private Registry Through the Registry API
+14. How to Fix “x509: Failed to Load System Roots” When a Codefresh Pipeline Calls Jenkins
+15. How to Pause a Codefresh Pipeline at a Breakpoint and Inspect Files, Variables, and Services
+16. How to Retry Flaky Codefresh Steps with Exponential Backoff Without Masking Real Failures
+17. How to Keep Codefresh Pipeline Caches Predictable When Builds Run Concurrently
+18. How to Prevent Race Conditions When Parallel Codefresh Steps Share `/codefresh/volume`
+19. Codefresh Build Stuck in Pending: How to Trace Runtime Capacity, Quotas, and Integration Errors
+20. How to Promote a Helm Release Across Codefresh Environments Without Rebuilding the Container Image
+
+## Image Registries
+
+1. How to Run a Production-Ready OCI Registry with TLS and `htpasswd` Authentication
+2. How to Fix “x509: Certificate Signed by Unknown Authority” When Pulling from a Private Registry
+3. How to Use Multiple Private Image Registries in Docker Compose Without Committing Credentials
+4. How to Attach Registry Credentials to a Kubernetes ServiceAccount with `imagePullSecrets`
+5. Kubernetes `ImagePullBackOff`: How to Distinguish a Bad Tag, Missing Secret, Rate Limit, and Registry Outage
+6. How to Diagnose Docker Hub 429 Pull-Rate Errors and Measure Your Remaining Quota
+7. How to Build a Pull-Through Registry Cache for Docker Hub and Avoid CI Pull Limits
+8. How to Copy a Multi-Architecture Image Between Registries Without Losing Its Manifest List
+9. How to Build and Push One AMD64-and-ARM64 Image Tag with Docker Buildx
+10. How to Pin Kubernetes Workloads to Image Digests Without Sacrificing Readable Tags
+11. How to Promote the Exact Same Container Image from Development to Production Without Rebuilding It
+12. How to Enforce Immutable Release Tags While Keeping Development Tags Disposable
+13. How to List Registry Repositories, Tags, and Manifest Digests with the OCI Distribution API
+14. How to Delete an Image Tag Without Accidentally Removing Other Tags That Share Its Manifest
+15. How to Garbage-Collect a Private Registry Without Breaking Multi-Architecture Images
+16. How to Design a Container Registry Retention Policy That Preserves Rollback Images
+17. How to Sign Container Images and Attach SBOM Attestations in an OCI Registry with Cosign
+18. How to Block Kubernetes Deployments When a Registry Image Is Unsigned or Critically Vulnerable
+19. How to Mirror Every Image Dependency into an Air-Gapped Container Registry
+20. How to Scale a Highly Available Registry Across Regions Without Corrupting Shared Uploads
+
+## GDPR
+
+1. How to Block Google Analytics and Meta Pixel Until a Visitor Gives Valid GDPR Consent
+2. How to Store a Versioned GDPR Consent Receipt Without Collecting More Personal Data Than Necessary
+3. How to Withdraw Cookie Consent, Remove Existing Cookies, and Stop Third-Party Trackers Immediately
+4. How to Separate Strictly Necessary Session Storage from Optional Analytics Cookies
+5. How to Lazy-Load YouTube, Vimeo, and Chat Widgets Without Setting Cookies Before Consent
+6. How to Build a GDPR DSAR Workflow That Searches Databases, Logs, Backups, and SaaS Processors
+7. How to Verify a GDPR Data Requester’s Identity Without Collecting a Passport by Default
+8. How to Generate a Machine-Readable GDPR Data-Portability Export in JSON or CSV
+9. How to Delete a User from a Relational Database While Preserving Legally Required Transaction Records
+10. How to Handle GDPR Erasure Requests When Personal Data Still Exists in Immutable Backups
+11. How to Enforce GDPR Retention Limits for IP Addresses, Access Logs, and Analytics Events
+12. How to Pseudonymize Application Logs Without Leaving an Easily Reversible Identity Map
+13. How to Anonymize a Production Database Backup Before Developers Use It for Testing
+14. How to Propagate a GDPR Erasure Across Caches, Search Indexes, Queues, and Third-Party Processors
+15. How to Prove a GDPR Erasure Was Completed Without Keeping a Recoverable User Identifier
+16. How to Build a Data Inventory That Maps Every Personal-Data Field to Its Purpose and Retention Rule
+17. How to Choose and Record a GDPR Lawful Basis for Telemetry, Product Analytics, and Marketing
+18. How to Build a 72-Hour GDPR Breach-Assessment and Notification Workflow
+19. How to Run a DPIA Before Launching High-Risk Monitoring or Automated Profiling
+20. How to Map SaaS Subprocessors and Apply SCCs to Personal-Data Transfers Outside the EEA
+
+## Azure Arc
+
+1. How to Onboard Hundreds of Windows Servers to Azure Arc with Group Policy and a Service Principal
+2. How to Onboard Linux and Windows Servers to Azure Arc at Scale with Ansible
+3. How to Diagnose an Azure Arc Server That Stays Disconnected with `azcmagent check` and `azcmagent show`
+4. How to Configure the Azure Connected Machine Agent Behind an Authenticated Proxy
+5. How to Use Azure Arc Private Link Without Breaking Microsoft Entra ID and ARM Connectivity
+6. How to Enable Automatic Azure Connected Machine Agent Upgrades Without Rebooting Servers
+7. How to Fix Azure Arc VM Extensions Stuck in “Creating” or “Failed”
+8. How to Resolve Azure Arc Extension Failures on a `noexec`-Mounted Filesystem
+9. How to Access Key Vault from .NET with an Azure Arc Server’s System-Assigned Managed Identity
+10. How to SSH to an Azure Arc-Enabled Server with Microsoft Entra ID and Azure RBAC
+11. How to Rename or Move an Azure Arc-Enabled Server to Another Region Without Losing Its Extensions
+12. How to Remove an Azure Arc-Enabled Server Cleanly from Azure, Update Manager, and the Local Machine
+13. How to Schedule Azure Update Manager Patching for Arc Servers Without Group Policy Overriding the Maintenance Window
+14. How to Connect an On-Premises Kubernetes Cluster to Azure Arc Through an Outbound Proxy
+15. How to Fix `az connectedk8s connect` Failures Caused by Kubeconfig, RBAC, Resource Providers, or Blocked Endpoints
+16. How to Troubleshoot CrashLooping Pods and Expired Agent Certificates in the `azure-arc` Namespace
+17. How to Run `kubectl` Against an Azure Arc Kubernetes Cluster Without Opening Inbound Firewall Ports
+18. How to Deploy Flux v2 GitOps to Azure Arc Kubernetes from a Private Git Repository
+19. How to Troubleshoot an Azure Arc Kubernetes Extension That Never Reaches “Installed”
+20. How to Enforce Kubernetes Admission Policies Across Arc-Enabled Clusters with Azure Policy
+
+## Web Vitals
+
+1. How to Collect Real-User LCP, INP, and CLS Attribution with the `web-vitals` Library
+2. How to Identify the Actual LCP Element Seen by Users and Segment It by URL, Device, and Connection
+3. How to Find the Click or Keypress Causing Poor INP in Production
+4. How to Capture Post-Load Layout Shifts with `reportAllChanges` Instead of Measuring Only Page Load
+5. Why Lighthouse Is Green While Search Console Fails Core Web Vitals—and How to Reconcile the Data
+6. How to Break LCP into TTFB, Resource Load Delay, Resource Load Time, and Render Delay
+7. How to Improve LCP by Making the Hero Image Discoverable and Setting `fetchpriority="high"`
+8. How to Preload a CSS Background Image When It Is the LCP Element
+9. How to Stop Lazy Loading from Delaying Your Above-the-Fold LCP Image
+10. How to Reduce a Server-Bound LCP by Fixing TTFB with Caching, CDN Placement, and Redirect Removal
+11. How to Fix a Text-Based LCP Delayed by Render-Blocking CSS and Web Fonts
+12. How to Eliminate Image CLS with `width`, `height`, and `aspect-ratio` Across Responsive Breakpoints
+13. How to Reserve Stable Space for Ads, Embeds, and Iframes Without Wrecking CLS
+14. How to Prevent Font Swaps from Causing CLS with Metric-Compatible Fallback Fonts
+15. How to Diagnose CLS That Appears Only After Scrolling or Opening a Sticky Header
+16. How to Improve INP by Splitting Long Event Handlers with `scheduler.yield()` or `setTimeout()`
+17. How to Reduce INP on Large DOMs with `content-visibility` and Smaller Rendered Subtrees
+18. How to Move CPU-Heavy JavaScript to a Web Worker to Free the Main Thread for INP
+19. How to Find and Contain Third-Party Scripts That Degrade LCP and INP
+20. How to Measure Core Web Vitals Across SPA Soft Navigations with `web-vitals` v6
+
+## RocksDB
+
+1. How to Prove Compaction Backlog Is Causing RocksDB Write Stalls from LOG and `STALL_MICROS`
+2. How to Tune `max_background_jobs`, Memtables, and L0 Triggers When RocksDB Cannot Compact Fast Enough
+3. How to Choose Between Leveled, Universal, and FIFO Compaction for Read, Write, and Space Amplification
+4. How to Rate-Limit RocksDB Flushes and Compactions Without Creating Read-Latency Spikes
+5. How to Set a Predictable RocksDB Memory Budget Across Block Cache, Memtables, Indexes, and Bloom Filters
+6. How to Share One Block Cache Across RocksDB Column Families and Database Instances
+7. Why RocksDB RSS Exceeds the Configured Block Cache—and How to Measure Pinned and Reader Memory
+8. How to Tune RocksDB Bloom Filters for Point Lookups and Verify They Are Actually Useful
+9. How to Implement Fast Prefix Scans with `prefix_extractor`, Prefix Bloom Filters, and Iterator Bounds
+10. How to Stop Stale RocksDB Iterators from Pinning SST Blocks and Delaying Space Reclamation
+11. How to Read a Consistent Point-in-Time View Across Multiple RocksDB Column Families with Snapshots
+12. How to Reopen RocksDB with Multiple Column Families Without “Column Families Not Opened”
+13. How to Make Multi-Key and Cross-Column-Family Updates Atomic with `WriteBatch`
+14. How to Choose Between Synchronous WAL Writes, Batched WAL Syncs, and `disableWAL`
+15. How to Take a Consistent Live RocksDB Backup While Writes Continue
+16. RocksDB Snapshot vs. Checkpoint vs. Backup: How to Choose the Right Point-in-Time Copy
+17. How to Stop Incremental RocksDB Backups from Consuming More Disk Than the Live Database
+18. How to Expire Keys with a Compaction Filter or FIFO TTL—and Why Disk Space Does Not Shrink Immediately
+19. How to Reclaim a Large Deleted Key Range with `DeleteRange`, `DeleteFilesInRange`, and `CompactRange`
+20. How to Bulk-Load Sorted Data with `SstFileWriter` and `IngestExternalFile` Without a Compaction Storm
+
+## MySQL
+
+1. How to Find MySQL Queries Consuming the Most Total Time with Performance Schema and `sys.statement_analysis`
+2. How to Read `EXPLAIN ANALYZE` and Spot Bad Row Estimates, Full Scans, and Expensive Loops
+3. How to Build a Composite Index That Serves `WHERE`, `JOIN`, and `ORDER BY` Without a Filesort
+4. Why MySQL Ignores an Index—and How to Refresh Statistics, Add Histograms, and Test the Plan
+5. How to Test Whether an Index Is Safe to Drop by Making It Invisible First
+6. How to Replace Slow `LIMIT/OFFSET` Pagination with a Stable Composite Keyset Cursor
+7. How to Return the Latest N Rows per Group with `ROW_NUMBER()` in MySQL 8
+8. How to Delete Duplicate Rows While Keeping the Newest Record—and Then Prevent Them with a `UNIQUE` Key
+9. How to Write a Concurrency-Safe `INSERT ... ON DUPLICATE KEY UPDATE` with Deadlock Retries
+10. How to Diagnose InnoDB Deadlocks with `SHOW ENGINE INNODB STATUS` and `innodb_print_all_deadlocks`
+11. How to Find the Session Blocking a MySQL Lock Wait with Performance Schema `data_lock_waits`
+12. How to Stop `SELECT ... FOR UPDATE`, `UPDATE`, or `DELETE` from Locking Far More Rows Than Expected
+13. How to Add an Index or Column Online with `ALGORITHM=INSTANT` or `INPLACE` and `LOCK=NONE`
+14. How to Migrate a Foreign-Key Schema from latin1 or utf8 to utf8mb4 Without Breaking Constraints
+15. How to Diagnose MySQL Error 1005 / errno 150 When a Foreign Key Looks Correct
+16. How to Index a MySQL JSON Property with `JSON_VALUE()` or a Generated Column
+17. How to Take a Consistent Hot InnoDB Backup with `mysqldump --single-transaction` Without Losing Routines or Events
+18. How to Restore MySQL to the Second Before an Accidental `DELETE` with Binary Log Point-in-Time Recovery
+19. How to Rebuild a Broken GTID Replica with the Clone Plugin Instead of Replaying Days of Binary Logs
+20. How to Diagnose MySQL Replica Lag with Commit Timestamps and Performance Schema Instead of `Seconds_Behind_Source`
+
+## OSM
+
+1. How to Audit Every OSM Dependency on AKS Before the September 2027 End-of-Support Deadline
+2. How to Plan the AKS OSM-to-Istio Disruption Window When Managed Add-ons Cannot Coexist
+3. How to Translate OSM TrafficTarget, HTTPRouteGroup, and TCPRoute Policies into Istio AuthorizationPolicy
+4. How to Migrate OSM TrafficSplit Canary Routing to Istio VirtualService and DestinationRule Weights
+5. How to Verify mTLS, Authorization, Routing, and Telemetry Parity Before Completing an OSM-to-Istio Cutover
+6. How to Replace OSM Sidecars with Istio Sidecars in Rollout Order Without Stranding Pods Between Meshes
+7. How to Uninstall OSM Cleanly Without Accidentally Deleting Shared SMI CRDs
+8. OSM Uninstall Is Stuck: Manually Remove Webhooks, Control-Plane Objects, and Cluster-Wide Remnants
+9. OSM Sidecar Was Not Injected: Check Namespace Enrollment, Pod Annotations, and the Mutating Webhook
+10. OSM Init Container Fails Under Restricted Pod Security: Diagnose `NET_ADMIN` and iptables Requirements
+11. Application Pods Hang at Startup After OSM Injection: Wait for Envoy xDS Readiness Before Opening Connections
+12. Kubernetes Probes Fail After OSM Injection: Debug Rewritten Ports 15901–15904 and `osm-healthcheck`
+13. OSM Returns 403 or 503 Between Services: Trace ServiceAccounts, TrafficTarget, and HTTPRouteGroup Matches
+14. OSM Permissive Mode Still Blocks Traffic: Use `osm verify connectivity` and Inspect the Envoy Config Dump
+15. How to Allow External APIs from OSM with Egress Policies, SNI Hosts, CIDRs, and Port Rules
+16. NGINX Ingress Cannot Reach an OSM Backend: Fix Namespace Monitoring, IngressBackend, `targetPort`, and Client Certificates
+17. OSM TrafficSplit Is Ignored: Check Service FQDNs, Host Headers, Backend Weights, and TrafficTarget Access
+18. How to Prove OSM Is Encrypting Pod-to-Pod Traffic with mTLS Instead of Trusting the Dashboard
+19. OSM Metrics Are Missing from Prometheus: Verify Sidecar Injection, Namespace Annotations, Port 15010, and WASM Stats
+20. How to Rotate OSM Root and Service Certificates Safely with Planned Data-Plane Restarts and Downtime Checks
+
+## Crossplane Compositions
+
+1. How to Migrate Crossplane v1 Compositions to v2 Namespaced XRs Without Breaking LegacyCluster Claims
+2. How to Move Composition Selection and Resource References Under `spec.crossplane` in Crossplane v2
+3. How to Choose Namespaced, Cluster, or LegacyCluster XRD Scope Before Composing Cross-Namespace Resources
+4. Crossplane v2 Connection Details Are Missing: Compose an Explicit Secret Instead of Relying on v1 XR Publishing
+5. How to Pass a Composed Resource ID into the Next Resource with XR Status and EnvironmentConfig Patches
+6. Crossplane Patch Is Silently Skipped: Make `fromFieldPath` Required and Add the Missing XRD Schema Field
+7. How to Patch Arrays and Maps into Nested Managed-Resource Fields Without Crossplane Type Mismatches
+8. How to Generate One Composed Resource per XR Array Item with Go Templating or KCL
+9. How to Add Conditional Resources to a Crossplane Composition Function Pipeline
+10. How to Reuse Crossplane Composition Logic Across APIs with Functions and Configuration Packages
+11. How to Test Crossplane Compositions Offline with `crossplane render` and Mocked Required Resources
+12. How to Review Crossplane Render Diffs in CI and Block Destructive Composition Changes
+13. How to Trace an XR Stuck Not Ready Through Function Results, ResourceRefs, Events, and `crossplane beta trace`
+14. Crossplane Says Requirements Did Not Stabilize After Five Iterations: Debug Required-Resource Requests in Function Pipelines
+15. Crossplane Cannot Compose a Third-Party Kubernetes Resource: Fix Aggregated RBAC for the Crossplane Service Account
+16. How to Model Dependencies Between Composed Resources with References, Status Patches, and Readiness Gates
+17. How to Mark Resources Without a Standard Ready Condition Using `function-auto-ready` and CEL Health Checks
+18. How to Roll Out a New Composition Safely with CompositionRevisions, Manual Update Policy, and Channel Labels
+19. How to Pin Provider and Function Package Versions So Crossplane Composition Output Stays Reproducible
+20. No Crossplane Composition Selected: Debug `compositeTypeRef`, Selectors, Defaults, and Enforced `compositionRef` Values
