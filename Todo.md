@@ -169,7 +169,6 @@
 
 ## Erasure Coding
 
-20. How to Benchmark Erasure-Coding Throughput Before Deploying It on SSD Storage
 
 ## Data Plane
 
