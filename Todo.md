@@ -166,7 +166,6 @@
 
 ## CloudStack
 
-8. How to Let CloudStack Guest VMs Reach the Physical Gateway
 9. How to Repair VM Network Rules After a CloudStack Upgrade
 10. How to Register an ISO or Template That Never Becomes Ready in CloudStack
 11. How to Diagnose a Secondary Storage VM That Cannot Download System Templates
