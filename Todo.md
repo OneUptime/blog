@@ -169,7 +169,6 @@
 
 ## Erasure Coding
 
-13. How to Detect Which Reed-Solomon Shards Are Corrupt Before Decoding
 14. How to Recover Missing Reed-Solomon Shards and Verify the Reconstructed File
 15. How to Decode Reed-Solomon Data When Errors and Erasures Occur Together
 16. How to Calculate the Reed-Solomon Error-and-Erasure Correction Limit
