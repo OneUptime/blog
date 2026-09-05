@@ -8,17 +8,17 @@ Description: Replace PAR2 parity safely after archive contents change by publish
 
 ---
 
-PAR2 parity cannot be incrementally updated after protected files change. Create a complete new recovery set for a new immutable archive generation. Keep the old data and its old PAR2 volumes intact until the replacement generation has passed verification and a repair drill.
+`par2cmdline` does not provide an incremental update operation after protected files change. Create a complete new recovery set for a new immutable archive generation. Keep the old data and its old PAR2 volumes intact until the replacement generation has passed verification and a repair drill.
 
 This is necessary because PAR 2.0 binds recovery data to the exact recovery set. File identifiers incorporate the filename, length, and content hash of the first 16 KiB. The main packet identifies an ordered set of file IDs and a fixed slice size. Recovery slices are computed across those exact ordered input slices. A changed byte, size, name, member list, or slice layout can invalidate the relationship.
 
 ## Distinguish Two Operations
 
-There are only two safe cases:
+For maintaining parity with `par2cmdline`, distinguish two cases:
 
 | Situation | Correct operation |
 | --- | --- |
-| Filenames, member order, bytes, and lengths are unchanged; you only want more recovery blocks | Add compatible recovery volumes with the same slice size and nonoverlapping recovery exponents |
+| Filenames, membership, bytes, and lengths are unchanged; you only want more recovery blocks | Add compatible recovery volumes with the same slice size and nonoverlapping recovery exponents |
 | Any protected filename, length, bytes, membership, or slice size changed | Build a completely new PAR2 recovery set |
 
 The official client documents `-f` for adding recovery blocks to an unchanged set. For example, if the original was created with a 300 KiB block size and recovery exponents below 300:
@@ -29,11 +29,11 @@ par2 create \
   -s307200 \
   -r5 \
   -f300 \
-  archive.par2 \
+  archive-extra.par2 \
   SHA256SUMS payload/*
 ```
 
-The same block size is required, and `-f300` starts at recovery-block number 300 so it does not duplicate earlier blocks. This operation is **not** a way to update parity for modified inputs.
+The new output basename avoids colliding with the existing index; it does not change the Recovery Set ID. Use the same protected paths and membership, including any explicitly added hidden files. Command-line input order does not matter because the main packet sorts file IDs numerically. The same block size is required, and `-f300` starts at recovery-block number 300 so it does not duplicate earlier blocks. This operation is **not** a way to update parity for modified inputs.
 
 ## Publish Generations, Not In-Place Mutations
 
@@ -57,10 +57,12 @@ Never overwrite `archive-2026q2.par2` while Q2 is the last known repairable copy
 
 ## Snapshot the Changed Inputs
 
-Stop writers or export from a consistent snapshot into staging:
+These examples assume Bash and GNU coreutils/findutils. Stop writers or export from a consistent snapshot into a fresh staging directory:
 
 ```bash
-mkdir -p archive-2026q3.staging/payload
+set -euo pipefail
+mkdir archive-2026q3.staging
+mkdir archive-2026q3.staging/payload
 cp -a changed-export/. archive-2026q3.staging/payload/
 
 cd archive-2026q3.staging
@@ -74,7 +76,7 @@ Review the inventory against the previous generation:
 ```bash
 diff -u \
   ../archive-2026q2/SHA256SUMS \
-  SHA256SUMS || true
+  SHA256SUMS || { test "$?" -eq 1 || exit 1; }
 ```
 
 The differences should match the approved archive change. If an application is still modifying the export, start again from a proper snapshot. PAR2 creation is not a transactional snapshot mechanism.
@@ -104,17 +106,18 @@ Run both format-level and external verification:
 par2 verify archive-2026q3.par2
 sha256sum -c SHA256SUMS
 
-find . -type f ! -name GENERATION-SHA256SUMS -print0 |
+find . -type f ! -path ./GENERATION-SHA256SUMS -print0 |
   sort -z |
   xargs -0 sha256sum >GENERATION-SHA256SUMS
 ```
 
 Copy the staging generation to another failure domain, then verify that copy independently. A local success does not prove the remote transfer or offline medium.
 
-Run a repair drill against a disposable copy. Select an actual protected file larger than 3 MiB and fail before `dd` if the path or size is wrong:
+Run a repair drill against a disposable copy. Select an actual protected file at least 3 MiB and fail before `dd` if the path or size is wrong:
 
 ```bash
 cd ..
+test ! -e archive-2026q3.restore-test && test ! -L archive-2026q3.restore-test || exit 1
 cp -a archive-2026q3.staging archive-2026q3.restore-test
 cd archive-2026q3.restore-test
 
@@ -126,32 +129,35 @@ dd if=/dev/zero \
   of="$test_file" \
   bs=1048576 count=1 seek=2 conv=notrunc status=none
 
-par2 verify archive-2026q3.par2
+verify_status=0
+par2 verify archive-2026q3.par2 || verify_status=$?
+test "$verify_status" -eq 1 || exit 1
 par2 repair archive-2026q3.par2
 par2 verify archive-2026q3.par2
 sha256sum -c SHA256SUMS
 ```
 
-Only a disposable copy should be deliberately corrupted. Capture the result and recovery time.
+Only a disposable copy should be deliberately corrupted. The first verification must return 1 (repair needed and possible); a zero-filled region may remain unchanged, in which case the drill stops and must be repeated on a fresh copy with a nonzero region. Any other failure also stops the drill. Capture the result and recovery time.
 
 ## Perform an Atomic Same-Filesystem Cutover
 
-After the primary and independent copy both verify, rename staging on the same filesystem:
+After the primary and independent copy both verify, rename staging on the same filesystem, with no existing destination:
 
 ```bash
 cd ..
+test ! -e archive-2026q3 && test ! -L archive-2026q3 || exit 1
 mv archive-2026q3.staging archive-2026q3
 ```
 
 Update a catalog or `current` pointer using the storage platform's atomic publication mechanism. Do not expose a directory while its PAR2 volumes are still being copied.
 
-Retain `archive-2026q2` for a defined rollback and media-scrub interval. When policy permits retirement, remove its data and matching PAR2 volumes as one generation. Never mix Q2 volume files with Q3 and assume their recovery blocks add together; Recovery Set IDs keep them distinct.
+Retain `archive-2026q2` for a defined rollback and media-scrub interval. When policy permits retirement, remove its data and matching PAR2 volumes as one generation. Never mix Q2 volume files with Q3 and assume their recovery blocks add together; Recovery Set IDs are not guaranteed to distinguish every content change: a same-length edit beyond the first 16 KiB can leave the file ID and Recovery Set ID unchanged. Keep generations physically separate even when their IDs match.
 
 ## Secure the Maintenance Workflow
 
 PAR2's MD5 and CRC fields detect accidental corruption for format operation, but they are not a modern authenticity mechanism. Sign the SHA-256 generation manifest and keep the verification key outside the archive's writable account.
 
-Use `par2cmdline` 1.2.0 or a package containing its June 2026 security fixes, especially when processing recovery sets from an untrusted source. Repair within a sandboxed scratch directory and inspect paths before allowing reconstructed files into an authoritative archive.
+Use `par2cmdline` 1.2.0 or later, or a package containing its June 2026 security fixes, especially when processing recovery sets from an untrusted source. Repair within a sandboxed scratch directory and inspect paths before allowing reconstructed files into an authoritative archive.
 
 ## Conclusion
 
