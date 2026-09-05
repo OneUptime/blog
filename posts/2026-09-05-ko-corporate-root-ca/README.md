@@ -8,23 +8,24 @@ Description: Trust an internal certificate authority in a ko-built service throu
 
 ---
 
-A private registry, outbound TLS proxy, internal database, or service mesh may present certificates rooted in a corporate certificate authority. A minimal `ko` image trusts the roots supplied by its base, not every organization's private PKI. Add only the public root or required intermediate certificates and verify the exact TLS path.
+A private registry, outbound TLS proxy, internal database, or service mesh may present certificates rooted in a corporate certificate authority. A minimal `ko` image trusts the roots supplied by its base, not every organization's private PKI. Add only approved public CA certificates as trust anchors and verify the exact TLS path. Installing an intermediate in the root pool trusts it as an anchor; normally, missing intermediates should be supplied by the server. Image trust affects connections made by the application; registry pulls and pushes need trust configured separately in the container runtime or build client.
 
 Never copy a CA private key into an image. Root certificates are public trust anchors; private signing material belongs in a protected PKI system.
 
 ## Confirm That Trust Is the Failure
 
-Capture the hostname and error from the Go application. `x509: certificate signed by unknown authority` can mean the root is absent, but it can also mean the server omitted an intermediate certificate or the client connected with the wrong server name.
+Capture the hostname and error from the Go application. `x509: certificate signed by unknown authority` can mean the root is absent, but it can also mean the server omitted an intermediate certificate. A hostname mismatch normally produces a separate hostname-validation error; incorrect SNI can also cause a server to present a different certificate chain.
 
 From an approved diagnostic machine:
 
 ```bash
 openssl s_client -connect api.corp.example:443 \
   -servername api.corp.example \
+  -verify_hostname api.corp.example -verify_return_error \
   -showcerts </dev/null
 ```
 
-Validate the chain and SAN. Do not solve a hostname mismatch by disabling verification. Fix the certificate or requested hostname.
+Validate the chain and SAN. This uses the diagnostic machine's trust store; add `-CAfile corp-root-ca.crt` to test with the approved corporate CA explicitly. Do not solve a hostname mismatch by disabling verification. Fix the certificate or requested hostname.
 
 Choose whether corporate trust is an image property or runtime configuration. A base-image trust store is consistent and easy to test by digest; a mounted CA can rotate without rebuilding but becomes another deployment dependency.
 
@@ -41,7 +42,7 @@ RUN chmod 0644 /usr/local/share/ca-certificates/corp-root-ca.crt \
 USER 65532:65532
 ```
 
-Build, scan, and publish that base through a controlled pipeline. Then pin it:
+Build, scan, and publish that base through a controlled pipeline. Then pin it in `.ko.yaml`:
 
 ```yaml
 defaultBaseImage: registry.example.com/base/go-corp-ca@sha256:BASE_DIGEST
@@ -100,13 +101,13 @@ Or for Docker:
 docker run --rm -e SSL_CERT_DIR=/var/run/ko "$IMAGE_REF"
 ```
 
-Use a CA-only `kodata` directory for this pattern. `SSL_CERT_DIR` is a trust input, so mixing arbitrary templates and downloaded files into it makes review unnecessarily broad. The value inside the image is fixed when it is built.
+Use a CA-only `kodata` directory for this pattern. `SSL_CERT_DIR` is a trust input, so mixing arbitrary templates and downloaded files into it makes review unnecessarily broad. The bundled certificate contents are fixed when the image is built; the environment variable can be overridden at runtime.
 
 This approach primarily targets Go's `crypto/x509` behavior. A subprocess or non-Go library may ignore `SSL_CERT_DIR` and use a different trust mechanism.
 
 ## Option 4: Mount the CA at Runtime
 
-If certificate rotation must not wait for an image rebuild, mount a ConfigMap or managed volume and point `SSL_CERT_DIR` or `SSL_CERT_FILE` at it:
+If certificate rotation must not wait for an image rebuild, mount a ConfigMap or managed volume and point `SSL_CERT_DIR` at the mounted directory or `SSL_CERT_FILE` at a PEM bundle file within it. The following is a Pod spec fragment:
 
 ```yaml
 volumes:
@@ -129,7 +130,7 @@ The application may need a restart to rebuild its root pool after the mounted da
 
 ## Preserve Public Roots When Required
 
-Replacing the trust source with only a corporate root can break public HTTPS. Test both internal and external destinations required by the service. The exact interaction between default files and `SSL_CERT_DIR` is operating-system and Go implementation behavior; do not assume every language runtime merges sources identically.
+Replacing the trust source with only a corporate root can break public HTTPS. Test both internal and external destinations required by the service. On Linux, Go loads the first readable default bundle file plus the configured certificate directories. `SSL_CERT_DIR` overrides the directory list, while `SSL_CERT_FILE` overrides the bundle file list; setting only one does not disable the other source. This is operating-system and Go implementation behavior; do not assume every language runtime merges sources identically.
 
 When the application needs a tightly limited trust set for one upstream, construct an explicit `x509.CertPool` in code and attach it to a dedicated `tls.Config` rather than changing process-wide system roots. Preserve hostname validation and a modern minimum TLS version.
 
@@ -173,5 +174,5 @@ First verify that the error is truly an unknown root rather than a bad chain or 
 - [ko: Base Image Configuration](https://ko.build/configuration/#overriding-base-images)
 - [ko: Static Assets](https://ko.build/features/static-assets/)
 - [Go: `crypto/x509` SystemCertPool](https://pkg.go.dev/crypto/x509#SystemCertPool)
-- [Go Source: Unix Root Certificate Loading](https://go.dev/src/crypto/x509/root_unix.go)
+- [Go Source: Unix Root Certificate Loading](https://go.dev/src/crypto/x509/root.go)
 - [Chainguard `incert`](https://github.com/chainguard-dev/incert)
