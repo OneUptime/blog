@@ -58,9 +58,10 @@ Create an application-consistent backup of anything valuable before cleanup. If 
 
 ## Stop the VM Through CloudStack
 
-CloudStack's `createTemplate` API requires a VM to be stopped when creating from its volume. Shut the guest down through CloudStack and wait for `Stopped`:
+CloudStack's `createTemplate` API requires a VM to be stopped when creating from its volume. CloudMonkey waits for asynchronous jobs by default; disable that behavior for the manual polling examples below. Shut the guest down through CloudStack and wait for `Stopped`:
 
 ```bash
+cmk set asyncblock false
 cmk stop virtualmachine id=SOURCE_VM_UUID
 cmk query asyncjobresult jobid=STOP_JOB_UUID
 cmk list virtualmachines id=SOURCE_VM_UUID
@@ -126,13 +127,13 @@ systemctl --failed
 ss -ltnp
 ```
 
-Compare the clone and builder. Machine ID, instance ID, MAC, IP, host keys, and injected credentials must be unique. Verify package repositories, time sync, DNS, graceful shutdown/reboot, console, and SSH-key injection. Search the clone for builder-specific hostnames, IPs, secrets, and application data.
+Compare the clone and builder. Machine ID, instance ID, and SSH host keys must be unique per VM; MAC and IP addresses must not collide within their network scope. Verify that injected credentials match the deployment request and that no builder secrets remain. An injected SSH public key may intentionally be reused across VMs. Verify package repositories, time sync, DNS, graceful shutdown/reboot, console, and SSH-key injection. Search the clone for builder-specific hostnames, IPs, secrets, and application data.
 
 Deploy a second clone to catch identity collisions. If migration and HA matter, migrate a disposable clone between compatible hosts and reboot it.
 
 ## Publish in Stages
 
-Leave the template private while testing. Apply CloudStack template permissions only after review, and use project/domain scope rather than public visibility when possible. Preserve a versioned name and immutable build record with source package versions, builder commit, test results, and digest.
+Leave the template private while testing. Apply CloudStack template permissions only after review, and share with specific accounts in your own domain or projects you belong to rather than enabling public visibility when possible. Project-owned templates cannot be shared outside their project. Preserve a versioned name and immutable build record with source package versions, builder commit, test results, and digest.
 
 Do not overwrite a widely used template in place. Publish a new version, deploy canaries, and deprecate the old version after workloads migrate.
 
