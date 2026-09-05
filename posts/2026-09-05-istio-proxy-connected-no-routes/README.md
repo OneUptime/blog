@@ -26,7 +26,7 @@ Record:
 - intended Istio revision; and
 - whether the route should apply to `mesh` or a named Gateway.
 
-Capture the request's access-log result:
+With access logging enabled to the proxy's standard output, capture the request's access-log result:
 
 ```bash
 kubectl -n apps logs frontend-74b77f79cc-p8x2l \
@@ -39,10 +39,10 @@ Use an idempotent test request with explicit authority and deadline. Do not put 
 
 ## Confirm Connection and Identify the Actual Revision
 
-Check the proxy's synchronization row:
+List synchronization status and locate the proxy's row:
 
 ```bash
-istioctl proxy-status frontend-74b77f79cc-p8x2l.apps
+istioctl proxy-status --namespace apps
 ```
 
 `SYNCED` means the proxy acknowledged the last configuration Istiod sent for that type. `NOT SENT` means Istiod has not sent it, often because it calculated no applicable resource. `STALE` indicates a sent update lacks acknowledgement.
@@ -58,7 +58,7 @@ kubectl -n apps get pod frontend-74b77f79cc-p8x2l -o json |
        created: .metadata.creationTimestamp}'
 ```
 
-In a revisioned install, the namespace label or revision tag controls which injector creates a new proxy bootstrap. The Pod annotation records the actual revision. A proxy can be fully connected and synced to an older revision whose discovery selectors, root namespace, feature flags, or watched cluster differ.
+In a revisioned install, an `istio.io/rev` label on the namespace or Pod selects the injector, directly or through a revision tag. If the namespace also has an `istio-injection` label, that label takes precedence over its `istio.io/rev` label. The Pod annotation records the actual revision. A proxy can be fully connected and synced to an older revision whose discovery selectors, root namespace, feature flags, or watched cluster differ.
 
 Compare with a working proxy:
 
@@ -101,7 +101,7 @@ istioctl proxy-config routes \
   pod/frontend-74b77f79cc-p8x2l.apps
 ```
 
-For a sidecar, confirm the Kubernetes Service port is classified as `http`, `http2`, or `grpc` through its name or `appProtocol`. An explicitly `tcp` service port produces network proxying rather than HTTP routes. If `appProtocol` and name are both present, Istio gives `appProtocol` precedence.
+For a sidecar, confirm the traffic is detected as HTTP/HTTP2 or the Kubernetes Service port is explicitly classified as `http`, `http2`, or `grpc` through its name or `appProtocol`. An explicitly `tcp` service port produces network proxying rather than HTTP routes. If `appProtocol` and name are both present, Istio gives `appProtocol` precedence.
 
 For a gateway, verify the Gateway listener protocol and TLS mode. A terminated HTTPS listener can use HTTP routes after decryption; a passthrough TLS listener uses SNI/TLS routes, not RDS HTTP routes.
 
