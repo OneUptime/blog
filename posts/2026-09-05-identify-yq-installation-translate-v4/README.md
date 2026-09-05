@@ -37,7 +37,7 @@ yq --version
 yq --help | sed -n '1,35p'
 ```
 
-When you specifically need the first external executable on `PATH`, Bash's `type -P yq` returns that pathname while ignoring aliases and functions. It may not be the command a plain `yq` invocation selects, so compare it with `type -a yq` rather than substituting it silently.
+When you specifically need the first external executable on `PATH`, run `hash -r` first, then use Bash's `type -P yq` to return that pathname while ignoring aliases and functions. Without clearing the hash table, `type -P` can return a cached pathname instead of the first match on `PATH`. It may not be the command a plain `yq` invocation selects, so compare it with `type -a yq` rather than substituting it silently.
 
 If you changed `PATH` or replaced a binary during the current Bash session, run `hash -r` and repeat the check. Bash can remember the pathname previously selected for an external command.
 
@@ -78,7 +78,7 @@ Do not install another package until you know which existing executable your aut
 
 ## Understand the Mike Farah v4 Shape
 
-In v4, `eval` is the default command. The expression normally comes first and filenames follow it:
+Since v4.18.1, `eval` is the default command. The expression normally comes first and filenames follow it:
 
 ```bash
 yq '.application.image' config.yml
@@ -109,9 +109,11 @@ The official v3-to-v4 guide provides direct translations for the common operatio
 | Append an array item | `yq w -i config.yml 'items[+]' fred` | `yq -i '.items += ["fred"]' config.yml` |
 | Create new YAML | `yq n b.c cat` | `yq -n '.b.c = "cat"'` |
 
+These examples assume a single YAML document per file; v4 evaluates all documents by default, whereas v3 selects the first unless told otherwise. The default-value example handles a missing path, but v4's `//` also substitutes for explicit `null` and `false`; v3's `--defaultValue` applies when no nodes match.
+
 The key migration idea is that v4 encodes the operation in one expression. Do not keep a v3 verb and merely rearrange its flags.
 
-Merging also changed. A right-biased deep merge of two files in v4 is:
+Merging also changed. A right-biased deep merge of two files, each containing one mapping document, in v4 is:
 
 ```bash
 yq eval-all \
@@ -129,7 +131,7 @@ Many simple reads look deceptively similar because both tools use jq-like expres
 yq '.application.image' config.yml
 ```
 
-Their output defaults differ. The Python wrapper normally emits jq's JSON output unless `-y` or `-Y` is requested. Mike Farah v4 normally emits YAML and unwraps scalar values for YAML output.
+Their output defaults differ. The Python wrapper normally emits jq's JSON output unless `-y` or `-Y` is requested. For the YAML input above, Mike Farah v4 emits YAML and unwraps scalar values. In current v4 releases, the default output format is `auto`, so a recognized input filename extension such as `.json` can select another output format.
 
 An in-place Python-wrapper example may look like this:
 
@@ -192,7 +194,7 @@ type -a yq || true
 yq --version || true
 ```
 
-Also check whether the script activates a Python virtual environment, runs inside a different container stage, or uses `sudo`. Each can select a different `PATH`. An alias visible in an interactive shell may not exist in a non-interactive CI shell. A script with `/usr/bin/env bash` inherits `PATH`; an absolute path selects one known executable.
+Also check whether the script activates a Python virtual environment, runs inside a different container stage, or uses `sudo`. Each can select a different `PATH`. An alias visible in an interactive shell may not exist in a non-interactive CI shell. A `#!/usr/bin/env bash` shebang selects Bash through the inherited `PATH`; `#!/bin/bash` selects that Bash executable directly. Neither fixes which `yq` is selected: use an absolute path to `yq` when that is required.
 
 ## Conclusion
 
