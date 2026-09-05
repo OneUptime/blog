@@ -172,7 +172,6 @@
 
 ## Data Plane
 
-1. Envoy Data Plane Is Stuck Not Ready: Diagnose xDS gRPC Status 14, DNS, and `initial_fetch_timeout`
 2. The Application Starts Before Istio Proxy: Gate Startup with `holdApplicationUntilProxyStarts` or Native Sidecars
 3. Istio Proxy Readiness Returns 503: Verify Service Ports, Endpoints, and Envoy Configuration
 4. Does Envoy Pull or Does Istiod Push? Trace the Long-Lived xDS Stream from Bootstrap to ACK and NACK
