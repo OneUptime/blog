@@ -172,7 +172,6 @@
 
 ## Data Plane
 
-5. Istio Sidecar Injection Webhook Times Out: Test the API-Server-to-istiod Network Path, CA Bundle, and Endpoints
 6. Istio Injects Its Own Control Plane and Breaks the Webhook: Recover from a Mislabelled `istio-system` Namespace
 7. Kubernetes Service Has Endpoints but Envoy EDS Is Empty: Trace Port Names, Subsets, and Discovery Scope
 8. Envoy Reports `WRONG_VERSION_NUMBER` During TLS Origination: Align Application, ServiceEntry, and DestinationRule Ports
