@@ -5729,6 +5729,26 @@
 18. How to Operate Sovereign Kubernetes Without Leaking Data Through Shared Control-Plane Services
 19. How to Design DNS, PKI, and Time Dependencies for a Disconnected Sovereign Cloud
 20. How to Evaluate Foreign-Jurisdiction Exposure When Cloud Data Never Leaves the Country
+21. How to Sanitize Sovereign Cloud Support Bundles Before Sharing Them with a Provider
+22. How to Detect and Block Cross-Border Egress with DNS Logs, Flow Logs, and Policy Tests
+23. How to Keep Users Pinned to Their Home Data Region When They Travel
+24. How to Shard a Multi-Tenant Database by Jurisdiction Without Cross-Border Replication
+25. How to Build a Global Tenant Directory Without Replicating PII Outside Sovereign Regions
+26. How to Run Cross-Region Workflows with Opaque Identifiers Instead of Exporting Sovereign Data
+27. How to Separate Customer Content, Customer-Created Metadata, and Provider Operational Data in a Sovereignty Audit
+28. How to Operate Patch and Vulnerability Feeds in an Internet-Isolated Sovereign Cloud
+29. How to Verify Data Deletion and Cryptographic Erasure When Exiting a Sovereign Cloud Provider
+30. How to Configure Microsoft Entra Cross-Cloud B2B for Supported Commercial–Government and Commercial–China Pairs
+31. How to Register and Operate the Same Application Across Separate Microsoft Entra Cloud Partitions
+32. How to Validate OIDC Issuers, Audiences, and Signing Keys Across Azure Sovereign Clouds
+33. How to Configure Terraform Providers and Remote State for Azure Government or Azure China
+34. How to Stop SDKs and CLIs from Falling Back to Public-Cloud Endpoints in a Sovereign Environment
+35. How to Build a Cloud-Partition Endpoint Map for Identity, Storage, Key Vault, and Microsoft Graph
+36. How to Migrate Workloads into a Sovereign Cloud Without Using a Noncompliant Staging Location
+37. How to Keep One Application Codebase Deployable Across Isolated Cloud Partitions
+38. How to Replace Missing Managed Services When a Sovereign Cloud Lags the Public-Cloud Catalog
+39. How to Test Whether CDN, DNS, WAF, and Certificate Services Leak Metadata Outside the Sovereign Boundary
+40. How to Run Incident Forensics in a Sovereign Cloud Without Exporting Evidence Across Jurisdictions
 
 ## Metaflow
 
@@ -6028,6 +6048,26 @@
 18. How to Segment Change Lead Time by Service and Change Type Without Ranking Developers
 19. How to Choose the Production Success Timestamp for Canary and Progressive Deployments
 20. How to Measure Change Lead Time When Feature Flags Separate Deployment from Release
+21. How to Calculate Change Lead Time from GitHub Deployment Events and Commit Timestamps
+22. How to Measure Change Lead Time in Azure DevOps by Joining Commits, Pull Requests, Builds, and Releases
+23. How to Reconstruct Change Lead Time from Container Image Provenance When CI/CD Metadata Is Missing
+24. How to Track Change Lead Time When You Build Once and Promote the Same Artifact Through Environments
+25. How to Identify Which Commits Entered Production Between Two Release Tags
+26. How to Attribute Change Lead Time for Cherry-Picked Hotfixes and Backports
+27. How to Exclude Preview, Test, and Staging Deployments from Production Change Lead Time
+28. How to Handle Commits That Are Reverted Before They Ever Reach Production
+29. How to Carry Failed Deployment Waiting Time Forward to the Next Successful Release
+30. How to Count Rollbacks, Redeployments, and Roll-Forwards Without Double-Counting Change Lead Time
+31. How to Measure Change Lead Time Across Multi-Region Deployments with Staggered Completion
+32. How to Measure Change Lead Time for Database Migrations Shipped Separately from Application Code
+33. How to Measure Change Lead Time for Mobile Apps Delayed by App Store Review
+34. How to Measure Change Lead Time for Scheduled and Air-Gapped Release Trains
+35. How to Separate Engineering Delay from Approval and Change-Freeze Waiting Time
+36. How to Use Commit Time as the Change Lead-Time Start—and Document Merge-Time Proxies
+37. How to Calculate Business-Hours Change Lead Time Without Hiding Calendar Delay
+38. How to Handle Commits That Remain Undeployed at the End of a Reporting Window
+39. How to Detect and Explain Long-Tail Change Lead-Time Outliers
+40. How to Set a Change Lead-Time SLO and Alert on Meaningful Regressions
 
 ## OWASP ZAP
 
@@ -7086,3 +7126,187 @@
 18. How to Roll Out a New Composition Safely with CompositionRevisions, Manual Update Policy, and Channel Labels
 19. How to Pin Provider and Function Package Versions So Crossplane Composition Output Stays Reproducible
 20. No Crossplane Composition Selected: Debug `compositeTypeRef`, Selectors, Defaults, and Enforced `compositionRef` Values
+
+## StorageClass
+
+1. How to Set a Default Kubernetes StorageClass—and Remove Competing Defaults Safely
+2. How to Keep a PVC from Inheriting the Default StorageClass with `storageClassName: ""`
+3. How to Restrict Namespaces to Approved StorageClasses with ValidatingAdmissionPolicy
+4. How to Fix “storageClassName Does Not Match” When Pre-Binding a PV and PVC
+5. How to Decide Between Immediate and WaitForFirstConsumer Volume Binding
+6. How to Set a StorageClass in a Helm Chart Without Recreating the Wrong PVC
+7. How to Constrain Dynamic Volumes to Approved Zones with allowedTopologies
+8. How to Migrate a StatefulSet to a New StorageClass Without Losing Data
+9. How to Restore a VolumeSnapshot into a Different StorageClass
+10. How to Replace an Immutable StorageClass Without Disrupting Existing Volumes
+11. How to Clone a PVC into a New StorageClass When the CSI Driver Supports Cloning
+12. How to Reclaim and Rebind a Retained PersistentVolume After Its PVC Is Deleted
+13. How to Audit StorageClasses for Removed In-Tree Provisioners Before a Kubernetes Upgrade
+14. How to Migrate to a Smaller PVC When Kubernetes Volume Expansion Cannot Shrink Storage
+15. How to Create a Local StorageClass with `kubernetes.io/no-provisioner`, WaitForFirstConsumer, and PV Node Affinity
+16. How to Debug “No Topology Key Found on CSINode” During Dynamic Provisioning
+17. How to Configure CSI Provisioner Secrets in a StorageClass Without Hard-Coding the Wrong Namespace
+18. How to Verify StorageClass Parameters Against the Installed CSI Driver
+19. How to Apply Mount Options Through a StorageClass Without Breaking Volume Mounts
+20. How to Retire a StorageClass Safely While Existing PVCs Still Reference It
+
+## Dependency Management
+
+1. How to Decide What Belongs in a Dependency Manifest, Lockfile, Constraints File, or Maven BOM
+2. How to Commit and Validate Lockfiles for Reproducible Builds Across CI and Developer Machines
+3. How to Separate Direct Dependencies from Transitive Ones Before a Major Upgrade
+4. How to Explain Why a Transitive Dependency Is Installed with npm, Maven, Gradle, pip, and Cargo
+5. How to Decide Whether to Override, Exclude, Patch, or Fork a Transitive Dependency
+6. How to Resolve Diamond Dependency Conflicts Without Silently Selecting an Incompatible Version
+7. How to Pin Application Dependencies Without Over-Constraining a Published Library
+8. How to Choose Safe SemVer Ranges for Libraries, Applications, and Internal Packages
+9. How to Update One Dependency and Its Lockfile Without Refreshing the Entire Graph
+10. How to Recover When a Manifest and Lockfile Fall Out of Sync in CI
+11. How to Schedule Dependency Updates with Cooldown Windows for Newly Published Packages
+12. How to Group and Rate-Limit Renovate PRs Across a Large Repository Fleet
+13. How to Auto-Merge Low-Risk Dependency Updates with Tests, Provenance, and Rollback Gates
+14. How to Roll Out a Breaking Dependency Upgrade Across Dozens of Services
+15. How to Manage Shared Dependency Versions in a Polyglot Monorepo
+16. How to Install Only One Workspace’s Production Dependencies in an npm or pnpm Monorepo
+17. How to Align Third-Party Package Versions Across pnpm Workspaces Without Copy-Pasting Ranges
+18. How to Use a Maven BOM Without Confusing Version Management with Dependency Inclusion
+19. How to Enforce Maven Dependency Convergence Instead of Accepting Nearest-Wins Resolution
+20. How to Centralize Gradle Versions with Version Catalogs, Platforms, and Constraints
+
+## Product Metrics
+
+1. How to Choose a North Star Metric That Measures Customer Value Instead of Raw Activity
+2. How to Build a Product Metrics Tree from Business Outcomes to Team-Level Inputs
+3. How to Define Product Activation When Different Users Reach Value at Different Speeds
+4. How to Measure Feature Adoption Without Letting Power Users Skew the Result
+5. How to Calculate Weekly and Monthly Retention Cohorts in SQL
+6. How to Define DAU, WAU, and MAU So They Stay Comparable Over Time
+7. How to Measure Time to Value from Signup to the First Meaningful Outcome
+8. How to Instrument an Onboarding Funnel and Find the Step Blocking Activation
+9. How to Version Product Analytics Events Without Breaking Historical Funnels and Cohorts
+10. How to Audit Product Analytics for Duplicate Events, Missing Properties, and Schema Drift
+11. How to Join Anonymous and Logged-In User Journeys Without Double-Counting People
+12. How to Exclude Bots, Test Accounts, Employees, and Retries from Product Metrics
+13. How to Detect When an Instrumentation Change Is Masquerading as Product Growth
+14. How to Measure B2B SaaS Adoption at the Account, Seat, and User Levels
+15. How to Measure Retention for Seasonal and Low-Frequency Products
+16. How to Separate One-Time Feature Trials from Durable Feature Retention
+17. How to Choose Guardrail Metrics That Keep A/B Test Wins from Hurting the Product
+18. How to Connect Leading Product Behaviors to Renewal, Churn, and Revenue
+19. How to Set Post-Launch Success Thresholds When You Have No Historical Baseline
+20. How to Segment Product Metrics Without Falling for Simpson’s Paradox
+
+## Lima
+
+1. How to Install Lima and Launch Your First Linux VM on macOS
+2. How to Choose Between VZ and QEMU for a Lima VM
+3. How to Debug a Lima VM Stuck at “Waiting for SSH”
+4. How to Point Docker CLI and Compose at a Lima Docker Socket
+5. How to Run Containers with Lima’s Built-In containerd and nerdctl
+6. How to Choose Between Rootless and Rootful Container Engines in Lima
+7. How to Make Lima Host Mounts Writable Without Exposing Your Entire Home Directory
+8. How to Choose VirtioFS, 9p, or Reverse SSHFS for Lima File Sharing
+9. How to Fix Slow Bind-Mounted Builds in a Lima VM
+10. How to Fix Lima Mount Permission, Symlink, and File-Watcher Problems
+11. How to Forward TCP and UDP Ports from a Lima Guest to the Host
+12. How to Expose a Lima Service to Other Devices on Your LAN Safely
+13. How to Reach a Lima VM by IP with vzNAT or a Managed `socket_vmnet` Network
+14. How to Fix DNS Resolution in Lima When a VPN or Corporate Proxy Is Active
+15. How to Run AMD64 Linux Containers on Apple Silicon with Lima and Rosetta
+16. How to Enable Rosetta AOT Caching for Faster AMD64 Containers in Lima 2
+17. How to Build and Push Multi-Architecture Images with Lima and nerdctl
+18. How to Increase an Existing Lima VM’s Primary Disk Without Recreating It
+19. How to Attach a Persistent Data Disk That Survives Lima Instance Deletion
+20. How to Diagnose a Lima `diffdisk` That Keeps Consuming Host Storage
+
+## NUMA
+
+1. How to Map CPUs, Memory Nodes, and NUMA Distances with lscpu, numactl, and hwloc
+2. How to Measure Local Versus Remote Memory Latency Without Benchmarking the CPU Cache
+3. How to Verify a Process’s Real CPU and Memory Placement on Linux
+4. How to Read `/proc/<pid>/numa_maps` and `numastat -p` to Find Remote Allocations
+5. How to Choose Between `--membind`, `--preferred`, `--interleave`, and `--localalloc`
+6. How to Bind Both CPUs and Memory with numactl Without Creating Hidden Remote Accesses
+7. How to Apply First-Touch Memory Placement Correctly in a Multithreaded Application
+8. How to Pin Individual Linux Threads with `pthread_setaffinity_np` and Verify They Stay Put
+9. How to Keep OpenMP Threads and Their Memory on the Same NUMA Node
+10. How to Bind MPI Ranks by Socket Without Oversubscribing Cores or Memory Bandwidth
+11. How to Decide Whether Automatic NUMA Balancing Helps or Hurts Your Workload
+12. How to Diagnose NUMA Page Migrations and Remote-Memory Stalls with perf
+13. How to Move Existing Pages Between NUMA Nodes with `move_pages` and `migrate_pages`
+14. How to Interleave a Shared Memory Region Across NUMA Nodes Before First Touch
+15. How to Run numactl Inside a Container Without Using `--privileged`
+16. How to Configure cgroup v2 CPU and Memory Sets for NUMA-Local Containers
+17. How to Align libvirt vNUMA Cells, vCPU Pinning, and Memory Placement with Host NUMA Nodes
+18. How to Configure a systemd Service with CPUAffinity, NUMAPolicy, and NUMAMask
+19. How to Align NIC Queues, IRQ Affinity, and Application Threads to the Same NUMA Node
+20. How to Place NVMe I/O Threads Near the PCIe Root Complex That Owns the Drive
+
+## DHCP
+
+1. How to Trace a DHCP Failure End to End with Synchronized Captures on the Client, Relay, and Server
+2. How to Locate a Rogue DHCP Server from DHCPOFFER Fields and Switch Forwarding Tables
+3. How to Roll Out DHCP Snooping on Access Switches Without Stranding Production Clients
+4. How to Fix DHCP Snooping Drops Caused by an Untrusted Uplink or Port-Channel
+5. How to Handle Option 82 When the DHCP Server Rejects Relay-Agent Information
+6. How to Serve BIOS, UEFI x86-64, and ARM PXE Clients from One DHCP Scope
+7. How to Diagnose a Relay That Selects the Wrong Scope Because giaddr or the Source Interface Is Wrong
+8. How to Relay DHCP Across VRFs and Firewalls Without Losing the Return Path
+9. How to Size a Guest Wi-Fi DHCP Pool for Private and Rotating MAC Addresses
+10. How to Use DHCP Option 108 with NAT64 and DNS64 to Reduce Guest IPv4 Lease Pressure
+11. How to Keep DHCP Reservations Stable When Clients Use Randomized MAC Addresses
+12. How to Choose MAC, DUID, or Client ID Matching for Linux DHCP Clients
+13. How to Fix One Linux Host Receiving Multiple Leases After Its Client Identifier Changes
+14. How to Diagnose Windows DHCP BAD_ADDRESS Entries Caused by Static IPs Inside the Pool
+15. How to Forecast DHCP Scope Exhaustion from Lease Churn Instead of Concurrent Device Count
+16. How to Migrate ISC DHCP to Kea Without Duplicate Offers or Lost Reservations
+17. How to Tune Kea HA Failure Detection Without Creating Split-Brain Lease Allocation
+18. How to Test Kea Hot-Standby Recovery, Network Partitions, and Lease Resynchronization
+19. How to Resolve a Kea Reservation That Conflicts with an Existing Dynamic Lease
+20. How to Place Guest DHCP in a Firewall DMZ Without Exposing the Internal DHCP Server
+
+## NVMe
+
+1. How to Install nvme-cli and Inventory Every NVMe Controller and Namespace on Linux
+2. How to Read an NVMe SMART Health Log and Spot a Drive That Is Failing
+3. How to Interpret NVMe Percentage Used, Data Units Written, and Available Spare
+4. How to Alert on NVMe Temperature, Critical Warnings, and Media Errors with Prometheus
+5. How to Diagnose an NVMe Drive That Disappears Under Heavy I/O
+6. How to Trace NVMe I/O Queue Depth with Linux Tracepoints When `iostat` Shows Zero
+7. How to Verify an NVMe Drive Is Using the Expected PCIe Generation and Lane Width
+8. How to Benchmark an NVMe SSD with `fio` Without Measuring the Page Cache
+9. How to Separate NVMe Thermal Throttling from Filesystem or Database Bottlenecks
+10. How to Update NVMe Firmware on Linux and Confirm Which Firmware Slot Activated
+11. How to Securely Erase an NVMe SSD with Format NVM or Sanitize Without Wiping the Wrong Disk
+12. How to Create, Attach, Detach, and Delete NVMe Namespaces with `nvme-cli`
+13. How to Change an NVMe Namespace from 512-Byte to 4-KiB LBAs Safely
+14. How to Run an NVMe Device Self-Test and Interpret the Self-Test Log
+15. How to Capture NVMe Error, Persistent Event, and Telemetry Logs Before Resetting a Controller
+16. How to Recover an NVMe Controller After an I/O Timeout Without Rebooting the Host
+17. How to Configure Linux NVMe Multipath and Choose NUMA, Round-Robin, or Queue-Depth Policy
+18. How to Diagnose NVMe Multipath Failover with ANA States
+19. How to Disable or Tune NVMe APST When a Linux System Freezes After Idle
+20. How to Choose a Linux I/O Scheduler for NVMe Database Workloads
+
+## NALSD
+
+1. How to Turn a Vague Product Idea into Measurable NALSD Requirements and SLOs
+2. How to Make Back-of-the-Envelope Traffic Estimates from DAU and User Journeys
+3. How to Model Graceful Degradation When Capacity or a Dependency Is Lost
+4. How to Estimate CPU Cores When Request Cost Is Known Only from a Prototype
+5. How to Estimate Memory per Host from Working Set, Cache, and Process Overhead
+6. How to Test a NALSD Capacity Model with Load Tests and Production Measurements
+7. How to Convert Record Volume into Disk IOPS Instead of Sizing Storage by Capacity Alone
+8. How to Recalculate Capacity When One Assumption Changes by an Order of Magnitude
+9. How to Size a System for Peak Traffic Instead of Misleading Daily Averages
+10. How to Document NALSD Assumptions, Safety Margins, and Confidence Ranges
+11. How to Find the First Physical Bottleneck in a Whiteboard System Design
+12. How to Decide When a One-Machine Design Must Become Distributed
+13. How to Choose a Shard Key That Avoids Hotspots and Supports Required Queries
+14. How to Calculate Shard Count from Throughput, Storage, Rebalancing, and Growth
+15. How to Add Replicas Across Failure Domains Without Double-Counting Usable Capacity
+16. How to Translate an Availability SLO into a Failure-Tolerance and Replica Plan
+17. How to Estimate Multi-Region Consensus Throughput from Round-Trip Latency and Parallelism
+18. How to Model Hot-Key and Tenant Skew Instead of Assuming Uniform Traffic
+19. How to Design Backpressure and Backlog Drain Capacity for Traffic Spikes
+20. How to Practice a NALSD Interview by Iterating from Requirements to Capacity and Failure Modes
