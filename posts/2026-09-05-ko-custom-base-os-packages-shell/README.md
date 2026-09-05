@@ -16,11 +16,11 @@ If an application starts another executable, needs a shared library, reads OS da
 
 An error that mentions a missing file does not automatically mean the app needs a shell. Determine what the process actually opens or executes:
 
-- `exec: "git": executable file not found` requires the `git` binary and its runtime libraries.
-- `/bin/sh: no such file or directory` means the application or probe explicitly invokes a shell.
+- `exec: "git": executable file not found` means executable lookup failed; check `PATH` and ensure the `git` binary and its runtime libraries are present.
+- `/bin/sh: no such file or directory` can indicate a shell dependency in the application, probe, entrypoint, or a script's shebang; also check whether the shell's dynamic loader is missing.
 - Missing timezone data may be addressed by Go's `time/tzdata` package instead of an OS package.
 - A missing template belongs in `kodata` or Go's `embed` package, not necessarily a bigger base.
-- `x509: certificate signed by unknown authority` requires a correct trust store, not arbitrary utilities.
+- `x509: certificate signed by unknown authority` calls for checking the trust store and the peer's certificate chain, including missing intermediate certificates, not adding arbitrary utilities.
 - A dynamically linked CGO binary needs a compatible loader and libraries.
 
 Audit source, health probes, entrypoint arguments, and subprocess calls. Adding an entire distribution to hide an unidentified dependency increases patching work and can leave the original assumption untested.
@@ -82,9 +82,10 @@ The base contributes filesystem contents and relevant image configuration. Inspe
 ```bash
 image_ref=$(ko build ./cmd/api)
 docker buildx imagetools inspect --format '{{json .Image}}' "$image_ref"
+docker buildx imagetools inspect --format '{{json .Manifest}}' "$image_ref"
 ```
 
-The Buildx command reads the registry and reports configuration for the available platforms. Confirm the effective user, entrypoint, environment, exposed ports, and platform descriptors. If using a different registry inspection tool, make sure it reads image configuration as well as the top-level manifest.
+The Buildx commands read the registry: `.Image` reports image configuration, while `.Manifest` reports the manifest or index, including platform descriptors when an index is present. Confirm the effective user, entrypoint, environment, exposed ports, and platform descriptors. If using a different registry inspection tool, make sure it reads image configuration as well as the top-level manifest.
 
 Use `--image-user` when you need an explicit final user:
 
@@ -102,7 +103,7 @@ Similarly, do not open a shell in a running replica and change it by hand. The m
 
 ## Decide Whether a Shell Is an Application Requirement
 
-A shell can be useful for legacy wrapper scripts, but it is not the only debugging method. Kubernetes ephemeral containers, application diagnostics, filesystem export, and `ko build --debug` can investigate a shell-less production image without permanently shipping general-purpose tools.
+A shell can be useful for legacy wrapper scripts, but it is not the only debugging method. Kubernetes ephemeral containers, application diagnostics, and filesystem export can help investigate a shell-less production image without permanently shipping general-purpose tools. For development, `ko build --debug` creates a separate image with Delve, debug symbols, and a debugger entrypoint listening on port `40000`; that image should not be used in production.
 
 If an `exec` probe uses this form:
 
