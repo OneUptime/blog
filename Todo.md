@@ -175,7 +175,6 @@
 
 ## ko
 
-10. How to Stamp Git Commit and Version Metadata into a ko Image with `ldflags` and OCI Labels
 11. How to Avoid ko Image-Name Collisions with `--preserve-import-paths`, `--base-import-paths`, and `--bare`
 12. How to Tag ko Images for Releases While Keeping Digest-Pinned Deployments
 13. How to Speed Up Repeated ko Builds in CI with `KOCACHE` and Shared Go Caches
