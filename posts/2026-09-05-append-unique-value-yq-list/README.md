@@ -71,7 +71,8 @@ The `(.plugins // [])` expression treats a missing or null `plugins` node as an 
 
 ```bash
 yq -e '
-  (.plugins == null) or (.plugins | tag == "!!seq")
+  (has("plugins") | not) or
+  (.plugins | tag == "!!null") or (.plugins | tag == "!!seq")
 ' config.yml >/dev/null
 ```
 
@@ -103,7 +104,7 @@ That difference can matter. Removing duplicates may be a helpful repair, or it m
 
 ## Preserve YAML Types
 
-The recursive comparison used by array subtraction includes scalar tags. Therefore the string `"3"` and integer `3` are different candidates in this recipe. Append a number with `env`:
+The recursive comparison used by array subtraction includes built-in scalar tags and compares scalar text; custom scalar tags are resolved to their underlying types, and collection tags are ignored. Therefore the string `"3"` and integer `3` are different candidates in this recipe. Append a number with `env`:
 
 ```bash
 VALUE=3 yq '
@@ -221,7 +222,7 @@ CANDIDATES='[metrics, traces, profiles]' yq '
 ' config.yml
 ```
 
-This appends candidates absent from the old list in candidate order. If `CANDIDATES` itself contains duplicates, those duplicates can survive because subtraction only compares against the old list. Add `unique` to the candidate or final result when global uniqueness is the contract:
+This appends candidates absent from the old list in candidate order. If `CANDIDATES` itself contains duplicates, those duplicates can survive because subtraction only compares against the old list. Apply `unique` to the candidate array to remove candidate duplicates; apply it to the final result when global uniqueness is the contract, since candidate-only deduplication leaves old duplicates intact:
 
 ```bash
 CANDIDATES='[metrics, traces, traces]' yq '
