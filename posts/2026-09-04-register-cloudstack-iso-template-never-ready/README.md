@@ -22,7 +22,7 @@ cmk list templates id=IMAGE_UUID templatefilter=all listall=true
 cmk list imagestores zoneid=ZONE_UUID
 ```
 
-Use only the relevant list command. Important distinctions:
+Use only the relevant list command. The `all` filters require administrator access; image owners can use `self` instead. Important distinctions:
 
 - ISOs are read-only optical images and are not hypervisor-specific, though architecture and OS metadata still matter.
 - Templates are hypervisor-specific and require the correct format, such as QCOW2 or RAW for the intended KVM workflow.
@@ -43,7 +43,7 @@ file /tmp/image.bin
 qemu-img info /tmp/image.bin
 ```
 
-For an ISO, use `file` plus the publisher's signed checksum instead of `qemu-img`. Do not use `qemu-img check` on an untrusted image outside a sandbox; image parsers have a history of vulnerabilities.
+For an ISO, use `file` plus the publisher's signed checksum instead of `qemu-img`. Run `qemu-img info` and `qemu-img check` on untrusted images only inside a sandbox; image parsers have a history of vulnerabilities.
 
 Prefer HTTPS and a digest published through a separate trusted channel. CloudStack checksum values support an algorithm prefix such as `{SHA-256}` followed by the hex digest. A plain unprefixed hexadecimal checksum may be interpreted as MD5 by supported APIs, so be explicit.
 
@@ -78,7 +78,7 @@ cmk list systemvms systemvmtype=secondarystoragevm zoneid=ZONE_UUID
 cmk list imagestores zoneid=ZONE_UUID
 ```
 
-The SSVM must be `Running` and connected. Secondary storage must be online, writable, and have enough data and inode capacity. On its NFS server and relevant infrastructure path, verify:
+The SSVM must be `Running` and connected. Secondary storage must be online, writable, and have enough data and inode capacity. For NFS-backed secondary storage, on its NFS server and relevant infrastructure path, verify:
 
 ```bash
 df -h /export/secondary
@@ -93,12 +93,13 @@ Check NFS reachability and permissions using the documented storage design. Do n
 For a bootable ISO:
 
 ```bash
-cmk help register iso
+cmk help registerIso
 cmk register iso \
   name=linux-installer-2026-09 \
   url=https://images.example.net/linux-installer.iso \
   zoneid=ZONE_UUID \
   bootable=true \
+  ostypeid=OS_TYPE_UUID \
   arch=x86_64 \
   checksum='{SHA-256}HEX_DIGEST'
 ```
@@ -106,7 +107,7 @@ cmk register iso \
 For a conventional KVM template:
 
 ```bash
-cmk help register template
+cmk help registerTemplate
 cmk register template \
   name=linux-base-2026-09 \
   displaytext='Linux base 2026-09' \
@@ -120,13 +121,13 @@ cmk register template \
   ispublic=false
 ```
 
-Confirm parameter spelling with the local 4.23 API/CloudMonkey help. Keep images private until they pass boot, guest-agent, update, and security tests. Set password/SSH-key capabilities only when the image actually includes and configures the CloudStack scripts required for them.
+Confirm parameter spelling with the local 4.23 API/CloudMonkey help. Keep images private until they pass boot, guest-agent, update, and security tests. Set password/SSH-key capabilities only when the image actually includes and configures the required guest integration, such as cloud-init or the CloudStack scripts.
 
-For direct download, add `directdownload=true` only for a supported KVM template and understand that registration readiness does not prove a host can fetch it. Test deployment on each storage/host class.
+For direct download, add `directdownload=true` only for a supported KVM image (the 4.23 `registerIso` API also exposes this option) and understand that registration readiness does not prove a host can fetch it. Test deployment on each storage/host class.
 
 ## Follow Progress and the Async Error
 
-Poll deliberately rather than re-registering:
+Poll deliberately rather than re-registering. Registration APIs return synchronously while the image transfer continues in the background; inspect `status`, `downloaddetails`, and logs for transfer failures. For an asynchronous operation that returns a job ID, use `cmk query asyncjobresult jobid=JOB_UUID`:
 
 ```bash
 cmk list templates id=IMAGE_UUID templatefilter=all listall=true
@@ -139,7 +140,7 @@ Common signatures include DNS failure, certificate trust/hostname mismatch, HTTP
 
 ## Retry and Roll Back Safely
 
-Fix the source or infrastructure first. If CloudStack offers a download/retry action for the existing record, use it and watch its job. Otherwise delete only the failed, unused image record through CloudStack and register it once with corrected metadata. Confirm no VM, snapshot, zone copy, or derivative references it before deletion.
+Fix the source or infrastructure first. If your CloudStack version offers a retry action for the existing record, use it and monitor the transfer. The template/ISO Download action exports the image; it does not retry a failed source download. Otherwise delete only the failed, unused image record through CloudStack and register it once with corrected metadata. Confirm no VM, snapshot, zone copy, or derivative references it before deletion.
 
 After `Ready`, deploy a disposable VM with `startvm=false` if supported, then start it and verify boot, NIC, console, SSH-key/password integration, shutdown, and a second deployment. For direct download, verify the image lands on primary storage and its checksum is accepted.
 
@@ -147,7 +148,7 @@ Rollback means deleting the unused test VM and failed image through CloudStack. 
 
 ## Conclusion
 
-An image reaches `Ready` only when its chosen workflow completes. Validate exact metadata and checksum, test the URL from the real SSVM or KVM fetcher, prove secondary or primary storage health, and register once with explicit parameters. A successful boot from a fresh deployment is the final validation, not the existence of an image record.
+A conventional image reaches `Ready` after its secondary-storage download completes; a direct-download image can be ready at registration before any host fetches its bytes. Validate exact metadata and checksum, test the URL from the real SSVM or KVM fetcher, prove secondary or primary storage health, and register once with explicit parameters. A successful boot from a fresh deployment is the final validation, not the existence of an image record.
 
 ## Official Documentation
 
