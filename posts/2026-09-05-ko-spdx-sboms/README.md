@@ -14,9 +14,11 @@ A complete workflow keeps the SBOM beside the build output, binds it to an image
 
 ## Generate and Retain the SPDX Document
 
-The default SBOM mode is `spdx`, but specify it in a release command to make policy visible:
+The default SBOM mode is `spdx`, but specify it in a release command to make policy visible. Run the following snippets in order in one Bash script so failed commands stop the workflow:
 
 ```bash
+set -euo pipefail
+
 export KO_DOCKER_REPO=registry.example.com/acme/services
 sbom_dir=dist/sbom-linux-amd64
 if [[ -e "$sbom_dir" ]]; then
@@ -61,6 +63,7 @@ if (( ${#sbom_files[@]} != 1 )); then
   exit 1
 fi
 sbom_file=${sbom_files[0]}
+test -s "$sbom_file"
 
 jq -e '
   .spdxVersion | startswith("SPDX-")
@@ -82,7 +85,7 @@ jq -r '.packages[]? | [.name, (.versionInfo // "")] | @tsv' \
   "$sbom_file" | sort
 ```
 
-The representations need not match line for line: an image SBOM can include base-image and tool-derived components, and module naming schemes differ. Investigate missing security-critical dependencies and unexpected packages rather than using raw text equality.
+The representations need not match line for line: `go list -m all` lists the module build list, while ko 0.19.1 derives Go dependencies from the compiled binary's build information. Its SPDX document also references the base image, but does not enumerate all packages installed in that base image or all native libraries used through CGO. Investigate missing security-critical dependencies and unexpected packages rather than using raw text equality.
 
 ## Download ko's Registry SBOM
 
@@ -97,8 +100,13 @@ Modern Cosign documentation marks this legacy SBOM-attachment flow as deprecated
 Validate the downloaded structure again:
 
 ```bash
-jq -e '.spdxVersion and .SPDXID and .packages' \
-  dist/downloaded.spdx.json >/dev/null
+test -s dist/downloaded.spdx.json
+jq -e '
+  (.spdxVersion | startswith("SPDX-")) and
+  (.SPDXID == "SPDXRef-DOCUMENT") and
+  (.packages | type == "array") and
+  (.relationships | type == "array")
+' dist/downloaded.spdx.json >/dev/null
 sha256sum dist/downloaded.spdx.json > dist/downloaded.spdx.json.sha256
 ```
 
@@ -108,7 +116,7 @@ A local checksum detects later file corruption; it does not prove who published 
 
 `cosign download sbom` warns that downloading a legacy attachment does not ensure authenticity. `ko` generates and uploads an SBOM, but that action alone does not create a signature from your release identity.
 
-For cryptographic verification, publish the retained SPDX JSON as a signed in-toto attestation. A key-based example is:
+For cryptographic verification, publish the retained SPDX JSON as a signed in-toto attestation. A key-based example, assuming an existing `cosign.key` and its trusted corresponding `cosign.pub`, is:
 
 ```bash
 cosign attest \
