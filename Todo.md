@@ -175,7 +175,6 @@
 
 ## ko
 
-15. How to Build Multiple Go Services from a Monorepo with ko and Multiple `go.mod` Files
 16. How to Bundle Templates and Static Files with ko's `kodata` and `KO_DATA_PATH`
 17. How to Add a Corporate Root CA to a ko-Built Go Container
 18. How to Generate, Download, and Verify SPDX SBOMs for ko Images
