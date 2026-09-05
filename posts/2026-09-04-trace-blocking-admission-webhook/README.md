@@ -26,11 +26,11 @@ Server-side dry run runs validation and admission but does not persist the objec
 Record the UTC time, verb, group/version/resource, namespace, user, total duration, HTTP status, and full Status message. Interpret the failure shape:
 
 - an explicit message such as `admission webhook "policy.example.com" denied the request` identifies a reached webhook that returned `allowed: false`;
-- `failed calling webhook`, `context deadline exceeded`, DNS, connect, or x509 text identifies a callout failure;
+- `failed calling webhook` with timeout, DNS, connect, or x509 details identifies a callout failure; `context deadline exceeded` alone can also come from other parts of request processing;
 - HTTP `401` or `403` from kube-apiserver before admission points to authentication or authorization instead; and
 - a client-side `--request-timeout` can expire before the webhook's own timeout, obscuring the server result.
 
-`failurePolicy` does not override an explicit denial. It controls call errors such as timeouts, connection failures, non-2xx responses, malformed AdmissionReview responses, and invalid patches.
+`failurePolicy` does not override an explicit denial. It controls call errors such as timeouts, connection failures, non-2xx responses, malformed AdmissionReview responses, and undecodable patches. A patch that decodes but cannot be applied, or produces an object that cannot be decoded, can still fail the request even with `failurePolicy: Ignore`.
 
 ## Inventory Every Webhook That Could Match
 
@@ -41,7 +41,7 @@ kubectl get mutatingwebhookconfigurations.admissionregistration.k8s.io
 kubectl get validatingwebhookconfigurations.admissionregistration.k8s.io
 ```
 
-Render the fields that determine whether a request is sent:
+Render a summary of webhook names, failure handling, and destinations:
 
 ```bash
 kubectl get validatingwebhookconfigurations -o json |
@@ -70,7 +70,7 @@ The stable kube-apiserver metric `apiserver_admission_webhook_admission_duration
 ```promql
 histogram_quantile(
   0.99,
-  sum by (le, name, operation, rejected, type) (
+  sum by (le, instance, name, operation, rejected, type) (
     rate(apiserver_admission_webhook_admission_duration_seconds_bucket[5m])
   )
 )
@@ -115,15 +115,15 @@ kubectl -n policy-system logs deployment/policy-webhook --tail=200
 
 Confirm that the target port maps to the actual serving port, EndpointSlice addresses are ready, Pods are not crash-looping, and the process accepts the configured path. Multiple endpoints can hide a single bad replica, so compare endpoint IPs with webhook logs and request failures.
 
-For a URL-based webhook, verify that the host is permitted by Kubernetes admission configuration and that the control-plane resolver and egress route reach it. A WebhookConfiguration should not point at `localhost` unless the server intentionally runs in every kube-apiserver's network namespace.
+For a URL-based webhook, verify that the URL uses HTTPS, contains no user information, query parameters, or fragment, and that the control-plane resolver and egress route reach its host. Use `clientConfig.service` for an in-cluster Service rather than putting its DNS name in `clientConfig.url`. A WebhookConfiguration should not point at `localhost` unless the server intentionally runs in every kube-apiserver's network namespace.
 
 ## Test From the Control-Plane Path
 
-For `clientConfig.service`, kube-apiserver uses Kubernetes' Service resolver; it does not require the control-plane host's libc resolver to resolve `*.svc`. First obtain the actual ClusterIP, Service port, and ready EndpointSlice addresses:
+For `clientConfig.service`, kube-apiserver uses Kubernetes' Service resolver; it does not require the control-plane host's libc resolver to resolve `*.svc`. First obtain the ClusterIP, all Service port mappings, and EndpointSlice addresses with their readiness conditions. Select the Service port matching `clientConfig.service.port` (default 443), rather than assuming the first port is correct; use the corresponding EndpointSlice port when testing endpoint IPs:
 
 ```bash
 kubectl -n policy-system get service policy-webhook \
-  -o jsonpath='{.spec.clusterIP}{"\t"}{.spec.ports[0].port}{"\n"}'
+  -o jsonpath='{.spec.clusterIP}{"\n"}{range .spec.ports[*]}{.name}{"\t"}{.port}{"\t"}{.targetPort}{"\n"}{end}'
 kubectl -n policy-system get endpointslice \
   -l kubernetes.io/service-name=policy-webhook \
   -o jsonpath='{range .items[*].endpoints[*]}{.addresses[0]}{"\t"}{.conditions.ready}{"\n"}{end}'
@@ -137,9 +137,9 @@ NetworkPolicy commonly selects Pods as destinations but the source may be a cont
 
 ## Verify the Webhook Certificate and CA Bundle
 
-For a Service reference, kube-apiserver verifies the webhook as `<service>.<namespace>.svc`. The serving certificate needs that DNS SAN and must chain to the CA in `clientConfig.caBundle`.
+For a Service reference, kube-apiserver verifies the webhook as `<service>.<namespace>.svc`. The serving certificate needs that DNS SAN and must chain to a trusted CA. When `clientConfig.caBundle` is supplied, it provides trusted CA certificates; if omitted, the API server uses its system trust roots.
 
-Inspect the public CA data without touching private keys:
+For a non-empty bundle, inspect the public CA data without touching private keys (select the matching webhook index; this example inspects the first certificate in the first webhook's bundle):
 
 ```bash
 kubectl get validatingwebhookconfiguration policy-webhook \
@@ -148,7 +148,7 @@ kubectl get validatingwebhookconfiguration policy-webhook \
   openssl x509 -noout -subject -issuer -dates -fingerprint -sha256
 ```
 
-From an authorized control-plane path, use `openssl s_client` with the expected SNI and the extracted CA file to inspect the served chain. Verify expiry, issuer, DNS SAN, intermediate certificates, and clock synchronization. Do not set an insecure skip option or replace the CA bundle with an unrelated cluster CA.
+From an authorized control-plane path, use `openssl s_client` with `-servername` and `-verify_hostname` set to the expected Service DNS name, `-CAfile` pointing to the extracted CA file, and `-verify_return_error` to enforce verification. SNI alone does not verify the hostname, and `s_client` otherwise continues after certificate verification errors. Verify expiry, issuer, DNS SAN, intermediate certificates, and clock synchronization. Do not set an insecure skip option or replace the CA bundle with an unrelated cluster CA.
 
 If a certificate controller injects the bundle, repair its issuer, Secret, permissions, or reconciliation. Manual patches to generated WebhookConfigurations are likely to be overwritten.
 
