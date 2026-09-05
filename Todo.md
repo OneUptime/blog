@@ -178,7 +178,6 @@
 
 ## yq
 
-8. How to Upsert a YAML Array Item with yq When the Object May Not Exist
 9. How to Append to a yq List Only If the Value Is Not Already Present
 10. How to Build YAML Arrays and Nested Objects from Bash Data with yq
 11. How to Deep-Merge Multiple YAML Files with Explicit Override Precedence in yq
