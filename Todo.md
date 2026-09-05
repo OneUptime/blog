@@ -175,7 +175,6 @@
 
 ## ko
 
-7. How to Replace ko's Chainguard Static Base When Your Go App Needs OS Packages or a Shell
 8. How to Debug a ko Container That Has No Shell, Package Manager, or Debug Utilities
 9. How to Configure Different Base Images and Build Flags for Multiple Go Commands in `.ko.yaml`
 10. How to Stamp Git Commit and Version Metadata into a ko Image with `ldflags` and OCI Labels
