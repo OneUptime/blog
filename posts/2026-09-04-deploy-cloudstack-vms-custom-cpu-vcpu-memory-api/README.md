@@ -52,13 +52,15 @@ cmk create serviceoffering \
   offerha=true
 ```
 
-Use `cmk help create serviceoffering` and the API reference for the installed CloudStack version before creating it. The presence of bounds distinguishes the constrained design. Confirm the returned offering rather than assuming the server accepted every optional field.
+Use `cmk create serviceoffering -h` and the API reference for the installed CloudStack version before creating it. The presence of bounds distinguishes the constrained design. Confirm the returned offering rather than assuming the server accepted every optional field.
 
 An unconstrained offering uses `customized=true` without those CPU/RAM bounds and expects the caller to supply all dynamic values. Restrict its visibility to trusted domains when possible. Resource limits remain necessary even when the offering itself is unconstrained.
 
 Do not change or delete an offering already in use as a quick repair. Create a new versioned offering, test it, migrate controlled workloads, and retain the prior offering for rollback.
 
 ## Preflight Capacity and Compatibility
+
+The capacity and host queries require an administrator role or explicit API permissions; tenants should ask their administrator to check these when access is unavailable.
 
 ```bash
 cmk list zones id=ZONE_UUID
@@ -69,7 +71,7 @@ cmk list hosts zoneid=ZONE_UUID state=Up
 cmk list networks id=NETWORK_UUID
 ```
 
-Check account and project CPU/RAM limits, host and storage tags, affinity groups, dedicated resources, template architecture, and network capacity. CloudStack must fit the requested CPU and memory together on one eligible host. Aggregate zone totals can look sufficient even when no host has a contiguous fit.
+Check account and project CPU/RAM limits, host and storage tags, affinity groups, dedicated resources, template architecture, and network capacity. CloudStack must fit the requested CPU and memory together on one eligible host. Aggregate zone totals can look sufficient even when no eligible host has enough available CPU and memory together.
 
 For KVM, hosts in a cluster should be homogeneous. Compare capabilities on candidate hosts:
 
@@ -84,7 +86,7 @@ Use the architecture reported by the host and template. Replace `x86_64` in `vir
 
 ## Deploy with a Custom Constrained Offering
 
-For a constrained offering whose bounds allow four vCPUs and 8192 MB, pass the two caller-controlled values in the `details` map:
+For a constrained offering whose bounds allow four vCPUs and 8192 MB, pass the two caller-controlled values in the `details` map. These examples use manual job polling, so first run `cmk set asyncblock false`; CloudMonkey otherwise waits for asynchronous jobs by default:
 
 ```bash
 cmk deploy virtualmachine \
@@ -100,7 +102,7 @@ cmk deploy virtualmachine \
 
 The shell quotes prevent brackets from being treated as glob characters. The nested detail names use the CloudStack spelling and case shown in the current code and examples. CloudStack API field names are generally case-insensitive, but map keys can be consumed as named VM details, so preserve `cpuNumber` and `cpuSpeed` exactly.
 
-Do not include `cpuSpeed` for a constrained offering where the administrator controls it. A value outside a minimum or maximum should fail rather than silently clamp; always inspect the async job result.
+Do not include `cpuSpeed` for a constrained offering where the administrator controls it. A value outside a minimum or maximum should fail rather than silently clamp; inspect both immediate API errors and the async job result when a job is created.
 
 ## Deploy with a Custom Unconstrained Offering
 
@@ -155,7 +157,7 @@ Modern CloudStack versions reject dynamic CPU or memory details supplied with a 
 
 ## Follow the Asynchronous Job
 
-`deployVirtualMachine` returns immediately with a resource ID and `jobid`. Poll the job rather than repeatedly submitting the deployment:
+An accepted `deployVirtualMachine` API request returns a resource ID and `jobid` before deployment completes. With `asyncblock=false`, CloudMonkey exposes that initial response. Request-validation errors can instead be returned immediately without a job. Poll the job rather than repeatedly submitting the deployment:
 
 ```bash
 cmk query asyncjobresult jobid=DEPLOY_JOB_UUID
@@ -218,7 +220,7 @@ The `createServiceOffering` API documents that KVM uses `cpuSpeed` and `cpuNumbe
 
 Consequences include:
 
-- two idle VMs may each burst beyond their relative share when capacity is free;
+- with CPU caps disabled, VMs with runnable work may burst beyond their relative share when capacity is free;
 - a VM's relative entitlement matters most under contention;
 - overprovisioning ratios affect placement accounting; and
 - host power management can affect measured performance independently of CloudStack values.
@@ -234,7 +236,7 @@ cmk list virtualmachines id=VM_UUID
 cmk list serviceofferings id=OLD_OFFERING_UUID
 ```
 
-Unless every dynamic-scaling prerequisite is explicitly satisfied by the hypervisor, template, guest tools, offering, and global configuration, stop the VM first:
+Unless every dynamic-scaling prerequisite is explicitly satisfied by the hypervisor, template, guest tools, offering, and global configuration, stop the VM first. Run this sequence one operation at a time: repeat each job query until `jobstatus=1` before issuing the next operation, and stop the sequence if `jobstatus=2`:
 
 ```bash
 cmk stop virtualmachine id=VM_UUID
@@ -272,7 +274,7 @@ For a failed scale, keep the VM stopped, inspect its actual offering/details, an
 - **Missing custom parameters:** confirm the offering is custom, then pass all values required by that type inside `details[0]`.
 - **Parameter is rejected as invalid:** preserve camel-case detail names, verify URL encoding of brackets, check units, and compare against constrained min/max values.
 - **Fixed offering rejects details:** omit overrides or select an approved custom offering.
-- **`InsufficientServerCapacity`:** inspect contiguous per-host CPU/RAM, overcommit ratios, tags, affinity, architecture, storage, and resource limits. Lowering the request is only valid if it meets the workload objective.
+- **`InsufficientServerCapacity`:** inspect available per-host CPU/RAM, overcommit ratios, tags, affinity, architecture, storage, and resource limits. Lowering the request is only valid if it meets the workload objective.
 - **VM has the right vCPUs but unexpected performance:** inspect KVM shares/cap policy, host contention, steal time, NUMA, power management, and storage/network bottlenecks.
 - **Guest sees less memory:** allow for guest overhead, then compare CloudStack, libvirt, and guest values. Large differences require agent/libvirt log review.
 - **Migration fails:** compare CPU model/features, QEMU/libvirt versions, cluster homogeneity, storage reachability, and destination capacity. Avoid host passthrough across mismatched processors.
