@@ -172,7 +172,6 @@
 
 ## Data Plane
 
-15. Multi-Container Pod Metrics Vanish Under Strict mTLS: Build a Secure Fan-In Scrape Endpoint
 16. Istio Sidecar Cannot Resolve istiod: Trace Pod DNS, Bootstrap Configuration, and xDS Cluster Health
 17. Istio Proxy Connects to istiod but Receives No Routes: Compare Configuration Scope, Revisions, and Namespaces
 18. Traffic Works Outside the Mesh but Times Out Inside: Walk Envoy's Listener-to-Cluster-to-Endpoint Chain
