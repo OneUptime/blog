@@ -14,7 +14,7 @@ Treat discovery as its own request path. First prove basic API access, then forc
 
 ## Separate Connectivity from Discovery
 
-Record the active target without exposing credentials:
+Record the active target with standard credential fields redacted. `--raw=false` does not guarantee that secrets embedded in exec-plugin arguments, environment variables, or URLs are hidden; sanitize those before sharing:
 
 ```bash
 kubectl config current-context
@@ -38,7 +38,7 @@ kubectl --request-timeout=15s --v=8 api-resources
 
 ## Test Without the Existing Cache
 
-`kubectl` has a configurable cache directory. Bypass the existing cache with a fresh temporary directory instead of deleting all Kubernetes configuration:
+`kubectl` has a configurable cache directory. `kubectl api-resources` already invalidates cached discovery by default (`--cached=false`). A fresh temporary directory additionally isolates cache-directory state and permissions without deleting Kubernetes configuration:
 
 ```bash
 fresh_discovery_cache="$(mktemp -d)"
@@ -46,7 +46,7 @@ kubectl --cache-dir="$fresh_discovery_cache" \
   --request-timeout=15s api-resources
 ```
 
-If this succeeds while the default invocation fails, preserve the old cache for inspection and replace only the cache directory. Do not replace `config`, client certificates, or other kubeconfig files:
+If this repeatedly succeeds while the same command with the default cache directory fails, inspect cache paths and permissions and rule out intermittent server failures before attributing the difference to local state. If replacing the cache is warranted, preserve it for inspection and replace only the cache directory. Do not replace `config`, client certificates, or other kubeconfig files:
 
 ```bash
 mv "$HOME/.kube/cache" \
@@ -57,11 +57,11 @@ kubectl api-resources
 
 Run those commands only for the affected OS account and after checking the paths. On shared automation hosts, prefer passing a dedicated `--cache-dir` per job. For programs using `client-go` cached discovery, call the cache client's `Invalidate` method after an API extension is installed or removed; do not assume an in-memory cache falls back to a live lookup on every miss.
 
-If a fresh cache still fails, the cache is not the cause.
+If the same error persists with a fresh cache, stale local discovery data is not sufficient to explain the failure.
 
 ## Query Discovery Endpoints Directly
 
-Current Kubernetes supports aggregated discovery at `/api` and `/apis`. `kubectl get --raw` does not provide a generic request-header flag, so use an authenticated loopback `kubectl proxy` and ask for the stable discovery representation with `curl`.
+Kubernetes 1.30 and later supports stable aggregated discovery at `/api` and `/apis`. `kubectl get --raw` does not provide a generic request-header flag, so use an authenticated loopback `kubectl proxy` and ask for the stable discovery representation with `curl`.
 
 In one terminal:
 
@@ -72,10 +72,11 @@ kubectl proxy --port=8001
 In another terminal:
 
 ```bash
+discovery_file="$(mktemp)"
 curl --fail --silent --show-error \
   -H 'Accept: application/json;v=v2;g=apidiscovery.k8s.io;as=APIGroupDiscoveryList' \
   http://127.0.0.1:8001/apis \
-  > /tmp/apis-discovery.json
+  > "$discovery_file"
 ```
 
 The proxy uses the current kubeconfig and listens on loopback by default. Stop it when the diagnostic request is complete; do not expose an authenticated proxy on a shared or non-loopback interface.
@@ -87,7 +88,7 @@ jq -r '.items[] | .metadata.name as $group |
   .versions[] |
   select(.freshness != "Current") |
   [$group, .version, .freshness] | @tsv' \
-  /tmp/apis-discovery.json
+  "$discovery_file"
 ```
 
 Also test the legacy hierarchy to isolate one group version:
@@ -133,7 +134,7 @@ For the namespace, Service, and port named by the APIService, verify that the se
 ```bash
 kubectl -n kube-system get service metrics-server -o yaml
 kubectl -n kube-system get endpointslice \
-  -l kubernetes.io/service-name=metrics-server -o wide
+  -l kubernetes.io/service-name=metrics-server -o yaml
 kubectl -n kube-system get pods -l k8s-app=metrics-server -o wide
 kubectl -n kube-system logs deployment/metrics-server --tail=200
 ```
@@ -150,9 +151,9 @@ A successful request from an ordinary Pod proves only that Pod's network path. I
 
 ## Verify TLS Without Leaking Keys
 
-`spec.caBundle` must contain the PEM-encoded CA that signed the extension server's serving certificate. The kube-apiserver connects using the Service DNS identity, so the serving certificate must have an appropriate DNS Subject Alternative Name, normally `<service>.<namespace>.svc`.
+When specified, `spec.caBundle` contains a PEM-encoded CA bundle used to validate the extension server's serving certificate chain (base64-encoded in the API JSON/YAML). If omitted, kube-apiserver uses its system trust roots. The kube-apiserver connects using the Service DNS identity, so the serving certificate must have an appropriate DNS Subject Alternative Name, normally `<service>.<namespace>.svc`.
 
-Inspect the public CA bundle and the live server certificate through an authorized control-plane path:
+If `spec.caBundle` is populated, this command inspects the first certificate in that public CA bundle; it does not retrieve or verify the live serving certificate:
 
 ```bash
 kubectl get apiservice v1beta1.metrics.k8s.io \
@@ -161,7 +162,7 @@ kubectl get apiservice v1beta1.metrics.k8s.io \
   openssl x509 -noout -subject -issuer -dates -fingerprint -sha256
 ```
 
-Never print or copy the extension server's private key. Compare issuer, validity window, CA fingerprint, DNS SAN, and the port. Also confirm that the extension server trusts the aggregation proxy client CA and has the RBAC needed to read the `extension-apiserver-authentication` ConfigMap and submit SubjectAccessReviews.
+Inspect the live serving certificate separately through an authorized control-plane path. Never print or copy the extension server's private key. Compare issuer, validity window, CA fingerprint, DNS SAN, and the port, and verify the certificate chain against the configured trust roots. Also confirm that the extension server trusts the aggregation proxy client CA and has the RBAC needed to read the `extension-apiserver-authentication` ConfigMap and submit SubjectAccessReviews.
 
 The front-proxy CA is a separate trust role from the general Kubernetes client CA. Reusing CAs can create authentication conflicts and widens the impact of a key compromise.
 
@@ -174,7 +175,7 @@ kubectl get apiservice v1beta1.metrics.k8s.io \
   -o jsonpath='{.metadata.labels}{"\n"}{.metadata.annotations}{"\n"}{.metadata.ownerReferences}{"\n"}'
 ```
 
-If Helm, an Operator, or a platform controller manages it, fix the source configuration and reconcile. Direct edits will otherwise be reverted. If the backing product was intentionally removed, verify that no supported feature still depends on it, then remove the orphaned APIService through that product's uninstall procedure. Deleting an APIService immediately removes its claimed API path, so take an inventory and use the normal change process.
+If Helm, an Operator, or a platform controller manages it, fix the source configuration and reconcile. A controller may revert direct edits, and a later Helm upgrade may overwrite them. If the backing product was intentionally removed, verify that no supported feature still depends on it, then remove the orphaned APIService through that product's uninstall procedure. Deleting an APIService immediately removes its claimed API path, so take an inventory and use the normal change process.
 
 After repair, verify both registration and client behavior:
 
@@ -185,7 +186,7 @@ kubectl --cache-dir="$(mktemp -d)" api-resources
 kubectl get --raw='/apis/metrics.k8s.io/v1beta1'
 ```
 
-Repeat from each kube-apiserver replica in an HA control plane. A load-balanced client can appear intermittent if only one API server lacks the correct route, CA file, or proxy configuration.
+Repeat the API requests through each kube-apiserver replica in an HA control plane; running kubectl on each host against the same load balancer does not select that replica. A load-balanced client can appear intermittent if only one API server lacks the correct route, CA file, or proxy configuration.
 
 ## Conclusion
 
@@ -193,7 +194,7 @@ Clear discovery errors systematically: prove the base API path, bypass the local
 
 ## Official Documentation
 
-- [Kubernetes API Discovery](https://kubernetes.io/docs/concepts/overview/kubernetes-api/#api-discovery)
+- [Kubernetes API Discovery](https://kubernetes.io/docs/concepts/overview/kubernetes-api/#discovery-api)
 - [Kubernetes API Aggregation Layer](https://kubernetes.io/docs/concepts/extend-kubernetes/api-extension/apiserver-aggregation/)
 - [Kubernetes: Configure the Aggregation Layer](https://kubernetes.io/docs/tasks/extend-kubernetes/configure-aggregation-layer/)
 - [Kubernetes APIService v1 Reference](https://kubernetes.io/docs/reference/kubernetes-api/cluster-resources/api-service-v1/)
