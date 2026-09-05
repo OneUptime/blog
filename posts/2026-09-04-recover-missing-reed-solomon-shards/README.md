@@ -14,7 +14,7 @@ The difficult parts are outside the matrix operation: authenticating sources, re
 
 ## Require a Trusted Manifest
 
-The manifest for one encoded object should contain:
+The manifest for one encoded object should contain (digest values are placeholders; supply one SHA-256 digest per shard in index order):
 
 ```json
 {
@@ -37,6 +37,10 @@ The Backblaze API requires all shard buffers to have the same length. Present bu
 
 ```java
 import com.backblaze.erasure.ReedSolomon;
+import java.io.OutputStream;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.StandardOpenOption;
 
 int dataShards = 6;
 int parityShards = 3;
@@ -93,11 +97,11 @@ for (int i = 0; i < totalShards; i++) {
 }
 ```
 
-If the original format did not preserve expected parity-shard hashes, at least call `isParityCorrect` after recovery and rely on the whole-object digest for end-to-end confirmation.
+If the original format did not preserve expected parity-shard hashes, mark those parity shards missing unless another trusted mechanism authenticates them. Verify the available expected shard hashes, require `codec.isParityCorrect(shards, 0, shardSize)` to return `true` after recovery, and rely on the whole-object digest for end-to-end confirmation. Parity consistency alone does not authenticate a source shard.
 
 ## Reassemble the Exact File Length
 
-Systematic data shards are concatenated in index order. Remove padding using the authenticated original length, never by stripping trailing zero bytes because zero may be legitimate data:
+This example assumes the encoder split the raw file into consecutive data shards with padding only at the end. Concatenate those shards in index order. Backblaze's `SampleEncoder` instead prepends a four-byte length header; for that format, skip the header and validate its length against the trusted manifest before extracting the file. Remove padding using the authenticated original length, never by stripping trailing zero bytes because zero may be legitimate data:
 
 ```java
 long originalLength = expectedOriginalLengthFromManifest();
@@ -107,7 +111,8 @@ if (originalLength < 0 ||
 }
 
 Path candidate = Path.of("recovered.bin.candidate");
-try (OutputStream out = Files.newOutputStream(candidate)) {
+try (OutputStream out = Files.newOutputStream(
+        candidate, StandardOpenOption.CREATE_NEW, StandardOpenOption.WRITE)) {
     long remaining = originalLength;
     for (int i = 0; i < dataShards && remaining > 0; i++) {
         int count = (int) Math.min(remaining, shardSize);
@@ -119,7 +124,7 @@ try (OutputStream out = Files.newOutputStream(candidate)) {
 verifyFileSha256(candidate, expectedObjectDigest());
 ```
 
-Write to a new candidate path on the same filesystem as the intended final file. After the digest, format checks, and application checks pass, atomically rename the candidate. Keep the original shards and recovery log through the rollback period.
+Write to a new candidate path on the same filesystem as the intended final file. After the digest, format checks, and application checks pass, atomically rename the candidate using `Files.move` with `StandardCopyOption.ATOMIC_MOVE`; fail closed if the provider does not support an atomic move. Keep the original shards and recovery log through the rollback period.
 
 Make the publication step survive interruption as well as logical corruption. Flush the completed candidate according to the filesystem's durability contract, retain a recovery journal containing the manifest ID and chosen source indexes, and never reuse a partial candidate after restart without hashing it again. If the final name already exists, compare its trusted generation ID instead of overwriting it blindly. Test a forced process exit after each write, flush, verification, and rename boundary; every restart should select either the previous verified generation or the complete recovered generation, never a mixture.
 
