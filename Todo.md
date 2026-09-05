@@ -172,7 +172,6 @@
 
 ## Data Plane
 
-19. Envoy Has an Endpoint but Still Returns 503: Check Outlier Ejection, Health Flags, and Circuit-Breaker State
 20. How to Capture a Data-Plane Packet Trace in a Distroless Envoy Pod with Ephemeral Containers
 
 ## ko
