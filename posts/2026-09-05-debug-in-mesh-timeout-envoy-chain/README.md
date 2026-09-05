@@ -38,10 +38,10 @@ Record the working and failing requests side by side:
 | Authority/SNI | external hostname | internal or overridden hostname |
 | Source identity | external | Kubernetes service account |
 
-Use the same idempotent endpoint, method, payload, and timeout when possible. From the mesh caller:
+Use the same idempotent endpoint, method, payload, and timeout when possible. From the mesh caller, replace `test-client-POD` with one actual Pod name and use that same Pod throughout the source-side checks:
 
 ```bash
-kubectl -n clients exec deploy/test-client -c app -- \
+kubectl -n clients exec pod/test-client-POD -c app -- \
   curl -sv --connect-timeout 3 --max-time 10 \
   http://orders.orders.svc.cluster.local:8080/health -o /dev/null
 ```
@@ -53,7 +53,7 @@ Do not include credentials in verbose output. Capture start time, DNS answer, ti
 Correlate one request in the caller proxy:
 
 ```bash
-kubectl -n clients logs deploy/test-client \
+kubectl -n clients logs pod/test-client-POD \
   -c istio-proxy --since=10m --timestamps
 ```
 
@@ -67,20 +67,20 @@ Record response code, response flags, response-code details, upstream cluster, u
 - `UT`: upstream request timeout; and
 - `UO`: circuit-breaker overflow.
 
-A plain application timeout with no source proxy log can mean traffic was not captured, DNS failed before a socket was opened, access logging is disabled, or the wrong Pod was inspected. Confirm capture intent rather than assuming Envoy saw it.
+A plain application timeout with no source proxy log can mean traffic was not captured, DNS failed before a socket was opened, access logging is disabled, the wrong Pod was inspected, or the request or TCP connection has not yet ended and emitted its access log. Confirm capture intent rather than assuming Envoy saw it.
 
 ## Step 0: Verify Application DNS and Original Destination
 
 The application resolves a hostname before opening a normal socket. Inspect from the application container or a vetted ephemeral debugger:
 
 ```bash
-kubectl -n clients exec deploy/test-client -c app -- \
+kubectl -n clients exec pod/test-client-POD -c app -- \
   getent ahosts orders.orders.svc.cluster.local
-kubectl -n clients exec deploy/test-client -c app -- \
+kubectl -n clients exec pod/test-client-POD -c app -- \
   cat /etc/resolv.conf
 ```
 
-If tools are unavailable, use an approved digest-pinned debug image in the same Pod. Check A and AAAA results in dual stack. A Service FQDN should resolve to the intended ClusterIP or headless endpoint set. An external DNS name may resolve differently inside split-horizon DNS.
+If tools are unavailable, use an approved digest-pinned debug image in the same Pod. Check A and AAAA results in dual stack. A ClusterIP or headless Service FQDN should resolve to the intended Service IP address(es) or endpoint set, respectively; an ExternalName Service instead returns a CNAME. An external DNS name may resolve differently inside split-horizon DNS.
 
 Istio can route on the original destination and HTTP authority. Calling a Pod IP, ClusterIP, and external host can therefore enter different listeners and routes even when they ultimately reach the same application.
 
@@ -194,9 +194,9 @@ kubectl -n orders logs orders-POD -c orders \
   --since=10m --timestamps
 ```
 
-If the destination proxy never sees the connection, stay on the network or source transport step. If it reports TLS handshake or authorization failure, inspect PeerAuthentication, AuthorizationPolicy, workload certificates, and source identity. If it accepts the request but cannot connect to the application, verify the workload port and bind address.
+If packet captures or connection counters confirm that the destination proxy never sees the connection, stay on the network or source transport step. Missing access logs alone do not establish this, especially for TLS handshake failures or connections that are still open. If it reports TLS handshake or authorization failure, inspect PeerAuthentication, AuthorizationPolicy, workload certificates, and source identity. If it accepts the request but cannot connect to the application, verify the workload port and bind address.
 
-The destination sidecar forwards to the application port resolved from the Service target. A process bound only to an unexpected interface or port can still be reachable through a different external container port mapping, explaining the asymmetric test.
+For this Service path, the source selects an endpoint port resolved from `targetPort`, and the destination sidecar forwards to the application using its inbound configuration. A working outside path may use a different Service `targetPort` or backend. Compare those targets and the application bind address; a Kubernetes `containerPort` declaration does not itself create a port mapping.
 
 Use:
 
@@ -219,7 +219,7 @@ Record the failure duration and compare it with configured timers:
 - external load-balancer idle timeout; and
 - server request or graceful-shutdown deadline.
 
-If the failure always occurs at the same duration, inspect the matching timer in the effective Envoy route or cluster. Retries can make a five-second per-try failure appear as a longer application timeout and can multiply load.
+If the failure always occurs at the same duration, inspect the matching timer in the effective Envoy route, cluster, or listener's HTTP connection manager or TCP proxy filter. Retries can make a five-second per-try failure appear as a longer application timeout and can multiply load.
 
 Do not set every timeout to zero or a large value. A connect timeout protects capacity during unreachable endpoints, and an idle timeout reclaims abandoned streams. Tune only the timer shown to terminate a valid operation, and preserve bounded application deadlines.
 
@@ -228,7 +228,7 @@ Do not set every timeout to zero or a large value. A connect timeout protects ca
 Summarize the working and failing paths as concrete hops:
 
 ```text
-outside: public DNS -> LB -> ingress Envoy -> endpoint A:8080 -> app
+outside: public DNS -> LB -> ingress Envoy -> endpoint A:8080 -> dest Envoy -> app
 inside:  Service DNS -> source Envoy -> endpoint B:8080 -> dest Envoy -> app
 ```
 
