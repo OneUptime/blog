@@ -108,12 +108,12 @@ An empty string is truthy in yq, so `-e '.service.label'` succeeds for `label: "
 ```bash
 yq -e '
   .service.endpoint as $value |
-  (($value | tag) == "!!str") and
-  (($value | length) > 0)
+  ((($value | tag) == "!!str") and
+   (($value | length) > 0))
 ' config.yml >/dev/null
 ```
 
-Bind the value first. This keeps both checks aimed at the same node and avoids precedence surprises in a longer pipeline.
+Bind the value first, then parenthesize the entire `and` expression. This keeps both checks inside the binding's pipeline and aimed at the same node.
 
 For a whitespace-only value, add a schema policy. yq's string operators include trimming functions in current releases, but applications differ on whether surrounding spaces are meaningful. Do not silently trim credentials or identifiers unless the schema authorizes it.
 
@@ -225,8 +225,8 @@ yq -e '
   (.service | tag == "!!map") and
   (.service | has("endpoint")) and
   (.service.endpoint as $value |
-    (($value | tag) == "!!str") and
-    (($value | length) > 0))
+    ((($value | tag) == "!!str") and
+     (($value | length) > 0)))
 ' config.yml >/dev/null
 ```
 
