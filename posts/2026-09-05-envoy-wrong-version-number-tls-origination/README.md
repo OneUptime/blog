@@ -21,7 +21,7 @@ The application URL, ServiceEntry port protocol and target, and DestinationRule 
 
 ## Capture Which Hop Produced the Error
 
-Collect the application error and proxy access log for one request:
+With Envoy access logging enabled, collect the application error and proxy access log for one request:
 
 ```bash
 kubectl -n clients logs deploy/egress-client \
@@ -157,6 +157,7 @@ From an authorized diagnostic network, test the external endpoint directly to le
 openssl s_client \
   -connect api.example.test:443 \
   -servername api.example.test \
+  -verify_hostname api.example.test \
   -verify_return_error </dev/null
 
 curl -sv --connect-timeout 3 --max-time 10 \
@@ -179,7 +180,7 @@ Istio treats the bytes as already encrypted or opaque. HTTP routing and transpar
 
 ### DestinationRule originates TLS to a plaintext target
 
-Correct `targetPort` or the upstream service. A TLS version error is expected if Envoy's ClientHello reaches a cleartext HTTP listener.
+Correct `targetPort` or the upstream service. A TLS version error can occur if the cleartext HTTP listener replies to Envoy's ClientHello with plaintext; other listeners may close or reset the connection instead.
 
 ### Port-level policy selects the wrong port
 
@@ -187,7 +188,7 @@ The selector uses the ServiceEntry's logical port. A policy written for target p
 
 ### Gateway terminates or passes through unexpectedly
 
-Treat inbound and outbound gateway TLS independently. After termination, routing is HTTP; for passthrough, routing uses TLS/SNI and the payload remains encrypted. Align VirtualService route type and DestinationRule with that decision.
+Treat inbound and outbound gateway TLS independently. After HTTPS termination, routing is HTTP; terminating TLS for a non-HTTP protocol instead requires TCP routing. For TLS passthrough, routing uses TLS/SNI and the payload remains encrypted. Align VirtualService route type and DestinationRule with that decision.
 
 ## Apply and Verify a Single-Boundary Fix
 
