@@ -14,9 +14,11 @@ The layout is a directory, not automatically a compressed delivery archive. Pack
 
 ## Build One Command into One Layout
 
-Make the no-push decision explicit and start with fresh evidence paths. Refusing existing outputs prevents a retry from packaging descriptors, blobs, or SBOMs left by an earlier release:
+Run these commands in Bash; `set -euo pipefail` stops the shown sequences on command or pipeline failures. Make the no-push decision explicit and start with fresh evidence paths. Refusing existing outputs prevents a retry from packaging descriptors, blobs, or SBOMs left by an earlier release:
 
 ```bash
+set -euo pipefail
+
 mkdir -p dist
 for output in dist/api.oci dist/sbom dist/layout-refs.txt; do
   if [[ -e "$output" ]]; then
@@ -25,7 +27,7 @@ for output in dist/api.oci dist/sbom dist/layout-refs.txt; do
   fi
 done
 
-ko build ./cmd/api \
+env -u KO_DOCKER_REPO ko build ./cmd/api \
   --platform=linux/amd64,linux/arm64 \
   --image-label=org.opencontainers.image.version=v3.2.0 \
   --push=false \
@@ -34,7 +36,7 @@ ko build ./cmd/api \
   --image-refs=dist/layout-refs.txt
 ```
 
-With this 0.19.1 command, `KO_DOCKER_REPO` is not required because registry publication is disabled and the OCI layout is the destination. The base image still has to be fetched unless it is available through a configured local source. Run this export on the connected side of the transfer boundary, or mirror and pin the base for a genuinely disconnected build environment.
+With this 0.19.1 command, `KO_DOCKER_REPO` is not required because registry publication is disabled and the OCI layout is the destination. The command clears any inherited `KO_DOCKER_REPO`, because special values such as `ko.local` or `kind.local` select other publishers before the layout publisher. The base image still has to be fetched unless it is available through a configured local source. Run this export on the connected side of the transfer boundary, or mirror and pin the base for a genuinely disconnected build environment.
 
 Use a lowercase relative layout path such as `dist/api.oci`. Version 0.19.1 incorporates that path into its returned reference, so uppercase or otherwise registry-invalid path components can make the command fail after the layout has been written.
 
@@ -57,7 +59,9 @@ dist/api.oci/
 Validate the marker and entry point:
 
 ```bash
-jq -e '.imageLayoutVersion' dist/api.oci/oci-layout
+set -euo pipefail
+
+jq -e '.imageLayoutVersion == "1.0.0"' dist/api.oci/oci-layout
 jq -e '.schemaVersion == 2 and (.manifests | length == 1)' \
   dist/api.oci/index.json
 ```
@@ -67,6 +71,8 @@ For this one-command pattern, `index.json` should have one top-level descriptor.
 Capture its digest without relying on the order of `layout-refs.txt`, which also records platform children for a multi-platform build:
 
 ```bash
+set -euo pipefail
+
 layout_digest=$(jq -r '.manifests[0].digest' dist/api.oci/index.json)
 case "$layout_digest" in
   sha256:*) ;;
@@ -77,6 +83,8 @@ esac
 Use Skopeo's OCI transport to inspect a single-entry layout:
 
 ```bash
+set -euo pipefail
+
 skopeo inspect --raw oci:dist/api.oci | jq .
 ```
 
@@ -87,6 +95,8 @@ The containers/image transport syntax also permits `oci:path:@0` to select top-l
 Each file under `blobs/sha256` is named by its SHA-256 digest. Recompute it before packaging:
 
 ```bash
+set -euo pipefail
+
 find dist/api.oci/blobs/sha256 -type f -print0 |
   while IFS= read -r -d '' blob; do
     expected=${blob##*/}
@@ -95,13 +105,15 @@ find dist/api.oci/blobs/sha256 -type f -print0 |
   done
 ```
 
-This establishes internal content integrity, not publisher identity. An attacker who can replace the entire layout can replace the descriptors and recompute every digest. Sign the delivery manifest or image digest using the organization's approved offline-capable process.
+This verifies the hashes of the files present, not layout completeness or publisher identity. It does not detect missing referenced blobs or incorrect descriptor sizes. Before transfer, also validate the descriptor graph from `index.json` through each nested index and manifest, checking that every referenced manifest, configuration, and layer is present locally and matches its descriptor digest and size. An attacker who can replace the entire layout can replace the descriptors and recompute every digest. Sign the delivery manifest or image digest using the organization's approved offline-capable process.
 
 ## Package the Directory for Transfer
 
 Create a normal archive around the complete layout and accompanying evidence:
 
 ```bash
+set -euo pipefail
+
 tar -czf dist/api-v3.2.0-oci.tar.gz \
   -C dist api.oci sbom layout-refs.txt
 
@@ -121,6 +133,8 @@ For reproducible archives, use a packaging tool and flags that normalize entry o
 After separately verifying the archive signature with the approved offline tool, verify the outer checksum and extract into a fresh directory:
 
 ```bash
+set -euo pipefail
+
 sha256sum -c api-v3.2.0-oci.tar.gz.sha256
 import_dir=import/api-v3.2.0
 if [[ -e "$import_dir" ]]; then
@@ -140,6 +154,8 @@ Compare the top-level digest with the signed release manifest. The checksum of t
 For a one-entry layout, Skopeo can copy every platform into an internal registry:
 
 ```bash
+set -euo pipefail
+
 skopeo copy --all \
   --digestfile import/api-v3.2.0/internal-digest.txt \
   oci:import/api-v3.2.0/api.oci \
@@ -155,6 +171,8 @@ If the destination cannot preserve source digests because it converts media type
 Inspect the imported reference:
 
 ```bash
+set -euo pipefail
+
 skopeo inspect --raw \
   docker://registry.airgap.example/acme/api:v3.2.0 | jq .
 
@@ -167,7 +185,7 @@ copied_digest=$(tr -d '\r\n' \
 test "$internal_digest" = "$copied_digest"
 ```
 
-The normal `skopeo inspect` digest field is the top-level manifest digest even when most other fields describe the current platform. After checking it against `internal-digest.txt`, place that digest in Kubernetes YAML:
+The normal `skopeo inspect` digest field is the top-level manifest digest even when most other fields describe the current platform. After checking it against `internal-digest.txt`, place that digest in Kubernetes YAML (replace `INTERNAL_DIGEST` with the hexadecimal portion after `sha256:`):
 
 ```yaml
 containers:
