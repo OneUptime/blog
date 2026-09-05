@@ -178,7 +178,6 @@
 
 ## yq
 
-5. How to Edit YAML In Place with yq Without Truncating the File on Failure
 6. How to Return an Empty String—or Fail CI—When a yq Path Is Missing
 7. How to Update Only the Array Object Matching a Name, Label, or Other Field with yq
 8. How to Upsert a YAML Array Item with yq When the Object May Not Exist
