@@ -26,7 +26,7 @@ If the disabled build works, prefer it unless the CGO path supplies required beh
 To see why CGO is selected, inspect the dependency graph and build constraints:
 
 ```bash
-go list -deps -f '{{if .CgoFiles}}{{.ImportPath}} {{.CgoFiles}}{{end}}' ./cmd/api
+CGO_ENABLED=1 go list -deps -f '{{if .CgoFiles}}{{.ImportPath}} {{.CgoFiles}}{{end}}' ./cmd/api
 go env GOOS GOARCH CGO_ENABLED CC
 ```
 
@@ -59,10 +59,10 @@ If compilation reports a missing header or `pkg-config` package, add it to the C
 
 ## Inspect the Binary's Runtime Contract
 
-On a Linux build worker, inspect the result created by an equivalent Go build:
+On a Linux build worker, inspect the result created by an equivalent Go build. Match the target architecture, compiler, build tags, and linker flags used by `ko`; a standalone `go build` does not read `.ko.yaml`. For the configuration above and a native Linux target:
 
 ```bash
-CGO_ENABLED=1 go build -o /tmp/api ./cmd/api
+CGO_ENABLED=1 CC=gcc go build -trimpath -o /tmp/api ./cmd/api
 file /tmp/api
 ldd /tmp/api
 readelf -l /tmp/api | grep interpreter
@@ -129,11 +129,11 @@ This depends on static archives being available and on the libraries supporting 
 
 Pure Go cross-compilation is straightforward; CGO cross-compilation is not. Go's cgo documentation requires a C cross-compiler for a different target. An amd64 worker producing both amd64 and arm64 needs appropriate compilers and headers for each target, with `CC` selected correctly.
 
-For many teams, native amd64 and arm64 CI jobs are simpler. Each publishes a platform result that a controlled release step combines. Do not assume `ko --platform=linux/amd64,linux/arm64` supplies C cross-compilers - it does not.
+For many teams, native amd64 and arm64 CI jobs are simpler. Each publishes a platform result that a controlled release step combines. Do not assume `ko build --platform=linux/amd64,linux/arm64 ./cmd/api` supplies C cross-compilers - it does not.
 
 ## Test the Final Image, Not Just the Binary
 
-Run the digest emitted by `ko` in an empty environment:
+Set `IMAGE_REF` to the digest reference emitted by `ko`, then run it in a fresh container with a read-only root filesystem. The container still receives image-defined and Docker-provided environment variables. This example assumes the application supports `--version`:
 
 ```bash
 docker run --rm --read-only \

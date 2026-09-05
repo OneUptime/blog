@@ -124,7 +124,7 @@ registry.example.com/acme/payments/api-<hash>@sha256:<digest>
 
 The registry still receives the `latest` tag. Kubernetes pulls the immutable digest in the resolved YAML, so later movement of that tag does not make the deployment mutable.
 
-Avoid `--tag-only` unless the target system cannot preserve digests. It intentionally removes the digest from resolved references, allowing a later tag update to change what new Pods run. If a promotion system rewrites or drops digests, fix that system rather than weakening every deployment when possible.
+Avoid `--tag-only` unless the target system cannot preserve digests. In version 0.19.1, registry publishing with this flag requires exactly one explicit tag other than `latest`, such as `--tag-only -t v1.8.0`. It intentionally removes the digest from resolved references, allowing a later tag update to change what new Pods run. If a promotion system rewrites or drops digests, fix that system rather than weakening every deployment when possible.
 
 Use release tags when helpful:
 
@@ -141,7 +141,7 @@ The `--selector` flag filters Kubernetes objects by labels. That can reduce a de
 
 When the same `ko://` reference appears more than once, `ko` caches the build within the process rather than rebuilding it for every occurrence. Different import paths are distinct images even if they share most Go dependencies.
 
-YAML values that merely contain the text `ko://` outside a supported image-reference position should not be treated as a templating language. Keep configuration substitution separate and use the current reference documentation when relying on specialized resource shapes.
+`ko` scans YAML string nodes for the `ko://` prefix, not just container image fields, so a prefixed value in an environment variable or custom resource can also trigger a build and substitution. It does not replace arbitrary embedded occurrences of `ko://` within larger strings. Keep general configuration substitution separate.
 
 ## Separate Build Authority from Deploy Authority
 
