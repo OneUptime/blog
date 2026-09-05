@@ -8,7 +8,7 @@ Description: Diagnose a CloudStack guest that boots on the console but cannot pi
 
 ---
 
-A working CloudStack console proves that the VM booted and that the Console Proxy VM can reach its hypervisor VNC socket. It says nothing about the guest NIC, DHCP, security groups, virtual router, public IP, or SSH daemon. Treat the symptom as a network path with several independent policy points.
+A working CloudStack console proves that the Console Proxy VM can reach the guest’s hypervisor VNC socket; confirm on the console that the guest OS has actually finished booting. It says nothing about the guest NIC, DHCP, security groups, virtual router, public IP, or SSH daemon. Treat the symptom as a network path with several independent policy points.
 
 First decide what should be reachable from where. An isolated-network VM normally uses the CloudStack virtual router (VR) as its gateway and needs a public IP plus firewall and port-forwarding or static-NAT policy for inbound Internet access. A basic/shared-network VM may use security groups and the physical gateway instead. Testing the wrong address from the wrong source produces a false diagnosis.
 
@@ -48,7 +48,7 @@ Check these in order:
 2. Its MAC matches the CloudStack NIC record.
 3. It has the expected address and prefix.
 4. The default route points to the network's documented gateway.
-5. The guest can ARP for and ping that gateway.
+5. The guest can resolve that gateway with ARP (IPv4) or Neighbor Discovery (IPv6), and can ping it if ICMP is permitted.
 6. SSH is listening on the correct family/address and the guest firewall permits it.
 
 If the NIC has no address, request DHCP while capturing the exchange:
@@ -70,7 +70,7 @@ nc -vz GUEST_PRIVATE_IP 22
 ssh -vvv user@GUEST_PRIVATE_IP
 ```
 
-If TCP connects but authentication fails, the CloudStack network is working. Fix user, key, `sshd_config`, permissions, or cloud-init inside the guest. If the guest listens only on `127.0.0.1:22`, correct the SSH listener. If neither ICMP nor TCP reaches it, continue down the network path.
+If SSH reaches authentication but authentication fails, the tested network path is working. Fix user, key, `sshd_config`, permissions, or cloud-init inside the guest. If the guest listens only on `127.0.0.1:22`, correct the SSH listener. If neither ICMP nor TCP reaches it, continue down the network path.
 
 ## Check Security Groups on Basic or Shared Networks
 
@@ -86,7 +86,7 @@ sudo bridge link
 sudo tcpdump -ni VM_TAP_INTERFACE -e 'arp or icmp or tcp port 22'
 ```
 
-If packets arrive at the tap but the guest does not respond, the fault is in the guest. If no packets arrive, inspect the host bridge, VLAN, and CloudStack-generated security rules. Do not insert permanent iptables/nftables rules by hand; CloudStack will not know about them and may overwrite them.
+If inbound packets destined for the guest appear at the tap but no reply appears, inspect the guest and virtual NIC next. Confirm receipt with a capture inside the guest before concluding that the fault is in the guest. If no packets arrive, inspect the host bridge, VLAN, and CloudStack-generated security rules. Do not insert permanent iptables/nftables rules by hand; CloudStack will not know about them and may overwrite them.
 
 ## Check the Virtual Router on an Isolated Network
 
@@ -97,12 +97,12 @@ cmk list routers networkid=NETWORK_UUID
 cmk list networks id=NETWORK_UUID
 ```
 
-Use **Run Diagnostics** or **Get Diagnostics** on the virtual router to capture addresses, routes, dnsmasq state, leases, HAProxy configuration, and firewall tables. The official System VM guide recommends pinging the VR as a basic network test.
+Use **Run Diagnostics** on the virtual router for ping, traceroute, or arping tests. Use **Get Diagnostics** to retrieve addresses, routes, dnsmasq configuration and logs, leases, HAProxy configuration, and firewall tables. The official System VM guide recommends pinging the VR as a basic network test.
 
 If the guest reaches the VR and the Internet outbound but inbound SSH fails, verify the complete public path:
 
 - the public IP is associated with this account/network;
-- a public firewall rule permits the source CIDR and TCP port;
+- a public firewall rule permits the source CIDR and TCP port for a standalone isolated network, or the tier’s network ACL permits the traffic for a VPC network;
 - a port-forwarding rule maps the intended public port to this VM's private port 22, or static NAT is enabled;
 - there is no conflicting rule; and
 - upstream routing delivers that public range to CloudStack's public network.
@@ -121,13 +121,13 @@ bridge fdb show br CLOUD_BRIDGE | grep -i GUEST_MAC
 sudo journalctl -u cloudstack-agent -n 200 --no-pager
 ```
 
-Compare a working VM on the same network. The bridge, VLAN tag, MTU, and physical trunk must be identical across cluster hosts. A VM that fails only after migration strongly suggests one host's bridge/trunk or MTU differs.
+Compare a working VM on the same network. The bridge mapping, VLAN connectivity, and supported path MTU must be consistent across cluster hosts; each physical trunk must carry the required guest VLAN. A VM that fails only after migration strongly suggests one host's bridge/trunk or MTU differs.
 
 Use simultaneous captures on the guest tap and physical uplink to locate where frames disappear. Keep capture filters narrow and protect tenant data.
 
 ## Repair and Verify
 
-Repair the smallest owning layer: guest network configuration, SSH service/firewall, CloudStack security group, public firewall/port-forwarding rule, VR state, or host VLAN mapping. If CloudStack rules are stale, restart the network without cleanup first so rules are reapplied. Reserve cleanup/recreation for a scheduled window because it can replace the VR and interrupt traffic.
+Repair the smallest owning layer: guest network configuration, SSH service/firewall, CloudStack security group, public firewall/port-forwarding rule, VR state, or host VLAN mapping. If VR-backed network rules are stale, restart the network without cleanup first so rules are reapplied; this is not a general repair for host security-group rules. Reserve cleanup/recreation for a scheduled window because it can replace the VR and interrupt traffic.
 
 Verify in both directions:
 
@@ -137,15 +137,17 @@ ping -c 3 EXPECTED_GATEWAY
 curl -4 --connect-timeout 5 https://example.com/
 
 # Approved source
-nc -vz PUBLIC_OR_PRIVATE_ADDRESS 22
-ssh -o BatchMode=yes user@PUBLIC_OR_PRIVATE_ADDRESS true
+nc -vz PUBLIC_OR_PRIVATE_ADDRESS SSH_PORT
+ssh -p SSH_PORT -o BatchMode=yes user@PUBLIC_OR_PRIVATE_ADDRESS true
 ```
+
+Use the mapped public port for `SSH_PORT` when testing port forwarding, or port 22 for direct access. `BatchMode=yes` requires working noninteractive authentication and a previously trusted host key.
 
 Then migrate or reboot the guest if those events previously triggered the failure and confirm connectivity persists. Roll back temporary rules and packet captures. Never leave broad ingress rules as diagnostic residue.
 
 ## Conclusion
 
-Console access narrows the problem to everything after VM boot, not to CloudStack as a whole. Reconcile desired NIC state, validate the guest and SSH daemon, identify whether security groups or a virtual router owns policy, and trace frames across the KVM tap, bridge, VLAN, and gateway. Fix the first boundary that drops traffic and verify from an explicitly allowed source.
+Once the console confirms that the guest OS has booted, investigate the guest network and the CloudStack data path. Reconcile desired NIC state, validate the guest and SSH daemon, identify whether security groups or a virtual router owns policy, and trace frames across the KVM tap, bridge, VLAN, and gateway. Fix the first boundary that drops traffic and verify from an explicitly allowed source.
 
 ## Official Documentation
 
