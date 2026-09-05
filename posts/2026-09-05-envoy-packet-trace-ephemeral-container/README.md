@@ -38,7 +38,7 @@ istioctl proxy-config endpoints "$POD" -n "$NS" \
 Then phrase a question that packets can answer:
 
 - Did the caller send a SYN to `10.42.7.19:8080`, and did it receive a SYN-ACK or RST?
-- Which peer initiated the reset reported as `UF` or `UR`?
+- Was there a TCP reset associated with the upstream connection failure (`UF`) or upstream remote reset (`UR`), and which peer sent it? These flags alone do not prove a TCP RST occurred.
 - Are retransmissions consistent with a silent network drop?
 - Does the TLS peer respond after ClientHello, or does the connection close first?
 
@@ -50,13 +50,14 @@ Verify access without asking for broad cluster-admin privileges:
 
 ```bash
 kubectl auth can-i get pods -n "$NS"
-kubectl auth can-i patch pods/ephemeralcontainers -n "$NS"
-kubectl auth can-i create pods/exec -n "$NS"
+kubectl auth can-i patch pods --subresource=ephemeralcontainers -n "$NS"
+kubectl auth can-i create pods --subresource=exec -n "$NS"
+kubectl auth can-i get pods --subresource=log -n "$NS"
 ```
 
 Current `kubectl debug` uses a strategic merge patch on the `pods/ephemeralcontainers` subresource; another API client can use an update instead. Check the verb used by the approved client, and treat a real request as the final check. Do not weaken RBAC, Pod Security admission, seccomp, AppArmor, or an image policy merely to make the capture work. Escalate through the approved incident-access path.
 
-Choose a diagnostics image from an internal registry, pin it by digest, and verify its provenance. It needs `tcpdump` and a long-running command; it does not need cloud credentials or a Kubernetes client. Avoid an unreviewed public “network toolbox” image in a production Pod because it executes inside the workload's security and network boundary.
+Choose a diagnostics image from an internal registry, pin it by digest, and verify its provenance. It needs `tcpdump`, `ip`, and a long-running command such as `sleep`; it does not need cloud credentials or a Kubernetes client. Avoid an unreviewed public “network toolbox” image in a production Pod because it executes inside the workload's security and network boundary.
 
 Packet capture normally needs `CAP_NET_RAW`; promiscuous interface changes may also require `CAP_NET_ADMIN`. The least-privilege approach is to capture without promiscuous mode using `tcpdump -p` and request only `NET_RAW`. Kubernetes custom debug profiles are stable from version 1.32. On a compatible `kubectl`, create this local partial container specification:
 
@@ -102,7 +103,7 @@ kubectl get pod -n "$NS" "$POD" \
   -o jsonpath='{range .status.ephemeralContainerStatuses[*]}{.name}{"\t"}{.state}{"\n"}{end}'
 ```
 
-Use an image whose declared non-root user can run `tcpdump` with the admitted capability; otherwise `runAsNonRoot` will correctly prevent it from starting. Do not change the whole Pod to root. Also verify the intended interface view before capturing:
+Use an image with a declared numeric non-root UID, and verify that `tcpdump` retains the admitted capability when run through `kubectl exec` on the approved runtime. `runAsNonRoot` prevents startup when the effective user is root or cannot be verified as non-root; it does not check whether `tcpdump` has the required capability. Do not change the whole Pod to root. Also verify the intended interface view before capturing:
 
 ```bash
 kubectl exec -n "$NS" "$POD" -c net-debug -- ip -brief address
@@ -118,10 +119,11 @@ For a suspected connection from this Envoy to endpoint `10.42.7.19:8080`, a defe
 ```bash
 CAPTURE=checkout-to-ledger-20260905T1420Z.pcap
 umask 077
+set -o noclobber
 
 kubectl exec -n "$NS" "$POD" -c net-debug -- \
-  tcpdump -i any -p -nn -U -s 192 -c 2000 \
-  'host 10.42.7.19 and tcp port 8080' -w - > "$CAPTURE"
+  tcpdump -i any -p -nn -U -s 192 -c 2000 -w - \
+  'host 10.42.7.19 and tcp port 8080' > "$CAPTURE"
 ```
 
 This command:
@@ -133,11 +135,11 @@ This command:
 - stops after 2,000 packets with `-c 2000`; and
 - writes through `kubectl exec` to a permission-restricted local file instead of filling the Pod filesystem.
 
-Use a smaller packet count when possible. Increase the snapshot length only if headers are truncated and the data-handling approval permits payload capture. `-s 0` captures entire packets and can collect secrets; it should be an explicit exception, not the default.
+`noclobber` prevents overwriting an existing file, whose permissions would not be tightened by `umask`. Choose a new capture filename for each run. Even `-s 192` can include application payload and secrets, so it also requires appropriate data-handling approval. Use a smaller packet count when possible. Increase the snapshot length only if headers are truncated and the data-handling approval permits payload capture. `-s 0` selects the default snapshot length (262,144 bytes in current tcpdump), normally capturing entire packets, and can collect secrets; it should be an explicit exception, not the default.
 
-Generate only the minimum known-safe test traffic while the command runs. If waiting for an intermittent event, wrap the local command with your platform's bounded timeout and keep the packet-count limit. Do not leave an unattended capture attached to a production Pod.
+Generate only the minimum known-safe test traffic while the command runs. If waiting for an intermittent event, wrap the local command with your platform's bounded timeout and keep the packet-count limit. A local timeout bounds the client session but does not guarantee that the remote process has terminated; confirm termination and retain the debug container's lifetime bound. Do not leave an unattended capture attached to a production Pod.
 
-For inbound sidecar traffic, filter on the original application port and known caller address. For outbound traffic, filtering on the selected endpoint IP and service port usually isolates Envoy's wire-side connection better than capturing only Istio's redirect port. Ports such as `15001` and `15006` describe common sidecar interception listeners, but traffic capture details can change with Istio mode, annotations, CNI, and version. Read the actual listener and interception configuration first.
+For inbound sidecar traffic, filter on the original application port and known caller address. For outbound traffic, filtering on the selected endpoint IP and endpoint port (which can differ from the Service port through `targetPort`) usually isolates Envoy's wire-side connection better than capturing only Istio's redirect port. Ports such as `15001` and `15006` describe common sidecar interception listeners, but traffic capture details can change with Istio mode, annotations, CNI, and version. Read the actual listener and interception configuration first.
 
 If the failure could occur on either side of the network, take short, time-synchronized captures in the caller and destination Pods. A SYN visible at the caller but absent at the destination narrows the missing segment; a RST visible leaving the destination identifies a different class of fault. Avoid assuming the side that logged a reset also generated the packet.
 
@@ -148,18 +150,18 @@ First verify that the local file is a readable capture and record a checksum:
 ```bash
 file "$CAPTURE"
 sha256sum "$CAPTURE"
-tcpdump -nn -tttt -r "$CAPTURE" -c 30
+tcpdump -nn -q -tttt -r "$CAPTURE" -c 30
 ```
 
-On macOS, use `shasum -a 256` if `sha256sum` is unavailable. Inspect packet metadata in an approved environment. Focus initially on sequence and timing:
+On macOS, use `shasum -a 256` if `sha256sum` is unavailable. The `-q` option suppresses higher-level decoding for this TCP capture during the initial readability check. More detailed decoding for sequence analysis can expose application fields even without `-A` or `-X`; perform it only in an approved environment. Focus initially on sequence and timing:
 
 - Repeated SYNs without SYN-ACK point toward reachability, policy, routing, or a silent listener problem.
 - An immediate RST means a peer or intermediate device actively refused or reset the connection; compare both captures before attributing it.
-- A completed three-way handshake followed by a TLS alert shifts the investigation toward protocol, SNI, certificates, or trust.
+- A completed three-way handshake followed by a visible TLS alert shifts the investigation toward protocol, SNI, certificates, or trust.
 - Long gaps and retransmissions can indicate loss or an MTU problem, but a capture at one endpoint cannot locate the dropping device.
 - A clean FIN exchange is an orderly close, not automatically an error.
 
-mTLS keeps application content encrypted on the wire. Do not attempt to extract proxy private keys or disable mTLS to make the pcap readable. Envoy access logs and metrics should provide the Layer 7 evidence while the trace answers Layer 3 through Layer 5 questions.
+mTLS keeps application content encrypted between the proxies, but traffic between a sidecar and its local application can be plaintext and can appear in an `any` capture. TLS 1.3 alerts sent after key establishment are encrypted, so their details may not be visible in the trace. Do not attempt to extract proxy private keys or disable mTLS to make the pcap readable. Envoy access logs and metrics should provide the Layer 7 evidence while the trace answers Layer 3 through Layer 5 questions.
 
 ## Stop, retain, and clean up responsibly
 
@@ -173,7 +175,7 @@ If admission will not allow the required capability, alternatives have different
 
 ## Conclusion
 
-An ephemeral container makes a distroless Envoy Pod observable without restarting it, but it is not a harmless shell attachment. Use least-privilege capture capability, a vetted digest-pinned image, a precise five-tuple filter, and hard size and duration bounds. Stream the trace to protected storage, correlate packets with Envoy's logs and configuration, and stop once the packet-level question is answered.
+An ephemeral container makes a distroless Envoy Pod observable without restarting it, but it is not a harmless shell attachment. Use least-privilege capture capability, a vetted digest-pinned image, a narrow endpoint and protocol filter, and hard size and duration bounds. Stream the trace to protected storage, correlate packets with Envoy's logs and configuration, and stop once the packet-level question is answered.
 
 ## Official Documentation
 
