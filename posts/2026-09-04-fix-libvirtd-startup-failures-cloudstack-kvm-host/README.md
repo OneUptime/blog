@@ -14,7 +14,7 @@ Current CloudStack documentation matters here. Old guides often enabled unauthen
 
 ## Capture the First Failure
 
-Start with the unit state and the complete journal for the failed activation:
+Start with the unit state and the most recent journal entries for the failed activation (omit `-n 250` if the first error is older):
 
 ```bash
 sudo systemctl status libvirtd --no-pager -l
@@ -23,16 +23,18 @@ sudo systemctl show libvirtd -p FragmentPath -p DropInPaths -p ExecStart
 sudo systemd-delta --type=extended | grep -i libvirt
 ```
 
-Then distinguish a daemon failure from a client/configuration failure:
+Then distinguish a daemon failure from a client/configuration failure. Before the foreground command, stop libvirtd and its active socket units, and confirm no modular daemon owns the same sockets:
 
 ```bash
 sudo /usr/sbin/libvirtd --version
 sudo /usr/sbin/libvirtd --config /etc/libvirt/libvirtd.conf --timeout 15
+# After the foreground daemon exits, restore the original systemd activation mode.
+sudo systemctl start libvirtd
 sudo virsh -c qemu:///system list --all
 sudo virt-host-validate
 ```
 
-Run the foreground daemon only while the systemd unit is stopped and only for diagnosis. Do not leave a second libvirtd competing for sockets.
+The foreground command starts a real daemon; it is not a syntax-only check. Its 15-second timeout applies only when there are no clients or running domains; use Ctrl-C if it remains running. Do not leave a second libvirtd competing for sockets.
 
 ## Check for Invalid or Stale Configuration
 
@@ -51,7 +53,7 @@ On newer distributions, CloudStack's current guide requires clients to use the t
 remote_mode="legacy"
 ```
 
-The documented CloudStack baseline in `libvirtd.conf` includes:
+The documented CloudStack baseline in `libvirtd.conf`, before certificate provisioning, includes:
 
 ```ini
 listen_tls = 0
@@ -62,7 +64,7 @@ auth_tcp = "none"
 mdns_adv = 0
 ```
 
-`auth_tcp = "none"` does not make port 16509 acceptable if TCP listening is turned back on. Keep `listen_tcp = 0`. Compare the exact current guide with the libvirt packages installed on the host rather than blindly replacing the entire file.
+`auth_tcp = "none"` does not make port 16509 acceptable if TCP listening is turned back on. Keep `listen_tcp = 0`; in socket-activation mode, also stop and disable `libvirtd-tcp.socket`, because the socket unit controls the listener. Do not reset `listen_tls` to 0 on an already secured host: CloudStack configures TLS on port 16514 for secure migration. Compare the exact current guide with the libvirt packages installed on the host rather than blindly replacing the entire file.
 
 After editing, reload systemd and retry:
 
@@ -78,15 +80,15 @@ sudo virsh -c qemu:///system uri
 Modern libvirt packages may use socket activation or split services such as `virtqemud`. CloudStack 4.23's KVM instructions tell supported newer distributions to use legacy remote mode and mask the libvirtd socket units before restarting the daemon:
 
 ```bash
-sudo systemctl mask \
+sudo systemctl mask --now \
   libvirtd.socket libvirtd-ro.socket libvirtd-admin.socket \
   libvirtd-tls.socket libvirtd-tcp.socket
 sudo systemctl restart libvirtd
 ```
 
-Apply this only when it matches the current CloudStack guide for the host distribution and release. If the package uses modular daemons and the selected CloudStack release does not support that layout, install a supported libvirt/package combination instead of creating an ad-hoc hybrid.
+Apply this only when it matches the current CloudStack guide for the host distribution and release. Before restarting in traditional mode, remove any daemon `--timeout` argument so it cannot exit without socket activation to restart it. Follow the guide's distribution-specific `--listen` setup: `LIBVIRTD_ARGS="--listen"` in `/etc/sysconfig/libvirtd` on RHEL/CentOS/SUSE or `/etc/default/libvirtd` on Ubuntu 22.04+, and `libvirtd_opts="-l"` on older Ubuntu. Reload systemd if you change a unit or drop-in. If the package uses modular daemons and the selected CloudStack release does not support that layout, install a supported libvirt/package combination instead of creating an ad-hoc hybrid.
 
-To undo the mask during rollback:
+To undo only the masks you added during rollback:
 
 ```bash
 sudo systemctl unmask \
@@ -94,6 +96,8 @@ sudo systemctl unmask \
   libvirtd-tls.socket libvirtd-tcp.socket
 sudo systemctl daemon-reload
 ```
+
+Unmasking does not start sockets. Restore their previous enabled/active state and the previous daemon arguments together; `--listen` conflicts with socket activation.
 
 ## Check QEMU, Permissions, and Security Policy
 
@@ -106,7 +110,7 @@ sudo ls -lZ /etc/libvirt/hooks/qemu /var/lib/libvirt /var/log/libvirt
 sudo journalctl -k -b | grep -Ei 'apparmor|avc:|selinux|denied'
 ```
 
-The Apache guide documents permissive SELinux/AppArmor steps for initial compatibility, but also notes that production should use enforcing policy with the necessary rules. Do not permanently disable a security control just to hide an unexplained denial. Reproduce the denial, create or install the narrowly scoped policy, and return the host to enforcing mode.
+The Apache guide documents permissive SELinux and disabling the libvirt AppArmor profiles for compatibility. Its production recommendation to use enforcing mode with the necessary policy specifically concerns SELinux. Do not permanently disable a security control just to hide an unexplained denial. Reproduce the denial, create or install the narrowly scoped policy, and return the host to enforcing mode.
 
 Also check for mundane blockers:
 
@@ -117,7 +121,7 @@ sudo ss -lxnp | grep libvirt
 sudo qemu-system-x86_64 --version
 ```
 
-A full `/var`, exhausted inodes, a stale manually launched daemon, or a mismatched QEMU package can all look like a CloudStack problem.
+The QEMU command above assumes an x86 host with that binary on PATH; on distributions using a different emulator path, check the `<emulator>` path in the capabilities XML and run that binary with `--version`. A full `/var`, exhausted inodes, a stale manually launched daemon, or a mismatched QEMU package can all look like a CloudStack problem.
 
 ## Validate the CloudStack Agent Boundary
 
@@ -130,7 +134,7 @@ sudo journalctl -u cloudstack-agent -b --no-pager -n 200
 sudo tail -n 200 /var/log/cloudstack/agent/agent.log
 ```
 
-Confirm the host has a stable FQDN, synchronized clock, the Java version required by the selected CloudStack release, correct bridge names, and storage reachability. If a non-root SSH user is used for enrollment, test the precise documented setup command through sudo:
+Confirm the host has a stable FQDN, synchronized clock, the Java version required by the selected CloudStack release, correct bridge names, and storage reachability. If a non-root SSH user is used for enrollment, run the documented setup help command through sudo as that same SSH user (this checks sudo access, not successful enrollment):
 
 ```bash
 sudo /usr/bin/cloudstack-setup-agent --help
@@ -150,7 +154,7 @@ sudo tail -F /var/log/cloudstack/management/management-server.log
 sudo tail -F /var/log/cloudstack/agent/agent.log
 ```
 
-Enrollment is complete only when the host is `Up`, the agent stays connected, libvirt remains active, capabilities are reported, primary storage connects, and a small test instance can be defined and started. A host that briefly appears and changes to `Disconnected` still has an agent, certificate, network, or clock problem.
+Enrollment is complete only when the host is `Up`, the agent stays connected, libvirt remains active, capabilities are reported, primary storage connects, and a small test instance can be deployed and started through CloudStack. A host that briefly appears and changes to `Disconnected` needs further diagnosis; agent, certificate, network, and clock problems are possible causes, not an exhaustive list.
 
 ## Roll Back Deliberately
 
