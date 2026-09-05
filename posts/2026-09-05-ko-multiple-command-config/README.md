@@ -39,7 +39,7 @@ Each must report package name `main`.
 
 ## Configure Common Defaults and Per-Build Overrides
 
-Use this `.ko.yaml` as a starting point:
+Use this `.ko.yaml` as a starting point. Replace the example registry names and digest placeholders with real image references before building; a SHA-256 digest needs 64 hexadecimal characters. The linker examples assume the commands import `internal/version` with string variables named `Component` and `Version` that are uninitialized or initialized with constant string expressions:
 
 ```yaml
 defaultBaseImage: cgr.dev/chainguard/static@sha256:STATIC_INDEX_DIGEST
@@ -98,9 +98,9 @@ ko build ./cmd/api ./cmd/migrate ./cmd/collector
 
 ## Understand Default Versus Per-Build Precedence
 
-Defaults are fallbacks, not arrays that are always appended. If a build supplies `flags`, those values are used instead of `defaultFlags`. The same rule applies to `ldflags` and `defaultLdflags`. Repeat required common values in a specialized entry, or generate the file from an intentionally reviewed source if repetition becomes dangerous. `ko` adds `-trimpath` by default independently, so it does not need to be duplicated in these lists.
+Defaults are fallbacks, not arrays that are always appended. If a build supplies a nonempty `flags` list, those values are used instead of `defaultFlags`. The same rule applies to `ldflags` and `defaultLdflags`. In ko 0.19.1, an empty list (`[]`) also falls back to the default; it does not clear it. Repeat required common values in a specialized entry, or generate the file from an intentionally reviewed source if repetition becomes dangerous. `ko` adds `-trimpath` by default independently, so it does not need to be duplicated in these lists.
 
-Environment behavior is similarly deliberate. System environment values have lower precedence. A build's `env` is used when present; otherwise `defaultEnv` is used. In the example, the collector explicitly enables CGO and therefore must also state any other default environment values it still needs.
+Environment behavior is similarly deliberate. System environment values have lower precedence. A build's `env` is used when nonempty; otherwise `defaultEnv` is used. In the example, the collector explicitly enables CGO and therefore must also state any other default environment values it still needs.
 
 Run a verbose canary build after changing precedence:
 
@@ -133,7 +133,8 @@ ldflags:
 `ko` supports templates for environment and Git values in build flags and linker flags. In version 0.19.1, a missing `.Env` key fails template evaluation, while a variable that is present but empty still renders an empty value. Validate required inputs in the CI script before invoking `ko` so either case fails at a clear boundary:
 
 ```bash
-test -n "$VERSION"
+: "${VERSION:?VERSION must be set and nonempty}"
+export VERSION
 ko build ./cmd/api
 ```
 
@@ -143,7 +144,7 @@ Command-line `--ldflags` take precedence over `.ko.yaml` linker flags. Use that 
 
 `baseImageOverrides` keys are the fully qualified import paths. A relative command used on the CLI still resolves to that full path. Copy the value from `go list` rather than hand-constructing it.
 
-The base image supplies runtime files, not build-time headers. Enabling CGO for the collector means the CI worker also needs `gcc` and development libraries. The collector base then needs the corresponding runtime loader and libraries.
+The base image supplies runtime files, not build-time headers. Enabling CGO for the collector means the CI worker also needs `gcc` and development libraries. The compiler and development libraries must target the selected container OS and architecture; cross-compiling requires a suitable C cross-compiler in `CC`. If the resulting binary is dynamically linked, the collector base needs the corresponding runtime loader and libraries.
 
 Pin each base to an index or manifest digest appropriate for the selected platforms. A tag update does not alter an already published application image, but an unpinned tag makes later rebuilds less reproducible.
 
