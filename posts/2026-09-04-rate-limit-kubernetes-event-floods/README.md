@@ -14,7 +14,7 @@ Rate limiting should start at the producer. Server-side EventRateLimit can prote
 
 ## Confirm That Events Are the Load Source
 
-Graph Event requests by verb, response code, API-server replica, and authenticated identity:
+Graph Event requests by verb, response code, and API-server replica. The `instance` label must identify individual scrape targets; authenticated identity is not a label on this metric and must be obtained from audit records:
 
 ```promql
 sum by (instance, verb, code) (
@@ -24,21 +24,21 @@ sum by (instance, verb, code) (
 
 Also correlate kube-apiserver request latency, admission latency, inflight and queued requests, APF rejections, etcd proposal rate and latency, database growth, and Event watch traffic. A large Event count without a high write rate may be a retention problem; a high PATCH or UPDATE rate with a stable count indicates continuously refreshed Event series.
 
-Inspect a bounded sample to name the producer:
+Inspect one page of up to 200 core/v1 Events to name a producer (this is not a most-recent or exhaustive sample):
 
 ```bash
-kubectl get events --all-namespaces -o json |
+kubectl get --raw '/api/v1/events?limit=200' |
   jq -r '.items[] |
-    [(.reportingController // .source.component // "unknown"),
-     (.reportingInstance // .source.host // "unknown"),
+    [([.reportingComponent, .source.component] | map(select(. != null and . != "")) | first // "unknown"),
+     ([.reportingInstance, .source.host] | map(select(. != null and . != "")) | first // "unknown"),
      .metadata.namespace, .reason, .type,
-     .regarding.kind // .involvedObject.kind,
-     .regarding.name // .involvedObject.name,
-     (.series.count // .deprecatedCount // .count // 1)] | @tsv' |
-  sort | tail -200
+     .involvedObject.kind,
+     .involvedObject.name,
+     (.series.count // .count // 1)] | @tsv' |
+  sort
 ```
 
-API audit records at `Metadata` level can provide the username, source address, user agent, verb, and request URI. Keep the audit window narrow and avoid recording Event bodies globally. The reporting controller field is supplied by the client; authenticated identity and user agent are stronger attribution evidence.
+API audit records at `Metadata` level can provide the username, source address, user agent, verb, and request URI. Keep the audit window narrow and avoid recording Event bodies globally. The reporting controller field and user agent are supplied by the client. Authenticated identity is stronger attribution evidence; use the user agent as a supporting clue.
 
 ## Fix the Retry Loop Before Tuning Buckets
 
@@ -73,7 +73,7 @@ Events are best-effort supplemental data. Put high-volume attempt details in rat
 
 The `client-go/tools/record` correlator filters, aggregates, counts, and deduplicates legacy core/v1 Events. Use one process-level broadcaster and recorder rather than directly creating a new Event object for every occurrence. Current clients can also report `events.k8s.io/v1` through `client-go/tools/events`.
 
-If you customize `CorrelatorOptions`, test its `QPS`, `BurstSize`, cache size, aggregation key, and interval against real incidents. A key that is too broad hides distinct failures; a key that includes a changing message produces one bucket per retry. Pin `client-go` to versions compatible with the Kubernetes minors you support.
+If you customize `CorrelatorOptions`, test its `QPS`, `BurstSize`, cache size, aggregation key, and interval against real incidents. An aggregation key that is too broad hides distinct failures. The separate `SpamKeyFunc` controls rate-limit buckets; including a changing message there produces one bucket per retry. The default spam key excludes the message, and the default aggregator can combine different messages for the same source, object, type, and reason. Pin `client-go` to versions compatible with the Kubernetes minors you support.
 
 Also bound the controller's general REST client:
 
@@ -87,7 +87,7 @@ cfg.QPS = 10
 cfg.Burst = 20
 ```
 
-The REST limiter covers all requests from that config, not just Events. It is a backstop, not a replacement for semantic event suppression. A custom `RateLimiter` overrides `QPS` and `Burst`.
+The REST limiter covers requests through the client built from that config, not just Events. Separately constructed clients can have independent buckets unless they share a `RateLimiter`. It is a backstop, not a replacement for semantic event suppression. A custom `RateLimiter` overrides `QPS` and `Burst`.
 
 ## Tune Built-In Producers Carefully
 
@@ -106,9 +106,9 @@ Lowering a producer limit can discard warnings needed for diagnosis. First corre
 
 ## Configure EventRateLimit as Defense in Depth
 
-Kubernetes includes an alpha validating admission controller specifically for Event create and update requests. It supports four bucket types:
+Kubernetes includes an alpha validating admission controller for core/v1 Event create and update requests, including updates made through PATCH. In Kubernetes v1.35–v1.36, its kind check does not cover requests through `events.k8s.io/v1`; do not assume it protects producers using that API. Verify coverage against the exact server version and the API used by your emitter. It supports four bucket types:
 
-- `Server`: one bucket for all Event requests;
+- `Server`: one bucket for all covered Event writes on that API-server replica;
 - `Namespace`: one bucket per namespace;
 - `User`: one bucket per authenticated user; and
 - `SourceAndObject`: one bucket per source and involved object combination.
@@ -151,7 +151,7 @@ Enable the plugin and point kube-apiserver at the admission file:
 
 Do not copy the example rates into production. Derive them from observed healthy peaks, failure drills, namespace count, producer identities, API capacity, and the minimum diagnostic coverage you require.
 
-`qps` is the sustained refill rate and `burst` is the maximum accumulated allowance. For per-key limits, `cacheSize` bounds the LRU bucket cache. When a bucket is evicted its allowance resets, so an undersized cache weakens protection under high cardinality. The Server type ignores cache size.
+`qps` is the sustained refill rate and `burst` is the maximum accumulated allowance. For per-key limits, `cacheSize` bounds the LRU bucket cache. When a bucket is evicted its allowance resets, so an undersized cache weakens protection under high cardinality. The Server type ignores cache size. All buckets are local to each API-server process, so these are not cluster-wide limits; account for replica count and traffic distribution.
 
 ## Roll Out Without Making Admission Inconsistent
 
@@ -171,7 +171,7 @@ Alert on Event request codes after rollout. A falling Event count can mean eithe
 
 API Priority and Fairness applies to ordinary Event writes and can prevent one service account from starving higher-priority control-plane flows. Match a noisy controller by authenticated identity and give it bounded queuing and concurrency. Inspect the FlowSchema and PriorityLevel UIDs returned in API response headers before changing policy.
 
-APF and EventRateLimit act at different stages. APF manages API concurrency and fairness; EventRateLimit applies token buckets only to Events. ResourceQuota limits how many Event objects exist but does not rate-limit updates and is not a sufficient flood control.
+APF and EventRateLimit act at different stages. APF manages API concurrency and fairness; EventRateLimit applies token buckets only to Events. Stock Kubernetes ResourceQuota ignores Events in both the core and events.k8s.io API groups, so it does not provide Event flood control.
 
 Never classify an untrusted Event producer as exempt. Exempt traffic bypasses normal fairness protections.
 
@@ -188,7 +188,7 @@ After the source fix and any boundary controls, repeat the failure condition and
 
 ## Conclusion
 
-The best Event request is the redundant one never emitted. Record state transitions through a standard aggregating recorder, move repeated detail to logs and metrics, and bound component clients. Add the alpha EventRateLimit plugin and APF only as measured safety layers, with explicit acknowledgement that rejected Events are lost diagnostic information.
+The best Event request is the redundant one never emitted. Record state transitions through a standard aggregating recorder, move repeated detail to logs and metrics, and bound component clients. Use the alpha EventRateLimit plugin where it covers your Event API, and tune the normally enabled APF as measured safety layers, with explicit acknowledgement that rejected Events are lost diagnostic information.
 
 ## Official Documentation
 
