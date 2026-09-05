@@ -80,7 +80,7 @@ Do not use a deliberately invalid command against an important file merely as a 
 
 Temporary output is much safer than self-redirection, but not every storage path has identical replacement semantics.
 
-The current implementation first attempts a rename. If the target is a symbolic link, or if rename fails—for example across a filesystem boundary or on some mounted volumes—it falls back to copying temporary contents into the target. A copy fallback can preserve a symlink target, but it is not crash-atomic: interruption during the copy can leave partial contents.
+In v4.53.3, the implementation skips rename for a symbolic-link target and otherwise first attempts a rename. If the target is a symbolic link, or if rename fails—for example across a filesystem boundary or on some mounted volumes—it falls back to copying temporary contents into the target. A copy fallback can preserve a symlink target, but it is not crash-atomic: interruption during the copy can leave partial contents.
 
 Before editing operational configuration, determine whether the path is a symlink and what filesystem hosts it:
 
@@ -126,7 +126,7 @@ diff -u config.yml <(
 
 ## Use a Validated Same-directory Temporary File
 
-This Bash pattern gives you a checkpoint between rendering and publication:
+This Bash pattern gives you a checkpoint between rendering and publication for a configuration containing exactly one YAML document:
 
 ```bash
 #!/usr/bin/env bash
@@ -167,11 +167,13 @@ if ! IMAGE=$image REPLICAS=$replicas yq '
   exit 1
 fi
 
-if ! IMAGE=$image REPLICAS=$replicas yq -e '
+if ! IMAGE=$image REPLICAS=$replicas yq ea -e '
+  [
   (.deployment | tag == "!!map") and
   (.deployment.image == strenv(IMAGE)) and
   (.deployment.replicas == env(REPLICAS)) and
   ((.deployment.replicas | tag) == "!!int")
+  ] | ((length == 1) and all)
 ' "$temporary" >/dev/null; then
   printf '%s\n' 'post-render checks failed; original retained' >&2
   exit 1
@@ -187,16 +189,18 @@ The script rejects a symbolic-link target because `mv` would replace the link it
 
 ## Validate the Meaning, Not Merely the Syntax
 
-If yq can read the temporary output, it is syntactically valid YAML. That does not prove it matches the application's schema. Add checks for expected root types, required keys, ranges, and invariants:
+If yq can read the temporary output, it is syntactically valid YAML. That does not prove it matches the application's schema. Add checks for expected root types, required keys, ranges, and invariants. These examples require exactly one document: `ea` collects one validation result per document into an array, then checks that there is exactly one result and it is true. Plain `yq -e` can succeed if any document produces a true result, even when another produces false:
 
 ```bash
-yq -e '
+yq ea -e '
+  [
   (tag == "!!map") and
   (.deployment | tag == "!!map") and
   ((.deployment.replicas | tag) == "!!int") and
   (.deployment.replicas >= 1) and
   (.deployment.replicas <= 50) and
   ((.deployment.image | tag) == "!!str")
+  ] | ((length == 1) and all)
 ' candidate.yml >/dev/null
 ```
 
@@ -204,11 +208,12 @@ Run the owning application's official configuration checker as an additional ste
 
 ## Preserve a Recoverable Backup When Required
 
-Atomic replacement prevents readers from seeing half a new local file; it does not provide rollback. For high-risk changes, create a versioned backup before publication:
+Atomic replacement prevents readers from seeing half a new local file; it does not provide rollback. For high-risk changes, create a versioned backup with a unique suffix before publication:
 
 ```bash
 timestamp=$(date -u +%Y%m%dT%H%M%SZ)
-cp -p -- config.yml "config.yml.$timestamp.bak"
+backup=$(mktemp "config.yml.$timestamp.XXXXXX")
+cp -p -- config.yml "$backup"
 ```
 
 Store backups according to a retention and secrets policy. A copy beside a secret configuration has the same confidentiality requirements and may be picked up by broad deployment globs.
