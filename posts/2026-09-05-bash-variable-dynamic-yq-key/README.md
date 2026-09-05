@@ -8,7 +8,7 @@ Description: Pass a Bash value into Mike Farah yq v4 as one literal map key, whi
 
 ---
 
-A dynamic key is a single map-key value chosen at runtime. It is not text to paste into a yq program. That distinction explains the common `null` result when a Bash variable contains a dot, dash, space, or other punctuation.
+A dynamic key is a single map-key value chosen at runtime. It is not text to paste into a yq program. That distinction explains the common `null` result when a Bash variable contains dots that yq interprets as path separators. A dash alone, as in `worker-blue`, does not cause that failure.
 
 With Mike Farah yq v4, pass the Bash value through the environment and use it inside brackets with `strenv`:
 
@@ -100,7 +100,7 @@ The second mistake is referring to an undefined yq variable:
 yq '.services[$key].image' config.yml
 ```
 
-`$key` here is a yq expression variable, not a Bash variable. It has not been bound with yq's `as` operator, and the outer single quotes correctly stop Bash from replacing it.
+`$key` here is a yq expression variable, not a Bash variable. It has not been bound with yq's `as` operator, and the outer single quotes correctly stop Bash from replacing it. In yq v4.53.6, this unbound variable yields no values, so the brackets act like `[]` and select every service; it does not reliably produce an undefined-variable error.
 
 The third mistake is assuming a local shell variable is automatically an environment variable:
 
@@ -173,10 +173,10 @@ KEY=$key REPLICAS=5 \
 
 ## Distinguish a Key from a Complete Path
 
-Sometimes a trusted deployment script genuinely needs to supply `.services[0].image` as a complete yq path. Mike Farah yq provides `eval` for that separate use case:
+Sometimes a trusted deployment script genuinely needs to supply `.services["api.example.com"].image` as a complete yq path. Mike Farah yq provides `eval` for that separate use case:
 
 ```bash
-path='.services[0].image'
+path='.services["api.example.com"].image'
 value='registry.example.com/api:v2'
 
 PATH_EXPRESSION=$path VALUE=$value \
