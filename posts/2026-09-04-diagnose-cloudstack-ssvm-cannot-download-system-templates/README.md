@@ -82,21 +82,18 @@ ss -ltnp
 tail -n 250 /var/log/cloud.log
 ```
 
-Then test only a header or tiny range against the exact template URL, with the appropriate trusted CA:
+Then request only headers from the exact template URL, with the appropriate trusted CA (add `--cacert /path/to/internal-ca.pem` for an internal CA). A HEAD request checks reachability but does not prove that a GET download will succeed:
 
 ```bash
-curl -fLsS --range 0-1023 \
-  -o /tmp/systemvm-head.bin \
+curl -fILsS --connect-timeout 10 --max-time 30 \
   https://TRUSTED_REPOSITORY/EXACT_RELEASE_TEMPLATE
-wc -c /tmp/systemvm-head.bin
-rm /tmp/systemvm-head.bin
 ```
 
 Do not fill the SSVM root disk with a multi-gigabyte diagnostic download. A successful browser request is irrelevant if DNS, routes, proxy, or CA trust differ inside the SSVM.
 
 ## Verify Secondary Storage Independently
 
-The SSVM must mount and write the secondary store. Check the NFS server and the infrastructure path:
+For NFS secondary storage, the SSVM must mount and write the secondary store. Check the NFS server and the infrastructure path:
 
 ```bash
 sudo exportfs -v
@@ -105,7 +102,7 @@ df -i /export/secondary
 sudo journalctl -u nfs-server -n 200 --no-pager
 ```
 
-From an authorized infrastructure host, verify the export with the same NFS version/mount options used by CloudStack. Use a temporary test location, not CloudStack's managed object directories:
+From an authorized infrastructure host, verify the export with the same NFS version and relevant mount options used by CloudStack, overriding access to read-only for this check. The example below negotiates the NFS version by default; add the deployed `vers=` and other options as needed. `showmount` uses the MOUNT service and may fail on an NFSv4-only server even when mounting works. Use a temporary test location, not CloudStack's managed object directories:
 
 ```bash
 showmount -e NFS_SERVER
@@ -119,7 +116,7 @@ For a write problem, inspect export CIDRs, root-squash expectations, UID/GID, SE
 
 ## Prefer the CloudStack 4.23 Setup Workflow
 
-CloudStack 4.23 can download selected System VM templates on demand through the management-server setup utility. This is preferable to constructing a helper command by hand because the packaged workflow selects the installed CloudStack conventions. On one management server in a controlled maintenance window, inspect the locally installed options first:
+CloudStack 4.23 can download selected System VM templates on demand through the management-server setup utility. This downloads files into `/usr/share/cloudstack-management/templates/systemvm` using packaged metadata; the management server performs registration and secondary-storage seeding separately. It can repair missing local downloads, but does not itself mount or seed the secondary store. On one management server in a controlled maintenance window, inspect the locally installed options first:
 
 ```bash
 sudo cloudstack-setup-management --help
@@ -131,13 +128,13 @@ For an x86_64 KVM zone, the documented 4.23 selector is:
 sudo cloudstack-setup-management --systemvm-templates=kvm-x86_64
 ```
 
-Use the matching documented selector for aarch64 rather than reusing this value. If an approved internal mirror is required, supply `--systemvm-templates-repository` exactly as shown by the installed 4.23 help. Treat this as a management-server change: capture the current configuration, do not run it concurrently on multiple nodes, watch its exit status and management log, and verify that the management service returns healthy afterward.
+Use the matching documented selector for aarch64 rather than reusing this value. If an approved internal mirror is required, supply `--systemvm-templates-repository` exactly as shown by the installed 4.23 help. Treat this as a management-server change: capture the current configuration, do not run it concurrently on multiple nodes, inspect its console output, `/var/log/cloudstack/management/setupManagement.log`, and the management log (download errors can be printed without a nonzero exit status), and verify that the management service returns healthy afterward.
 
-## Seed Manually Only When the Setup Path Cannot Work
+## Seed Manually When Automatic Seeding Fails
 
 If no usable SSVM exists, obtain the exact template URL for the installed CloudStack release, hypervisor, and architecture from the current official documentation. Verify the Apache-published checksum/signature before seeding.
 
-Mount the correct secondary store on the management server or a controlled helper host:
+Mount the correct secondary store on the management server or a controlled helper host with the packaged dependencies and access to the CloudStack database and required credentials:
 
 ```bash
 sudo mkdir -p /mnt/cloudstack-secondary
@@ -146,23 +143,22 @@ sudo mount -t nfs \
 findmnt /mnt/cloudstack-secondary
 ```
 
-Use the packaged helper. This example intentionally uses placeholders so an operator cannot seed a mismatched release accidentally:
+Use the packaged helper. Confirm its target SYSTEM template record before running it: the helper defaults to the highest non-removed SYSTEM template ID for the hypervisor, without filtering CPU architecture. In a multi-architecture deployment, follow the installed release's procedure to target the correct record. This example assumes that default record matches the intended KVM image and uses placeholders for the release URL:
 
 ```bash
 sudo /usr/share/cloudstack-common/scripts/storage/secondary/cloud-install-sys-tmplt \
   -m /mnt/cloudstack-secondary \
   -u https://download.cloudstack.org/systemvm/RELEASE/EXACT_TEMPLATE_FILE \
-  -h kvm \
-  -F
+  -h kvm
 ```
 
-If database encryption is configured with the web method, the official guide requires the management-server secret through the helper's documented option. Handle it outside shared shell history. Unmount after successful completion:
+`-F` clears the selected template directory before downloading; use it only for a deliberate replacement after confirming the target and preserving a recoverable copy. If database encryption is configured with the web method, the official guide requires the management-server secret through the helper's documented option. Handle it outside shared shell history. Unmount after successful completion:
 
 ```bash
 sudo umount /mnt/cloudstack-secondary
 ```
 
-Use the helper only when the packaged 4.23 setup path cannot reach or mount the required store. Do not seed while another management server or SSVM is actively writing the same template. Coordinate the maintenance window and watch logs.
+Use the helper for the documented no-SSVM recovery case when automatic seeding fails; the 4.23 setup downloader does not replace this recovery path. Do not seed while another management server or SSVM is actively writing the same template. Coordinate the maintenance window and watch logs.
 
 ## Read the Error by Category
 
@@ -188,7 +184,7 @@ If a custom repository change caused the failure, restore the previous repositor
 
 ## Conclusion
 
-First identify whether automatic management-server seeding or a running SSVM owns the transfer. Validate the exact release, hypervisor, architecture, source URL, TLS path, and secondary-storage write path. On 4.23, prefer the packaged `cloudstack-setup-management` template selector. Use `cloud-install-sys-tmplt` only when that setup path cannot work in the supported no-SSVM bootstrap case, then prove recovery with a newly created SSVM and a normal image transfer.
+First identify whether automatic management-server seeding or a running SSVM owns the transfer. Validate the exact release, hypervisor, architecture, source URL, TLS path, and secondary-storage write path. On 4.23, prefer the packaged `cloudstack-setup-management` template selector. Use `cloud-install-sys-tmplt` when automatic seeding fails in the supported no-SSVM bootstrap case, then prove recovery with a newly created SSVM and a normal image transfer.
 
 ## Official Documentation
 
