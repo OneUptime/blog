@@ -63,14 +63,14 @@ A sawtooth or abrupt spike aligned with a few large LIST responses suggests tran
 
 ## Find the Expensive Resource and Caller
 
-Rank LIST response volume by group, resource, scope, and user agent. Kubernetes audit records at `Metadata` level can show the request user, source, URI, response code, and user agent without capturing response bodies. Restrict the audit window and do not enable global body logging during a memory incident.
+Rank LIST response bytes by group, resource, and scope using metrics, then correlate expensive resources and time windows with callers in audit records. The response-size metric has no user-agent label, and metadata audit records do not record response byte counts. Kubernetes audit records at `Metadata` level can show the request user, source, URI, response code, and user agent without capturing response bodies. Restrict the audit window and do not enable global body logging during a memory incident.
 
 Common patterns include:
 
 - `kubectl get ... -A -o yaml` over tens of thousands of objects;
 - a controller bypassing its informer cache on every reconcile;
 - many replicas warming identical full-cluster informers at once;
-- LISTs of CRDs with large `.spec`, `.status`, or managed fields;
+- LISTs of custom resource instances with large `.spec`, `.status`, or managed fields;
 - label or field selectors that require examining far more objects than they return; and
 - a slow client or proxy that prolongs the life of response buffers.
 
@@ -94,7 +94,7 @@ Use cache metrics as directional evidence rather than treating alpha metric name
 
 Kubernetes' API concepts documentation describes chunked collection encoding for JSON and Protobuf: current servers encode items incrementally instead of building one monolithic output buffer. Streaming collection encoding became stable in Kubernetes v1.34. This substantially reduces peak encoding memory but does not make a huge LIST free. Objects still must be read, filtered, converted, authorized as applicable, sent over the network, and held by the client.
 
-Initial state can also be streamed through a watch with `sendInitialEvents=true`. Kubernetes v1.34 and later servers enable the beta `WatchList` feature by default, while `client-go` v1.35 and later enables its beta `WatchListClient` path by default. The client requests `resourceVersionMatch=NotOlderThan` and falls back to a normal LIST when the server does not support the path. Pin client/server versions according to compatibility guidance.
+Initial state can also be streamed through a watch with `sendInitialEvents=true`. Kubernetes v1.34 and later servers enable the beta `WatchList` feature by default, while `client-go` v0.35 and later (corresponding to Kubernetes v1.35 and later) enables its beta `WatchListClient` path by default. The client requests `resourceVersionMatch=NotOlderThan` and falls back to a normal LIST when the server does not support the path. Pin client/server versions according to compatibility guidance.
 
 For direct API clients:
 
@@ -110,7 +110,7 @@ Pagination provides a consistent snapshot when its token contract is followed. I
 
 If profiling is approved and the replica has enough headroom, collect a heap profile through the authenticated kube-apiserver profiling endpoint or locally on the control-plane host, then analyze it with `go tool pprof`. Restrict access to `/debug/pprof`, store the profile as sensitive operational data, and capture during both baseline and LIST spike for comparison.
 
-Profiling itself consumes resources. Do not enable broad unauthenticated debug access, repeatedly scrape profiles from a failing replica, or expose the endpoint through a public load balancer. A profile dominated by cached object types suggests baseline retention; large encoders, conversions, byte slices, or response writers aligned with requests suggest transient LIST work.
+Profiling itself consumes resources. Do not enable broad unauthenticated debug access, repeatedly scrape profiles from a failing replica, or expose the endpoint through a public load balancer. Heap profiles attribute sampled allocations to call stacks, not object types or retention paths. Compare in-use bytes at cache population and decoding stacks with encoding, conversion, and response-buffer allocation stacks across baseline and spike profiles; these are clues to baseline retention or transient LIST work, not proof of which structure retains the memory.
 
 ## Contain the Incident Safely
 
@@ -125,7 +125,7 @@ Then address the root cause:
 - distribute controller startup and reconnects; and
 - size kube-apiserver memory from a measured steady baseline plus tested concurrency headroom.
 
-Raising the limit can be part of the capacity plan, but ensure the node has reserved capacity so several API-server replicas or colocated etcd cannot trigger host OOM. A higher limit without bounding LIST concurrency only increases the size of the eventual failure.
+Raising the limit can be part of the capacity plan, but ensure the node has reserved capacity so several API-server replicas or colocated etcd cannot trigger host OOM. A higher limit without bounding LIST concurrency can leave the server vulnerable to another OOM as request load grows.
 
 ## Verify Under a Reproducible Load
 
