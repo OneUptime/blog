@@ -175,7 +175,6 @@
 
 ## ko
 
-14. How to Build and Push a Go Image to GHCR with ko in GitHub Actions
 15. How to Build Multiple Go Services from a Monorepo with ko and Multiple `go.mod` Files
 16. How to Bundle Templates and Static Files with ko's `kodata` and `KO_DATA_PATH`
 17. How to Add a Corporate Root CA to a ko-Built Go Container
