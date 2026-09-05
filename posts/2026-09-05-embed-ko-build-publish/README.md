@@ -18,20 +18,21 @@ Although the repository now lives under the `ko-build` GitHub organization, the 
 
 ```bash
 go get github.com/google/ko@v0.19.1
-go mod tidy
+go mod tidy # Run after adding the ko imports to your source.
 ```
 
 Version 0.19.1 declares Go 1.26.3 in its module file, so the embedding tool needs that toolchain or a compatible newer one. The CLI binary can be consumed without inheriting this library build requirement. Review release notes before updating, commit `go.mod` and `go.sum`, and run integration tests against a disposable registry.
 
 ## Build and Publish One Command
 
-This example follows the official package composition while making platforms, base retrieval, authentication, and tags explicit:
+This example follows the official package composition while making platforms, base retrieval, authentication, and tags explicit. Run it from an initialized Go module containing the command, and replace the example import path and registry with your own:
 
 ```go
 package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log"
 
@@ -49,6 +50,12 @@ const (
 )
 
 func main() {
+	if err := run(); err != nil {
+		log.Fatal(err)
+	}
+}
+
+func run() (err error) {
 	ctx := context.Background()
 
 	b, err := build.NewGo(ctx, ".",
@@ -70,12 +77,12 @@ func main() {
 			"https://github.com/acme/releaser"),
 	)
 	if err != nil {
-		log.Fatalf("create builder: %v", err)
+		return fmt.Errorf("create builder: %w", err)
 	}
 
 	result, err := b.Build(ctx, importPath)
 	if err != nil {
-		log.Fatalf("build %s: %v", importPath, err)
+		return fmt.Errorf("build %s: %w", importPath, err)
 	}
 
 	p, err := publish.NewDefault(targetRepo,
@@ -83,20 +90,21 @@ func main() {
 		publish.WithAuthFromKeychain(authn.DefaultKeychain),
 	)
 	if err != nil {
-		log.Fatalf("create publisher: %v", err)
+		return fmt.Errorf("create publisher: %w", err)
 	}
 	defer func() {
-		if err := p.Close(); err != nil {
-			log.Printf("close publisher: %v", err)
+		if closeErr := p.Close(); closeErr != nil {
+			err = errors.Join(err, fmt.Errorf("close publisher: %w", closeErr))
 		}
 	}()
 
 	ref, err := p.Publish(ctx, result, importPath)
 	if err != nil {
-		log.Fatalf("publish: %v", err)
+		return fmt.Errorf("publish: %w", err)
 	}
 
 	fmt.Println(ref.String())
+	return nil
 }
 ```
 
@@ -106,7 +114,7 @@ For a production release, pin `baseImage` to an index digest containing both req
 
 `build.Interface` provides three operations:
 
-- `QualifyImport` converts a relative or full path into a supported `ko://` reference.
+- `QualifyImport` converts a relative or full path into a `ko://` reference; this alone does not validate that it names a Go main package.
 - `IsSupportedReference` validates whether a reference can be handled.
 - `Build` returns a `build.Result`, which represents an image or image index.
 
@@ -146,24 +154,24 @@ Do not accept plaintext passwords in command arguments or logs. Let the runtime 
 
 The example calls `remote.Index`, so the configured base reference must resolve to an image index. A base pinned to a single-platform image manifest needs `remote.Image` instead. A general tool should call `remote.Get`, examine the descriptor media type, and return either its image or index.
 
-This distinction matters for multi-platform builds. `build.WithPlatforms("linux/amd64", "linux/arm64")` needs corresponding variants in the base index. The library does not synthesize a missing base platform.
+This distinction matters for multi-platform builds. `build.WithPlatforms("linux/amd64", "linux/arm64")` needs corresponding variants in the base index. The library filters the base index to matching platforms; it does not synthesize missing variants or require every requested platform to be present. Check the result for both platforms before publishing.
 
-Apply timeouts and cancellation to every registry operation:
+Apply timeouts and cancellation to every registry operation (add `"time"` to the imports for this snippet):
 
 ```go
 ctx, cancel := context.WithTimeout(context.Background(), 15*time.Minute)
 defer cancel()
 ```
 
-Pass that context through base pulls, builds, and publication.
+Pass that context to `build.NewGo` as well as builds and publication: base retrieval uses the context retained by the builder, not the per-call `Build` context.
 
 ## Compose Caching, Limits, and Destinations
 
 The packages expose useful wrappers:
 
-- `build.NewCaching` shares an in-process build result for repeated identical requests.
-- `build.NewLimiter` bounds concurrent builds.
-- `publish.NewCaching` avoids duplicate publication work within the process.
+- `build.NewCaching` caches results by import-path string until `Invalidate` is called; source or base changes do not automatically invalidate it.
+- `build.WithJobs` limits parallel build jobs within a Go builder; `build.NewLimiter` is deprecated in favor of this option.
+- `publish.NewCaching` reuses publication results for the same source string and build-result object; it does not deduplicate by digest. Both caching wrappers also retain errors, so retries need invalidation or a fresh cache/result as appropriate.
 - `publish.MultiPublisher` sends a result to several publishers, with the last publisher's reference returned.
 - `publish.NewDaemon`, `NewKindPublisher`, and `NewLayout` target local or offline stores.
 
