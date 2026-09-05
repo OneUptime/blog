@@ -68,7 +68,7 @@ kubectl -n bootstrap logs api-setup-6bd8d695c8-7p9mt \
   -c istio-proxy --timestamps
 ```
 
-No proxy access-log line is evidence only when access logging is enabled for that protocol and time. A successful destination request carrying no expected mTLS identity is stronger evidence of bypass. An immediate connection refusal while the proxy container is absent supports captured-but-not-serviceable traffic.
+No proxy access-log line is evidence only when access logging is enabled for that protocol and time. A missing mTLS identity is meaningful only at a peer expected to authenticate the source workload, such as the egress gateway or a destination mesh proxy. An external destination does not normally see the source workload's mesh identity, even when traffic traverses Envoy. An immediate connection refusal while the proxy container is absent supports captured-but-not-serviceable traffic.
 
 Do not use a production credential fetch as the test. Use an idempotent endpoint, bounded deadline, and non-secret correlation value.
 
@@ -76,7 +76,7 @@ Do not use a production credential fetch as the test. Use an idempotent endpoint
 
 Istio CNI is a chained plugin invoked after the primary CNI. It configures redirection during Pod network setup, before containers run. This consolidates the elevated privilege in a node DaemonSet instead of granting `NET_ADMIN` and `NET_RAW` to an init container in each workload.
 
-It also closes a node-start race: without mitigation, a workload could start on a node before the Istio CNI agent is ready and have no redirection. Istio's validation-and-repair mechanism is enabled by default in current supported setups and blocks or repairs such Pods.
+Its validation-and-repair mechanism mitigates a node-start race: without mitigation, a workload could start on a node before the Istio CNI agent is ready and have no redirection. Istio's validation-and-repair mechanism is enabled by default in current supported setups and blocks or repairs such Pods.
 
 However, official Istio CNI documentation explicitly calls out compatibility with application init containers. Under the legacy sidecar model:
 
@@ -91,7 +91,7 @@ Use CNI when the requirement is to ensure redirection exists before any process 
 
 ## Start Envoy as a Native Sidecar
 
-Kubernetes first made native sidecars available behind an alpha gate in 1.28, enabled them by default as beta in 1.29, and made them stable in 1.33. Kubernetes warns that 1.28 had different termination behavior. Istio added its per-Pod selection annotation in 1.24, where the current annotation catalog still classifies it as alpha. On a supported combination, request native proxy injection on the Pod template:
+Kubernetes first made native sidecars available behind an alpha gate in 1.28, enabled them by default as beta in 1.29, and made them stable in 1.33. Kubernetes warns that 1.28 had different termination behavior. Istio added its per-Pod selection annotation in 1.24, where the current annotation catalog still classifies it as alpha. On a supported combination with sidecar injection enabled, request native proxy injection on the Pod template. Merge this partial example into an existing Deployment; it omits the required selector, matching template labels, and container specification:
 
 ```yaml
 apiVersion: apps/v1
@@ -128,7 +128,7 @@ Istio documents three compatibility techniques for application init containers w
 - add `traffic.sidecar.istio.io/excludeOutboundIPRanges`; or
 - add `traffic.sidecar.istio.io/excludeOutboundPorts`.
 
-These techniques tell capture rules not to send that traffic through Envoy. The exclusions also apply to application-container traffic in the Pod, not just init containers. Istio warns that an excluded IP or port remains a bypass after startup.
+These techniques tell capture rules not to send that traffic through Envoy. The IP/port exclusion annotations also apply to application-container traffic in the Pod, not just init containers. The UID workaround exempts traffic from that UID; application traffic under a different, non-exempt UID remains captured. Istio warns that an excluded IP or port remains a bypass after startup.
 
 Do not copy `runAsUser: 1337` blindly. Some platforms assign a different proxy UID, and reusing the proxy identity can grant broader capture exemptions than intended. DNS capture adds another complication: the official CNI guide notes that hostname lookup from an init container may require the proxy-UID workaround in some configurations.
 
@@ -137,7 +137,7 @@ If a temporary exclusion is unavoidable:
 - use the smallest fixed destination CIDR or port;
 - ensure destination identity and TLS are enforced by the application protocol;
 - restrict the same path with NetworkPolicy and external firewall policy;
-- prevent the application container from abusing the exclusion; and
+- use destination-side authorization to limit access; NetworkPolicy cannot distinguish init and application containers within the same Pod; and
 - give it an owner and removal date.
 
 An exclusion is not a secure-mesh solution simply because the Pod is otherwise injected.
@@ -152,7 +152,7 @@ Many startup tasks can be redesigned:
 - place large artifact downloads in an image or trusted node cache; or
 - make readiness wait for initialization without making liveness depend on it.
 
-This avoids a privileged, pre-identity bootstrap path. When the task performs schema migration or a non-idempotent write, add locking and idempotency; sidecar ordering does not prevent several replicas from running it concurrently.
+This can avoid network calls before the mesh proxy is ready; init containers do not inherently require elevated privileges and can already have a Kubernetes service-account identity. When the task performs schema migration or a non-idempotent write, add locking and idempotency; sidecar ordering does not prevent several replicas from running it concurrently.
 
 Never place long-lived credentials in init-container command arguments or logs. Use projected tokens with narrow audience and lifetime where supported.
 
@@ -164,11 +164,12 @@ For strong egress enforcement, route permitted destinations through an egress ga
 
 ```text
 workload Pod -> DNS
+workload Pod -> Istiod for proxy configuration and certificates
 workload Pod -> approved egress gateway
 workload Pod -X-> arbitrary external IP
 ```
 
-Implement the exact NetworkPolicy for the deployed CNI, accounting for node-local DNS, dual stack, gateway namespace labels, and provider behavior. Apply in a test namespace first; default-deny egress also blocks DNS unless it is explicitly allowed. NetworkPolicy controls network reachability, while Istio at the gateway supplies L7 routing, identity, and telemetry.
+Implement the exact NetworkPolicy for the deployed CNI, accounting for node-local DNS, dual stack, gateway namespace labels, required internal dependencies, and provider behavior. Apply in a test namespace first; default-deny egress also blocks DNS unless it is explicitly allowed. NetworkPolicy controls network reachability, while Istio at the gateway supplies routing and telemetry, plus authenticated peer identity when mTLS is configured. L7 HTTP routing and visibility require access to HTTP rather than opaque TLS passthrough.
 
 This defense remains effective when an init process or compromised application bypasses local Envoy.
 
@@ -197,7 +198,7 @@ Create one canary Pod and record:
 2. native proxy startup and readiness;
 3. start time of each subsequent init container;
 4. one controlled init request in the source proxy and egress gateway logs;
-5. workload identity observed by the destination; and
+5. source workload identity observed at the mTLS peer (the egress gateway or destination mesh proxy), plus the correlated request at the final destination; and
 6. application and Job shutdown behavior.
 
 Then run a negative test in an isolated environment: direct external egress that does not traverse the gateway should be denied. Verify both IPv4 and IPv6 if the cluster is dual-stack; an IPv4-only policy can leave an unintended IPv6 path.
