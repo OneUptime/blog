@@ -8,7 +8,7 @@ Description: Design an HDFS namespace that keeps mutable, sync-sensitive data re
 
 ---
 
-HDFS supports replicated and erasure-coded files in the same namespace. The safe boundary is a directory policy: new files inherit the effective policy of their nearest ancestor, while existing files keep the layout they received at creation.
+HDFS supports replicated and erasure-coded files in the same namespace. The safe boundary is a directory policy: new files inherit the effective policy of their nearest ancestor by default (clients can explicitly request replication at creation), while existing files keep the layout they received at creation.
 
 This lets one cluster serve two distinct workload classes:
 
@@ -104,7 +104,7 @@ HDFS deliberately preserves the file's creation policy.
 
 ## Convert by Copying, Then Verify
 
-To migrate data, copy it into the target policy rather than renaming it. Keep the source until validation completes:
+To migrate data, copy it into the target policy rather than renaming it. Use closed files and keep the source unchanged throughout copying and validation. The candidate path below must not already exist; otherwise, DistCp can add an extra source-directory level. Keep the source until validation completes:
 
 ```bash
 hadoop distcp \
@@ -118,14 +118,16 @@ hdfs dfs -count -q -h /data/ingest/2026-08-31
 hdfs dfs -count -q -h /data/archive/2026-08-31.candidate
 ```
 
-Validate application-level row counts or manifests and stream both copies through a cryptographic digest when exact content identity matters:
+Validate application-level row counts or manifests. The following digests compare the concatenated bytes of the matching `part-*` files, so also compare a manifest of relative filenames and exact byte lengths in the same order; a combined digest alone does not verify file boundaries or files outside that pattern. Run this as a Bash script so a failed read aborts validation:
 
 ```bash
+set -e -o pipefail
+
 hdfs dfs -cat '/data/ingest/2026-08-31/part-*' | sha256sum
 hdfs dfs -cat '/data/archive/2026-08-31.candidate/part-*' | sha256sum
 ```
 
-Only after the digests and workload checks match should the application switch to the candidate. Retain the source for a defined rollback window. Remember that concatenating files across layout boundaries is not supported.
+Only after the digests and workload checks match should the application switch to the candidate. Retain the source for a defined rollback window. Remember that HDFS `concat()` cannot mix replicated and EC files or different EC policies; streaming their bytes with `-cat` is supported.
 
 ## Audit a Mixed Tree
 
