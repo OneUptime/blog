@@ -10,7 +10,7 @@ Description: Diagnose Envoy 503 UR responses for gRPC by locating the resetting 
 
 In an Envoy access log, `503 UR` has a specific meaning: the response code is 503 and the `UR` flag is `UpstreamRemoteReset`. The upstream connection or stream was reset by the remote peer. It does not prove that the application process sent the reset. The remote peer might be the backend sidecar, the backend gRPC server, a gateway, or another load balancer.
 
-For gRPC, a reset commonly follows one of four mismatches:
+For gRPC, investigate these possible causes of resets and related upstream failures. Depending on the failure stage, Envoy may report `UF`, `UC`, `UPE`, or a timeout flag instead of `UR`:
 
 - Envoy opens HTTP/1.1 to a backend that requires HTTP/2;
 - plaintext h2c and TLS-wrapped HTTP/2 are confused;
@@ -34,7 +34,7 @@ kubectl -n grpc-backends logs deploy/payments-grpc \
 
 Record the request ID or trace ID, authority, method path, source proxy, selected upstream host, reset time, and whether response headers had started. Envoy's `%RESPONSE_CODE_DETAILS%` can distinguish an upstream reset before headers from one after response began. Do not enable body logging or publish authorization metadata; gRPC messages and headers may contain credentials.
 
-A reset logged by the caller proxy but no corresponding connection at the backend sidecar narrows the problem to the caller-to-backend-proxy path. A backend sidecar log at the same time can show whether it rejected downstream TLS, failed to reach localhost, or observed an application reset.
+If connection-level evidence confirms the request never reached the selected backend sidecar, investigate the caller-to-backend-proxy path. A missing HTTP access-log entry alone does not establish this: TLS failures can occur before HTTP logging, and HTTP/2 can reuse an existing connection. The Deployment log commands above select one Pod by default; correlate the actual caller Pod and selected backend Pod when replicas are present. A backend sidecar log at the same time can show whether it rejected downstream TLS, failed to reach localhost, or observed an application reset.
 
 ## Reproduce with a Protocol-Correct Client
 
@@ -115,7 +115,7 @@ istioctl proxy-config endpoints \
   --cluster 'outbound|9090||payments.grpc-backends.svc.cluster.local'
 ```
 
-Copy the actual cluster name from the cluster listing. In its JSON, inspect typed extension protocol options for HTTP/2, the transport socket for mTLS, circuit-breaker limits, and endpoint address. The complete chain should show:
+Copy the actual cluster name from the cluster listing. In its JSON, inspect typed extension protocol options for HTTP/2, the transport socket or transport socket matches for mTLS, and circuit-breaker limits. Use the endpoint output for the selected address; EDS endpoint addresses are not generally embedded in the cluster JSON. The complete chain should show:
 
 1. an HTTP-aware listener accepting the request;
 2. a route matching the `:authority` and RPC path;
@@ -134,16 +134,18 @@ openssl s_client \
   -connect payments.example.com:443 \
   -servername payments.example.com \
   -alpn h2 \
+  -CAfile /path/to/approved-ca.pem \
+  -verify_hostname payments.example.com \
   -verify_return_error </dev/null
 ```
 
-The negotiated ALPN should be `h2` for gRPC over TLS. A successful certificate handshake with `http/1.1`, no ALPN, or a connection close points to the edge listener or intermediary. This test does not apply directly to Istio workload mTLS, whose certificates and ALPN are managed between proxies; use proxy configuration and logs there rather than extracting private keys.
+The negotiated ALPN should be `h2` for gRPC over TLS. This command offers only `h2`, so a conforming peer cannot select `http/1.1`. No negotiated ALPN or a negotiation failure warrants checking the TLS listener or intermediary. A close after the handshake alone is inconclusive because this command sends no HTTP/2 preface and closes its input. This test does not apply directly to Istio workload mTLS, whose certificates and ALPN are managed between proxies; use proxy configuration and logs there rather than extracting private keys.
 
 For plaintext gRPC, the backend expects HTTP/2 prior knowledge, commonly called h2c. Sending an HTTP/1.1 Upgrade request is not equivalent to every gRPC client's behavior. Test with a real gRPC client or `grpcurl -plaintext`.
 
 ## Check mTLS Independently from gRPC
 
-Inspect effective policy at the backend:
+Inspect policy resources and the backend configuration, then correlate them with the effective proxy configuration:
 
 ```bash
 kubectl get peerauthentication -A -o yaml
@@ -155,7 +157,7 @@ istioctl x describe pod payments-grpc-POD.grpc-backends
 
 Port-level `PeerAuthentication` uses the workload port, not the Kubernetes Service port. DestinationRule port-level settings select the service port. Confusing those number spaces can make only one gRPC port fail.
 
-Check that both Pods have sidecars, valid workload certificates, matching trust domains, and synchronized clocks. Do not switch the whole namespace to `PERMISSIVE` as a first diagnostic; that widens the accepted traffic. If a narrow temporary policy is approved, time-bound it and verify the final state returns to `STRICT`.
+Check that both Pods have sidecars, valid workload certificates, trusted certificate chains, compatible trust-domain identities (including any configured aliases), and synchronized clocks. Do not switch the whole namespace to `PERMISSIVE` as a first diagnostic; that widens the accepted traffic. If a narrow temporary policy is approved, time-bound it and verify the final state returns to `STRICT`.
 
 ## Find the Component Sending the Reset
 
@@ -167,11 +169,11 @@ Follow the selected endpoint and compare both sides:
 - Does a load balancer between proxies enforce an idle or maximum connection age?
 - Is the reset triggered only after a fixed interval or message size?
 
-HTTP/2 GOAWAY is a graceful connection-level signal; RST_STREAM terminates an individual stream. Envoy may retry some failures only before response headers and only according to route policy. Blind retries can duplicate non-idempotent RPCs and amplify overload.
+HTTP/2 GOAWAY is a connection-level signal used for graceful shutdown or connection errors; inspect its error code and last-stream ID. RST_STREAM terminates an individual stream. Envoy may retry some failures only before response headers and only according to route policy. Blind retries can duplicate non-idempotent RPCs and amplify overload.
 
 For streaming RPCs, inspect route timeout, maximum stream duration, and idle timeout separately. A total request timeout can terminate a healthy long-lived stream; an idle timeout should account for expected quiet periods. HTTP/2 PING behavior and application messages are not interchangeable under every timer. Change one timer only after the failure duration matches it.
 
-Also check Pod termination and server graceful-shutdown behavior. A backend that exits without sending GOAWAY or allowing streams to drain can generate a burst of `UR` during rollouts even with correct steady-state configuration.
+Also check Pod termination and server graceful-shutdown behavior. A backend that exits without sending GOAWAY or allowing streams to drain can generate a burst of upstream failures such as `UC` or `UR` during rollouts even with correct steady-state configuration.
 
 ## Verify the Repair
 
@@ -184,7 +186,7 @@ kubectl apply --dry-run=server -f grpc-routing.yaml
 
 With a canary backend and caller, verify the effective cluster uses HTTP/2 and the intended mTLS transport, then run unary and streaming test RPCs. Exercise a rollout to confirm graceful drain. Monitor `UR`, upstream resets before and after headers, gRPC status, backend GOAWAY/reset logs, and latency.
 
-Success means more than removing the 503: certificate verification remains enabled, strict policy remains effective, non-idempotent requests are not duplicated, and long-lived streams survive the expected idle period and rollout behavior.
+Success means more than removing the 503: certificate verification remains enabled, strict policy remains effective, non-idempotent requests are not duplicated, and long-lived streams survive the expected idle period and either finish within the rollout drain window or reconnect as designed.
 
 ## Conclusion
 
