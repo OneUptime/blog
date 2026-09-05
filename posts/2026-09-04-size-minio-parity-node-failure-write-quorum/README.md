@@ -109,9 +109,9 @@ Current MinIO AIStor guidance requires at least `EC:3` for production standard s
 
 ## Account for Degraded-Write Parity
 
-Current AIStor releases default to upgrading parity for objects written while drives are offline but quorum remains. For example, two offline drives in an `EC:4` set can cause new objects to use `EC:6`. This preserves their remaining failure tolerance but consumes extra capacity, and current documentation says the upgraded parity remains with those objects.
+Current AIStor releases default to upgrading parity for objects written while drives are offline but quorum remains. For example, two offline drives in an `EC:4` set can cause new objects to use `EC:6`. This preserves their remaining failure tolerance but consumes extra capacity, and current documentation says the upgraded parity remains with those objects. The current default upgrade budget is 1% of each set’s capacity per outage; as that budget is spent, a decreasing share of writes receives upgraded parity, while other writes use the configured parity.
 
-Capacity-oriented settings can disable that behavior. Inspect `storage_class` configuration and the exact running release before relying on parity upgrade:
+Capacity-oriented settings can disable that behavior. Inspect `storage_class` configuration, the server’s `MINIO_ERASURE_PARITY_FAILURE` and `MINIO_ERASURE_PARITY_UPGRADE_BUDGET` settings, and the exact running release before relying on parity upgrade:
 
 ```bash
 mc admin config get production storage_class
