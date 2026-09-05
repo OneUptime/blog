@@ -41,13 +41,13 @@ Also confirm which Envoy logged the failure. A gateway, waypoint, caller sidecar
 Istio cluster names encode direction, port, subset, and host. Do not inspect every endpoint named after the service and assume it is the one used by the route.
 
 ```bash
-istioctl proxy-config routes "$CALLER_POD" -n "$NS" --name 9080
+istioctl proxy-config routes "$CALLER_POD" -n "$NS" --name 9080 -o json
 
 istioctl proxy-config clusters "$CALLER_POD" -n "$NS" \
   --fqdn ledger.payments.svc.cluster.local --port 9080
 ```
 
-The selected route might target a subset such as `v2`, a different service port, or a failover priority. Copy the exact cluster name from the access log or configuration output, for example:
+The selected route might target a subset such as `v2` or a different service port. Failover priorities are selected by the cluster's load balancer, not encoded as separate destination cluster names. Copy the exact cluster name from the access log or configuration output, for example:
 
 ```text
 outbound|9080|v2|ledger.payments.svc.cluster.local
@@ -59,7 +59,7 @@ Now query that cluster only:
 CLUSTER='outbound|9080|v2|ledger.payments.svc.cluster.local'
 
 istioctl proxy-config endpoints "$CALLER_POD" -n "$NS" \
-  --cluster "$CLUSTER"
+  --cluster "$CLUSTER" -o json
 ```
 
 Record the endpoint address, locality, weight, and reported status. Compare it with Kubernetes discovery, but remember that Kubernetes and Envoy are different snapshots:
@@ -101,13 +101,13 @@ This explains a common clue: one caller fails while another succeeds. Passive ob
 Find every `DestinationRule` that can apply to the cluster, including rules in the service namespace and exported rules visible to the client:
 
 ```bash
-kubectl get destinationrule -A
+kubectl get destinationrule -A -o yaml
 
 istioctl proxy-config clusters "$CALLER_POD" -n "$NS" \
   --fqdn ledger.payments.svc.cluster.local -o json
 ```
 
-Inspect `outlierDetection` values such as `consecutive5xxErrors`, `consecutiveGatewayErrors`, `consecutiveLocalOriginFailures`, `interval`, `baseEjectionTime`, and `maxEjectionPercent`. If `splitExternalLocalOriginErrors` is enabled, connection failures are evaluated separately from upstream HTTP responses. That distinction matters when a healthy application intentionally returns some 5xx responses but the real incident is connection failure.
+Inspect the DestinationRule's `outlierDetection` values such as `consecutive5xxErrors`, `consecutiveGatewayErrors`, `consecutiveLocalOriginFailures`, `interval`, `baseEjectionTime`, and `maxEjectionPercent`. The generated Envoy JSON uses different names for some fields: `consecutive5xx`, `consecutiveGatewayFailure`, and `consecutiveLocalOriginFailure`. If `splitExternalLocalOriginErrors` is enabled, connection failures are evaluated separately from upstream HTTP responses. That distinction matters when a healthy application intentionally returns some 5xx responses but the real incident is connection failure.
 
 Outlier detection is passive health checking, not a global verdict on the Pod. When a threshold is reached, Envoy ejects the host for a bounded interval. Repeated ejections can lengthen the effective duration. The maximum ejection percentage can prevent another unhealthy host from being ejected, so a detector counter increment does not always imply that ejection was enforced.
 
@@ -124,7 +124,7 @@ kubectl exec -n "$NS" "$CALLER_POD" -c istio-proxy -- \
   grep -E 'outlier_detection|membership_(healthy|total)|upstream_cx_connect_fail'
 ```
 
-Counter names contain the normalized cluster name and vary with enabled features. Compare deltas over the same short test window; a large lifetime counter does not prove the current request caused it.
+Cluster statistics include the cluster stat name; `membership_healthy` and `membership_total` are gauges, not counters. Istio's `proxyStatsMatcher` can omit statistics, so missing output does not mean zero failures. Compare deltas over the same short test window; a large lifetime counter does not prove the current request caused it.
 
 ## Understand panic mode before calling the result contradictory
 
@@ -157,7 +157,7 @@ trafficPolicy:
 
 This is an illustration, not a universal recommendation. A low pending-request limit can shed load exactly as designed. Increasing it may move the queue into Envoy or the application, raising latency and memory use while leaving capacity unchanged.
 
-Inspect overflow and active gauges on the caller:
+Inspect overflow counters and active gauges on the caller; `remaining_*` gauges require Envoy's circuit-breaker `track_remaining` setting:
 
 ```bash
 kubectl exec -n "$NS" "$CALLER_POD" -c istio-proxy -- \
@@ -165,7 +165,7 @@ kubectl exec -n "$NS" "$CALLER_POD" -c istio-proxy -- \
   grep -E 'upstream_(cx|rq).*(active|overflow|pending)|remaining_(cx|rq)'
 ```
 
-Correlate the delta with request concurrency, protocol, retry policy, and backend latency. HTTP/1 connection limits, HTTP/1 pending queues, and HTTP/2 concurrent-request limits are different budgets. Retries consume additional budget and can amplify an already saturated service. Check the generated cluster because a subset-level policy can override the top-level policy you were reading.
+Correlate the delta with request concurrency, protocol, retry policy, and backend latency. Connection, pending-request, and active-request limits are different budgets. Despite their names, Istio's `http1MaxPendingRequests` and `http2MaxRequests` apply to both HTTP/1.1 and HTTP/2. Retries consume additional budget and can amplify an already saturated service. Check the generated cluster because a subset-level policy can override the top-level policy you were reading.
 
 ## Make the smallest evidence-backed correction
 
