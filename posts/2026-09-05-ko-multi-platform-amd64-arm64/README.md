@@ -43,9 +43,9 @@ index_ref=$(
 printf '%s\n' "$index_ref" > index-ref.txt
 ```
 
-The command's standard-output value describes the top-level index, not either child manifest. Deploy that digest-bearing reference. At pull time, a conforming runtime selects the child whose `os`, `architecture`, and optional variant match the node.
+When the base provides both requested platforms, the command's standard-output value describes the top-level index, not either child manifest. Deploy that digest-bearing reference. At pull time, a conforming runtime selects the child whose `os`, `architecture`, and optional variant match the node.
 
-`--image-refs` records more than one line for this build in version 0.19.1: the index reference followed by platform-child references. The separate `index-ref.txt` prevents a later step from accidentally selecting a child by taking the last line.
+`--image-refs` records more than one line for this two-platform result in version 0.19.1: the index reference followed by platform-child references. The separate `index-ref.txt` prevents a later step from accidentally selecting a child by taking the last line.
 
 The platform spelling is exact: `linux/amd64` and `linux/arm64`. Go calls x86-64 `amd64`, even on cloud platforms that market it as x86_64.
 
@@ -75,7 +75,7 @@ Prefer the checked-in setting for release policy and the command-line flag for o
 
 ## Choose a Compatible Base Image
 
-The default `cgr.dev/chainguard/static` base is intentionally small and is published for common platforms. A custom base must also provide both requested variants. Pinning only a single-platform manifest digest makes the other target impossible.
+The default `cgr.dev/chainguard/static` base is intentionally small and is published for common platforms. A custom base must also provide both requested variants. Pinning only a single-platform manifest digest makes the other target impossible. In ko 0.19.1, platform selection filters the available base manifests; if only one requested platform matches, the build can succeed with a single-platform image. Always verify that the published result includes both targets.
 
 Inspect the base before building:
 
@@ -150,8 +150,9 @@ Common failures have distinct causes:
 
 | Symptom | Cause |
 | --- | --- |
-| No matching manifest for `linux/arm64` while building | The configured base lacks arm64 |
-| `exec format error` at runtime | Wrong child was loaded or a single-platform tag was used |
+| `no matching platforms in base image index` while building | None of the base index platforms match the requested platform list |
+| Only one platform after building | Only one requested platform matched the base; ko 0.19.1 can succeed with that single-platform result |
+| `exec format error` at runtime | The executable targets an incompatible architecture, for example because a child image for another architecture was loaded |
 | cgo link error | No matching C cross-toolchain or native libraries |
 | Works on amd64, crashes on arm64 | Application or dependency has architecture-specific behavior |
 | Only one platform after retagging | A child manifest, not the index, was copied |
