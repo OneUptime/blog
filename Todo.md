@@ -172,7 +172,6 @@
 
 ## Data Plane
 
-13. How to Prove Pod Traffic Cannot Bypass Envoy: Lock Down `NET_ADMIN`, Egress, and NetworkPolicy
 14. Why Istio Cannot Route Directly from One VirtualService to Another—and What to Model Instead
 15. Multi-Container Pod Metrics Vanish Under Strict mTLS: Build a Secure Fan-In Scrape Endpoint
 16. Istio Sidecar Cannot Resolve istiod: Trace Pod DNS, Bootstrap Configuration, and xDS Cluster Health
