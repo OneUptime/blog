@@ -41,7 +41,7 @@ Each built command gets the `kodata` associated with its import path. A sibling 
 
 ## Resolve Paths Defensively in Go
 
-Create one helper that validates the environment and prevents accidental absolute-path behavior:
+Create one helper that checks that `KO_DATA_PATH` is set and joins application-owned path components:
 
 ```go
 package assets
@@ -64,7 +64,7 @@ func Path(parts ...string) (string, error) {
 
 Only pass application-owned relative components. `filepath.Join` is not a security boundary for untrusted user input; reject traversal and avoid mapping arbitrary request paths directly to the filesystem.
 
-Parse required templates during startup so a bad image fails before receiving traffic:
+Parse required templates explicitly with `html/template` during startup so missing files or parse errors fail before receiving traffic:
 
 ```go
 root := os.Getenv("KO_DATA_PATH")
@@ -72,22 +72,27 @@ if root == "" {
 	log.Fatal("KO_DATA_PATH is not set")
 }
 
-templates, err := template.ParseGlob(
-	filepath.Join(root, "templates", "*.html"),
+templates, err := template.ParseFiles(
+	filepath.Join(root, "templates", "base.html"),
+	filepath.Join(root, "templates", "status.html"),
 )
 if err != nil {
 	log.Fatalf("load templates: %v", err)
 }
 ```
 
-Do not continue with an empty template set and discover it only on the first request.
+A glob only requires at least one matching file; naming each required file ensures a missing template is detected at startup.
 
 ## Serve Static Content with a Narrow Prefix
 
 Go's HTTP file server can serve the static subtree:
 
 ```go
-staticDir := filepath.Join(os.Getenv("KO_DATA_PATH"), "static")
+root := os.Getenv("KO_DATA_PATH")
+if root == "" {
+	log.Fatal("KO_DATA_PATH is not set")
+}
+staticDir := filepath.Join(root, "static")
 static := http.FileServer(http.Dir(staticDir))
 http.Handle("/static/", http.StripPrefix("/static/", static))
 ```
