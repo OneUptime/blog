@@ -101,7 +101,7 @@ The multi-target implementation has specific semantics:
 - failures increment `istio_agent_scrape_failures_total{type="application"}` without identifying the target; and
 - metric-family collisions are not renamed or deduplicated and can make Prometheus reject the exposition.
 
-Do not rely on Pod admission to validate this annotation. In Istio 1.31, a syntactically malformed target list, such as an entry with an empty port, is logged by the injector and leaves the multi-target list unset; injection can continue, using a valid legacy `prometheus.io/port` target if one was also supplied or otherwise merging no application target. Successfully parsed targets with nonnumeric, out-of-range, agent-conflicting, or Istio-reserved ports do reject injection. Inspect `ISTIO_PROMETHEUS_ANNOTATIONS` on the admitted Pod and test every heartbeat metric. A failed exporter at runtime otherwise yields a partial `200` response, so add a purpose-built aggregator when completeness must be atomic.
+Do not rely on Pod admission to validate this annotation. In Istio 1.31, a syntactically malformed target list, such as an entry with an empty port, is logged by the injector and leaves the multi-target list unset; injection can continue, using a valid legacy `prometheus.io/port` target if one was also supplied. If `prometheus.io/scrape: "true"` remains but no legacy port is set, the agent defaults to port `80` and path `/metrics` (unless a legacy path was supplied); it does not necessarily omit application scraping. Successfully parsed targets with nonnumeric, out-of-range, agent-conflicting, or Istio-reserved ports do reject injection. Inspect `ISTIO_PROMETHEUS_ANNOTATIONS` on the admitted Pod and test every heartbeat metric. A failed exporter at runtime otherwise yields a partial `200` response, so add a purpose-built aggregator when completeness must be atomic.
 
 This behavior is new in 1.31. Check both control-plane and proxy versions, and create a canary Pod through the matching revision before relying on it:
 
@@ -178,7 +178,7 @@ spec:
             METRICS_LOCALHOST_ACCESS_ONLY: "true"
 ```
 
-`ENVOY_SECURE_METRICS_PORT` conventionally uses `15091` for Envoy-only metrics; `ENVOY_SECURE_MERGED_METRICS_PORT` conventionally uses `15092` for Envoy, agent, and application metrics. Both default to `0` (disabled). `METRICS_LOCALHOST_ACCESS_ONLY` prevents the underlying plaintext `15020` and `15090` listeners from being reached outside the Pod, so enable it only after the secure scrape job is ready.
+`ENVOY_SECURE_METRICS_PORT` conventionally uses `15091` for Envoy-only metrics; `ENVOY_SECURE_MERGED_METRICS_PORT` conventionally uses `15092` for Envoy, agent, and application metrics. Both default to `0` (disabled). `METRICS_LOCALHOST_ACCESS_ONLY` binds Envoy's plaintext `15090` listener to loopback and makes the agent's `/stats/prometheus` handler on `15020` reject non-local requests with HTTP `403`; it does not close the entire `15020` listener. Enable it only after the secure scrape job is ready.
 
 For injected sidecars, the 1.31 injector automatically adds `prometheus.istio.io/secure-port` with the configured merged port. Do not add a conflicting manual value. Gateways are configured differently and may need an explicit discovery annotation; follow the sidecar or gateway section of the release-matched secure-metrics guide.
 
