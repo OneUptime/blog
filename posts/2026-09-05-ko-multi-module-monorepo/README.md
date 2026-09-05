@@ -46,7 +46,7 @@ It is not a replacement for module requirements. Each service still needs a vali
 
 ## Configure One Build Entry per Command
 
-At the repository root, create `.ko.yaml`:
+At the repository root, create `.ko.yaml`. Replace the digest placeholders with real SHA-256 digests (64 hexadecimal characters) and the example registry paths with repositories you can access. The linker flags assume each command imports its module's `internal/version` package with a string variable such as `var Commit = "dev"`, and that the checkout has Git commit metadata:
 
 ```yaml
 defaultBaseImage: cgr.dev/chainguard/static@sha256:BASE_INDEX_DIGEST
@@ -76,7 +76,7 @@ baseImageOverrides:
   example.com/acme/billing/cmd/worker: registry.example.com/base/billing@sha256:BILLING_BASE_DIGEST
 ```
 
-`dir` tells `ko` where to execute `go build`; `main` is relative to that directory. Both paths are relative to the working directory of the `ko` process. The friendly `id` does not become the Go import path or image name.
+`dir` tells `ko` where to execute `go build`; `main` is relative to that directory. `dir` is relative to the working directory of the `ko` process; the command path is the result of joining `dir` and `main`. The friendly `id` does not become the Go import path or image name.
 
 ## Invoke ko from the Contracted Root
 
@@ -115,7 +115,7 @@ Go workspace mode can make one module resolve another module to local source. Th
 
 Choose and test a policy:
 
-- Coordinated monorepo release: check in `go.work` and `go.work.sum`, then build from the root.
+- Coordinated monorepo release: check in `go.work` and, if Go generates it, `go.work.sum`, then build from the root.
 - Independently releasable modules: test each with `GOWORK=off` as well as any root integration tests.
 
 For example:
@@ -130,18 +130,21 @@ Do not generate an untracked `go.work` implicitly in release CI.
 
 ## Cache Every Module's Dependency Metadata
 
-Cache keys must include all relevant sums:
+For dependency-aware cache restoration, include module and workspace configuration as well as all existing sum files:
 
 ```text
+services/catalog/go.mod
 services/catalog/go.sum
+services/billing/go.mod
 services/billing/go.sum
+go.work
 go.work.sum
 .ko.yaml
 ```
 
-An exact hash can invalidate the dependency cache when either service changes. For very large repositories, per-module test jobs can use narrower keys, while the final multi-service release job uses the union.
+An exact hash changes the restore key when these dependency inputs change; source-only edits need not change it. `go.work.sum` is only present when the workspace needs checksums not already recorded in the modules' sum files. For very large repositories, per-module test jobs can use narrower keys, while the final multi-service release job uses the union.
 
-Share `GOCACHE` and `GOMODCACHE` only across compatible Go versions, platforms, and trust boundaries. `KOCACHE` can accelerate repeated `ko` image builds but should also be restored by a key that includes `.ko.yaml` and target platform policy.
+Share `GOCACHE` and `GOMODCACHE` only within trusted environments. Go keys build-cache entries by compiler and build inputs, and the module cache stores downloaded module content, so separate Go-version and platform restore keys are an optimization rather than a general correctness requirement. `KOCACHE` can accelerate repeated `ko` image builds but should also be restored by a key that includes `.ko.yaml` and target platform policy.
 
 ## Keep Image Naming Collision-Safe
 
@@ -158,16 +161,16 @@ ko build ./services/billing/cmd/worker --image-refs=dist/billing.txt
 
 ## Build Only Changed Services Carefully
 
-A path filter that sees a change under `services/catalog` can select the catalog image. Shared modules, root tooling, `.ko.yaml`, base digests, and `go.work.sum` may affect several services. Maintain an explicit dependency graph or conservatively rebuild all services when shared inputs change.
+A path filter that sees a change under `services/catalog` can select the catalog image. Shared modules, root tooling, `.ko.yaml`, base digests, `go.work`, and `go.work.sum` may affect several services. Maintain an explicit dependency graph or conservatively rebuild all services when shared inputs change.
 
-Skipping a build is a release decision, not merely a CI optimization. The existing digest remains valid only if none of its declared or generated inputs changed.
+Skipping a build is a release decision, not merely a CI optimization. The existing digest still identifies the old image when inputs change, but reusing it for a new release requires checking whether those changes affect the service.
 
 ## Verify Independent Runtime Contracts
 
 Each service may use a different base, port, user, and native dependency. After the build:
 
 1. Inspect every digest in the reference files.
-2. Run the binary's version command.
+2. Run the binary's version command, if the service implements one; `ko` does not add one.
 3. Smoke-test the service on every supported platform.
 4. Confirm its configured base and nonroot permissions.
 5. Retain a manifest that maps logical service name to digest.
