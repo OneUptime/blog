@@ -10,7 +10,7 @@ Description: Benchmark replicated and erasure-coded HDFS reads with identical da
 
 The cost of an HDFS erasure-coded read is workload-specific. Healthy sequential reads can benefit from parallel internal-block access, while small, random, off-rack, or degraded reads can pay extra scheduling, network, and decoding costs. A useful migration test therefore compares the same bytes and access pattern under both layouts and records more than elapsed time.
 
-Do this in a representative staging cluster. Deliberately failing a DataNode in production just to obtain a benchmark is not a safe test method.
+Run the examples in Bash on Linux with GNU Coreutils and GNU Time installed at `/usr/bin/time`. Do this in a representative staging cluster. Deliberately failing a DataNode in production just to obtain a benchmark is not a safe test method.
 
 ## Define the Question Before Running It
 
@@ -36,7 +36,7 @@ hadoop checknative
 hdfs dfsadmin -report
 ```
 
-Hadoop's default RS and XOR coder configuration prefers native ISA-L and falls back to pure Java. Capture `hadoop checknative` on the benchmark client and every DataNode image; an accelerated client with unaccelerated DataNodes can distort degraded-read conclusions.
+Hadoop's default RS and XOR coder configuration prefers native ISA-L and falls back to pure Java. Capture `hadoop checknative` on the benchmark client and every DataNode image; foreground degraded-read decoding runs on the client, while DataNodes decode during background reconstruction. Record both so reconstruction contention is not mistaken for client decoding cost.
 
 ## Create Matched Datasets
 
@@ -47,7 +47,7 @@ mkdir -p /tmp/hdfs-read-fixture
 for n in 00 01 02 03 04 05 06 07; do
   dd if=/dev/urandom \
     of="/tmp/hdfs-read-fixture/object-$n.bin" \
-    bs=1M count=1024 status=progress
+    bs=1M count=1024 iflag=fullblock status=progress
 done
 
 (cd /tmp/hdfs-read-fixture && sha256sum object-*.bin) \
@@ -68,9 +68,11 @@ hdfs ec -getPolicy -path /bench/read-replicated/object-00.bin
 hdfs ec -getPolicy -path /bench/read-ec/object-00.bin
 ```
 
-Stream each dataset back once and compare it with the external manifest:
+Stream each dataset back once and compare it with the external manifest. Run this block as a Bash script so any read error or mismatch stops validation:
 
 ```bash
+set -euo pipefail
+
 for layout in read-replicated read-ec; do
   for n in 00 01 02 03 04 05 06 07; do
     hdfs dfs -cat "/bench/$layout/object-$n.bin" |
@@ -87,7 +89,7 @@ cmp /tmp/expected.hashes /tmp/ec.hashes
 
 ## Run Interleaved Trials
 
-Avoid running all replicated trials first and all EC trials second. Background load, JVM warm-up, and cache state drift over time. Alternate layouts and vary file order:
+Avoid running all replicated trials first and all EC trials second. Background load and cache state drift over time. Alternate layouts and vary file order:
 
 ```bash
 run_read() {
@@ -111,10 +113,10 @@ Test at least:
 1. one-client sequential scans;
 2. production concurrency and file-size mix;
 3. range or random reads if the application uses them;
-4. a controlled degraded read with one unavailable internal block;
+4. a controlled degraded read with one unavailable data internal block needed by the requested range; losing only a parity block does not force client decoding;
 5. reads while EC reconstruction is active.
 
-Use the real application or a small client built on the same HDFS API for range tests. Shell `cat` is intentionally a sequential baseline.
+Use the real application or a small client built on the same HDFS API for range tests. Shell `cat` is intentionally a sequential baseline. Each invocation starts a fresh JVM, so these timings include client startup and JVM warm-up; use a persistent client with a separate warm-up phase to measure steady-state application reads.
 
 ## Observe the Whole Data Path
 
