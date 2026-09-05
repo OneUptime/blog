@@ -124,7 +124,7 @@ Check required variables in Bash:
 : "${REPLICAS:?REPLICAS is required}"
 ```
 
-Check the existing shape and new type in yq:
+Check the existing shape and new type in yq, exiting the script if validation fails:
 
 ```bash
 REPLICAS=$REPLICAS yq -e '
@@ -135,7 +135,7 @@ REPLICAS=$REPLICAS yq -e '
   )) and
   ((env(REPLICAS) | tag) == "!!int") and
   (env(REPLICAS) >= 1)
-' config.yml >/dev/null
+' config.yml >/dev/null || exit 1
 ```
 
 The name-tag check is not redundant: in v4.53.3, scalar `==` compares textual values and does not require matching YAML tags. Without it, an external string name such as `3` can also match an integer-valued `name: 3`.
@@ -172,7 +172,7 @@ Reject duplicates before the upsert:
 NAME=$NAME yq -e '
   [.services[] | select(.name == strenv(NAME))] |
   length <= 1
-' config.yml >/dev/null
+' config.yml >/dev/null || exit 1
 ```
 
 For global name uniqueness, compare lengths before and after `unique_by`:
@@ -181,7 +181,7 @@ For global name uniqueness, compare lengths before and after `unique_by`:
 yq -e '
   (.services // []) as $items |
   ($items | length) == ($items | unique_by(.name) | length)
-' config.yml >/dev/null
+' config.yml >/dev/null || exit 1
 ```
 
 `unique_by(.name)` preserves the first representative for each unique value in current yq. Use it as a detector here rather than silently deleting duplicates whose conflicting fields might require human resolution.
@@ -259,7 +259,7 @@ else
 fi
 ```
 
-This reads the file and then writes it in a second process. Another writer can change the file between those operations, so the one-expression form is preferable when the file is not otherwise locked.
+This reads the file and then writes it in a second process. Another writer can change the file between those operations. The one-expression form avoids that extra check-then-update window, but its read-modify-write cycle is not protected against concurrent writers either; use a lock shared by all writers when concurrent updates are possible.
 
 ## Preserve Ordering and Comments Deliberately
 
