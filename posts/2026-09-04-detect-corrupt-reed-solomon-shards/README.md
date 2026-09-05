@@ -25,7 +25,7 @@ For each object or stripe group, preserve:
 
 The manifest must not have the same single failure as the shards. Replicate it, place it in a strongly consistent metadata service, and authenticate it. If an attacker can replace a shard and its unauthenticated digest, SHA-256 alone does not establish provenance; sign the manifest or use a MAC under a separately protected key.
 
-Generate a simple manifest for existing shard files:
+Generate a simple checksum list for existing shard files that are already known to be intact; hashing damaged files would record their corruption as the baseline. This list still needs authentication and the encoding metadata described above:
 
 ```bash
 sha256sum shard-00.bin shard-01.bin shard-02.bin \
@@ -80,7 +80,7 @@ ReedSolomon codec = ReedSolomon.create(dataShards, parityShards);
 boolean consistent = codec.isParityCorrect(shards, 0, shardSize);
 ```
 
-A `true` result is a useful consistency check when the data and parity arrays are in the expected order. A `false` result proves that something is inconsistent, but it does **not** identify the bad member. The error could be in a data shard, a parity shard, an index mapping, a length, or the encoding parameters.
+A `true` result is a useful consistency check when the data and parity arrays are in the expected order. A `false` result proves that something is inconsistent, but it does **not** identify the bad member. The error could be in a data shard, a parity shard, an index mapping, or the encoding parameters. Unequal buffer lengths or an out-of-bounds byte range cause `IllegalArgumentException` instead of a `false` result.
 
 Do not remove random shards until the parity equation happens to pass. With enough parity and a small candidate set, combinatorial diagnosis is possible, but an unauthenticated parity match is not a substitute for stored per-shard digests and can select the wrong codeword.
 
@@ -112,7 +112,7 @@ If no trusted per-shard hashes exist, a parity mismatch cannot reliably name the
 
 1. retrieve another replica and compare each shard index;
 2. use storage-device or transport checksums that are themselves authenticated and mapped to exact shard ranges;
-3. use a decoder explicitly designed for unknown errors, with enough parity for the `2E + S <= M` bound;
+3. use a decoder explicitly designed for unknown errors, with enough parity for the `2E + S <= M` bound, where `E` counts unknown symbol errors and `S` counts known symbol erasures in each codeword;
 4. stop and preserve all candidates when the correction result cannot be verified externally.
 
 An erasure-only API should never be told that an unverified shard is healthy. Silent corruption can then produce a plausible but wrong file.
@@ -125,7 +125,7 @@ Also test a corrupted manifest and wrong `K`, `M`, or shard size. Metadata is pa
 
 ## Conclusion
 
-Reed-Solomon parity repairs data after the caller identifies trustworthy inputs; it is not a shard-localization oracle. Store authenticated per-shard hashes and encoding metadata, classify every mismatch as an erasure, and refuse to decode without at least `K` verified sources. Verify reconstructed shards and the complete object before committing recovery.
+An erasure-only Reed-Solomon decoder repairs data after the caller identifies trustworthy inputs; its parity check is not a shard-localization oracle. Store authenticated per-shard hashes and encoding metadata, classify every mismatch as an erasure, and refuse to decode without at least `K` verified sources. Verify reconstructed shards and the complete object before committing recovery.
 
 ## Official Documentation
 
