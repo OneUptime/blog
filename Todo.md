@@ -178,7 +178,6 @@
 
 ## yq
 
-10. How to Build YAML Arrays and Nested Objects from Bash Data with yq
 11. How to Deep-Merge Multiple YAML Files with Explicit Override Precedence in yq
 12. How to Merge YAML Arrays by a Unique Key Instead of Replacing Them with yq
 13. How to Keep Every Conflicting Value When Merging YAML Files with yq
