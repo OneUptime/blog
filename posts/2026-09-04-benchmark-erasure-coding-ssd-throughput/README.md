@@ -19,7 +19,8 @@ For `K` data shards, `M` parity shards, and shard length `S`:
 ```text
 useful bytes per full stripe  = K * S
 encoded bytes per stripe      = (K + M) * S
-parity write amplification    = M / K
+parity overhead ratio         = M / K
+full-stripe write ratio        = (K + M) / K
 ```
 
 Always label throughput as one of:
@@ -29,7 +30,7 @@ Always label throughput as one of:
 - physical storage throughput, counting all bytes read and written;
 - network throughput, counting bytes crossing the measured link.
 
-If a `10+4` encoder consumes 10 GiB/s of data and produces 4 GiB/s of parity, it is 10 GiB/s useful encode throughput and 14 GiB/s of aggregate input-plus-output memory traffic before extra copies. Calling it 14 GiB/s of user throughput would be misleading.
+If a `10+4` encoder consumes 10 GiB/s of data and produces 4 GiB/s of parity, it is 10 GiB/s useful encode throughput and 14 GiB/s of logical input-plus-output buffer throughput. Actual memory traffic depends on cache reuse, repeated input reads, write allocation, and extra copies. Calling it 14 GiB/s of user throughput would be misleading.
 
 ## Record a Reproducible Test Envelope
 
@@ -51,7 +52,7 @@ Use a dedicated benchmark host or an isolated maintenance window. Never aim a wr
 
 ## Establish an SSD Baseline First
 
-The codec cannot exceed a storage bottleneck. Characterize sequential read and write bandwidth, latency, and scaling with jobs and queue depth. A conservative fio job file for a preallocated scratch file might begin with:
+End-to-end useful throughput is bounded by the storage data path, even when the in-memory codec is faster. Characterize sequential read and write bandwidth, latency, and scaling with jobs and queue depth. A conservative fio job file for a preallocated scratch file might begin with:
 
 ```ini
 [global]
@@ -73,7 +74,7 @@ filename=ec-baseline.dat
 fsync_on_close=1
 ```
 
-Create the directory on the explicitly approved scratch filesystem, verify its mount and free capacity, then run:
+Save this as `baseline-write.fio`. Create `baseline-read.fio` with the same settings, but rename the job to `[seq-read]`, set `rw=read`, remove `fsync_on_close=1`, and set `allow_file_create=0`. Create the directory on the explicitly approved scratch filesystem and verify its mount and free capacity. Before measuring reads, write and flush the entire configured file range; preallocation alone can leave unwritten extents that return zeros without SSD reads. A time-limited write run does not guarantee full coverage. Then run:
 
 ```bash
 fio --readonly baseline-read.fio --output-format=json --output=read.json
@@ -82,7 +83,7 @@ fio baseline-write.fio --output-format=json --output=write.json
 
 Use separate read and write job files so the `--readonly` guard is meaningful for the read test. Adapt engine and alignment to the production filesystem and platform. `direct=1` reduces page-cache influence but does not bypass every device cache. `fsync_on_close=1` tests a particular durability boundary, not per-stripe synchronous latency. If the application flushes each group, model that exact behavior in a separate test.
 
-Precondition SSDs consistently and use a data set larger than RAM for uncached tests. Monitor temperature, media errors, throttling, garbage collection, and actual device utilization. A short fresh-drive burst is not sustainable throughput.
+Precondition SSDs consistently. For buffered tests intended to exceed page cache, use a data set larger than available cache; effective direct I/O does not require a data set larger than RAM. Monitor temperature, media errors, throttling, garbage collection, and actual device utilization. A short fresh-drive burst is not sustainable throughput.
 
 ## Build and Validate an Optimized Codec
 
@@ -110,11 +111,11 @@ The included performance program accepts data count, parity count, a simulated u
 ./erasure_code/erasure_code_perf -k 10 -p 4 -e 4 -s 1M
 ```
 
-Confirm the binary path produced by the pinned build rather than assuming it. The program requires its supplied buffer size to be a multiple of 64 bytes. Its default build uses a small repeated data set for a warm-cache measurement; the source also has a `COLD_TEST` configuration for data larger than the last-level cache. Record which was built. Run both warm and cold cases because the first measures kernel execution while the second exposes memory pressure.
+Confirm the binary path produced by the pinned build rather than assuming it. The program requires its supplied buffer size to be a multiple of 64 bytes. Without `-s`, its default build repeatedly uses a small data set. With `-s 1M`, the working set is larger, so confirm that it fits the target cache before calling the result warm-cache. The compile-time `COLD_TEST` setting changes the default size using `GT_L3_CACHE` (32 MiB by default), which may be smaller than a modern last-level cache and is overridden by `-s`. Current source also supports runtime `--cold`, which rotates buffer sets in a roughly 10 GiB allocation; verify the actively touched working set exceeds the target cache. Record the build settings and runtime mode. Run cache-resident and cache-exceeding cases to distinguish codec execution from memory-system limits. The runtime `--cold` path skips the final recovered-buffer comparison, so its printed pass message is not an integrity check; validate those results with the correctness harness below.
 
 Although the option is named `-e`, the harness deliberately withholds buffers at known indexes and reconstructs them. It therefore measures erasure recovery, not localization and correction of unknown corrupt symbols. Do not use that number to claim mixed error-and-erasure performance.
 
-The current decode benchmark also constructs and inverts the decode matrix before its timed kernel loop. That is reasonable when one failure pattern is reused across many stripes, but it excludes setup latency when the missing-index pattern changes. Measure matrix setup and buffer orchestration in the end-to-end harness if short objects or rapidly changing patterns make those costs significant.
+The current decode benchmark also constructs and inverts the decode matrix before its timed kernel loop. That is reasonable when one failure pattern is reused across many stripes, but it excludes setup latency when the missing-index pattern changes. Measure matrix setup and buffer orchestration in the end-to-end harness if short objects or rapidly changing patterns make those costs significant. Its reported encode rate counts `(K+M)*S` bytes and its decode rate counts `(K+E)*S` bytes for `E` erasures; convert these to the useful-byte denominator before comparing results.
 
 ## Use a Production-Shaped Test Matrix
 
@@ -173,7 +174,7 @@ Performance output is invalid unless the bytes are correct. For every measured i
 6. Compare reconstructed shard digests and the final object digest.
 7. Fail the entire run on any mismatch.
 
-Test losses at the first, middle, and last shard indexes, all single erasures, representative combinations, and exactly `M` erasures. Verify that `M+1` missing shards fail closed. Include lengths just below and above stripe boundaries so padding and truncation errors cannot hide.
+Use a matrix that guarantees recovery from any `M` erasures for the selected layout. ISA-L’s `gf_gen_rs_matrix`, used by this performance program, does not guarantee this for every supported size; the shown `10+4` layout is within its documented safe limits. Validate other layouts against those limits or use a suitable matrix such as `gf_gen_cauchy1_matrix`. Test losses at the first, middle, and last shard indexes, all single erasures, representative combinations, and exactly `M` erasures. Verify that `M+1` missing shards fail closed. Include lengths just below and above stripe boundaries so padding and truncation errors cannot hide.
 
 Use scratch copies for destructive drills. Never delete or overwrite the only generation of a test corpus that is also needed as evidence. Retain raw result JSON, logs, configuration, hashes, and the software commit together.
 
