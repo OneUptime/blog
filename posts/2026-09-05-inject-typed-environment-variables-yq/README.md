@@ -156,11 +156,11 @@ Output:
 
 ```yaml
 service:
-  ports:
-    - 8080
-    - 8443
+  ports: [8080, 8443]
 resources:
-  limits: {cpu: 500m, memory: 512Mi}
+  limits:
+    cpu: 500m
+    memory: 512Mi
 ```
 
 This is convenient when the variable comes from a trusted, properly serialized source. Do not hand-build JSON or YAML by concatenating arbitrary Bash strings. Quotes, backslashes, newlines, and comment characters can change the parse tree. Use a serializer, or pass individual values through `strenv` and construct the array or object in the yq expression.
@@ -248,13 +248,13 @@ url: https://api.internal:8443/health
 
 The official options mean:
 
-- `nu`: reject an unset referenced variable;
+- `nu`: reject an unset referenced variable unless the placeholder supplies a default;
 - `ne`: reject a referenced variable that is set but empty;
 - `ff`: stop at the first substitution failure.
 
 `envsubst` does not turn the resulting text into an integer, boolean, map, or array. Use `env` when the entire environment variable represents a typed YAML node.
 
-To substitute placeholders in every string node of a document:
+To substitute placeholders in every string value node of a document (excluding map keys):
 
 ```bash
 yq '(.. | select(tag == "!!str")) |= envsubst(nu, ff)' template.yml
