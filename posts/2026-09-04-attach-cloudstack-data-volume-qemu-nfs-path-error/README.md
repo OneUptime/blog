@@ -14,7 +14,7 @@ Preserve the failed async job and diagnose the storage object CloudStack actuall
 
 ## Reconcile the Volume and VM
 
-Capture the volume UUID, VM UUID, zone, hypervisor, cluster, storage pool, state, type, size, device ID, and latest job:
+Using an administrator account, capture the volume UUID, VM UUID, zone, hypervisor, cluster, storage pool, state, type, size, device ID, and latest job:
 
 ```bash
 cmk list volumes id=VOLUME_UUID listall=true
@@ -40,7 +40,7 @@ sudo grep -nE 'VOLUME_UUID|VM_UUID' \
 sudo journalctl -u libvirtd -u cloudstack-agent -n 250 --no-pager
 ```
 
-Use the first QEMU/libvirt error. Later “attach failed” messages usually lose the path or permission detail.
+On hosts using modular libvirt daemons, also inspect the `virtqemud` and `virtstoraged` journals. Use the first QEMU/libvirt error. Later “attach failed” messages usually lose the path or permission detail.
 
 ## Verify CloudStack's Storage Pool, Not a Guessed Directory
 
@@ -61,10 +61,10 @@ Check whether the path in the error exists and is accessible without modifying i
 ```bash
 sudo namei -l /PATH/FROM/QEMU_ERROR
 sudo stat /PATH/FROM/QEMU_ERROR
-sudo -u qemu test -r /PATH/FROM/QEMU_ERROR && echo readable
+sudo -u QEMU_USER test -r /PATH/FROM/QEMU_ERROR && echo readable
 ```
 
-The runtime QEMU account varies by distribution; determine it from the active domain/process rather than assuming `qemu`. Avoid `chown -R` on CloudStack storage. Ownership may be intentional, and a recursive change can corrupt access for every VM.
+The runtime QEMU account varies by distribution; determine it from the active domain/process and replace `QEMU_USER` with that account. This checks read access only; a writable disk also requires write access, and this test does not reproduce QEMU's confinement context. Avoid `chown -R` on CloudStack storage. Ownership may be intentional, and a recursive change can corrupt access for every VM.
 
 ## Diagnose NFS from the Affected Host
 
@@ -76,6 +76,8 @@ nfsstat -m
 sudo journalctl -k -n 250 --no-pager | \
   grep -Ei 'nfs|stale|not responding|permission|I/O error'
 ```
+
+`showmount` queries the MNT service, which NFSv4-only servers may not expose. A failed `showmount` or rpcbind query alone does not establish that NFSv4 storage is unavailable.
 
 Common causes include:
 
@@ -104,7 +106,7 @@ sudo journalctl -k -b | grep -Ei 'apparmor|avc:|selinux|denied'
 
 A path that root can read may still fail under QEMU's service account, SELinux label, AppArmor profile, or libvirt namespace. Use the distribution's supported policy tooling and CloudStack/libvirt paths. Do not disable all confinement to make one attach work.
 
-If QEMU reports unsupported format/backing files, inspect with read-only metadata tools from a controlled context:
+If QEMU reports unsupported format/backing files, inspect with read-only metadata tools after confirming that no VM or other process is modifying the image or its backing chain; querying an active image can fail on locks or return inconsistent metadata:
 
 ```bash
 sudo qemu-img info --backing-chain /PATH/FROM/QEMU_ERROR
@@ -120,9 +122,9 @@ Choose the repair that matches the first error:
 - Correct export authorization or the narrow QEMU security policy.
 - Reconnect/re-enable an otherwise healthy storage pool or host through CloudStack.
 - Move the VM to a host with valid access if placement policy supports it.
-- Stop the VM and migrate the volume to a healthy pool through CloudStack when the old pool cannot be repaired.
+- If the source volume remains readable, stop the VM and migrate the volume to a healthy pool through CloudStack. If source data is inaccessible, restore access or recover from a valid backup before attempting migration.
 
-CloudStack documents volume migration within a zone. KVM does not support standalone live volume migration because the running VM XML cannot be refreshed safely. Use `migrateVirtualMachineWithVolume` to move the VM and its disks to another host, or stop the VM before using `migrateVolume`, exactly as the current storage guide directs.
+CloudStack documents volume migration within a zone. For the NFS-backed storage discussed here, CloudStack does not support standalone live volume migration on KVM because the running VM XML cannot be refreshed safely. Use `migrateVirtualMachineWithVolume` to move the VM and its disks to another host, or stop the VM before using `migrateVolume`, exactly as the current storage guide directs.
 
 Do not change the storage URL in MySQL or move the disk file manually.
 
@@ -141,10 +143,10 @@ Inside the guest, identify the new disk by size, serial, or filesystem UUID, not
 ```bash
 lsblk -o NAME,SIZE,TYPE,FSTYPE,UUID,MOUNTPOINTS,SERIAL
 sudo blkid
-dmesg | tail -n 100
+sudo dmesg | tail -n 100
 ```
 
-Do not format a disk just because it has no mount point. Verify its identity and whether it contains data. Mount read-only first when recovering an existing filesystem.
+Do not format a disk just because it has no mount point. Verify its identity and whether it contains data. Mount read-only first when recovering an existing filesystem, using its supported no-recovery options if writes must be prevented: a plain read-only mount can still replay a journal (for example, ext4 requires `ro,noload` to suppress replay). Skipping recovery can expose an inconsistent filesystem, so follow its recovery procedure.
 
 ## Verify and Roll Back
 
