@@ -1,4 +1,4 @@
-# How to Choose Local, NFS, or Ceph Primary Storage for CloudStack VM High Availability
+# Choose Local, NFS, or Ceph Storage for CloudStack VM High Availability
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
@@ -23,7 +23,7 @@ Write down the failures the platform must survive and the maximum acceptable int
 - Who operates storage at 03:00, and how will they restore a deleted or corrupt volume?
 - Are snapshots and backups independent of the primary-storage failure domain?
 
-CloudStack HA is orchestration. It detects failure and schedules recovery according to the VM and service-offering settings. Shared or otherwise cross-host-accessible storage, spare compute capacity, working fencing, and healthy system VMs are separate prerequisites. A storage replica is also not a backup: deletion, corruption, and compromised credentials can propagate to every replica.
+CloudStack HA is orchestration. It detects failure and schedules recovery according to the VM and service-offering settings. Cross-host recovery also requires accessible storage, spare compute capacity, working fencing, and an available management server and database. System VMs must be healthy for the services they provide, such as virtual routing; they are not all prerequisites for an HA restart. A storage replica is also not a backup: deletion, corruption, and compromised credentials can propagate to every replica.
 
 ## Compare the Three Designs
 
@@ -54,9 +54,9 @@ sudo virsh pool-list --all
 findmnt -T /PATH/TO/LOCAL/STORAGE
 ```
 
-Keep local paths and pool UUIDs unique and stable. Do not use a shared filesystem while declaring it as local, or bind-mount unrelated paths to make pool discovery pass. CloudStack must have an accurate model of where each volume lives.
+Keep pool UUIDs unique and local paths stable on each host; different hosts can use the same local directory name. Do not use a shared filesystem while declaring it as local, or bind-mount unrelated paths to make pool discovery pass. CloudStack must have an accurate model of where each volume lives.
 
-CloudStack cannot migrate a local data volume to another host, either by itself or with its VM. Host maintenance therefore stops VMs that use local storage instead of transparently relocating them. Choose local storage only when the application recovery plan accepts host-local volume loss, and use application replication or a tested backup-and-recreate workflow for relocation. Marking the VM HA-enabled does not change this storage fact.
+CloudStack cannot migrate a local data volume to another host, either by itself or with its VM. Before putting a host into maintenance, stop its VMs with local data volumes; CloudStack cannot transparently relocate them. Choose local storage only when the application recovery plan accepts host-local volume loss, and use application replication or a tested backup-and-recreate workflow for relocation. Marking the VM HA-enabled does not change this storage fact.
 
 ## When NFS Is the Right Choice
 
@@ -68,7 +68,7 @@ From each candidate KVM host, inspect rather than remounting a live pool:
 
 ```bash
 getent ahosts NFS_SERVER
-showmount -e NFS_SERVER
+showmount -e NFS_SERVER # May be unavailable on an NFSv4-only server
 nfsstat -m
 findmnt -t nfs,nfs4
 sudo virsh pool-list --all
@@ -81,15 +81,15 @@ Do not change an export path, mount over a CloudStack-managed target, or force-u
 
 ## When Ceph RBD Is the Right Choice
 
-Ceph RBD distributes block data across OSDs and lets KVM/libvirt clients access a common pool. It avoids a single NFS head and can tolerate failures according to the pool's replica or erasure-coding policy and CRUSH failure domains.
+Ceph RBD distributes block data across OSDs and lets KVM/libvirt clients access a common pool. It avoids a single NFS head and can tolerate failures according to the pool's replica or erasure-coding policy and CRUSH failure domains. RBD metadata requires a replicated pool; an erasure-coded data pool requires overwrite support and a compatible image-creation workflow in the deployed CloudStack version.
 
 That resilience depends on sound operation. Place monitors and OSDs across real host, rack, network, and power domains. Reserve capacity and bandwidth for backfill and recovery. Protect CephX keys, use least-privilege client capabilities, and monitor health before allowing CloudStack to schedule more writes.
 
-Run read-only checks from every KVM host with the same client identity CloudStack/libvirt will use:
+Run the RBD access checks from every KVM host with the same client identity CloudStack/libvirt will use. For cluster health and OSD statistics, use a monitoring identity with the required read permissions; a restricted RBD client may not have them. The CLI also needs the appropriate Ceph configuration and keyring; a libvirt secret alone does not configure CLI authentication:
 
 ```bash
-ceph --id CLOUDSTACK_CLIENT health detail
-ceph --id CLOUDSTACK_CLIENT osd df tree
+ceph --id MONITORING_CLIENT health detail
+ceph --id MONITORING_CLIENT osd df tree
 rbd --id CLOUDSTACK_CLIENT pool stats CLOUDSTACK_RBD_POOL
 rbd --id CLOUDSTACK_CLIENT ls CLOUDSTACK_RBD_POOL
 sudo virsh secret-list
@@ -164,19 +164,20 @@ Confirm that all intended destination hosts can access the same shared pool. A s
 
 ## Roll Back Safely
 
-If the new pool fails validation, stop placing new volumes on it. Migrate or recreate every test volume through CloudStack, then confirm the pool has no volumes, templates, snapshots, or active jobs:
+If the new pool fails validation, stop placing new volumes on it. Migrate or recreate every test volume through CloudStack, then inspect remaining volumes, primary-storage snapshots, cached objects, and related active jobs as a root administrator:
 
 ```bash
 cmk list volumes storageid=STORAGE_POOL_UUID listall=true
-cmk list snapshots listall=true
+cmk list snapshots storageid=STORAGE_POOL_UUID locationtype=primary showunique=false listall=true
+cmk list storagepoolobjects id=STORAGE_POOL_UUID
 cmk list asyncjobs listall=true
 ```
 
-Only then use the documented pool maintenance and delete operation. Never delete the backing directory, NFS export, RBD pool, or Ceph client key while CloudStack still references it. Keep the old pool intact until restored VMs have passed application-level checks and backup restore tests.
+Review every result page, repeat the volume and snapshot queries with projectid=-1 for project resources, and include system-VM volumes with listsystemvms=true. Correlate jobs with the pool and its resources, and inspect cached templates and snapshot dependencies through CloudStack; these lists alone do not prove that the pool is unused. Once dependencies are resolved, use the documented pool maintenance and delete operation. Never delete the backing directory, NFS export, RBD pool, or Ceph client key while CloudStack still references it. Keep the old pool intact until restored VMs have passed application-level checks and backup restore tests.
 
 ## Troubleshooting Selection Mistakes
 
-- **HA restart has no destination:** verify the volume is on storage reachable from another compatible host, there is contiguous compute capacity, the host is fenced, and offering/affinity constraints permit placement.
+- **HA restart has no destination:** verify the volume is on storage reachable from another compatible host, a compatible destination host has enough CPU and RAM, the host is fenced, and offering/affinity constraints permit placement.
 - **NFS VM I/O freezes:** inspect server health, network loss, client mount state, latency, and kernel logs. Do not force-unmount a live QEMU path.
 - **Ceph latency spikes during recovery:** check fullness, placement-group state, slow operations, client network saturation, and recovery tuning. Do not hide degraded redundancy by clearing health warnings.
 - **A pool is healthy but never selected:** compare zone/cluster scope, provider, hypervisor, storage tags, disk-offering tags, and capacity thresholds.
@@ -189,7 +190,7 @@ Choose storage from the recovery objective outward. Local disks favor simplicity
 ## Official Documentation
 
 - [Apache CloudStack: Storage](https://docs.cloudstack.apache.org/en/latest/adminguide/storage.html)
-- [Apache CloudStack: Virtual Machine High Availability](https://docs.cloudstack.apache.org/en/latest/adminguide/virtual_machines.html#vm-lifecycle)
+- [Apache CloudStack: Virtual Machine High Availability](https://docs.cloudstack.apache.org/en/latest/adminguide/reliability.html#ha-enabled-instances)
 - [Apache CloudStack: Service Offerings](https://docs.cloudstack.apache.org/en/latest/adminguide/service_offerings.html)
 - [Apache CloudStack: createStoragePool API](https://cloudstack.apache.org/api/apidocs-4.23/apis/createStoragePool.html)
 - [Ceph: RADOS Block Device](https://docs.ceph.com/en/latest/rbd/)

@@ -1,4 +1,4 @@
-# How to Inject Environment Variables with yq While Preserving String, Number, and Boolean Types
+# Inject Typed Environment Variables with yq
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

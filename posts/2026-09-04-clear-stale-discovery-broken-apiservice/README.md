@@ -1,4 +1,4 @@
-# 'Couldn't Get Current Server API Group List': Clear Stale Discovery and Find Broken APIService Registrations
+# Fix Stale Kubernetes Discovery and Broken APIService Registrations
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

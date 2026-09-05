@@ -1,4 +1,4 @@
-# How to Debug a ko Container That Has No Shell, Package Manager, or Debug Utilities
+# Debug a Shell-Less ko Container
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

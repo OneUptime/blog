@@ -1,4 +1,4 @@
-# How to Build Multiple Go Services from a Monorepo with ko and Multiple `go.mod` Files
+# Build Multiple Go Modules from a Monorepo with ko
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

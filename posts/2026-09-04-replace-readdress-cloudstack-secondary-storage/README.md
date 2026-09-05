@@ -1,4 +1,4 @@
-# How to Replace or Readdress CloudStack Secondary Storage Without Breaking Templates
+# Replace CloudStack Secondary Storage Without Breaking Templates
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

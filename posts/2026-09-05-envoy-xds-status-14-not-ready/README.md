@@ -1,4 +1,4 @@
-# Envoy Data Plane Is Stuck Not Ready: Diagnose xDS gRPC Status 14, DNS, and `initial_fetch_timeout`
+# Diagnose Envoy xDS gRPC Status 14 and `initial_fetch_timeout`
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
@@ -47,7 +47,7 @@ istioctl proxy-status
 istioctl proxy-status checkout-7d9f6f7c8b-k2j9m.payments
 ```
 
-A missing proxy is not connected. `STALE` means Istiod sent an update for which it has not received an acknowledgement. `NOT SENT` can be normal when Istiod has no resource of that type to send, so it is not by itself an outage signal.
+A missing proxy is not connected to the Istiod instances queried. Confirm the Kubernetes context, control-plane namespace, and revision (using `--revision` where needed) before treating absence as a connection failure. `STALE` means Istiod sent an update for which it has not received an acknowledgement. `NOT SENT` can be normal when Istiod has no resource of that type to send, so it is not by itself an outage signal.
 
 ## Identify Both xDS Hops
 
@@ -65,7 +65,7 @@ jq '{dynamicResources: .bootstrap.dynamicResources,
   /tmp/checkout-bootstrap.json
 ```
 
-In the stock Istio 1.31 sidecar, Envoy's ADS cluster is `xds-grpc` and points to pilot-agent's local `./etc/istio/proxy/XDS` Unix-domain socket. The Envoy bootstrap therefore does not normally contain the remote Istiod hostname or port `15012`. Searching only that file for `discoveryAddress` can send the investigation down the wrong path.
+In the stock Istio 1.31 sidecar, Envoy's ADS cluster is `xds-grpc` and points to pilot-agent's local `./etc/istio/proxy/XDS` Unix-domain socket. The remote address is not the ADS cluster endpoint, but it is included in bootstrap node metadata at `.bootstrap.node.metadata.PROXY_CONFIG.discoveryAddress`. Inspect that value and correlate it with pilot-agent's startup log to distinguish the remote hop from Envoy's local socket.
 
 Pilot-agent reads the remote address from its effective `ProxyConfig` and logs it when the xDS proxy starts. Capture that runtime evidence and the Pod-level overrides:
 
@@ -115,14 +115,14 @@ kubectl -n kube-system logs -l k8s-app=kube-dns \
   --since=10m --max-log-requests=10
 ```
 
-Istio application DNS capture and pilot-agent's own resolution are not the same path in every case. The ephemeral container has its own UID, so its port-53 traffic may be redirected through Istio's DNS proxy while the sidecar process is excluded from application capture. Istio documentation also notes that DNS proxying for applications does not change how Envoy periodically resolves `ServiceEntry` hosts. For the agent's upstream xDS address, correlate the debug lookup with the agent's actual resolver and connection log rather than assuming that enabling application DNS capture repairs it.
+Istio application DNS capture and pilot-agent's own resolution are not the same path in every case. The ephemeral container can run with a different UID from the sidecar, so its port-53 traffic may be redirected through Istio's DNS proxy while the sidecar process is excluded from application capture. Istio documentation also notes that DNS proxying for applications does not change how Envoy periodically resolves `ServiceEntry` hosts. For the agent's upstream xDS address, correlate the debug lookup with the agent's actual resolver and connection log rather than assuming that enabling application DNS capture repairs it.
 
 If DNS returns an address, inventory the Service and all EndpointSlices:
 
 ```bash
 kubectl -n istio-system get service istiod -o yaml
 kubectl -n istio-system get endpointslice \
-  -l kubernetes.io/service-name=istiod -o wide
+  -l kubernetes.io/service-name=istiod -o yaml
 kubectl -n istio-system get pods -l app=istiod -o wide
 ```
 
@@ -147,7 +147,7 @@ openssl s_client \
   -showcerts </dev/null
 ```
 
-An unauthenticated diagnostic handshake does not reproduce the stock agent's complete authentication. In Istio 1.31's normal Kubernetes sidecar path, pilot-agent verifies Istiod's server certificate and SAN over TLS, then sends the workload's service-account token as per-RPC credentials; it does not normally present a workload client certificate for xDS. Provisioned or file-mounted certificate deployments can differ. The probe can still reveal certificate expiry, an unexpected issuer, or a wrong SNI, but it cannot test the workload token or xDS authorization. Check node and control-plane clock synchronization. Never paste service-account tokens, private keys, or the contents of `/var/run/secrets` into tickets.
+An unauthenticated diagnostic handshake does not reproduce the stock agent's complete authentication. In Istio 1.31's normal Kubernetes sidecar path, pilot-agent verifies Istiod's server certificate and SAN over TLS, then sends the workload's service-account token as per-RPC credentials; it does not normally present a workload client certificate for xDS. Provisioned or file-mounted certificate deployments can differ. The probe can still reveal certificate expiry or an unexpected issuer, but `-servername` only sets SNI; it does not enable hostname verification. This command also does not load Istio's root CA explicitly and normally continues after verification errors, so handshake completion does not prove the agent's trust or SAN checks will pass. It cannot test the workload token or xDS authorization. Check node and control-plane clock synchronization. Never paste service-account tokens, private keys, or the contents of `/var/run/secrets` into tickets.
 
 If TCP times out, inspect NetworkPolicies, CNI policy, host firewalls, security groups, service routing, and any multi-cluster gateway. Test every Istiod endpoint and every affected node because a single broken replica or route can make the failure intermittent. Port `15012` is the recommended secure xDS and CA service; port `15010` is plaintext and is not an appropriate fallback for production troubleshooting.
 
@@ -188,7 +188,7 @@ Do not try to "increase" this timeout on an otherwise stock Istio 1.31 proxy: it
 
 ## Verify the Recovery End to End
 
-After repairing DNS, endpoints, routing, certificates, or revision configuration, begin a controlled rolling replacement and verify each new Pod before broadening the rollout:
+After repairing the delivery path, first check whether the existing proxy reconnects and becomes ready. If injection or bootstrap changes require replacement, the following restarts the entire Deployment according to its configured strategy; it does not pause for manual verification of each Pod. Confirm the Deployment uses `RollingUpdate` and suitable availability settings, and verify recovery before restarting other workloads:
 
 ```bash
 kubectl -n payments rollout restart deployment/checkout
@@ -198,7 +198,7 @@ istioctl proxy-config listeners pod/checkout-7d9f6f7c8b-k2j9m.payments
 istioctl proxy-config clusters pod/checkout-7d9f6f7c8b-k2j9m.payments
 ```
 
-Replace the sample Pod name with the newly created one. Confirm the proxy is connected and synced, readiness is `200`, expected listeners and clusters exist, and a controlled application request succeeds. Also confirm that status 14 and reconnect counters stop increasing; one successful retry does not prove a flapping DNS or Istiod endpoint is fixed.
+Replace the sample Pod name with the newly created one. Confirm the proxy is connected and synced, readiness is `200`, expected listeners and clusters exist, and a controlled application request succeeds. Also confirm that status 14 errors and unexpected reconnects stop recurring; one successful retry does not prove a flapping DNS or Istiod endpoint is fixed.
 
 ## Conclusion
 

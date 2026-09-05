@@ -8,11 +8,11 @@ Description: Replace a failed MinIO drive safely, preserve erasure-set quorum, a
 
 ---
 
-MinIO can hot-swap a failed drive and heal its missing object shards without restarting the deployment. The trigger is not a bulk manual repair command. MinIO detects a correctly mounted, empty replacement at the configured storage path and begins aggressive healing for that drive.
+This procedure follows current MinIO AIStor guidance for Linux nodes using systemd and `/etc/fstab`, with hot-swap-capable hardware and a compatible `mc` client. MinIO can hot-swap a failed drive and heal its missing object shards without restarting the deployment. The trigger is not a bulk manual repair command. MinIO detects a correctly mounted, empty replacement at the configured storage path and begins aggressive healing for that drive.
 
 The safe procedure has three invariants:
 
-1. the affected erasure set remains above read and write quorum;
+1. the affected erasure set continues to meet read and write quorum;
 2. the new device is definitely the intended device, XFS-formatted, empty, and mounted at the original path;
 3. nobody copies, deletes, or rearranges MinIO backend files by hand.
 
@@ -85,13 +85,13 @@ df -hT /mnt/drive8
 lsblk -f /dev/disk/by-id/NEW_DEVICE_ID
 ```
 
-The mount must be XFS, at the exact path in the MinIO server volume configuration, and empty. A directory that silently falls back to the root filesystem is not a replacement drive and can fill the operating-system disk.
+The replacement must be mounted as XFS at the original mount point, with the configured MinIO volume path available on that filesystem. It must contain no MinIO data before healing starts. After verifying the mount, set ownership and permissions on the replacement mount root (and any configured volume subdirectory) so the actual MinIO service user has read, write, and directory traversal access; formatting a drive does not preserve the old filesystem's permissions. A directory that silently falls back to the root filesystem is not a replacement drive and can fill the operating-system disk.
 
 ## Let MinIO Detect and Heal It
 
 MinIO requires exclusive access to backend volumes. Do not restore `.minio.sys`, shard directories, metadata, or object parts from the failed drive. Do not use `rsync`, filesystem snapshots, or another process to populate the replacement. MinIO reconstructs each recoverable shard from intact members of the same erasure set and writes consistent metadata itself.
 
-Watch the service log and cluster state:
+Watch the service log and cluster state in separate terminals:
 
 ```bash
 journalctl -fu minio
@@ -116,7 +116,7 @@ mc admin prometheus metrics production --api-version v3 |
 
 The key signals are online drive count, healing drive count, erasure-set health, read and write tolerance, objects healed, and heal errors. Detection is only the start. Completion requires the drive to remain online, healing activity to settle, error counters not to increase, and the erasure set to regain its expected failure tolerance.
 
-Sample application-critical objects through the S3 path, not the backend filesystem:
+Sample application-critical objects through the S3 API and inspect their shards through the MinIO Admin API, without accessing the backend filesystem directly:
 
 ```bash
 mc stat production/critical/checkpoint.bin

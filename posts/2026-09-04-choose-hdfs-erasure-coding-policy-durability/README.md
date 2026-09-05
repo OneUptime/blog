@@ -1,4 +1,4 @@
-# How to Choose an HDFS Erasure Coding Policy with Replication-Equivalent Durability
+# Choose an HDFS Erasure Coding Policy for Equivalent Durability
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

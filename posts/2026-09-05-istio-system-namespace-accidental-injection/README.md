@@ -1,4 +1,4 @@
-# Istio Injects Its Own Control Plane and Breaks the Webhook: Recover from a Mislabelled `istio-system` Namespace
+# Recover from Istio Control-Plane Self-Injection
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

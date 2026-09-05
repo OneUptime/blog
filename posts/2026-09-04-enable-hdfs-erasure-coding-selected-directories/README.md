@@ -1,4 +1,4 @@
-# How to Enable Erasure Coding for Selected HDFS Directories and Verify the Active Policy
+# Enable HDFS Erasure Coding for Selected Directories
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

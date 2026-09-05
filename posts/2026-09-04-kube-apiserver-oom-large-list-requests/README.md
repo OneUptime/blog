@@ -1,4 +1,4 @@
-# kube-apiserver Is OOMKilled During Large LIST Requests: Measure Watch-Cache and Serialization Memory
+# Fix kube-apiserver OOMKills During Large LIST Requests
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

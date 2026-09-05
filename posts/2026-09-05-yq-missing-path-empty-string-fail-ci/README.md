@@ -1,4 +1,4 @@
-# How to Return an Empty String—or Fail CI—When a yq Path Is Missing
+# How to Return an Empty String-or Fail CI-When a yq Path Is Missing
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

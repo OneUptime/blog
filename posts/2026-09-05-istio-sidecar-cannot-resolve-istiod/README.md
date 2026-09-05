@@ -1,4 +1,4 @@
-# Istio Sidecar Cannot Resolve istiod: Trace Pod DNS, Bootstrap Configuration, and xDS Cluster Health
+# Fix Istio Sidecars That Cannot Resolve istiod
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

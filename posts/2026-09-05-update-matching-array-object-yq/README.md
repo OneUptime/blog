@@ -1,4 +1,4 @@
-# How to Update Only the Array Object Matching a Name, Label, or Other Field with yq
+# Update Matching Objects in a YAML Array with yq
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
@@ -165,7 +165,7 @@ if [[ $count -ne 1 ]]; then
 fi
 ```
 
-Then update while no concurrent writer can change the file. For a single yq operation, make the exact-one condition gate the root output:
+Then update while no concurrent writer can change the file. For a file containing a single YAML document, make the exact-one condition gate the root output in one yq operation:
 
 ```bash
 NAME=api IMAGE='registry.example.com/api:v2' yq -e -i '
@@ -177,7 +177,7 @@ NAME=api IMAGE='registry.example.com/api:v2' yq -e -i '
 
 If there are zero or two matches, `select($one)` emits nothing. `-e` returns failure and v4.53.3 does not replace the input file. Its current error path can leave the unused in-place temporary file behind, so job-level temporary-directory cleanup may still be needed.
 
-This guards the matching invariant inside the same evaluation. It still does not coordinate two separate processes that replace the file concurrently; use a shared lock or repository workflow for that.
+This guards the matching invariant inside the same evaluation for a single-document file. With multiple YAML documents, yq evaluates each separately: documents failing the condition are omitted, and `-e` can still succeed if another document produces output. Do not use this guard in place on a multi-document file. It still does not coordinate two separate processes that replace the file concurrently; use a shared lock or repository workflow for that.
 
 ## Validate the Array Shape
 

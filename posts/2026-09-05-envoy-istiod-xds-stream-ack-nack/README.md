@@ -1,4 +1,4 @@
-# Does Envoy Pull or Does Istiod Push? Trace the Long-Lived xDS Stream from Bootstrap to ACK and NACK
+# Trace the Envoy-Istiod xDS Stream from Bootstrap to ACK and NACK
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

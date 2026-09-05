@@ -1,4 +1,4 @@
-# The Application Starts Before Istio Proxy: Gate Startup with `holdApplicationUntilProxyStarts` or Native Sidecars
+# Gate Application Startup on Istio Proxy Readiness
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -1,4 +1,4 @@
-# How to Fix a CloudStack VM That Has Console Access but No Ping or SSH Connectivity
+# Fix CloudStack VMs with Console Access but No Ping or SSH
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -80,7 +80,7 @@ Do not use a deliberately invalid command against an important file merely as a 
 
 Temporary output is much safer than self-redirection, but not every storage path has identical replacement semantics.
 
-In v4.53.3, the implementation skips rename for a symbolic-link target and otherwise first attempts a rename. If the target is a symbolic link, or if rename fails—for example across a filesystem boundary or on some mounted volumes—it falls back to copying temporary contents into the target. A copy fallback can preserve a symlink target, but it is not crash-atomic: interruption during the copy can leave partial contents.
+In v4.53.3, the implementation skips rename for a symbolic-link target and otherwise first attempts a rename. If the target is a symbolic link, or if rename fails-for example across a filesystem boundary or on some mounted volumes-it falls back to copying temporary contents into the target. A copy fallback can preserve a symlink target, but it is not crash-atomic: interruption during the copy can leave partial contents.
 
 Before editing operational configuration, determine whether the path is a symlink and what filesystem hosts it:
 

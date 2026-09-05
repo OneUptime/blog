@@ -1,4 +1,4 @@
-# Multi-Container Pod Metrics Vanish Under Strict mTLS: Build a Secure Fan-In Scrape Endpoint
+# Secure Multi-Container Metrics Scraping Under Strict mTLS
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

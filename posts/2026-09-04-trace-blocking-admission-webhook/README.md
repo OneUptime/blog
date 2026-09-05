@@ -1,4 +1,4 @@
-# Which Admission Webhook Is Blocking `kubectl`? Trace the API Request and Test Control-Plane Reachability
+# Trace the Admission Webhook Blocking `kubectl`
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

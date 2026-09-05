@@ -1,4 +1,4 @@
-# Envoy Has an Endpoint but Still Returns 503: Check Outlier Ejection, Health Flags, and Circuit-Breaker State
+# Debug Envoy 503s with Healthy Endpoints
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

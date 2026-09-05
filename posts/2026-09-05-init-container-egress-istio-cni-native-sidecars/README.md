@@ -1,4 +1,4 @@
-# Init-Container Egress Skips the Mesh: Secure Pre-Proxy Traffic with Istio CNI or Native Sidecars
+# Secure Init-Container Egress with Istio CNI or Native Sidecars
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

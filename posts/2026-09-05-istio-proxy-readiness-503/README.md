@@ -1,4 +1,4 @@
-# Istio Proxy Readiness Returns 503: Verify Service Ports, Endpoints, and Envoy Configuration
+# Fix Istio Proxy Readiness 503 Errors
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
@@ -10,7 +10,7 @@ Description: Trace an Istio proxy readiness 503 from the injected probe through 
 
 An injected Pod may show `1/2` containers ready while the application itself responds on localhost. `kubectl describe pod` then shows the `istio-proxy` readiness probe receiving HTTP `503`. That response is useful: a process answered the probe, so this is different from `connection refused`, a probe timeout, or kubelet being unable to reach the Pod IP.
 
-In current Istio releases, the default sidecar readiness handler on port `15021` waits for the first successful CDS and LDS updates, then checks that Envoy reports `LIVE` and its workers have started. Stock Istio 1.31 caches those successful checks for that Envoy process lifetime. It does **not** wait for EDS endpoints, an HTTP route, a Kubernetes Service `targetPort`, or an application socket. Those objects still determine whether traffic works after the proxy becomes ready, but an empty EndpointSlice alone is not an explanation for a current Istio startup-readiness `503`.
+In current Istio releases, the default sidecar readiness handler on port `15021` waits for the first successful CDS and LDS updates, then checks that Envoy reports `LIVE` and its workers have started. Stock Istio 1.31 caches those successful checks for that Envoy process lifetime. It does **not** directly check EDS endpoint availability, the presence of a particular HTTP route, a Kubernetes Service `targetPort`, or an application socket. Envoy initialization and listener warming can still wait for initial EDS/RDS responses or their fetch timeouts before workers start. Those objects still determine whether traffic works after the proxy becomes ready, but an empty EndpointSlice alone is not an explanation for a current Istio startup-readiness `503`.
 
 Keep the readiness gate and the subsequent traffic-path checks separate:
 
@@ -29,11 +29,13 @@ Capture the injected probe and events rather than assuming its port and path:
 
 ```bash
 kubectl -n catalog get pod catalog-api-7dbbd75b8c-6tlqf -o json |
-  jq '.spec.containers[] |
+  jq '(.spec.containers + (.spec.initContainers // []))[] |
       {name, readinessProbe, livenessProbe, startupProbe}'
 
 kubectl -n catalog describe pod catalog-api-7dbbd75b8c-6tlqf
 ```
+
+Native sidecars appear under `initContainers`, so inspect both arrays. Stock Istio 1.31 also enables a startup probe on the same endpoint; kubelet does not run readiness probes until that startup probe succeeds.
 
 If the event says `HTTP probe failed with statuscode: 503`, note the container, port, path, first failure, and whether it ever recovered. If it says `dial tcp ... connection refused`, verify that the status process is listening and that kubelet can reach the Pod. A timeout can instead indicate node-to-Pod networking or CPU starvation.
 
@@ -47,7 +49,7 @@ kubectl -n catalog port-forward \
 curl -i --max-time 3 http://127.0.0.1:15021/healthz/ready
 ```
 
-`pilot-agent request GET ready` is a different check: it queries Envoy's admin `/ready` endpoint. That is useful for distinguishing an Envoy state problem from the agent's first-CDS/first-LDS gate, but it is not the same handler that kubelet calls. Do not expose Envoy's admin interface outside the Pod.
+Run `pilot-agent request GET ready` inside the `istio-proxy` container for a different check: it queries Envoy's admin `/ready` endpoint. That is useful for distinguishing an Envoy state problem from the agent's first-CDS/first-LDS gate, but it is not the same handler that kubelet calls. Do not expose Envoy's admin interface outside the Pod.
 
 Then collect the proxy and agent log around startup:
 
@@ -64,7 +66,7 @@ Inspect the injected readiness probe and the proxy image before applying advice 
 
 ```bash
 kubectl -n catalog get pod catalog-api-7dbbd75b8c-6tlqf -o json |
-  jq '.spec.containers[] |
+  jq '(.spec.containers + (.spec.initContainers // []))[] |
       select(.name == "istio-proxy") |
       {image, args, readinessProbe}'
 
@@ -101,7 +103,7 @@ Pin diagnostic images by digest in production. A listener on `127.0.0.1` is not 
 
 ## Follow Each Service Port After Readiness
 
-Find every Service selecting the Pod rather than checking only the expected one:
+List the Services and compare their selectors with the Pod labels to find every Service selecting the Pod rather than checking only the expected one:
 
 ```bash
 kubectl -n catalog get service -o json |
@@ -123,24 +125,24 @@ kubectl -n catalog get endpointslice \
 Validate these relationships:
 
 - the Service selector matches the Pod labels;
-- each `targetPort` resolves to the intended numeric container port or named port;
+- each numeric `targetPort` matches the workload socket, or each named `targetPort` resolves through a declared container port;
 - the EndpointSlice port is the resolved target port, not necessarily the Service's client-facing `port`;
 - the affected Pod IP appears with the expected address family; and
 - `conditions.ready` is true for endpoints intended to receive normal traffic.
 
 There may be several EndpointSlices because Kubernetes separates address families, ports, or scale groups. Joining only the first slice can produce a false conclusion. During termination, an endpoint can remain present while `ready` is false; that is normal drain behavior.
 
-Be careful with causality: when the proxy container is unready, the Pod is normally unready, which in turn makes the EndpointSlice endpoint unready. An unready endpoint is therefore commonly an **effect** of the proxy `503`. Conversely, a wrong Service `targetPort` or an empty endpoint set breaks application traffic but, by itself, does not fail the stock Istio 1.31 sidecar readiness gate.
+Be careful with causality: when the proxy container is unready, the Pod is normally unready, which in turn makes the EndpointSlice endpoint unready. Services with `publishNotReadyAddresses: true` are an exception: their EndpointSlice endpoints are marked ready regardless of Pod readiness. An unready endpoint is therefore commonly an **effect** of the proxy `503`. Conversely, a wrong Service `targetPort` or an empty endpoint set breaks application traffic but, by itself, does not fail the stock Istio 1.31 sidecar readiness gate.
 
 ## Inspect What Envoy Actually Accepted
 
 Check control-plane synchronization first:
 
 ```bash
-istioctl proxy-status catalog-api-7dbbd75b8c-6tlqf.catalog
+istioctl proxy-status
 ```
 
-A missing proxy has no active Istiod session. `STALE` means Istiod and the proxy are out of sync; inspect the proxy log for a NACK or a stalled stream rather than assuming one cause. Because readiness specifically needs successful CDS and LDS updates, start with those columns. If the connection is healthy, inspect the accepted configuration by the actual Service FQDN and ports:
+Find the row for `catalog-api-7dbbd75b8c-6tlqf.catalog`. A missing proxy has no active Istiod session visible to the queried control plane. `STALE` means Istiod and the proxy are out of sync; inspect the proxy log for a NACK or a stalled stream rather than assuming one cause. Because readiness specifically needs successful CDS and LDS updates, start with those columns. If the connection is healthy, inspect the accepted configuration by the actual Service FQDN and ports:
 
 ```bash
 istioctl proxy-config listeners \
@@ -177,7 +179,7 @@ kubectl -n catalog get service -o custom-columns='NAME:.metadata.name,PORTS:.spe
 Use names such as `http-api`, `grpc-api`, `http2-api`, or `tcp-custom` according to the actual bytes. If `appProtocol` and the port name are both set, Istio gives `appProtocol` precedence. Changing a label or port name can affect every client, so render and analyze the candidate configuration before applying it:
 
 ```bash
-istioctl analyze -n catalog
+istioctl analyze -n catalog catalog-service.yaml
 kubectl apply --dry-run=server -f catalog-service.yaml
 ```
 
@@ -187,7 +189,7 @@ Do not relabel an HTTPS port as HTTP merely to make a readiness warning disappea
 
 Fix the Deployment, Service, DestinationRule, Sidecar resource, or injection configuration that owns the mismatch. Do not hand-edit a generated EndpointSlice or a running Pod; controllers will overwrite the former and most Pod fields are immutable.
 
-Roll out one corrected replica and verify it before broad replacement:
+For changes that require Pod replacement, verify one corrected replica using a canary Deployment before broad replacement. Service and xDS resource changes normally propagate without recreating Pods. After applying the corrected Pod template or initiating the required rollout, monitor it with these commands; they do not start a rollout or limit it to one replica:
 
 ```bash
 kubectl -n catalog rollout status deployment/catalog-api --timeout=5m
@@ -196,11 +198,11 @@ kubectl -n catalog get pods -l app=catalog-api -w
 
 On the new Pod, confirm `:15021/healthz/ready` returns success, `istioctl proxy-status` is synced for CDS and LDS, the expected listeners and clusters exist, and the Pod endpoint becomes ready. Then send a controlled request through a real Service from a meshed caller. A direct localhost check cannot validate Service port translation or outbound Envoy routing.
 
-Avoid replacing the Istio readiness probe with an always-successful command. That advertises a Pod whose application traffic may have no usable proxy configuration. Also avoid converting it into liveness without careful design: a control-plane disruption can cause restart loops and destroy Envoy's last accepted configuration.
+Avoid replacing the Istio readiness probe with an always-successful command. That advertises a Pod whose application traffic may have no usable proxy configuration. Also avoid converting it into liveness without careful design: a custom liveness check that requires an active control-plane connection can cause restart loops during a disruption and destroy Envoy's last accepted configuration. The stock cached readiness gate does not fail solely because xDS disconnects after successful startup.
 
 ## Conclusion
 
-An Istio proxy readiness `503` is a startup or xDS-readiness signal, not a generic verdict on the whole request path. Identify the exact probe, compare it with raw Envoy readiness, and verify that the proxy receives successful CDS and LDS updates. Once that gate passes, follow Service ports, EndpointSlices, routes, clusters, endpoints, and workload sockets to prove real traffic. Repair the declarative owner instead of masking the probe.
+An Istio proxy readiness `503` is a proxy lifecycle or initial xDS-readiness signal (the agent also rejects readiness after its context is canceled during shutdown), not a generic verdict on the whole request path. Identify the exact probe, compare it with raw Envoy readiness, and verify that the proxy receives successful CDS and LDS updates. Once that gate passes, follow Service ports, EndpointSlices, routes, clusters, endpoints, and workload sockets to prove real traffic. Repair the declarative owner instead of masking the probe.
 
 ## Official Documentation
 

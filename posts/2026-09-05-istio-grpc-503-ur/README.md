@@ -1,4 +1,4 @@
-# gRPC Through Istio Fails with 503 UR: Diagnose HTTP/2 Negotiation, mTLS, and Upstream Resets
+# Diagnose gRPC 503 UR Errors Through Istio
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -1,4 +1,4 @@
-# Istio Proxy Connects to istiod but Receives No Routes: Compare Configuration Scope, Revisions, and Namespaces
+# Fix Istio Proxies Connected to istiod but Missing Routes
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
@@ -69,7 +69,7 @@ istioctl proxy-config bootstrap pod/working-client-6d99c76468-q7v4n.apps -o json
   > /tmp/working-bootstrap.json
 ```
 
-Compare node metadata, cluster ID, network, revision, and Envoy's local xDS cluster—not volatile Pod IPs or generated timestamps. In a stock Istio 1.31 sidecar, that `xds-grpc` cluster points to pilot-agent's Unix-domain socket, so the bootstrap does not normally expose the remote Istiod discovery address.
+Compare node metadata, cluster ID, network, revision, and Envoy's local xDS cluster-not volatile Pod IPs or generated timestamps. In a stock Istio 1.31 sidecar, that `xds-grpc` cluster points to pilot-agent's Unix-domain socket, so the bootstrap does not normally expose the remote Istiod discovery address.
 
 Compare the agent's effective upstream connection separately:
 

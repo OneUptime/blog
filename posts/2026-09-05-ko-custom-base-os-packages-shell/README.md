@@ -1,4 +1,4 @@
-# How to Replace ko's Chainguard Static Base When Your Go App Needs OS Packages or a Shell
+# Choose a ko Base Image for OS Packages or a Shell
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

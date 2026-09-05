@@ -1,4 +1,4 @@
-# How to Use ko in Google Cloud Build Without a Docker Daemon or Missing-Shell Errors
+# Run ko in Google Cloud Build Without Docker
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

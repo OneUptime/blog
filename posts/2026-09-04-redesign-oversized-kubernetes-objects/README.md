@@ -1,4 +1,4 @@
-# Kubernetes Rejects a 3 MB Object: Redesign Oversized ConfigMaps and Custom Resources
+# Redesign Oversized Kubernetes ConfigMaps and Custom Resources
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

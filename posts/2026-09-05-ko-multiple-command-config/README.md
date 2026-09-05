@@ -1,4 +1,4 @@
-# How to Configure Different Base Images and Build Flags for Multiple Go Commands in `.ko.yaml`
+# Configure ko Base Images and Flags for Multiple Go Commands
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

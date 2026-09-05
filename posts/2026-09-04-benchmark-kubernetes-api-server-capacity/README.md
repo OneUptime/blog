@@ -1,4 +1,4 @@
-# How to Benchmark Kubernetes API Server Capacity with Realistic LIST, WATCH, and Mutation Workloads
+# Benchmark Kubernetes API Server Capacity with Realistic Workloads
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
@@ -134,7 +134,7 @@ From kube-apiserver, collect at least:
 - process CPU, resident/working-set memory, Go heap/GC, goroutines, and restarts; and
 - `/readyz` per replica plus load-balancer backend state.
 
-From etcd, collect proposal pending/failed/applied counters, gRPC rates, peer failures and bytes, leader changes, database total and in-use size, quota alarms, and histograms for `etcd_disk_wal_fsync_duration_seconds` and `etcd_disk_backend_commit_duration_seconds`. etcd documents network round-trip and durable disk sync as fundamental consensus latency bounds.
+From etcd, collect pending and applied proposal gauges and the failed proposal counter, gRPC rates, peer failures and bytes, leader changes, database total and in-use size, quota alarms, and histograms for `etcd_disk_wal_fsync_duration_seconds` and `etcd_disk_backend_commit_duration_seconds`. etcd documents network round-trip and durable disk sync as fundamental consensus latency bounds.
 
 From the load generator, collect offered rate, completed rate, full latency histograms, response bytes, connection/TLS behavior, error bodies/statuses, retry count, watch lag, and client CPU/memory. Ensure Prometheus scraping itself does not become a material part of the test.
 

@@ -1,4 +1,4 @@
-# How to Prevent Controller List-Watch Storms from Overloading the Kubernetes API Server
+# Prevent Controller List-Watch Storms from Overloading the API Server
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

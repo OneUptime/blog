@@ -8,9 +8,9 @@ Description: Build a compact Apache CloudStack lab with one management server, o
 
 ---
 
-A one-machine CloudStack lab is useful for learning the product, testing API automation, and reproducing problems. It is not a production topology: the management server, MySQL, hypervisor, and storage all share one failure domain. Treat the host as disposable and never point the procedure at a KVM server that already contains valuable libvirt guests. CloudStack's installation guide explicitly requires an empty hypervisor host.
+A one-machine CloudStack lab is useful for learning the product, testing API automation, and reproducing problems. It is not a production topology: the management server, MySQL, hypervisor, and storage all share one failure domain. Treat the host as disposable and never point the procedure at a KVM server that already contains valuable libvirt guests. CloudStack's installation guide explicitly requires that no VMs be running on the hypervisor host when deploying CloudStack.
 
-This walkthrough uses a current 4.23 package line on an RPM-based Linux system. Apache officially distributes CloudStack as source; the binary repositories linked by the project are community convenience packages. Check the current release notes and supported distribution before substituting a different package line.
+This walkthrough uses a current 4.23 package line on an x86_64 Enterprise Linux system supported by that release. Apache officially distributes CloudStack as source; the binary repositories linked by the project are community convenience packages. Check the current release notes and supported distribution before substituting a different package line.
 
 ## Plan the Lab Before Installing It
 
@@ -40,13 +40,14 @@ Keep an out-of-band console open while converting the physical NIC into a bridge
 
 ## Install the Management, Database, Storage, and Agent Packages
 
-Configure the package repository for the exact CloudStack release you selected, import its key using the current project instructions, and then install the components. A simplified RPM-family package set is:
+Configure the package repository for the exact CloudStack release you selected, import its key using the current project instructions, and then install the components. The CloudStack 4.23 compatibility matrix specifies MySQL 8.4; select a distribution repository or module that supplies that version before installing `mysql-server`. A simplified Enterprise Linux package set is:
 
 ```bash
 sudo dnf install -y mysql-server nfs-utils chrony
 sudo dnf install -y cloudstack-management cloudstack-agent
 sudo systemctl enable --now chronyd mysqld nfs-server
 java -version
+mysqld --version
 ```
 
 CloudStack 4.23 requires Java 17. If several JREs are installed, select the supported one before starting the services.
@@ -63,7 +64,7 @@ binlog_format=ROW
 server_id=1
 ```
 
-MySQL requires `server_id` to be a nonzero integer. Keep it unique per database server if binary logs will be used for replication.
+Use a nonzero integer for `server_id`, unique per database server in a replication topology. MySQL permits zero, but that disables participation in replication. `binlog_format=ROW` remains supported in MySQL 8.4 and matches CloudStack's installation guide, although MySQL deprecates this setting and already defaults to row-based logging.
 
 Validate and restart MySQL:
 
@@ -73,12 +74,12 @@ sudo systemctl restart mysqld
 sudo systemctl is-active mysqld
 ```
 
-Initialize the databases with strong, separately stored secrets. The following shows the command shape, not production secret handling:
+Secure the MySQL root account with `sudo mysql_secure_installation` before initializing the databases with strong, separately stored secrets. The following shows the command shape, not production secret handling:
 
 ```bash
 sudo cloudstack-setup-databases \
   cloud:'REPLACE_DB_PASSWORD'@localhost \
-  --deploy-as=root \
+  --deploy-as=root:'REPLACE_MYSQL_ROOT_PASSWORD' \
   -e file \
   -m 'REPLACE_MANAGEMENT_KEY' \
   -k 'REPLACE_DATABASE_KEY' \
@@ -96,7 +97,7 @@ sudo mkdir -p /export/primary /export/secondary
 sudo exportfs -v
 ```
 
-Add exports limited to the lab subnet. CloudStack's guide uses `rw,async,no_root_squash,no_subtree_check`; understand the trust and durability implications of `no_root_squash` and `async` before using them outside a lab:
+Add these entries to `/etc/exports`, limited to the lab subnet. The allowed clients must include the KVM host and the Secondary Storage VM's management or storage address; allow the required NFS/RPC traffic through the firewall as well. CloudStack's guide uses `rw,async,no_root_squash,no_subtree_check`; understand the trust and durability implications of `no_root_squash` and `async` before using them outside a lab:
 
 ```exports
 /export/primary   192.0.2.0/24(rw,async,no_root_squash,no_subtree_check)
@@ -117,7 +118,7 @@ sudo umount /mnt/secondary-test
 
 ## Configure the Management Server and KVM Host
 
-Set up the management service after the database is ready:
+Set up the management service after the database is ready and the linked KVM guide's host security policy prerequisites have been applied. For this all-in-one topology, use `sudo visudo` to ensure `Defaults:cloud !requiretty` is present, as required by the management installation guide:
 
 ```bash
 sudo cloudstack-setup-management --systemvm-templates=kvm-x86_64
@@ -127,7 +128,7 @@ sudo ss -ltnp | grep -E ':(8080|8250|9090)\b'
 
 Current CloudStack can download missing System VM templates on demand. For an offline lab, use the documented `--systemvm-templates-repository` option with a trusted internal mirror. Do not guess a template URL from a different CloudStack release.
 
-On the KVM side, confirm that libvirt and the CloudStack agent are healthy:
+On the KVM side, complete the linked KVM guide's libvirt, QEMU, security policy, and bridge configuration before these checks. Confirm that libvirt is healthy, then check the agent logs; the agent may not connect successfully until the host has been added to CloudStack:
 
 ```bash
 sudo virt-host-validate
@@ -149,7 +150,7 @@ Open `http://192.0.2.20:8080/client` from the management network. Immediately re
 5. NFS primary storage at `192.0.2.20:/export/primary`.
 6. NFS secondary storage at `192.0.2.20:/export/secondary`.
 
-For a first lab, a flat/basic design is easier to reason about. Advanced networking requires deliberate guest, management, public, and storage traffic mappings and, commonly, VLAN trunks. Do not invent public or guest ranges that your physical router does not route.
+For a first lab, a flat/basic design is easier to reason about. Advanced networking requires deliberate guest, management, public, and storage traffic mappings and, commonly, VLAN trunks. Public addresses and Basic-zone guest ranges must fit the upstream network. In an Advanced zone's NAT-based isolated network, the private guest CIDR sits behind CloudStack's virtual router and does not need a route on the physical router.
 
 CloudStack initially deploys a Secondary Storage VM and Console Proxy VM. Wait for them to reach `Running`, and wait for a usable template to report `Ready` before deploying a user instance. On the hosts and management server, watch:
 
@@ -164,8 +165,8 @@ sudo tail -F /var/log/cloudstack/agent/agent.log
 Do not call the installation complete merely because the UI loads. Verify all of these:
 
 - Management Server, MySQL, libvirt, and CloudStack agent services are active.
-- The host is `Up`, primary and secondary storage are `Up`, and System VMs are `Running`.
-- The System VM or user template is `Ready` in the intended zone.
+- The host and primary storage are `Up`, secondary storage is accessible to the Secondary Storage VM, and System VMs are `Running`.
+- The System VM template is available, and the user template is `Ready` in the intended zone.
 - A small guest deploys, receives its expected address and gateway, reaches DNS, and is reachable only through rules you explicitly created.
 - After rebooting the lab host, the bridge, NFS exports, database, and CloudStack services return cleanly.
 
@@ -173,9 +174,9 @@ Protect management ports with a host firewall. The official guide warns not to e
 
 ## Roll Back or Reset the Lab Safely
 
-If this is a disposable machine, document the exports and CloudStack database keys before resetting it. Stop user guests, CloudStack services, and MySQL before taking a consistent filesystem backup. Never remove files directly from primary or secondary storage while CloudStack still tracks them.
+If this is a disposable machine, document the exports and CloudStack database keys before resetting it. Stop user guests through CloudStack, stop the management service to prevent automatic recreation, then gracefully shut down all remaining System VMs (including virtual routers) and stop the agent and MySQL before taking a consistent filesystem backup. Confirm no VMs or storage transfers remain active; stopping CloudStack services alone does not stop the VMs. Never remove files directly from primary or secondary storage while CloudStack still tracks them.
 
-For a failed network conversion, restore the original NIC configuration from the out-of-band console and restart networking. For a failed package/configuration change, restore the specific saved configuration and restart only the affected service. Re-running database initialization is not a repair strategy; it can replace the control-plane state that maps guests to their storage and networks.
+For a failed network conversion, restore the original NIC configuration from the out-of-band console and restart networking. For a failed package/configuration change, restore the specific saved configuration and restart only the affected service. Re-running database initialization is not a repair strategy; using `--force-recreate` replaces the control-plane state that maps guests to their storage and networks.
 
 ## Conclusion
 

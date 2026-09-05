@@ -1,4 +1,4 @@
-# How to Capture a Data-Plane Packet Trace in a Distroless Envoy Pod with Ephemeral Containers
+# Capture Packet Traces in Distroless Envoy Pods
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

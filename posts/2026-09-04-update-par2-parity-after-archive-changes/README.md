@@ -1,4 +1,4 @@
-# How to Update PAR2 Parity After Archived Files Change Without Losing Recoverability
+# Update PAR2 Parity After Archive Changes Without Losing Recovery
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

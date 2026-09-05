@@ -1,4 +1,4 @@
-# Kubernetes Service Has Endpoints but Envoy EDS Is Empty: Trace Port Names, Subsets, and Discovery Scope
+# Trace Empty Envoy EDS Despite Kubernetes Service Endpoints
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
@@ -53,6 +53,7 @@ Confirm the source Pod actually uses this proxy and the expected Istio revision:
 ```bash
 kubectl -n shop get pod frontend-6c8d9f8dc8-d4k5p -o json |
   jq '{containers: [.spec.containers[].name],
+       initContainers: [.spec.initContainers[]?.name],
        requestedRevision: .metadata.labels["istio.io/rev"],
        actualRevision: .metadata.annotations["istio.io/rev"],
        sidecarStatus: .metadata.annotations["sidecar.istio.io/status"]}'
@@ -76,7 +77,7 @@ Check:
 - the slice `addressType` is usable by the caller and mesh network;
 - each endpoint's `conditions.ready` is usable (`true` in normal controller output; API consumers treat an omitted value as ready for compatibility);
 - slice addresses match current Pod IPs; and
-- the slice contains the port used by the Envoy cluster.
+- the slice contains the resolved target port for the Service port used by the Envoy cluster; its port name matches the Service port name, not necessarily the named `targetPort`.
 
 Legacy `Endpoints` output can be truncated in large Services and is being replaced by EndpointSlice. Do not stop after `kubectl get endpoints inventory` prints an address.
 
@@ -145,10 +146,10 @@ kubectl -n inventory get pods -l app=inventory,version=v2 \
 
 Common failures include `version: v2` on the Deployment object but not its Pod template, case differences, a route to a removed subset, and a DestinationRule whose short `host` resolves in the rule's namespace rather than the Service namespace. Prefer the Service FQDN in cross-namespace production configuration.
 
-`istioctl x describe pod` can also identify routes whose subsets do not match a destination:
+`istioctl x describe pod` can also identify routes whose subsets do not match a destination Pod. Run it against an inventory backend Pod from the preceding listing (replace the example Pod name):
 
 ```bash
-istioctl x describe pod frontend-6c8d9f8dc8-d4k5p.shop
+istioctl x describe pod inventory-v2-6c8d9f8dc8-d4k5p.inventory
 ```
 
 Do not remove the subset from a live route simply to populate EDS. Decide whether the route or workload labels represent the intended release, then fix that owner.
@@ -182,14 +183,14 @@ Gateways are different: Sidecar resources do not scope gateway configuration, th
 If Istiod should compute endpoints but Envoy does not have them, inspect synchronization:
 
 ```bash
-istioctl proxy-status frontend-6c8d9f8dc8-d4k5p.shop
+istioctl proxy-status --namespace shop
 ```
 
-`EDS SYNCED` means Envoy acknowledged the last endpoint configuration sent by that Istiod view; it does not prove the set contains the endpoint you expected. `STALE` means an update lacks acknowledgement. A missing proxy is disconnected.
+`EDS SYNCED` means Envoy acknowledged the last endpoint configuration sent by that Istiod view; it does not prove the set contains the endpoint you expected. `STALE` means an update lacks acknowledgement. A missing proxy is not connected to the queried control-plane view; check the Kubernetes context and selected control plane before concluding it is disconnected.
 
 Compare a failing caller with a working caller using the same exact cluster filter. If they connect to different revisions, inspect namespace labels, revision tags, and actual revision annotations. If they connect to different Istiod replicas of the same revision and disagree, check control-plane logs, remote-cluster sync, and registry event metrics.
 
-Avoid querying unauthenticated Istiod debug endpoints over plaintext. Current Istio protects debug access; prefer `istioctl` and namespace-scoped authenticated mechanisms.
+Avoid querying unauthenticated Istiod debug endpoints over plaintext. Prefer authenticated `istioctl` access. Istiod can still expose an HTTP debug interface when `ENABLE_DEBUG_ON_HTTP` is enabled; do not assume every debug endpoint is authenticated.
 
 ## Verify the Fix from Kubernetes to Traffic
 
@@ -199,7 +200,7 @@ After correcting a port, label, route, or scope, wait for the declarative contro
 kubectl -n inventory get endpointslice \
   -l kubernetes.io/service-name=inventory -o wide
 
-istioctl proxy-status frontend-6c8d9f8dc8-d4k5p.shop
+istioctl proxy-status --namespace shop
 
 istioctl proxy-config endpoints \
   pod/frontend-6c8d9f8dc8-d4k5p.shop \

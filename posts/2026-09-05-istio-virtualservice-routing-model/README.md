@@ -1,4 +1,4 @@
-# Why Istio Cannot Route Directly from One VirtualService to Another—and What to Model Instead
+# Model Istio Routing Without Chaining VirtualServices
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
@@ -205,7 +205,7 @@ Use rewrite when the upstream application expects another path, not as a substit
 
 ## Model a Real Second Proxy Hop with a Gateway Service
 
-Sometimes another policy boundary must inspect the request before the final service—for example, an egress gateway or an internal shared gateway. That requires an actual network-addressable gateway workload and Service:
+Sometimes another policy boundary must inspect the request before the final service-for example, an egress gateway or an internal shared gateway. That requires an actual network-addressable gateway workload and Service:
 
 ```text
 source sidecar

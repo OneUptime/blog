@@ -14,7 +14,7 @@ An idempotent configuration command should produce the same document on its seco
 VALUE=traces yq -i '.plugins += [strenv(VALUE)]' config.yml
 ```
 
-Run twice, and `traces` appears twice. To append one scalar only when it is absent—without deleting unrelated pre-existing duplicates—subtract the current array from the one-element candidate array:
+Run twice, and `traces` appears twice. To append one scalar only when it is absent-without deleting unrelated pre-existing duplicates-subtract the current array from the one-element candidate array:
 
 ```bash
 VALUE=traces yq '

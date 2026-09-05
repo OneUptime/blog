@@ -1,4 +1,4 @@
-# Kubernetes Events Never Expire: Verify `--event-ttl` and Reclaim etcd Space Safely
+# Fix Kubernetes Events That Never Expire and Reclaim etcd Space
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

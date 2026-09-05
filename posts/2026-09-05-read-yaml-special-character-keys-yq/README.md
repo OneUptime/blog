@@ -1,4 +1,4 @@
-# How to Read a YAML Key That Contains Dots, Dashes, or Other Special Characters with yq
+# Read YAML Keys with Special Characters Using yq
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
@@ -99,7 +99,7 @@ This is much harder to reason about:
 yq ".database[\"display name\"]" config.yml
 ```
 
-It can work for a literal, but a double-quoted shell string also enables parameter expansion, command substitution, and backslash processing. Reserve it for cases where you deliberately need those shell rules—and prefer an environment variable instead.
+It can work for a literal, but a double-quoted shell string also enables parameter expansion, command substitution, and backslash processing. Reserve it for cases where you deliberately need those shell rules-and prefer an environment variable instead.
 
 ## Use a Bash Variable as One Dynamic Key
 
@@ -189,7 +189,7 @@ KEY='connection.timeout' \
   yq -e '.database[strenv(KEY)]' config.yml >/dev/null
 ```
 
-That fails when the result is absent, null, or false. If `false` is a valid value—as it is for `read-only`—test existence with `has` instead:
+That fails when the result is absent, null, or false. If `false` is a valid value-as it is for `read-only`-test existence with `has` instead:
 
 ```bash
 KEY='read-only' \
@@ -202,7 +202,7 @@ In v4.53.3, `has` compares a map key's textual value exactly, so `*` is not expa
 
 ## Treat `*` and `?` as a Special Edge Case
 
-Mike Farah yq supports wildcard matching in string equality and traversal. That means a lookup for a key literally named `*` can match every child rather than one entry—even when the key text came from `strenv`.
+Mike Farah yq supports wildcard matching in string equality and traversal. That means a lookup for a key literally named `*` can match every child rather than one entry-even when the key text came from `strenv`.
 
 For pathological keys containing yq wildcard characters, inspect map entries, select string keys, and compare strings by mutual containment. Mutual containment is true only when the complete strings are the same:
 

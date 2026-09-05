@@ -1,4 +1,4 @@
-# `kubectl get` Works but `logs` and `exec` Fail: Repair the API Server-to-Kubelet Certificate Path
+# Repair API Server-to-Kubelet Certificates When `logs` and `exec` Fail
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
@@ -17,11 +17,11 @@ That is why ordinary reads can work while every node subresource fails. Diagnose
 Test authorization first:
 
 ```bash
-kubectl auth can-i get pods/log -n payments
-kubectl auth can-i create pods/exec -n payments
+kubectl auth can-i get pods --subresource=log -n payments
+kubectl auth can-i create pods --subresource=exec -n payments
 ```
 
-Then capture a bounded request without printing application secrets:
+Then capture a request with a per-request timeout using a Pod whose logs contain no secrets. `--tail=10` limits lines, not sensitive content, and verbose output can expose request and response details:
 
 ```bash
 kubectl --request-timeout=15s --v=8 \
@@ -52,7 +52,7 @@ kubectl get node "$node_name" -o json |
   jq '.status.addresses'
 ```
 
-On every self-managed control-plane replica, inspect the running arguments:
+On every kubeadm-style control-plane replica, inspect the static Pod manifest and confirm it matches the running arguments. For other deployments, inspect their kube-apiserver process or workload configuration:
 
 ```bash
 sudo grep -n -- '--kubelet-' \
@@ -68,7 +68,7 @@ Relevant flags are:
 --kubelet-client-key=/etc/kubernetes/pki/apiserver-kubelet-client.key
 ```
 
-The ordering is deployment-specific; use the actual running arguments. The first usable address must resolve or route from every kube-apiserver, and that exact DNS name or IP must appear in each kubelet serving certificate. Kubeadm commonly chooses an InternalIP-first order to avoid unresolvable hostnames.
+The ordering is deployment-specific; use the actual running arguments. The first address matching the preference order must resolve or route from every kube-apiserver, and that DNS name or IP must match a SAN in that node's kubelet serving certificate. Address selection does not test reachability or fall back after a connection failure. Kubeadm commonly chooses an InternalIP-first order to avoid unresolvable hostnames.
 
 Fix incorrect Node address registration or preference rather than adding arbitrary SANs. An ExternalIP-first setting can unnecessarily send control-plane traffic over a public path.
 
@@ -107,12 +107,13 @@ serverTLSBootstrap: true
 rotateCertificates: true
 ```
 
-`serverTLSBootstrap` makes the kubelet request a signed serving certificate. `rotateCertificates` controls rotation of the kubelet's client identity and is a separate setting; retain it according to the cluster's client bootstrap design rather than treating it as the server-trust fix.
+`serverTLSBootstrap` makes the kubelet request a signed serving certificate and requires the `RotateKubeletServerCertificate` feature to be enabled. For an existing kubeadm cluster, update both the `kubelet-config` ConfigMap and each node's `/var/lib/kubelet/config.yaml`, then restart the kubelet. A configured serving-certificate signer must issue approved requests. `rotateCertificates` controls rotation of the kubelet's client identity and is a separate setting; retain it according to the cluster's client bootstrap design rather than treating it as the server-trust fix.
 
 After the kubelet submits a request, inspect every CSR before approval:
 
 ```bash
 kubectl get csr
+kubectl get csr <csr-name> -o yaml
 kubectl get csr <csr-name> \
   -o jsonpath='{.spec.request}' |
   base64 --decode |
@@ -146,12 +147,10 @@ For kubeadm-managed PKI, `kubeadm certs check-expiration` can inventory managed 
 
 ## Check Kubelet Authentication and Authorization
 
-The recommended kubelet posture disables anonymous authentication, trusts a client CA, enables token webhook if required, and uses webhook authorization. Inspect the effective KubeletConfiguration on an affected node:
+The recommended kubelet posture disables anonymous authentication, trusts a client CA, enables token webhook if required, and uses webhook authorization. Inspect the KubeletConfiguration file on an affected kubeadm node, including nested values. Check the kubelet's running arguments and any configuration drop-ins for overrides:
 
 ```bash
-sudo grep -n -E \
-  'clientCAFile|anonymous|authorization|authentication|tlsCertFile|tlsPrivateKeyFile|serverTLSBootstrap' \
-  /var/lib/kubelet/config.yaml
+sudo cat /var/lib/kubelet/config.yaml
 ```
 
 The user encoded in kube-apiserver's client certificate must be authorized for the relevant node subresources. Current Kubernetes documents `nodes/proxy`, `nodes/log`, `nodes/stats`, `nodes/metrics`, and related fine-grained attributes. Be cautious: `nodes/proxy` is powerful and can authorize command execution through kubelet; do not grant it broadly to end users.
@@ -172,7 +171,7 @@ If `logs --tail=10` succeeds but `logs -f`, `exec`, or `port-forward` fails, the
 - idle, tunnel, and request timeouts;
 - Konnectivity stream stability;
 - version skew between kubectl, kube-apiserver, and kubelet; and
-- kubelet `streamingConnectionIdleTimeout` policy.
+- streaming timeout settings in the container runtime; kubelet `streamingConnectionIdleTimeout` is deprecated and no longer has any effect.
 
 The client connects to kube-apiserver, not directly to the node. Opening worker-node 10250 to user networks does not repair a protocol upgrade and weakens security.
 

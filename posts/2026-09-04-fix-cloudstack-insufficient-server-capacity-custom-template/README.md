@@ -1,4 +1,4 @@
-# How to Fix `InsufficientServerCapacity` When Deploying from a Custom CloudStack Template
+# Fix `InsufficientServerCapacity` for Custom CloudStack Templates
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

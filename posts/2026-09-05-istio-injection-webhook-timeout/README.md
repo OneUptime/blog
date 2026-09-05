@@ -1,4 +1,4 @@
-# Istio Sidecar Injection Webhook Times Out: Test the API-Server-to-istiod Network Path, CA Bundle, and Endpoints
+# Fix Istio Sidecar Injection Webhook Timeouts
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

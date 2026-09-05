@@ -1,4 +1,4 @@
-# Envoy Reports `WRONG_VERSION_NUMBER` During TLS Origination: Align Application, ServiceEntry, and DestinationRule Ports
+# Fix Envoy `WRONG_VERSION_NUMBER` During TLS Origination
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
@@ -147,7 +147,7 @@ istioctl proxy-config routes \
 
 Copy actual cluster and route names from summary output; generated names vary. A declarative object existing in Kubernetes does not prove this proxy received it or selected the expected rule.
 
-If an egress gateway is involved, repeat the cluster inspection on the gateway. There can be three connections—application to sidecar, sidecar to gateway, and gateway to external server—and TLS must be assigned explicitly to each. Istio documents that passthrough at one layer plus origination at an unintended layer can result in double encryption.
+If an egress gateway is involved, repeat the cluster inspection on the gateway. There can be three connections-application to sidecar, sidecar to gateway, and gateway to external server-and TLS must be assigned explicitly to each. Istio documents that passthrough at one layer plus origination at an unintended layer can result in double encryption.
 
 ## Probe the Upstream Protocol Outside the Ambiguous Route
 

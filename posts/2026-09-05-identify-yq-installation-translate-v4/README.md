@@ -1,4 +1,4 @@
-# How to Tell Which yq You Installed—and Translate Commands to Mike Farah yq v4
+# How to Tell Which yq You Installed-and Translate Commands to Mike Farah yq v4
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

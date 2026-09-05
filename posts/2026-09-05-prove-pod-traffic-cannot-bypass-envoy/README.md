@@ -1,4 +1,4 @@
-# How to Prove Pod Traffic Cannot Bypass Envoy: Lock Down `NET_ADMIN`, Egress, and NetworkPolicy
+# Prove Pod Traffic Cannot Bypass Envoy
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
@@ -200,7 +200,7 @@ Be precise in the final claim. For example: tested application TCP traffic canno
 
 ## Conclusion
 
-A sidecar is not an isolation boundary against its own privileged application. Prove local capture for normal traffic, remove workload network capabilities, and prevent configuration escape hatches—but place the decisive controls elsewhere. Strict mTLS and authorization protect destination Pods, while NetworkPolicy, firewalls, and an egress gateway protect external boundaries. Together they support a testable, scoped non-bypass guarantee that local iptables alone cannot provide.
+A sidecar is not an isolation boundary against its own privileged application. Prove local capture for normal traffic, remove workload network capabilities, and prevent configuration escape hatches-but place the decisive controls elsewhere. Strict mTLS and authorization protect destination Pods, while NetworkPolicy, firewalls, and an egress gateway protect external boundaries. Together they support a testable, scoped non-bypass guarantee that local iptables alone cannot provide.
 
 ## Official Documentation
 

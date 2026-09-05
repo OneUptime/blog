@@ -1,4 +1,4 @@
-# Traffic Works Outside the Mesh but Times Out Inside: Walk Envoy's Listener-to-Cluster-to-Endpoint Chain
+# Debug In-Mesh Timeouts Across Envoy's Traffic Chain
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
@@ -234,7 +234,7 @@ inside:  Service DNS -> source Envoy -> endpoint B:8080 -> dest Envoy -> app
 
 Then test one variable at a time. If forcing endpoint A fixes the inside path, investigate endpoint B or its node. If both endpoints work through ingress but neither through source Envoy, compare source cluster transport and NetworkPolicy. If a mesh client using the external hostname works but Service FQDN does not, compare listeners, authority matches, and DNS.
 
-Avoid calling the backend directly from the source application as the permanent fix. That may bypass mTLS, routing, telemetry, and authorization—the very differences the investigation needs to retain.
+Avoid calling the backend directly from the source application as the permanent fix. That may bypass mTLS, routing, telemetry, and authorization-the very differences the investigation needs to retain.
 
 ## Verify Recovery at Every Stage
 

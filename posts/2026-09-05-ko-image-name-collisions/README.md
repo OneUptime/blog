@@ -1,4 +1,4 @@
-# How to Avoid ko Image-Name Collisions with `--preserve-import-paths`, `--base-import-paths`, and `--bare`
+# Prevent ko Image-Name Collisions
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

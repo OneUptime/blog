@@ -1,4 +1,4 @@
-# How to Stamp Git Commit and Version Metadata into a ko Image with `ldflags` and OCI Labels
+# Stamp Git and OCI Metadata into ko Images
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

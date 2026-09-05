@@ -93,7 +93,7 @@ mc admin config set production scanner speed=slow
 mc admin config get production scanner
 ```
 
-Scanner speed also affects lifecycle processing and replication checks. Watch those backlogs while it is reduced. Restore the previous value when healing and SLOs permit:
+Scanner speed also affects lifecycle processing and replication checks. Watch those backlogs while it is reduced. Restore the previous value when healing and SLOs permit. The following example applies only if the recorded value was `default`:
 
 ```bash
 mc admin config set production scanner speed=default
@@ -113,7 +113,7 @@ mc admin heal --verbose production/critical-bucket/known-prefix
 
 If an active scan exists, this reports its status. Otherwise it creates work, so run it only after calculating the network and foreground budget.
 
-Replace and heal one failed member per affected set at a time unless MinIO engineering directs otherwise. Parallel replacements can increase reconstruction fan-in and consume the remaining failure tolerance.
+Replace and heal one failed member per affected set at a time unless MinIO engineering directs otherwise. MinIO heals replacement drives sequentially within each erasure set. Taking additional members offline before healing completes can consume the remaining failure tolerance; healing across different sets can still compete for shared bandwidth.
 
 ## Reduce Avoidable Competing Traffic
 
@@ -137,7 +137,7 @@ foreground gate: p99 latency, error rate, and timeout budget
 durability gate: remaining set tolerance and maximum recovery completion time
 ```
 
-If the foreground gate fails, increase heal pacing, reduce worker concurrency or scanner speed where appropriate, or reduce competing workload. If the durability gate fails, healing is too slow; restore the recorded settings, restore bandwidth, reduce other traffic, or escalate. Never optimize one gate while ignoring the other.
+If the foreground gate fails, increase heal pacing, reduce worker concurrency or scanner speed where appropriate, or reduce competing workload. If the durability gate fails, recovery is taking too long or the remaining failure tolerance is too low; restore the recorded settings, restore bandwidth, reduce other traffic, or escalate. Never optimize one gate while ignoring the other.
 
 After completion, require online drive count and set tolerance to return to design values, healing-drive count to reach zero, and heal-error counters to stop increasing. Then run representative S3 reads against trusted SHA-256 manifests.
 

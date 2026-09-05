@@ -1,4 +1,4 @@
-# How to Push ko-Built Go Images to a Private Registry with `KO_DOCKER_REPO` and `ko login`
+# Push ko-Built Go Images to a Private Registry
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

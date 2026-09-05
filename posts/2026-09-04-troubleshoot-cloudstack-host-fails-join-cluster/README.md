@@ -24,7 +24,7 @@ sudo tail -F /var/log/cloudstack/management/management-server.log
 sudo tail -F /var/log/cloudstack/agent/agent.log
 ```
 
-The first side that does not record the attempt narrows the problem:
+Correlate both logs to narrow the problem. SSH failures before agent startup may appear only in the management log and the host’s SSH service or authentication logs:
 
 | Evidence | Likely boundary |
 | --- | --- |
@@ -102,7 +102,7 @@ CloudStack cannot accept a host whose virtualization layer is broken:
 ```bash
 hostname --fqdn
 java -version
-sudo virt-host-validate
+sudo virt-host-validate qemu
 sudo systemctl is-active libvirtd cloudstack-agent
 sudo virsh -c qemu:///system list --all
 sudo ip -br link
@@ -118,11 +118,11 @@ sudo journalctl -k -b | grep -Ei 'kvm|iommu|apparmor|avc:|denied'
 sudo journalctl -u libvirtd -u cloudstack-agent -b -n 250 --no-pager
 ```
 
-Do not permanently disable SELinux or AppArmor without understanding the missing rule. Apache's guide documents permissive steps for compatibility but recommends enforcing policy in production.
+Do not permanently disable SELinux or AppArmor without understanding the missing rule. Apache's guide documents SELinux permissive mode and disabling libvirt AppArmor profiles for compatibility; its production recommendation specifically calls for SELinux enforcing mode with the necessary policies.
 
 ## Compare the Host with Its Intended Cluster
 
-CloudStack requires a KVM cluster to be homogeneous: hosts should have the same distribution version and compatible CPU type, count, and feature flags. Compare the candidate to a healthy peer:
+CloudStack requires a KVM cluster to be homogeneous: Apache’s installation guide specifies the same distribution version and the same CPU type, count, and feature flags. Compare the candidate to a healthy peer:
 
 ```bash
 uname -r
@@ -130,7 +130,7 @@ cat /etc/os-release
 virsh version
 qemu-system-x86_64 --version
 lscpu
-virsh cpu-models x86_64 | head
+sudo virsh -c qemu:///system domcapabilities --virttype kvm --arch x86_64
 ```
 
 Also compare `/etc/cloudstack/agent/agent.properties`, bridge topology, MTU, DNS, and NFS client packages. Do not copy the entire properties file: values such as the agent GUID are host-specific.
@@ -151,7 +151,7 @@ findmnt /mnt/cloudstack-nfs-check
 sudo umount /mnt/cloudstack-nfs-check
 ```
 
-Use the NFS version and mount options actually configured for the pool. A successful ping is not proof of export authorization, locking, UID behavior, or write access. For Ceph/RBD, verify the exact pool, monitor reachability, keyring permissions, and libvirt secret expected by the CloudStack storage configuration.
+Use the NFS version, server-visible export path, and mount options actually configured for the pool. On NFSv4-only servers, `showmount` and `rpcinfo` may fail even when NFS works because the MOUNT and rpcbind services are not required for a normal NFSv4 mount. The read-only mount does not prove write access. A successful ping is not proof of export authorization, locking, UID behavior, or write access. For Ceph/RBD, verify the exact pool, monitor reachability, keyring permissions, and libvirt secret expected by the CloudStack storage configuration.
 
 ## Retry Without Creating More State
 

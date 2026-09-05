@@ -1,4 +1,4 @@
-# How to Back Up CloudStack VMs with Recurring Volume Snapshots and Off-Cluster Copies
+# Back Up CloudStack VMs with Recurring Snapshots and Off-Cluster Copies
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
