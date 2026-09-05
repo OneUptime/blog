@@ -14,7 +14,7 @@ These names are routing signals understood by `ko`; they are not public registri
 
 ## Load an Image into Docker
 
-The clearest command makes both the destination and naming policy explicit:
+With `KO_DOCKER_REPO` unset, this command selects Docker and preserves import paths:
 
 ```bash
 ko build --local --preserve-import-paths ./cmd/api
@@ -27,7 +27,7 @@ export KO_DOCKER_REPO=ko.local
 ko build --preserve-import-paths ./cmd/api
 ```
 
-Both forms compile the program, assemble its image, and write it through the Docker daemon API. With the supplied `--preserve-import-paths`, the returned reference uses the `ko.local` domain and the full import path. In version 0.19.1, omitting that naming flag produces the normal package-plus-hash name even though the CLI's long example says local mode always preserves paths. Capture the actual result rather than depending on that wording:
+Both forms compile the program, assemble its image, and write it through the Docker daemon API. With the supplied `--preserve-import-paths`, the returned reference uses the `ko.local` domain and the full import path (lowercased). With `--local`, an already-set `KO_DOCKER_REPO` changes the reference prefix, but the image still loads into Docker. In version 0.19.1, omitting that naming flag produces the normal package-plus-hash name even though the CLI's long example says local mode always preserves paths. Capture the actual result rather than depending on that wording:
 
 ```bash
 image_ref=$(ko build --local --preserve-import-paths ./cmd/api)
@@ -37,10 +37,12 @@ docker run --rm -p 8080:8080 "$image_ref"
 
 Progress is written separately, so command substitution receives the published reference. If building multiple packages, use `--image-refs` and handle every line instead of assigning multiple references to one variable.
 
-The image goes to whichever daemon the Docker client configuration selects. If `DOCKER_HOST` or the active Docker context points at a remote engine, the image is not necessarily on the laptop where the command ran. Check before debugging a supposed missing image:
+In version 0.19.1, the Docker publisher uses an environment-configured API client: `DOCKER_HOST` selects the endpoint, with the default socket used when it is unset. It does not automatically honor the active Docker CLI context or `DOCKER_CONTEXT`. If `DOCKER_HOST` points at a remote engine, the image is not necessarily on the laptop where the command ran. Compare the CLI context endpoint with the environment before debugging a supposed missing image:
 
 ```bash
 docker context show
+docker context inspect --format '{{.Endpoints.docker.Host}}'
+printf 'DOCKER_HOST=%s\n' "${DOCKER_HOST:-<unset>}"
 docker info --format '{{.Name}}'
 ```
 
@@ -65,11 +67,11 @@ ko build ./cmd/api
 
 Confirm the name with `kind get clusters`. If the cluster is recreated, its node containers and imported images are recreated too; run the load again.
 
-In version 0.19.1, the kind publisher iterates over every node in the selected cluster and fails on the first load error. Treat any failed load as a failed build; scheduling to a node without the image causes an image-pull attempt against the nonexistent `kind.local` registry.
+In version 0.19.1, the kind publisher iterates over every node in the selected cluster and fails on the first load error. Treat any failed load as a failed build; scheduling to a node without the image causes an image-pull attempt against the nonexistent `kind.local` registry with `IfNotPresent`, or a startup failure without a pull with `Never`.
 
 ## Deploy a Local Reference Safely
 
-A manifest can retain a `ko://` source reference:
+A manifest can retain a `ko://` source reference (replace the example import path with your Go main package and save the manifest under `config/`):
 
 ```yaml
 apiVersion: apps/v1
@@ -120,10 +122,10 @@ Inspect the actual image and pull policy:
 ```bash
 kubectl --context kind-integration get pod \
   -l app=api \
-  -o jsonpath='{range .items[*]}{.spec.nodeName}{"  "}{.spec.containers[0].image}{"\n"}{end}'
+  -o jsonpath='{range .items[*]}{.spec.nodeName}{"  "}{.spec.containers[0].image}{"  "}{.spec.containers[0].imagePullPolicy}{"\n"}{end}'
 ```
 
-If a Pod still runs old code, compare the Pod's image ID, force a rollout after applying the new content-derived reference, and ensure `ko` targeted the same cluster named in the kubectl context.
+Applying a changed content-derived image reference updates the Deployment's Pod template and automatically triggers a rollout. If a Pod still runs old code, check rollout status, compare the Pod's image ID, and ensure `ko` targeted the same cluster named in the kubectl context.
 
 ## Docker and kind Are Different Destinations
 
@@ -152,7 +154,7 @@ docker ps --filter label=io.x-k8s.kind.cluster
 kubectl config get-contexts
 ```
 
-A mismatch between `KIND_CLUSTER_NAME=integration` and kubectl context `kind-dev` is easy to overlook. Also ensure kind's node containers are reachable through the same Docker daemon used by `ko`.
+A mismatch between `KIND_CLUSTER_NAME=integration` and kubectl context `kind-dev` is easy to overlook. For Docker-backed kind clusters, ensure the Docker CLI used by ko's kind provider targets the daemon containing the node containers. This path uses kind's provider rather than ko's Docker image-store publisher.
 
 ## Conclusion
 
