@@ -8,7 +8,7 @@ Description: Enable an HDFS erasure-coding policy on selected directories, prove
 
 ---
 
-HDFS erasure coding is a directory policy, not a cluster-wide conversion switch. A file takes the policy of its nearest policy-bearing ancestor when the file is created. Changing a directory therefore affects only future files; it does not recode existing files, and moving an existing file into the directory does not change that file's layout.
+HDFS erasure coding is a directory policy, not a cluster-wide conversion switch. By default, a file takes the policy of its nearest policy-bearing ancestor when the file is created; a client can explicitly override that policy at creation time. Changing a directory therefore affects only future files; it does not recode existing files, and moving an existing file into the directory does not change that file's layout.
 
 That behavior makes a small, explicitly selected directory the safest place to begin.
 
@@ -95,7 +95,7 @@ Also note that `hdfs dfs -setrep` is meaningless for an EC file: Hadoop reports 
 
 Apache Hadoop documents important limitations for striped files: ordinary `append`, `truncate`, mixed-policy `concat`, and meaningful `hflush()`/`hsync()` semantics are not generally available. `hflush()` and `hsync()` on `DFSStripedOutputStream` are no-ops.
 
-Logs, write-ahead logs, and applications that require acknowledged `hsync()` durability should remain in a replicated directory. A client using the builder API can also explicitly request a replicated file with `FSDataOutputStreamBuilder.replicate()`.
+Logs, write-ahead logs, and applications that require acknowledged `hsync()` durability should remain in a replicated directory. A client using the builder API can also explicitly request a replicated file with `DistributedFileSystem.HdfsDataOutputStreamBuilder.replicate()`.
 
 ## Roll Back Without Mislabeling Existing Files
 
@@ -105,7 +105,7 @@ To make new files inherit the parent policy again:
 hdfs ec -unsetPolicy -path /warehouse/cold-events
 ```
 
-If the parent is EC and this child must force normal three-way replication, use the special replication policy instead:
+If the parent is EC and this child must force replicated storage, use the special replication policy instead. The replica count comes from the client's creation settings (normally three by default); this policy does not enforce a count of three:
 
 ```bash
 hdfs ec -setPolicy -path /warehouse/cold-events -replicate
