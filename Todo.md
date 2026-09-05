@@ -172,7 +172,6 @@
 
 ## Data Plane
 
-2. The Application Starts Before Istio Proxy: Gate Startup with `holdApplicationUntilProxyStarts` or Native Sidecars
 3. Istio Proxy Readiness Returns 503: Verify Service Ports, Endpoints, and Envoy Configuration
 4. Does Envoy Pull or Does Istiod Push? Trace the Long-Lived xDS Stream from Bootstrap to ACK and NACK
 5. Istio Sidecar Injection Webhook Times Out: Test the API-Server-to-istiod Network Path, CA Bundle, and Endpoints
