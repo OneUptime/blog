@@ -178,7 +178,6 @@
 
 ## yq
 
-9. How to Append to a yq List Only If the Value Is Not Already Present
 10. How to Build YAML Arrays and Nested Objects from Bash Data with yq
 11. How to Deep-Merge Multiple YAML Files with Explicit Override Precedence in yq
 12. How to Merge YAML Arrays by a Unique Key Instead of Replacing Them with yq
