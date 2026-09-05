@@ -50,7 +50,7 @@ Use server-side dry run with a harmless Pod manifest in the affected namespace t
 kubectl -n checkout apply --server-side --dry-run=server -f minimal-pod.yaml
 ```
 
-The manifest should contain no Secrets and no external side effects. Dry run still invokes compatible admission webhooks, so use it only after confirming the webhook declares `sideEffects: None` or `NoneOnDryRun`. Capture `kubectl --v=8` output locally if request timing is needed, but sanitize bearer tokens and request bodies before sharing.
+Use a Pod name that does not already exist so this tests CREATE admission, and copy the affected workload’s injection-related labels and annotations so the same injector matches. The manifest should contain no Secrets and no external side effects. Dry run still invokes compatible admission webhooks, so use it only after confirming the webhook declares `sideEffects: None` or `NoneOnDryRun`. Capture `kubectl --v=8` output locally if request timing is needed, but sanitize bearer tokens and request bodies before sharing.
 
 ## Resolve the Exact Webhook That Matched
 
@@ -65,8 +65,8 @@ kubectl get mutatingwebhookconfigurations -o json |
     [$cfg.metadata.name, .name,
      (.clientConfig.service.namespace // "URL"),
      (.clientConfig.service.name // .clientConfig.url),
-     (.clientConfig.service.port // 443),
-     (.clientConfig.service.path // "/"),
+     (if .clientConfig.service then (.clientConfig.service.port // 443) else "see URL" end),
+     (if .clientConfig.service then (.clientConfig.service.path // "/") else "see URL" end),
      (.timeoutSeconds // 10), (.failurePolicy // "Fail")] | @tsv'
 ```
 
@@ -77,9 +77,9 @@ kubectl get mutatingwebhookconfiguration istio-sidecar-injector -o yaml
 kubectl get namespace checkout --show-labels
 ```
 
-Evaluate `namespaceSelector`, `objectSelector`, rules, `matchPolicy`, and any match conditions. Namespace selectors match labels on the Namespace object, not its name unless a name label is explicitly selected. For revisions, `istio.io/rev` determines the matching injector. If both legacy `istio-injection` and revision labels exist, fix the ambiguity using Istio's documented injection policy rather than editing every Pod.
+Evaluate `namespaceSelector`, `objectSelector`, rules, `matchPolicy`, and any match conditions. Namespace selectors match labels on the Namespace object, not its name unless a name label is explicitly selected. For revisions, `istio.io/rev` determines the matching injector. If both labels exist on a Namespace, `istio-injection` takes precedence over `istio.io/rev`; correct the Namespace labels to select the intended injection policy.
 
-Do not assume the webhook is named exactly `istio-sidecar-injector`; use the name from the failure. A stale webhook left by a retired revision can still match and call a Service that no longer exists.
+Do not assume the configuration is named exactly `istio-sidecar-injector`. The failure identifies a `.webhooks[].name`; use the inventory to map it to the containing configuration’s `.metadata.name`. A stale webhook left by a retired revision can still match and call a Service that no longer exists.
 
 ## Follow Service Port 443 to Istiod Port 15017
 
@@ -94,7 +94,7 @@ kubectl -n istio-system get pods -l app=istiod -o wide
 
 Istio documents `443` as the webhook Service port and `15017` as the Istiod webhook container port. Verify the deployed Service's actual `targetPort`; custom charts may differ. In EndpointSlices, confirm:
 
-- at least one endpoint is `ready: true`;
+- at least one endpoint is `ready: true` (an omitted or null `ready` is treated as ready; if `publishNotReadyAddresses` is enabled on the Service, verify Pod readiness separately);
 - endpoint addresses match current Istiod Pod IPs;
 - the slice port resolves to the webhook serving port; and
 - every endpoint belongs to the expected revision.
@@ -103,16 +103,16 @@ There may be multiple EndpointSlices. A single healthy endpoint can also mask on
 
 ```bash
 kubectl -n istio-system logs -l app=istiod \
-  --since=20m --timestamps --prefix --max-log-requests=10
+  --since=20m --tail=-1 --timestamps --prefix --max-log-requests=10
 kubectl -n istio-system get pods -l app=istiod \
   -o custom-columns='NAME:.metadata.name,READY:.status.containerStatuses[*].ready,RESTARTS:.status.containerStatuses[*].restartCount,NODE:.spec.nodeName,IP:.status.podIP'
 ```
 
-If EndpointSlices are empty, fix Istiod readiness, the Service selector, or the installation owner. Do not hand-create endpoint addresses for a selector-backed Service.
+If EndpointSlices are empty or have no ready endpoints, fix the Service selector, Istiod readiness, or the installation owner as appropriate. Unready Pods can remain listed with `ready: false`. Do not hand-create endpoint addresses for a selector-backed Service.
 
 ## Test from the API Server's Network Perspective
 
-The API server may run as a host-network static Pod, a managed service outside the cluster network, or behind Konnectivity or an egress selector. Each has a different route to ClusterIP and Pod IP addresses.
+The API server may run as a host-network static Pod, a managed service outside the cluster network, or behind Konnectivity or an egress selector. Each has a different route to ClusterIP and Pod IP addresses. A direct host-network probe does not exercise a configured Konnectivity or egress-selector tunnel; verify that path with its supported diagnostics as well.
 
 For self-managed control planes, use approved host or API-server namespace diagnostics to test the exact Service ClusterIP:port and each ready endpoint:targetPort. Preserve the expected TLS server name `istiod.istio-system.svc` even when connecting to an IP. A generic test shape is:
 
@@ -123,9 +123,9 @@ openssl s_client \
   -showcerts </dev/null
 ```
 
-Run it only from an authorized control-plane path and replace the placeholder explicitly. A completed TLS handshake still does not validate an AdmissionReview response, but it separates reachability and trust from application logic.
+Run it only from an authorized control-plane path and replace the placeholder explicitly. This command checks reachability and displays the served certificates, but it does not prove trust or hostname validity: `-servername` sets SNI, and `s_client` normally continues after verification errors. To verify TLS, save the matched webhook’s decoded `caBundle` as `webhook-ca.pem` and repeat with `-verifyCAfile webhook-ca.pem -verify_hostname istiod.istio-system.svc -verify_return_error`. Even a verified handshake does not validate an AdmissionReview response.
 
-On a managed control plane, do not attempt to create an unauthorized shell. Use provider control-plane logs, firewall diagnostics, and the documented webhook connectivity model. Check security groups, control-plane authorized networks, CNI policy for host-originated traffic, node firewalls, and any private-cluster master-to-node rules.
+On a managed control plane, do not attempt to create an unauthorized shell. Use provider control-plane logs, firewall diagnostics, and the documented webhook connectivity model. Check security groups, control-plane-to-webhook firewall rules, CNI policy for host-originated traffic, node firewalls, and any private-cluster master-to-node rules.
 
 NetworkPolicy behavior for control-plane sources is CNI-specific. An allow rule for Pods with an `apiserver` label does not help when the source is a node address or provider control-plane CIDR. Test all API-server replicas if the failures are intermittent.
 
@@ -143,9 +143,9 @@ kubectl get mutatingwebhookconfiguration istio-sidecar-injector -o json |
   openssl x509 -noout -subject -issuer -dates -fingerprint -sha256
 ```
 
-Replace both the configuration name and `MATCHED_WEBHOOK_NAME` with the values from the failed admission call. A configuration can contain several webhook entries; inspecting `[0]` without proving it is the matching entry can validate the wrong CA bundle.
+Replace `MATCHED_WEBHOOK_NAME` with the name from the failed admission call and the configuration name with its containing configuration from the inventory. This `openssl x509` command inspects the first certificate only; if the bundle contains multiple certificates, inspect each and use the full decoded bundle for TLS verification. A configuration can contain several webhook entries; inspecting `[0]` without proving it is the matching entry can validate the wrong CA bundle.
 
-Retrieve the serving chain with `openssl s_client` from the API-server path and compare issuer, validity window, fingerprinted trust anchor, and DNS SAN. The leaf certificate should cover the Service identity used by the webhook. Check clock synchronization on control-plane and Istiod nodes.
+Retrieve the serving chain with `openssl s_client` from the API-server path and verify it against the full decoded CA bundle as described above; inspect issuer, validity window, and DNS SAN. Matching issuer names alone does not prove trust, and the server need not send the root certificate. The leaf certificate should cover the Service identity used by the webhook. Check clock synchronization on control-plane and Istiod nodes.
 
 An empty or stale `caBundle` often means the installation's certificate reconciliation did not complete or another manager overwrote the webhook. Determine who owns the object:
 
@@ -176,7 +176,7 @@ kubectl -n checkout get pod checkout-api-CANARY -o json |
        sidecarStatus: .metadata.annotations["sidecar.istio.io/status"]}'
 ```
 
-Confirm both application and proxy become ready, the proxy connects to the intended revision, and webhook latency returns to baseline. Remove stale revision webhooks only through the supported uninstall process after proving no namespaces select them.
+Confirm both application and proxy become ready, the proxy connects to the intended revision, and webhook latency returns to baseline. Remove stale revision webhooks only through the supported uninstall process after proving no Namespace or Pod-template revision labels, including revision tags, still select them and no workloads depend on that revision.
 
 Alert separately on admission call failures, webhook latency, Istiod ready endpoints, certificate expiry, and Pods created in mesh namespaces without a data plane. A green Istiod Deployment alone does not cover the API-server network path.
 
