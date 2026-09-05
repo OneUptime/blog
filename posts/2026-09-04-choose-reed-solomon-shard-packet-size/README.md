@@ -20,10 +20,10 @@ For one full stripe:
 useful data bytes       = K * shard_size
 stored bytes            = (K + M) * shard_size
 storage overhead ratio  = M / K
-codec working set       >= (K + M) * active_chunk_size
+resident shard buffers  = (K + M) * active_chunk_size
 ```
 
-The last expression is only a lower bound. Decode matrices, tables, temporary outputs, checksums, queues, and application copies consume more memory. With concurrency `C`, approximate the buffer budget before implementation overhead as:
+The last expression assumes one resident window for every data and parity shard; it is not a universal lower bound for streaming encoders or selective reconstruction. Decode matrices, tables, temporary outputs, checksums, queues, and application copies consume more memory. With concurrency `C`, approximate the buffer budget before implementation overhead as:
 
 ```text
 C * (K + M) * active_chunk_size
@@ -33,7 +33,7 @@ For example, a `10+4` layout processing 1 MiB from each shard has at least 14 Mi
 
 ## Separate Shard Size from Processing Chunk Size
 
-A large on-disk shard need not be passed to the codec in one call. A file can use 64 MiB shards while the application encodes 256 KiB windows at matching offsets across all shards. This limits memory while preserving the on-disk layout.
+A large on-disk shard need not be passed to the codec in one call. A file can use 64 MiB shards while the application encodes 256 KiB windows at matching offsets across all shards. This limits memory while preserving the on-disk layout when window boundaries respect the codec's symbol and packet grouping and use the same coding parameters.
 
 Choose the on-disk shard size from:
 
@@ -59,7 +59,7 @@ Alignment rules are implementation-specific. Ronomon's Node.js addon requires th
 
 Backblaze JavaReedSolomon offers multiple coding-loop orderings because the fastest loop depends on processor and buffer shape. Its official benchmark should be edited or wrapped to match the production `K`, `M`, buffer size, and JVM. A result copied from another CPU or default workload is not a capacity number.
 
-Ceph's Jerasure plugin exposes `packetsize`, with 2048 bytes documented as its default. That knob belongs to that plugin and its selected technique. Current Ceph documentation also warns that the Jerasure library is no longer maintained and that techniques other than `reed_sol_van` are deprecated. Do not transplant `2048` into ISA-L, JavaReedSolomon, or another codec simply because the term packet appears similar.
+Ceph's Jerasure plugin exposes `packetsize`, with 2048 bytes documented as its default. That knob belongs to that plugin and its selected technique. Ceph's latest development-version documentation also warns that the Jerasure library is no longer maintained and that techniques other than `reed_sol_van` are deprecated. Do not transplant `2048` into ISA-L, JavaReedSolomon, or another codec simply because the term packet appears similar.
 
 Record all format-defining parameters in metadata. Even when packet size affects only performance, verify that assumption against the chosen library. `K`, `M`, field polynomial, matrix construction, shard ordering, padding, and library revision can determine compatibility.
 
@@ -104,17 +104,17 @@ A memory-only codec test answers whether the CPU can keep up. It does not includ
 
 Use a dedicated scratch namespace, never a production device. Precondition SSDs consistently, ensure the data set exceeds RAM when testing storage rather than cache, and document whether I/O is buffered or direct. Measure foreground traffic alongside rebuild traffic because a large chunk that maximizes standalone encoding may create unacceptable request latency when recovery competes for I/O.
 
-Test the real object-size distribution. For an object of length `L`, a simple single-stripe layout pads to:
+Test the real object-size distribution. For an object of length `L` bytes, a single-stripe layout with the minimum equal shard size `ceil(L / K)` bytes has data padding:
 
 ```text
 padding = K * ceil(L / K) - L
 ```
 
-Alignment can increase that further. Millions of small objects may lose more capacity to headers, allocation units, and padding than to the nominal `M/K` parity ratio. Packing small records changes recovery scope and update behavior, so treat it as a separate format design.
+For a fixed shard size `S` and `L <= K * S`, data padding is instead `K * S - L`. Alignment can increase the required shard size further. Millions of small objects may lose more capacity to headers, allocation units, and padding than to the nominal `M/K` parity ratio. Packing small records changes recovery scope and update behavior, so treat it as a separate format design.
 
 ## Gate Every Performance Run on Correctness
 
-Populate buffers with deterministic pseudorandom data, encode, corrupt or remove chosen copies, reconstruct, and compare every recovered byte or a cryptographic object digest. Exercise first and last bytes of each active chunk and lengths just below, at, and above boundaries.
+Populate buffers with deterministic pseudorandom data, encode, corrupt or remove chosen copies, mark those shards as missing in the decoder's erasure flags or list, reconstruct, and compare every recovered byte or a cryptographic object digest. These erasure APIs require known missing or invalid shard locations; they do not locate silent corruption automatically. Exercise first and last bytes of each active chunk and lengths just below, at, and above boundaries.
 
 Reject results from any run with a mismatch. Check that missing buffers are not accidentally still readable by the decoder, that output buffers do not alias input buffers unless supported, and that padding is excluded from the final object hash. A fast test with an invalid erasure setup measures the wrong operation.
 
