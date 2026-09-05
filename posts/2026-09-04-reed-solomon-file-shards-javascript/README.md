@@ -134,7 +134,7 @@ find archive.tar.rs -type f -print | sort
 sha256sum archive.tar archive.tar.rs/shard-*.bin
 ```
 
-The eight-byte header is itself encoded because it is placed at the beginning of the data buffer. Zero padding fills the end of the final data shard. If the original file has length `L`, the script chooses:
+The eight-byte header is itself encoded because it is placed at the beginning of the data buffer. Zero padding fills the remainder of the data buffer and can span multiple data shards for small files. If the original file has length `L`, the script chooses:
 
 ```text
 stored bytes = L + 8
@@ -148,7 +148,7 @@ Never infer `L` by trimming zero bytes, because zero can be valid file data.
 
 The manifest binds each logical index to a length and SHA-256 digest. Store at least two independently readable copies, authenticate it with a signature or MAC, and keep the authentication key outside the shard set. An attacker who can replace both a shard and an unauthenticated digest can otherwise make corrupt data appear valid.
 
-For a durable writer, the example needs an additional storage-specific commit protocol. Write to temporary names, flush file contents, sync the containing directory where the platform supports it, then atomically publish the manifest. On object storage, use generation IDs and publish a small immutable pointer only after all generation objects are durable. Do not overwrite a working generation in place.
+For a durable writer, the example needs an additional storage-specific commit protocol. Write to temporary names, flush file contents, sync the containing directory where the platform supports it, then atomically publish the flushed manifest and sync its containing directory again to persist the rename. On object storage, use generation IDs and publish a small immutable pointer only after all generation objects are durable. Do not overwrite a working generation in place.
 
 The addon's source and target sets are JavaScript bit masks. A `6+3` layout is comfortably within that interface, but larger layouts must be checked against `MAX_K`, `MAX_M`, and JavaScript's 32-bit bitwise behavior. Do not assume a layout accepted by another Reed-Solomon implementation is wire-compatible. Field parameters, generator matrix, shard ordering, and padding are all part of the format.
 
@@ -156,7 +156,7 @@ The addon's source and target sets are JavaScript bit masks. A `6+3` layout is c
 
 An encoding job should fail unless all of these checks pass:
 
-1. Every file has exactly `manifest.shardSize` bytes.
+1. Every shard file has exactly `manifest.shardSize` bytes.
 2. Every per-shard SHA-256 digest matches the authenticated manifest.
 3. Re-encoding parity from the six data shards produces byte-identical parity shards.
 4. Recovery succeeds after deleting every single shard, representative pairs, and representative three-shard combinations.
@@ -164,7 +164,7 @@ An encoding job should fail unless all of these checks pass:
 
 Keep the source file during the first drill. Copy the shard set to a scratch directory, remove selected copies there, reconstruct the missing indexes, concatenate data shards in index order, read the eight-byte length, and hash exactly that many payload bytes. Test loss of data-only, parity-only, and mixed indexes. A successful decoder return is not enough; the final object digest is the acceptance test.
 
-With `M = 3`, four missing shards exceed the erasure budget. Fail closed rather than returning a best-effort file. Likewise, a digest mismatch is a known erasure only when the manifest is trusted. Without authenticated metadata, a wrong shard is an unknown error and can consume twice the correction budget.
+With `M = 3`, four missing shards exceed the erasure budget. Fail closed rather than returning a best-effort file. Likewise, a digest mismatch is a known erasure only when the manifest is trusted. This addon reconstructs known erasures; it does not locate or correct unknown errors. The general Reed-Solomon bound of two parity symbols per unknown error applies to error-correcting decoders, not to this erasure-only API. Reject untrusted metadata rather than relying on that bound for recovery.
 
 ## Plan for Large Files and Concurrency
 
