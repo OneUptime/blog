@@ -14,7 +14,7 @@ Custom templates expose these mismatches because their hypervisor, architecture,
 
 ## Preserve the Failed Deployment Job
 
-Record the job ID, VM UUID if one was allocated, zone, template, service offering, disk offering, network, affinity groups, and account/project. Query the job once and search it in the management log:
+Record the job ID, VM UUID if one was allocated, zone, template, service offering, disk offering, network, affinity groups, and account/project. Using a configured CloudMonkey (`cmk`) administrator profile, query the job once and search it in the management log (replace the UUID placeholders with actual values):
 
 ```bash
 cmk query asyncjobresult jobid=JOB_UUID
@@ -22,7 +22,7 @@ sudo grep -nE 'JOB_UUID|VM_UUID|TEMPLATE_UUID' \
   /var/log/cloudstack/management/management-server.log | tail -n 300
 ```
 
-CloudStack's troubleshooting guide recommends following job IDs through `management-server.log`. The useful line is often an allocator rejection immediately before the final capacity exception.
+CloudStack's troubleshooting guide recommends following job IDs through `management-server.log`. Logs commonly use an internal numeric identifier such as `job-1076`, which differs from the API job UUID. Use the UUID search to locate related entries, then follow their `job-N` identifiers; if it finds nothing, correlate the request timestamp and VM instance name. The useful line is often an allocator rejection immediately before the final capacity exception.
 
 Do not submit many identical deployments. Failed records and concurrent reservations can add noise and consume temporary capacity.
 
@@ -55,7 +55,7 @@ cmk list clusters zoneid=ZONE_UUID
 cmk list serviceofferings id=SERVICE_OFFERING_UUID
 ```
 
-Capacity figures are aggregates. A 16 GiB request cannot fit when 20 GiB is free only as 10 GiB on each of two hosts. Check per-host memory, CPU, allocated/reserved capacity, maintenance/resource state, and the offering's overcommit policy.
+Capacity figures are aggregates. A 16 GiB request cannot fit when 20 GiB is free only as 10 GiB on each of two hosts. Check per-host memory, CPU, allocated/reserved capacity, maintenance/resource state, and the cluster's CPU and memory overprovisioning ratios.
 
 On KVM candidates, compare:
 
@@ -67,11 +67,11 @@ free -h
 sudo systemctl is-active libvirtd cloudstack-agent
 ```
 
-Current CloudStack requires homogeneous hosts within a KVM cluster. A host-passthrough CPU model can also restrict migration/placement to exactly compatible CPUs. Do not enable more aggressive overprovisioning until you have measured workload risk.
+`virsh cpu-models` lists models known to libvirt, not proof that the host can run them; use `virsh domcapabilities` to inspect the hypervisor capabilities. Current CloudStack requires homogeneous hosts within a KVM cluster. Safe migration with a host-passthrough CPU model also requires matching hardware, QEMU, microcode, and configuration. Do not enable more aggressive overprovisioning until you have measured workload risk.
 
 ## Reconcile Host Tags, Affinity, and Scope
 
-Host tags on compute offerings direct VMs only to compatible hosts. Storage tags on disk/root offerings require a pool with all specified tags. These are allocation tags, not ordinary resource labels.
+Host tags on compute offerings normally direct VMs to compatible hosts; explicit host selection can bypass ordinary tag checks unless strict host tags are configured. With ordinary storage tags, disk/root offerings require a pool with all specified tags. These are allocation tags, not ordinary resource labels.
 
 ```bash
 cmk list hosttags
@@ -79,9 +79,9 @@ cmk list storagetags
 cmk list affinitygroups virtualmachineid=VM_UUID
 ```
 
-The 4.23 `listHostTags` and `listStorageTags` APIs do not accept a host or pool filter. Filter the returned records locally by their `hostid` and `poolid` fields, and compare the exact tag sets with the compute and disk offerings.
+The 4.23 `listHostTags` and `listStorageTags` APIs do not accept a host or pool filter. Filter the returned records locally by their `hostid` and `poolid` fields, and compare their tags with the compute and disk offerings.
 
-Compare the exact, case-sensitive tag sets on the offering and candidates. Also check dedicated hosts/clusters/pods/zones, account/project scope, affinity and anti-affinity groups, and offering zone/domain scope. A strict anti-affinity group may exclude the only host with the required CPU or storage.
+For ordinary tags, check that candidates contain the required offering tags; extra candidate tags are allowed. If flexible tags (`istagarule=true`) are configured, evaluate the resource’s rule against the offering tags instead. Also check dedicated hosts/clusters/pods/zones, account/project scope, affinity and anti-affinity groups, and offering zone/domain scope. A strict anti-affinity group may exclude the only host with the required CPU or storage.
 
 Do not add a tag to every host as a shortcut. Either correct the erroneous offering/template selection or place the tag only on resources that truly provide that capability.
 
@@ -93,7 +93,7 @@ cmk list storagepoolsmetrics zoneid=ZONE_UUID
 cmk list volumes virtualmachineid=VM_UUID
 ```
 
-An eligible pool must be `Up`, in the correct scope, reachable by the chosen host, satisfy every storage tag, support the volume format/features, and have enough physical/provisionable capacity. Check root-disk size overrides and any data disk requested during deployment.
+An eligible pool must be `Up`, in the correct scope, reachable by the chosen host, satisfy the storage tag requirements (or configured flexible tag rule), support the volume format/features, and have enough physical/provisionable capacity. Check root-disk size overrides and any data disk requested during deployment.
 
 For NFS, inspect CloudStack agent errors and mount health on every candidate host. For Ceph/RBD, verify monitor/pool/auth access and libvirt integration. For local storage, remember that HA and migration choices are constrained by the volume's host locality.
 
@@ -116,13 +116,13 @@ On KVM hosts, compare bridge/VLAN mappings. If only one host lacks a trunk or br
 
 ## Use a Constraint Matrix
 
-Test one variable at a time with disposable stopped deployments:
+Test one variable at a time with disposable deployments that you actually start, then stop after the check. Creating a VM with `startvm=false` skips the start path and does not validate complete placement:
 
 | Test | What it isolates |
 | --- | --- |
 | Known-good template + same offering/network | template-specific constraints |
 | Custom template + smaller compatible offering | contiguous compute capacity |
-| Custom template + no optional affinity | affinity/dedication exclusion |
+| Custom template + no optional affinity | optional affinity exclusion; dedication still applies |
 | Same request in another suitable cluster | cluster host/storage/network scope |
 | Direct-download URL from every candidate host | host egress/TLS/image fetch |
 
@@ -132,13 +132,13 @@ Do not move a production request to an incompatible zone merely to make the erro
 
 Apply the smallest truthful repair: correct template metadata, use the intended offering, align a missing tag, restore an eligible host/storage pool, free or add capacity, fix a bridge/trunk, or publish the template to the target zone. Track one new async deployment.
 
-After it starts, verify reported CPU/RAM, root volume, NIC/network, template ID, host, storage pool, reboot, and migration/HA behavior. A VM that boots only on one anomalous host is not a complete repair.
+After it starts, verify reported CPU/RAM, root volume, NIC/network, template ID, host, storage pool, reboot, and migration/HA behavior where supported and required. A VM that boots only on one anomalous host is not a complete repair.
 
 Rollback by deleting the disposable failed/test VMs through CloudStack and reverting only the tag/offering/template metadata changed during diagnosis. Never delete allocated volumes or edit capacity records directly in MySQL.
 
 ## Conclusion
 
-`InsufficientServerCapacity` means no full placement satisfied every constraint. Follow the job's allocator messages, validate custom-template metadata, then intersect eligible hosts, contiguous compute, allocation tags, storage, network, scope, and affinity. Fix the first false or unavailable constraint and prove the workload can start and migrate on the intended resource class.
+`InsufficientServerCapacity` means no full placement satisfied every constraint. Follow the job's allocator messages, validate custom-template metadata, then intersect eligible hosts, contiguous compute, allocation tags, storage, network, scope, and affinity. Fix the first false or unavailable constraint and prove the workload can start, and migrate if required, on the intended resource class.
 
 ## Official Documentation
 
