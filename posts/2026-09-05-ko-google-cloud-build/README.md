@@ -14,7 +14,7 @@ The most common configuration mistake is to treat the `ko` builder like a genera
 
 ## Create the Artifact Registry Repository
 
-Artifact Registry repositories are regional resources and normally must exist before the push. For example:
+Artifact Registry repositories are regional or multi-regional resources and normally must exist before the push. For example:
 
 ```bash
 gcloud artifacts repositories create go-services \
@@ -55,11 +55,11 @@ artifacts:
       - image-refs.txt
 ```
 
-The source is mounted at `/workspace`, and build steps start there unless their image or step changes the working directory. The official `ko` release image contains the Go toolchain needed by `ko`. `ko` sends layers directly to Artifact Registry; there is no Docker socket, privileged daemon, `docker build`, or separate `docker push`.
+The source is mounted at `/workspace`, and build steps start there unless the step sets a different `dir` or its entrypoint changes the working directory. The official `ko` release image contains the Go toolchain needed by `ko`. `ko` sends layers directly to Artifact Registry; there is no Docker socket, privileged daemon, `docker build`, or separate `docker push`.
 
 For a hardened pipeline, replace the readable version tag with the reviewed platform-specific image digest. A version tag communicates intent but is still a registry tag and is not inherently immutable.
 
-The explicit single platform makes `image-refs.txt` contain one digest-bearing reference. If you change this to a multi-platform build, `ko` 0.19.1 records the index followed by its platform children; use a shell-capable follow-up that captures the build's standard output as the top-level index rather than selecting the file's last line. The Cloud Storage artifacts block is optional and requires a pre-existing bucket plus write access. If your release system consumes the file in a later step, the shared `/workspace` volume is enough.
+The explicit single platform makes `image-refs.txt` contain one digest-bearing reference. If you change this to a multi-platform build, `ko` 0.19.1 records the index followed by its platform children; run `ko build` in a shell-capable step and capture its standard output to a file in `/workspace` for the top-level index reference rather than selecting the file's last line. The Cloud Storage artifacts block is optional and requires a pre-existing bucket plus write access. If your release system consumes the file in a later step, the shared `/workspace` volume is enough.
 
 ## Why Shell-Shaped Configurations Fail
 
@@ -71,7 +71,7 @@ steps:
     args: ['-c', 'ko build ./cmd/api']
 ```
 
-Cloud Build effectively passes `-c` to `ko`; it does not automatically insert a shell. Depending on the exact configuration, the result may be an unknown flag, an executable lookup failure, or a missing-shell error.
+Cloud Build effectively passes `-c` to `ko`; it does not automatically insert a shell. This example produces an unknown-flag error. An executable lookup failure or missing-shell error instead occurs when an overridden entrypoint names an executable absent from the image. The official v0.19.1 image uses a Go base image with a shell; the issue here is argument routing, not a missing shell in that release.
 
 For one command, express every token as a separate argument. Do not quote the whole command:
 
@@ -96,7 +96,7 @@ Avoid printing access tokens. A successful token lookup cannot compensate for a 
 
 ## Resolve Kubernetes Manifests in the Same Way
 
-To produce digest-pinned deployment YAML, use `resolve` directly:
+To produce digest-pinned deployment YAML from manifests containing `ko://` Go import-path references, use `resolve` directly:
 
 ```yaml
 steps:
@@ -125,7 +125,7 @@ env:
   - KOCACHE=/workspace/.cache/ko
 ```
 
-Do not upload a writable cache containing credentials. Use a key that includes the Go version, `go.sum`, target platform, and relevant build configuration. A stale cache should affect performance, not correctness; `ko` and Go validate their cached content.
+Do not upload a writable cache containing credentials. Use a key that includes the Go version, `go.sum`, target platform, and relevant build configuration. For ordinary Go builds, cache keys account for source and compiler inputs, but cache reuse does not make untrusted cache contents safe. Restore caches only from trusted writers; changes to external C libraries used by cgo require explicit cache invalidation or a forced rebuild.
 
 ## Make Failures Actionable
 
