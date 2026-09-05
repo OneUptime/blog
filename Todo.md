@@ -172,7 +172,6 @@
 
 ## Data Plane
 
-10. Envoy Gateway Returns `NR filter_chain_not_found` Behind HAProxy: Preserve SNI and Listener Matching
 11. Strict mTLS Breaks One Workload: Find Sidecar Gaps and PeerAuthentication Scope
 12. Init-Container Egress Skips the Mesh: Secure Pre-Proxy Traffic with Istio CNI or Native Sidecars
 13. How to Prove Pod Traffic Cannot Bypass Envoy: Lock Down `NET_ADMIN`, Egress, and NetworkPolicy
