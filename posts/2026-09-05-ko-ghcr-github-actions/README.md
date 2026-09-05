@@ -14,7 +14,7 @@ The workflow still needs explicit package-write permission, a trusted event, and
 
 ## Use a Push-Only Publishing Trigger
 
-Do not give untrusted pull-request code a registry writer token. Publish from protected branch pushes and version tags:
+Do not give untrusted pull-request code a registry writer token. Publish from protected branch pushes and version tags. Configure branch protection for `main` and a tag ruleset that restricts creation of `v*` tags to trusted release actors. These trigger filters do not create those protections or require tagged commits to belong to `main`:
 
 ```yaml
 name: Publish Go image
@@ -33,10 +33,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Check out source
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Set up Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
           cache: true
@@ -57,7 +57,7 @@ jobs:
           printf '%s\n' "$image_ref" > api-image.txt
 
       - name: Preserve image reference
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: api-image-reference
           path: |
@@ -85,7 +85,7 @@ Compute tag values as environment data rather than interpolating untrusted event
   run: |
     short_commit=${COMMIT:0:12}
     echo "commit_tag=$short_commit" >> "$GITHUB_OUTPUT"
-    if [[ "$REF_TYPE" == "tag" && "$REF_NAME" =~ ^v[0-9]+\.[0-9]+\.[0-9]+([.-][A-Za-z0-9.-]+)?$ ]]; then
+    if [[ "$REF_TYPE" == "tag" && ${#REF_NAME} -le 128 && "$REF_NAME" =~ ^v[0-9]+\.[0-9]+\.[0-9]+([.-][A-Za-z0-9.-]+)?$ ]]; then
       echo "release_tag=$REF_NAME" >> "$GITHUB_OUTPUT"
     else
       echo "release_tag=edge" >> "$GITHUB_OUTPUT"
