@@ -172,7 +172,6 @@
 
 ## Data Plane
 
-18. Traffic Works Outside the Mesh but Times Out Inside: Walk Envoy's Listener-to-Cluster-to-Endpoint Chain
 19. Envoy Has an Endpoint but Still Returns 503: Check Outlier Ejection, Health Flags, and Circuit-Breaker State
 20. How to Capture a Data-Plane Packet Trace in a Distroless Envoy Pod with Ephemeral Containers
 
