@@ -52,7 +52,7 @@ builds:
       - -X=example.com/acme/api/internal/version.Date={{.Git.CommitDate}}
 ```
 
-Available Git fields include branch, tag, short and full commit, commit date and timestamp, and clean/dirty state. In `ko` 0.19.1, a Git repository with commits but no tags logs a warning and supplies `v0.0.0` for `Git.Tag`; a directory without usable Git metadata supplies empty values. Release CI should therefore fetch and validate the intended tag or provide an explicit version environment variable instead of treating `Git.Tag` as authoritative by itself.
+Available Git fields include branch, tag, short and full commit, commit date and timestamp, and clean/dirty state. In `ko` 0.19.1, a Git repository with commits but no tags logs a warning and supplies `v0.0.0` for `Git.Tag`; a directory without usable Git metadata supplies empty tag and commit hashes, but its date and tree-state fields still have zero/default values. `Git.Tag` can also identify an ancestor tag rather than a tag on `HEAD`. Release CI should therefore fetch and validate the intended tag or provide an explicit version environment variable instead of treating `Git.Tag` as authoritative by itself.
 
 A robust release often treats the signed release tag as an input:
 
@@ -65,12 +65,18 @@ ldflags:
 Then reject missing or inconsistent inputs before building:
 
 ```bash
-test -n "$VERSION"
-test "$(git status --porcelain)" = ""
-test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+test -n "${VERSION:-}" || exit 1
+export VERSION
+status=$(git status --porcelain) || exit 1
+test "$status" = "" || exit 1
+head_commit=$(git rev-parse --verify HEAD) || exit 1
+tag_commit=$(git rev-parse --verify "refs/tags/$VERSION^{commit}") || exit 1
+test "$tag_commit" = "$head_commit" || exit 1
+git verify-tag "refs/tags/$VERSION" || exit 1
+test "$head_commit" = "${GITHUB_SHA:-}" || exit 1
 ```
 
-Adapt the last comparison to the CI platform. Pull-request workflows may check out a synthetic merge commit, so decide whether the source or merge SHA is the artifact identity.
+Run these checks in the release script, with the trusted release-signing keys configured for `git verify-tag`. Adapt the last comparison to the CI platform. Pull-request workflows may check out a synthetic merge commit, so decide whether the source or merge SHA is the artifact identity.
 
 ## Add Standard OCI Labels
 
@@ -78,7 +84,7 @@ Compute values once and pass them as individual arguments:
 
 ```bash
 export KO_DOCKER_REPO=registry.example.com/acme/api
-version=v2.4.1
+version=$VERSION
 commit=$(git rev-parse HEAD)
 source_date=$(git show -s --format=%cI HEAD)
 
@@ -89,7 +95,7 @@ ko build ./cmd/api \
   --image-label "org.opencontainers.image.source=https://github.com/acme/api"
 ```
 
-The OCI annotations specification defines these conventional keys. Labels live in the image configuration, while OCI annotations can be attached to manifests with `--image-annotation`. Registry UIs do not display every field consistently, so inspect the published descriptor directly.
+The OCI annotations specification defines these conventional keys. Labels live in the image configuration, while OCI annotations can be attached to manifests with `--image-annotation`. Registry UIs do not display every field consistently, so inspect the published manifest and its referenced image configuration directly.
 
 Do not put secrets, private branch URLs, or access tokens in labels. Image metadata is normally readable by anyone who can pull or inspect the manifest.
 
@@ -99,11 +105,13 @@ If using dynamic shell values, pass the same variables to `--ldflags`:
 
 ```bash
 ko build ./cmd/api \
+  --tags="$version" \
   --ldflags "-X=example.com/acme/api/internal/version.Version=$version" \
   --ldflags "-X=example.com/acme/api/internal/version.Commit=$commit" \
   --ldflags "-X=example.com/acme/api/internal/version.Date=$source_date" \
   --image-label "org.opencontainers.image.version=$version" \
-  --image-label "org.opencontainers.image.revision=$commit"
+  --image-label "org.opencontainers.image.revision=$commit" \
+  --image-label "org.opencontainers.image.source=https://github.com/acme/api"
 ```
 
 When `--ldflags` is present, it takes precedence over linker flags in `.ko.yaml`. Avoid splitting the required three values between CLI and YAML unless that precedence is intentional.
@@ -141,12 +149,19 @@ Custom version variables are still valuable for a stable application interface, 
 
 ## Verify the Binary and Image
 
-Build and capture the immutable reference:
+Build with the same release metadata and capture the immutable reference. Keep `dist/` ignored by Git so previous output does not make later builds dirty:
 
 ```bash
 mkdir -p dist
 image_ref=$(
-  ko build ./cmd/api --image-refs=dist/image.txt
+  ko build ./cmd/api --image-refs=dist/image.txt \
+    --tags="$version" \
+    --ldflags "-X=example.com/acme/api/internal/version.Version=$version" \
+    --ldflags "-X=example.com/acme/api/internal/version.Commit=$commit" \
+    --ldflags "-X=example.com/acme/api/internal/version.Date=$source_date" \
+    --image-label "org.opencontainers.image.version=$version" \
+    --image-label "org.opencontainers.image.revision=$commit" \
+    --image-label "org.opencontainers.image.source=https://github.com/acme/api"
 )
 ```
 
@@ -180,13 +195,13 @@ Verification should assert:
 The release tag makes the artifact discoverable:
 
 ```text
-registry.example.com/acme/api-...:v2.4.1
+registry.example.com/acme/api/api-...:v2.4.1
 ```
 
 The digest makes deployment immutable:
 
 ```text
-registry.example.com/acme/api-...:v2.4.1@sha256:...
+registry.example.com/acme/api/api-...:v2.4.1@sha256:...
 ```
 
 Preserve the second form in manifests and release records. Moving a tag later must not change what an existing deployment means.
