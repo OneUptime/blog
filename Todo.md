@@ -175,7 +175,6 @@
 
 ## ko
 
-1. How to Push ko-Built Go Images to a Private Registry with `KO_DOCKER_REPO` and `ko login`
 2. How to Use ko in Google Cloud Build Without a Docker Daemon or Missing-Shell Errors
 3. How to Load ko Images Directly into Docker or kind Without Pushing to a Registry
 4. How to Deploy `ko://` Image References with `ko resolve` and `ko apply`
