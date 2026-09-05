@@ -47,8 +47,10 @@ kubectl -n apps get pod checkout-7c8fdc7db9-p6k2m -o json |
          {name, securityContext}],
        initContainers: [.spec.initContainers[]? |
          {name, securityContext}],
+       ephemeralContainers: [.spec.ephemeralContainers[]? |
+         {name, securityContext}],
        captureAnnotations:
-         (.metadata.annotations | with_entries(
+         ((.metadata.annotations // {}) | with_entries(
            select(.key | test("traffic\\.sidecar\\.istio\\.io|sidecar\\.istio\\.io"))))}'
 ```
 
@@ -98,9 +100,9 @@ kubectl -n apps exec checkout-7c8fdc7db9-p6k2m -c checkout -- \
   http://echo.test.svc.cluster.local:8080/ping
 ```
 
-Correlate it in the source Envoy access log, destination Envoy access log, destination application log, and Istio request metrics. Verify source workload identity and selected upstream endpoint. A source access-log line proves this request traversed that Envoy; it does not prove every possible socket will.
+Enable access logging on both proxies and configure their log formats to include `%REQ(X-CAPTURE-TEST)%`; configure the test application to log that header too. Correlate the request ID in those three logs. Use Istio request metrics to corroborate traffic for the workload and test interval; standard metrics aggregate requests and do not contain this correlation ID. Verify source workload identity and selected upstream endpoint. A source access-log line proves this request traversed that Envoy; it does not prove every possible socket will.
 
-Repeat for each declared TCP service port and for direct Pod IP tests in an isolated test environment. Istio may treat Service-addressed and original-destination traffic differently. Include IPv6 when the cluster is dual-stack.
+Repeat with a protocol-appropriate client for each declared TCP service port and for direct Pod IP tests in an isolated test environment. Istio may treat Service-addressed and original-destination traffic differently. Include IPv6 when the cluster is dual-stack.
 
 For a negative local-capture test, use a destination specifically created to detect direct source connections. Do not use production databases or external Internet hosts. The test should fail closed when capture is removed or excluded under the lab's controlled mutation. Restore the Pod from its controller afterward; do not mutate iptables in a production namespace.
 
@@ -119,9 +121,9 @@ spec:
     mode: STRICT
 ```
 
-Add AuthorizationPolicy for the specific service accounts allowed to call each workload. Strict mTLS authenticates the peer proxy; authorization decides which identity may use the service.
+Confirm that workload-specific or port-level PeerAuthentication settings do not override this namespace default, and that protected application ports are included in inbound capture. Add AuthorizationPolicy for the specific service accounts allowed to call each workload. Strict mTLS authenticates the peer proxy; authorization decides which identity may use the service.
 
-This changes the bypass result. Even if a compromised source process opens a direct TCP connection around its own Envoy, the destination's inbound capture still receives it and rejects plaintext. Istio's documented security boundary is that a client should not be able to bypass **another Pod's** sidecar.
+This changes the bypass result. Even if a compromised source process opens a direct TCP connection around its own Envoy, the protected destination port's inbound capture still receives it and rejects plaintext under its effective STRICT policy. Istio's documented security boundary is that a client should not be able to bypass **another Pod's** sidecar.
 
 Test this in a dedicated namespace:
 
@@ -139,6 +141,7 @@ The intended graph is:
 
 ```text
 application namespace -> cluster DNS
+application namespace -> required Istio control-plane ports
 application namespace -> egress gateway ports
 application namespace -X-> Internet and private external ranges
 egress gateway -> approved external destinations
@@ -158,15 +161,15 @@ spec:
   - Egress
 ```
 
-Then add narrow allow policies for DNS, required Kubernetes APIs through approved paths, and the egress gateway namespace and ports. Do not copy a generic DNS rule: cluster DNS labels, ports, node-local caches, and policy semantics differ. A default deny without DNS allowance will break name resolution.
+Then add narrow allow policies for DNS, the Istio control plane for configuration and certificate requests (typically istiod TCP port 15012), required Kubernetes APIs through approved paths, and the specific egress gateway Pods and ports. Combine namespace and Pod selectors in the same destination peer to avoid allowing every Pod in the gateway namespace. Review all policies selecting the workloads: NetworkPolicy allows are additive, so a broad existing allow defeats the intended restriction. Do not copy a generic DNS rule: cluster DNS labels, ports, node-local caches, and policy semantics differ. A default deny without DNS allowance blocks DNS where the CNI enforces that path; node-local DNS requires implementation-specific handling.
 
-NetworkPolicy selects Pods, not individual containers in one Pod. It cannot distinguish the application process from its local sidecar. Its value here is blocking direct external reachability for the whole source Pod while allowing only the controlled gateway destination. The egress gateway then enforces L7 policy and upstream TLS.
+NetworkPolicy selects Pods, not individual containers in one Pod. It cannot distinguish the application process from its local sidecar. Its value here is blocking direct external reachability for the whole source Pod while allowing only the controlled gateway destination. When configured to terminate downstream TLS or receive HTTP and originate upstream TLS, the egress gateway can enforce HTTP policy and verify upstream certificates. TLS passthrough permits SNI-based routing but does not expose encrypted HTTP headers or make the gateway verify the upstream certificate.
 
-Test the CNI implementation's behavior for Service translation, node traffic, host-network destinations, established connections, and dual stack. Istio notes that existing proxy connections may survive a policy change depending on the implementation; restart or drain them under a controlled test before declaring enforcement.
+Test the CNI implementation's behavior for Service translation, node traffic, host-network destinations, established connections, and dual stack. Standard NetworkPolicy does not isolate traffic to the Pod's own node; constrain any node-local forwarding paths with additional host or firewall controls. Istio notes that existing proxy connections may survive a policy change depending on the implementation; restart or drain them under a controlled test before declaring enforcement.
 
 ## Lock Down the Egress Gateway Too
 
-Allowing workload Pods to connect to a gateway is not enough if the gateway forwards arbitrary original destinations. Configure explicit ServiceEntries, Gateway and VirtualService routes, TLS verification, and AuthorizationPolicy at the gateway. Restrict the gateway's own egress with firewall, network policy, or a provider control so it can reach only approved networks.
+Allowing workload Pods to connect to a gateway is not enough if the gateway forwards arbitrary original destinations. Configure explicit ServiceEntries, Gateway and VirtualService routes, DestinationRules for upstream TLS origination and verification, and AuthorizationPolicy at the gateway. Require downstream Istio mutual TLS on the gateway listener to authenticate workload identities for service-account authorization. Restrict the gateway's own egress with firewall, network policy, or a provider control so it can reach only approved networks.
 
 Keep application namespaces from creating or exporting arbitrary routing configuration that the shared gateway consumes. Istio resources are configuration authority; RBAC and `exportTo` scope are part of the security boundary.
 
@@ -176,7 +179,7 @@ Validate that:
 - an unknown SNI or HTTP authority is rejected;
 - direct destination IP access from the workload fails;
 - DNS rebinding cannot redirect an approved hostname to a forbidden range; and
-- gateway access logs show the authenticated source and verified upstream.
+- gateway access logs are configured to record the authenticated source and upstream endpoint, and effective TLS configuration plus certificate-validation failure tests confirm upstream verification.
 
 ## Build Repeatable Evidence
 
