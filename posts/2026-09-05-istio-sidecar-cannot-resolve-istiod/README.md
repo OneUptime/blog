@@ -68,7 +68,7 @@ jq '{dynamicResources: .bootstrap.dynamicResources,
   /tmp/checkout-bootstrap.json
 ```
 
-In stock Istio 1.31, the bootstrap's static `xds-grpc` cluster points to pilot-agent's local `./etc/istio/proxy/XDS` Unix-domain socket. It normally does not contain the remote Istiod hostname, its DNS mode, port `15012`, or the upstream TLS settings. The dump proves the Envoy-to-agent leg and records node metadata; it is not the source of truth for the agent-to-Istiod address.
+In stock Istio 1.31, the bootstrap's static `xds-grpc` cluster points to pilot-agent's local `./etc/istio/proxy/XDS` Unix-domain socket. It normally does not contain the remote Istiod hostname, its DNS mode, port `15012`, or the upstream TLS settings. The dump shows the configured Envoy-to-agent target and records node metadata; it does not prove that the local connection is healthy, and it is not the source of truth for the agent-to-Istiod address.
 
 Pilot-agent logs the effective remote address when its xDS proxy starts. Inspect that line, the injected base `PROXY_CONFIG`, and Pod-level overrides:
 
@@ -78,7 +78,8 @@ kubectl -n apps logs checkout-6fdcb7dc96-w2m85 \
   grep -E 'Initializing with upstream address|connected to upstream XDS server|failed to connect to upstream'
 
 kubectl -n apps get pod checkout-6fdcb7dc96-w2m85 -o json |
-  jq -r '.spec.containers[] | select(.name == "istio-proxy") |
+  jq -r '((.spec.containers // []) + (.spec.initContainers // []))[] |
+         select(.name == "istio-proxy") |
          .env[]? | select(.name == "PROXY_CONFIG") | .value' |
   jq '{discoveryAddress, controlPlaneAuthPolicy}'
 
@@ -88,7 +89,7 @@ kubectl -n apps get pod checkout-6fdcb7dc96-w2m85 -o json |
        discoveryAddressOverride: .metadata.annotations["sidecar.istio.io/discoveryAddress"]}'
 ```
 
-The startup log is the clearest runtime value because annotations can override the injected base configuration. If it has rotated out, inspect previous logs and the configuration for the injector revision recorded on the Pod. Compare with a healthy Pod created by that same intended revision. Injected environment and annotations are fixed on an existing Pod, so changing the owner normally requires Pod recreation.
+The startup log is the clearest runtime value because annotations can override the injected base configuration. If it has rotated out, inspect previous logs and the configuration for the injector revision recorded on the Pod. Compare with a healthy Pod created by that same intended revision. Injected container environment is fixed on an existing Pod. Annotations can be edited, but proxy configuration is not dynamically reloaded, so apply the change to the owner and recreate the Pod. The environment query includes init containers for native sidecars. The legacy `sidecar.istio.io/discoveryAddress` annotation is deprecated; inspect it for stale overrides and use `proxy.istio.io/config` for new overrides.
 
 Treat the dump as sensitive: it can reveal cluster, network, service-account, and workload metadata. Do not capture tokens or private keys.
 
@@ -118,7 +119,7 @@ kubectl -n apps exec checkout-6fdcb7dc96-w2m85 \
 
 ## Test Pod DNS on the Same Pod and Node
 
-Distroless proxy images intentionally lack a shell and tools. Add a vetted, digest-pinned ephemeral container if policy allows:
+Distroless proxy images intentionally lack a shell and tools. Add a vetted ephemeral container if policy allows. The example uses a version tag; replace it with your approved digest-pinned image reference (`image@sha256:...`) before use:
 
 ```bash
 kubectl -n apps debug -it checkout-6fdcb7dc96-w2m85 \
@@ -126,7 +127,7 @@ kubectl -n apps debug -it checkout-6fdcb7dc96-w2m85 \
   --target=istio-proxy -- sh
 ```
 
-Inside it, query the **exact** pilot-agent upstream name:
+Inside it, query the **exact** pilot-agent upstream name. Replace the example hostname below, and in later TCP/TLS probes, with the observed upstream hostname; `cluster.local` is only the example cluster domain:
 
 ```bash
 nslookup istiod.istio-system.svc.cluster.local
@@ -161,7 +162,7 @@ Inspect CoreDNS logs and metrics only for the captured query window:
 
 ```bash
 kubectl -n kube-system logs -l k8s-app=kube-dns \
-  --since=10m --prefix --max-log-requests=10
+  --since=10m --tail=-1 --prefix --max-log-requests=10
 ```
 
 Do not enable global query logging casually; it can expose internal names and add load.
@@ -181,7 +182,7 @@ Kubernetes DNS can return a ClusterIP even if there are no ready endpoints. Ther
 
 - `NXDOMAIN` suggests the Service name or DNS view is wrong;
 - a valid ClusterIP with connection failure suggests Service routing or endpoints; and
-- a headless Service answer exposes endpoint readiness and address-family behavior directly.
+- a headless Service answer returns endpoint addresses for the requested address family, normally filtered by readiness unless `publishNotReadyAddresses` is enabled.
 
 Check that the workload's kubeconfig context and Istio cluster metadata refer to the same cluster. In multi-cluster deployments, a remote workload may need a different external discovery address rather than the local `istiod` Service.
 
@@ -222,7 +223,7 @@ kubectl -n apps exec checkout-6fdcb7dc96-w2m85 \
   grep -A8 -E 'xds|istio'
 ```
 
-The Envoy cluster output describes its Unix-socket connection to pilot-agent; it cannot prove which remote hostname the agent resolved. Use the agent log for upstream DNS, TLS, authentication, connection, and termination failures. Then confirm `istioctl proxy-status` lists the proxy and that CDS, LDS, EDS, and RDS converge. A DNS answer followed by TLS or authentication failure is progress, not full recovery.
+The Envoy cluster output describes its Unix-socket connection to pilot-agent; it cannot prove which remote hostname the agent resolved. Use the agent log for upstream DNS, TLS, authentication, connection, and termination failures. Then confirm `istioctl proxy-status` lists the proxy and that the required CDS, LDS, EDS, and RDS updates converge (`NOT SENT` can be normal when a resource type is not needed). A DNS answer followed by TLS or authentication failure is progress, not full recovery.
 
 ## Repair the Declarative Owner
 
@@ -247,7 +248,7 @@ After the fix, monitor repeated lookups and the long-lived stream across the DNS
 - all ready Istiod endpoints accept port `15012`;
 - the certificate identity matches the configured SNI;
 - the proxy appears and remains synced in `proxy-status`; and
-- DNS errors and xDS reconnect counters stop increasing.
+- DNS errors and unexpected xDS connection errors stop increasing after the controlled disruptions; reconnects during rollouts or configured connection rotation are expected.
 
 An existing gRPC stream can remain healthy while DNS is broken because no new connection is needed. Force only a controlled canary reconnect to verify recovery; do not restart the whole mesh.
 
