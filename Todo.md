@@ -175,7 +175,6 @@
 
 ## ko
 
-13. How to Speed Up Repeated ko Builds in CI with `KOCACHE` and Shared Go Caches
 14. How to Build and Push a Go Image to GHCR with ko in GitHub Actions
 15. How to Build Multiple Go Services from a Monorepo with ko and Multiple `go.mod` Files
 16. How to Bundle Templates and Static Files with ko's `kodata` and `KO_DATA_PATH`
