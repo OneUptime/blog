@@ -209,10 +209,10 @@ done
 
 macOS ships an older Bash by default, so examples relying on associative arrays may not be portable there. Indexed arrays and `${!array[@]}` work in Bash 3.
 
-Validate `PORT` before or during construction:
+Validate `PORT` before construction. Place this check inside the loop, before the command that appends the service:
 
 ```bash
-PORT=$port yq -e '
+PORT=${ports[$index]} yq -e '
   ((env(PORT) | tag) == "!!int") and
   (env(PORT) >= 1) and
   (env(PORT) <= 65535)
@@ -254,7 +254,8 @@ Duplicate dynamic names overwrite the earlier map entry. Detect duplicates in Ba
 When an upstream tool already supplies valid JSON or YAML, `env` can parse the whole node:
 
 ```bash
-TARGETS_JSON='["api.example.com", "worker blue"]' yq -n '
+TARGETS_JSON='["api.example.com", "worker blue"]'
+TARGETS_JSON=$TARGETS_JSON yq -n '
   .targets = env(TARGETS_JSON)
 '
 ```
