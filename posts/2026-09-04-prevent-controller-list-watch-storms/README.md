@@ -107,7 +107,7 @@ Limit each cache to the objects the controller actually owns:
 
 Selectors do not make every server operation free; the server still has to evaluate supported selection semantics. Measure fetched versus returned objects and test at production cardinality.
 
-Kubernetes v1.34 and later servers enable the beta `WatchList` feature by default, and `client-go` v1.35 and later enables its beta `WatchListClient` path by default. A compatible client requests initial events with `sendInitialEvents=true` and `resourceVersionMatch=NotOlderThan`, then falls back to a conventional LIST when the server does not support the feature. Streaming reduces peak memory, but it does not justify multiplying identical caches. Pin `client-go` to a version compatible with the cluster minor versions you support and let the library manage feature negotiation.
+Kubernetes v1.34 and later servers enable the beta `WatchList` feature by default, and `client-go` v0.35 and later enables its beta `WatchListClient` path by default. A compatible client requests initial events with `sendInitialEvents=true` and `resourceVersionMatch=NotOlderThan`, then falls back to a conventional LIST when the server does not support the feature. Streaming reduces peak memory, but it does not justify multiplying identical caches. Pin `client-go` to a version compatible with the cluster minor versions you support and let the library manage feature negotiation.
 
 ## Bound Retries and Startup Concurrency
 
@@ -128,11 +128,11 @@ if err != nil {
 }
 ```
 
-Those values are examples, not universal targets. Account for object count, expected recovery time, replica count, and other control-plane clients. A custom `RateLimiter` overrides `QPS` and `Burst`; verify which mechanism is actually active.
+Those values are examples, not universal targets. Account for object count, expected recovery time, replica count, and other control-plane clients. A custom `RateLimiter` overrides `QPS` and `Burst`; verify which mechanism is actually active. In client-go v0.35, WATCH requests bypass this REST rate limiter, including streaming initial state, so QPS and Burst alone do not bound watch startup or reconnect traffic.
 
 For `429`, transient `5xx`, connection loss, and relist failure, use capped exponential backoff with jitter and honor `Retry-After`. Do not reset the backoff merely because a TCP connection opened; reset after useful sustained progress. Put an upper bound on concurrent cache warm-ups and reconciler workers.
 
-Roll replicas gradually. Leader election prevents concurrent writes, but depending on the framework, standby replicas may still start caches and watches. Measure actual connections per replica. If only the leader needs an expensive cache, arrange lifecycle so it starts after leadership is acquired, while preserving fast and safe failover.
+Roll replicas gradually. Leader election normally limits active reconciliation to one replica, but it does not provide fencing or guarantee that writers never overlap. Depending on the framework, standby replicas may still start caches and watches. Measure actual connections per replica. If only the leader needs an expensive cache, arrange lifecycle so it starts after leadership is acquired, while preserving fast and safe failover.
 
 ## Use API Priority and Fairness as Containment
 
@@ -153,7 +153,7 @@ Test with realistic object sizes and cardinalities, then exercise three transiti
 
 1. Start one replica and record initial LIST or streaming-initial-state cost.
 2. Start the full replica count with production rollout pacing and confirm load scales as designed.
-3. Interrupt watches, return 429 and 410 responses, and confirm reconnects spread over time with at most one controlled relist per cache.
+3. Interrupt watches, return 429 and 410 responses, and confirm reconnects spread over time with at most one relist in flight per cache and bounded, jittered retries if recovery fails.
 
 Success means caches synchronize within the recovery objective, reconciliation converges, API latency stays within its budget, and critical traffic is not rejected. Also alert on reconnect and relist rate; waiting for kube-apiserver memory exhaustion makes the warning too late.
 
