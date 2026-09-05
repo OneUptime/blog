@@ -175,7 +175,6 @@
 
 ## ko
 
-19. How to Export a ko Image as an OCI Layout for Air-Gapped Delivery
 20. How to Embed ko's `pkg/build` and `pkg/publish` APIs in a Go Tool
 
 ## yq
