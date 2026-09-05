@@ -172,7 +172,6 @@
 
 ## Data Plane
 
-8. Envoy Reports `WRONG_VERSION_NUMBER` During TLS Origination: Align Application, ServiceEntry, and DestinationRule Ports
 9. gRPC Through Istio Fails with 503 UR: Diagnose HTTP/2 Negotiation, mTLS, and Upstream Resets
 10. Envoy Gateway Returns `NR filter_chain_not_found` Behind HAProxy: Preserve SNI and Listener Matching
 11. Strict mTLS Breaks One Workload: Find Sidecar Gaps and PeerAuthentication Scope
