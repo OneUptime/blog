@@ -36,10 +36,11 @@ openssl s_client \
   -connect edge.example.net:443 \
   -servername api.example.com \
   -alpn h2,http/1.1 \
+  -verify_hostname api.example.com \
   -verify_return_error </dev/null
 ```
 
-Compare with a request that omits SNI only as a diagnostic. Do not use `-k`; certificate verification is a separate check worth preserving. Capture HAProxy connection logs with the same timestamp, but avoid logging client certificates or request authorization headers.
+Compare with a request that omits SNI only as a diagnostic by replacing `-servername api.example.com` with `-noservername`; simply removing `-servername` lets OpenSSL derive SNI from `-connect`. Keep certificate chain and hostname verification enabled, and supply `-CAfile` with your CA bundle if the certificate uses a private CA. Capture HAProxy connection logs with the same timestamp, but avoid logging client certificates or request authorization headers.
 
 ## Inspect the Gateway Listener and Attached Routes
 
@@ -51,7 +52,7 @@ kubectl -n gateways get gateway edge -o json |
       {name, hostname, port, protocol, tls, allowedRoutes}'
 ```
 
-Then inspect status conditions on the Gateway and routes. Confirm `Accepted`, `Programmed`, and route-parent conditions are true for the exact listener section. A valid-looking TLSRoute that is not attached cannot create the expected filter chain.
+Then inspect status conditions on the Gateway and routes. Confirm `Accepted` and `Programmed` on the Gateway and listener, and `Accepted` and `ResolvedRefs` on the relevant route parent for the exact listener section. Check that conditions reflect the current resource generation. A valid-looking TLSRoute that is not attached cannot create the expected filter chain.
 
 The two common TLS models are different:
 
@@ -69,7 +70,7 @@ gateway.envoyproxy.io/owning-gateway-namespace=gateways \
   -o yaml
 ```
 
-Check `egctl ... --help` for the installed version's exact resource subcommand. In the listener output, find port 443 and compare filter-chain `server_names`, `transport_protocol`, and ALPN with the ClientHello. Envoy's TLS inspector must see a real TLS ClientHello to populate SNI.
+Check `egctl ... --help` for the installed version's exact resource subcommand. In the listener output, find the container listener port mapped from Service port 443 (Envoy Gateway shifts privileged ports by default; inspect the Service `targetPort`) and compare filter-chain `server_names`, `transport_protocol`, and ALPN with the ClientHello. Envoy's TLS inspector must see a real TLS ClientHello to populate SNI.
 
 ## Decide What HAProxy Should Do with TLS
 
@@ -118,12 +119,10 @@ HAProxy can establish a new TLS connection to Envoy, but it must send an SNI val
 ```haproxy
 backend envoy_https
   mode http
-  server envoy-gateway 192.0.2.40:443 \
-    ssl verify required ca-file /etc/haproxy/envoy-ca.pem \
-    sni req.hdr(Host)
+  server envoy-gateway 192.0.2.40:443 ssl verify required ca-file /etc/haproxy/envoy-ca.pem sni req.hdr(Host),field(1,:)
 ```
 
-This is a new TLS connection; it preserves a hostname value by policy, not the original encrypted session. Validate the Host-to-SNI mapping, especially when HAProxy rewrites Host. Never use `verify none` as the permanent resolution.
+This is a new TLS connection; it preserves a hostname value by policy, not the original encrypted session. This example assumes a validated DNS hostname in Host and strips an optional port before sending SNI. Validate the Host-to-SNI mapping, especially when HAProxy rewrites Host; IP-literal authorities need a separately configured DNS SNI value. Never use `verify none` as the permanent resolution.
 
 For pure TCP routing after terminating TLS, the HTTP Host header may not exist. Use an explicitly configured SNI value or a validated HAProxy sample based on captured ClientHello metadata, consistent with your HAProxy version.
 
@@ -177,7 +176,7 @@ kubectl -n envoy-gateway-system get endpointslice \
   -l kubernetes.io/service-name=ENVOY_SERVICE -o yaml
 ```
 
-Replace the placeholder after reading the Service name. Confirm HAProxy reaches the Service or node port that maps to the Gateway listener. A load balancer health check hitting HTTP on a TLS port can produce noisy filter-chain misses without affecting real clients. Configure a TLS-aware check with appropriate SNI or use Envoy Gateway's supported listener health-check facility.
+Replace the placeholder after reading the Service name. Confirm HAProxy reaches the Service or node port that maps to the Gateway listener. A load balancer health check hitting HTTP on a TLS port can produce noisy filter-chain misses without affecting real clients. Configure a TLS-aware check with appropriate SNI or use Envoy Gateway's listener health-check facility for HTTP/HTTPS listeners; it is not a TLS-passthrough health endpoint.
 
 Compare behavior by HAProxy instance and Envoy endpoint. Intermittent failures can mean only one HAProxy backend omits SNI, one configuration generation lacks the route, or one listener address family differs.
 
@@ -188,13 +187,13 @@ If configuration looks correct, take a short, tightly filtered packet capture at
 - the first bytes are a PROXY header only when Envoy expects one;
 - a TLS ClientHello follows;
 - its SNI is `api.example.com` exactly; and
-- the destination port is the listener inspected in Envoy.
+- the destination port maps through any Service or node-port translation to the listener inspected in Envoy.
 
 Do not capture application payload unnecessarily. Use a short duration and snap length, restrict host and port, encrypt the artifact, and delete it according to incident retention policy. With TLS passthrough, no decryption key is needed to inspect the conventional ClientHello metadata.
 
 ## Verify the Repair Across Hostnames and Paths
 
-After applying the chosen model, wait for Gateway and route status to show accepted and programmed. Verify generated listener filter chains and run tests for:
+After applying the chosen model, wait for the Gateway and listener to show `Accepted` and `Programmed`, and for the relevant route parent to show `Accepted` and `ResolvedRefs` for the current generation. Verify generated listener filter chains and run tests for:
 
 - the intended hostname with SNI, which should succeed;
 - an unknown hostname, which should follow the deliberate default or be rejected;
