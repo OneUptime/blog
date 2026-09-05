@@ -178,7 +178,6 @@
 
 ## yq
 
-3. How to Use a Bash Variable as a Dynamic yq Key Without Getting `null`
 4. How to Inject Environment Variables with yq While Preserving String, Number, and Boolean Types
 5. How to Edit YAML In Place with yq Without Truncating the File on Failure
 6. How to Return an Empty String—or Fail CI—When a yq Path Is Missing
