@@ -172,7 +172,6 @@
 
 ## Data Plane
 
-11. Strict mTLS Breaks One Workload: Find Sidecar Gaps and PeerAuthentication Scope
 12. Init-Container Egress Skips the Mesh: Secure Pre-Proxy Traffic with Istio CNI or Native Sidecars
 13. How to Prove Pod Traffic Cannot Bypass Envoy: Lock Down `NET_ADMIN`, Egress, and NetworkPolicy
 14. Why Istio Cannot Route Directly from One VirtualService to Another—and What to Model Instead
