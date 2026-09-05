@@ -172,7 +172,6 @@
 
 ## Data Plane
 
-20. How to Capture a Data-Plane Packet Trace in a Distroless Envoy Pod with Ephemeral Containers
 
 ## ko
 
