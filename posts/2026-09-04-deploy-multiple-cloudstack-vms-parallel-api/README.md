@@ -14,7 +14,7 @@ Unbounded loops can exhaust capacity, saturate template or primary storage, trig
 
 ## Preflight the Exact Inputs
 
-Resolve human-readable choices into immutable UUIDs before starting the batch:
+Resolve human-readable resource choices into UUIDs before starting the batch:
 
 ```bash
 cmk list zones
@@ -24,6 +24,8 @@ cmk list networks zoneid=ZONE_UUID
 cmk list sshkeypairs
 cmk list capacity zoneid=ZONE_UUID
 ```
+
+For a project batch, add `projectid=PROJECT_UUID` to the template, network, and SSH-key listings. `list capacity` requires an administrator role or equivalent API permission.
 
 Confirm that:
 
@@ -45,13 +47,13 @@ Give every intended VM a stable name containing an operator-chosen batch identif
 
 Do not use only a timestamp generated at process startup. After a crash, a new timestamp defeats reconciliation and can create duplicates. CloudStack's `listVirtualMachines name=...` performs a substring match, so always filter the returned objects for an exact name and the expected account or project.
 
-Root administrators may attach `customid` as a correlation marker, but CloudStack does not document it as unique or as a server-side idempotency key. Deterministic names are not idempotency keys either. Every caller still needs an exact-scope lookup and a locally persisted job ledger before retrying an ambiguous submission.
+Root administrators may use `customid` to set a resource ID; it is not an arbitrary correlation tag or a documented server-side idempotency key. Deterministic names are not idempotency keys either. Every caller still needs an exact-scope lookup and a locally persisted job ledger before retrying an ambiguous submission.
 
 ## A Bounded API Deployment Driver
 
-The following Python 3 program keeps at most four deployment jobs outstanding. It signs API calls, records state atomically after every accepted request, polls `queryAsyncJobResult`, and refuses to guess when submission is ambiguous.
+The following Python 3 program defaults to at most four deployment jobs outstanding. It signs API calls, records state atomically after every accepted request, polls `queryAsyncJobResult`, and refuses to guess when submission is ambiguous.
 
-Save it as `deploy_batch.py` outside a public repository:
+Save it as `deploy_batch.py` outside a public repository. Install Requests with `python3 -m pip install requests` in your Python environment. Run only one driver for a batch at a time, using the same API identity and state file on every continuation. Use a pre-created, protected state directory on a local Unix filesystem that supports directory `fsync`:
 
 ```python
 #!/usr/bin/env python3
@@ -81,6 +83,11 @@ PROJECT_ID = os.environ.get("PROJECT_ID")
 COUNT = int(os.environ.get("VM_COUNT", "8"))
 MAX_IN_FLIGHT = int(os.environ.get("MAX_IN_FLIGHT", "4"))
 STATE_PATH = Path(os.environ.get("BATCH_STATE", f"{BATCH_ID}.json"))
+PLAN = {
+    "endpoint": ENDPOINT, "apikey": API_KEY, "projectid": PROJECT_ID,
+    "zoneid": ZONE_ID, "serviceofferingid": OFFERING_ID,
+    "templateid": TEMPLATE_ID, "networkids": NETWORK_IDS, "count": COUNT,
+}
 
 
 if not ENDPOINT.startswith("https://"):
@@ -132,15 +139,16 @@ def call(command, **arguments):
 
 def load_state():
     if not STATE_PATH.exists():
-        return {"batch": BATCH_ID, "vms": {}}
+        return {"batch": BATCH_ID, "plan": PLAN, "vms": {}}
     state = json.loads(STATE_PATH.read_text())
     if state.get("batch") != BATCH_ID:
         raise RuntimeError("State file belongs to another batch")
+    if state.get("plan") != PLAN:
+        raise RuntimeError("State file deployment inputs or API identity changed")
     return state
 
 
 def save_state(state):
-    STATE_PATH.parent.mkdir(parents=True, exist_ok=True)
     fd, temporary_name = tempfile.mkstemp(
         dir=STATE_PATH.parent, prefix=f".{STATE_PATH.name}."
     )
@@ -150,6 +158,11 @@ def save_state(state):
             stream.flush()
             os.fsync(stream.fileno())
         os.replace(temporary_name, STATE_PATH)
+        directory_fd = os.open(STATE_PATH.parent, os.O_RDONLY)
+        try:
+            os.fsync(directory_fd)
+        finally:
+            os.close(directory_fd)
     finally:
         if os.path.exists(temporary_name):
             os.unlink(temporary_name)
@@ -160,14 +173,18 @@ def expected_names():
 
 
 def find_exact_vm(name):
-    arguments = {"name": name, "listall": "true"}
+    arguments = {"name": name, "listall": "false", "pagesize": 100}
     if PROJECT_ID:
         arguments["projectid"] = PROJECT_ID
-    response = call("listVirtualMachines", **arguments)
-    matches = [
-        vm for vm in response.get("virtualmachine", [])
-        if vm.get("name") == name
-    ]
+    matches = []
+    page = 1
+    while True:
+        response = call("listVirtualMachines", page=page, **arguments)
+        vms = response.get("virtualmachine", [])
+        if not vms:
+            break
+        matches.extend(vm for vm in vms if vm.get("name") == name)
+        page += 1
     if len(matches) > 1:
         raise RuntimeError(f"Multiple exact matches already exist for {name}")
     return matches[0] if matches else None
@@ -192,6 +209,8 @@ while True:
     }
 
     for name in expected_names():
+        if any(r["status"] == "failed" for r in state["vms"].values()):
+            break
         if len(in_flight) >= MAX_IN_FLIGHT:
             break
         if name in state["vms"]:
@@ -245,14 +264,14 @@ while True:
                 f"Unusable response for {name}; reconcile before retrying"
             ) from error
         except RuntimeError as error:
-            # call() raises RuntimeError only for an explicit CloudStack error
-            # response, so this submission is known to have failed.
+            # An API error does not establish whether a resource was created
+            # before the error. Reconcile before allowing another submission.
             state["vms"][name] = {
-                "status": "failed",
+                "status": "unknown",
                 "error": str(error),
             }
             save_state(state)
-            raise SystemExit(f"CloudStack rejected {name}: {error}") from error
+            raise SystemExit(f"Reconcile CloudStack error for {name}: {error}") from error
 
         record = {
             "status": "pending",
@@ -270,6 +289,8 @@ while True:
         if record["status"] == "pending"
     }
     if not in_flight:
+        if any(r["status"] == "failed" for r in state["vms"].values()):
+            break
         if all(name in state["vms"] for name in expected_names()):
             break
         continue
@@ -282,7 +303,8 @@ while True:
             continue
         if status == 1:
             record["status"] = "succeeded"
-            record["vmid"] = record.get("vmid") or job.get("jobinstanceid")
+            record["vmid"] = (record.get("vmid") or job.get("jobinstanceid")
+                               or job.get("jobresult", {}).get("virtualmachine", {}).get("id"))
             print(f"succeeded {name}: VM {record.get('vmid')}")
         elif status == 2:
             record["status"] = "failed"
@@ -299,13 +321,13 @@ if "failed" in summary:
     raise SystemExit("One or more deployments failed; inspect before retrying")
 ```
 
-The example writes a `submitting` marker before each request, then replaces it with the returned job ID. A crash anywhere around the request therefore leaves a state that demands reconciliation instead of silently resubmitting. It does not auto-retry CloudStack errors: capacity and configuration failures need a diagnosis, while transport or malformed-response failures need reconciliation. It also deliberately keeps `MAX_IN_FLIGHT` conservative. Increase it only after measuring management-server, network, storage, and template-download behavior.
+The example writes a `submitting` marker before each request, then replaces it with the returned job ID. A crash anywhere around the request therefore leaves a state that demands reconciliation instead of silently resubmitting. It does not auto-retry CloudStack errors: capacity and configuration failures need a diagnosis, and every submission error requires reconciliation before another attempt. HTTP errors are conservatively recorded as `unknown`, including CloudStack errors returned with a non-2xx status. The driver stops new submissions after a polled job fails and finishes polling the jobs already accepted. It does not pass a `keypair` or `userdata` parameter; guest access must already work with the chosen template, or those deployment parameters must be added before starting the batch. It also deliberately keeps `MAX_IN_FLIGHT` conservative. Increase it only after measuring management-server, network, storage, and template-download behavior.
 
 For an internal CA, configure Requests with `verify="/path/to/ca.pem"` or set `REQUESTS_CA_BUNDLE=/path/to/ca.pem`. Never use `verify=False`.
 
 ## Run One Named Batch
 
-Protect the state file and credentials from other users:
+Protect the state file and credentials from other users. Run these commands in Bash and create `/secure/operator-state` beforehand with access restricted to the operator:
 
 ```bash
 umask 077
@@ -322,7 +344,7 @@ export PROJECT_ID=PROJECT_UUID
 export VM_COUNT=8
 export MAX_IN_FLIGHT=4
 export BATCH_STATE=/secure/operator-state/cloudstack-20260904a.json
-python deploy_batch.py
+python3 deploy_batch.py
 unset CLOUDSTACK_SECRET_KEY
 ```
 
@@ -335,12 +357,14 @@ If the client times out after sending `deployVirtualMachine`, the script marks t
 Search exact scope and recent async jobs:
 
 ```bash
-cmk list virtualmachines name=web-20260904a-03 listall=true
+cmk list virtualmachines name=web-20260904a-03 projectid=PROJECT_UUID listall=true
 cmk list asyncjobs listall=true
-cmk list events keyword=web-20260904a-03
+cmk list events projectid=PROJECT_UUID listall=true keyword=web-20260904a-03
 ```
 
-Because the name filter is a substring match, inspect returned `name`, `id`, `projectid`, `created`, template, and offering fields. If the VM exists, write its UUID into the protected ledger as reconciled. If a matching deployment job is still pending, record and poll that job. Only resubmit after proving that neither a VM nor an accepted job exists.
+For a non-project batch, omit `projectid` and use `listall=false` for the caller’s resources, or specify `account` and `domainid` explicitly. Inspect all result pages. Async jobs and events have retention limits, and a name keyword need not appear in event descriptions; missing search results alone do not prove that submission failed.
+
+Because the name filter is a substring match, inspect returned `name`, `id`, `projectid`, `created`, template, and offering fields. If the VM exists, establish whether this batch created it and record its UUID. Use `existing` for a pre-existing VM; use `succeeded` only after confirming this batch’s deployment completed, or `pending` with its `jobid` while the job is still running. If a matching deployment job is still pending, record and poll that job. Only resubmit after proving that neither a VM nor an accepted job exists.
 
 If the old request can appear late because of a proxy timeout or queue, wait beyond that boundary before retrying. CloudStack query API signatures are authentication, not an idempotency token.
 
@@ -350,9 +374,9 @@ An async status of `1` proves the deployment job completed successfully. It does
 
 ```bash
 cmk list virtualmachines projectid=PROJECT_UUID listall=true
-cmk list volumes virtualmachineid=VM_UUID
+cmk list volumes virtualmachineid=VM_UUID projectid=PROJECT_UUID listall=true
 cmk list nics virtualmachineid=VM_UUID
-cmk list events keyword=web-20260904a
+cmk list events projectid=PROJECT_UUID listall=true keyword=web-20260904a
 ```
 
 For each VM, verify:
@@ -379,14 +403,15 @@ sudo grep -nE 'FAILED_JOB_UUID|VM_UUID' \
 
 Common causes include contiguous CPU/RAM shortage, resource limits, exhausted guest IPs, host or storage tag mismatches, template not ready on an eligible path, affinity constraints, and storage latency. Reducing parallelism can relieve transient pressure, but it cannot correct an impossible placement constraint.
 
-Do not automatically replace only the failed entry with a new random name. Fix the cause, prove the old job is terminal, retain the same deterministic name, and start a controlled continuation using the same state file.
+Do not automatically replace only the failed entry with a new random name. Fix the cause, prove the old job is terminal, retain the same deterministic name, and reconcile any residual VM before retrying. The driver skips recorded failed entries: archive the ledger, then remove only a failed entry proven safe to resubmit and run a controlled continuation with the same state file and inputs.
 
 ## Roll Back by UUID, Not Name
 
 Review the state ledger and CloudStack response before destroying anything. Roll back only VMs created by this batch, excluding records marked `existing`. For each recorded UUID:
 
 ```bash
-cmk list virtualmachines id=VM_UUID listall=true
+cmk list virtualmachines id=VM_UUID projectid=PROJECT_UUID listall=true
+cmk set asyncblock false
 cmk destroy virtualmachine id=VM_UUID expunge=false
 cmk query asyncjobresult jobid=DESTROY_JOB_UUID
 ```
@@ -399,7 +424,7 @@ If a VM contains useful diagnostics, stop it and preserve its logs rather than d
 
 - **Jobs stay pending:** check management-server queues, host/storage health, system VMs, and whether a long storage operation is blocking allocation. Continue bounded polling with backoff.
 - **Many jobs fail with capacity errors:** stop submitting, inspect per-host contiguous capacity and placement constraints, then lower the batch or correct the offering.
-- **Duplicate names appear:** the client retried an ambiguous request or used a new batch ID. Freeze the automation and reconcile UUIDs before choosing which instance to keep.
+- **Duplicate names appear:** possible causes include retrying an ambiguous request or running multiple writers for the same batch. Freeze the automation and reconcile UUIDs before choosing which instance to keep.
 - **API returns 429 or a throttle error:** honor the limit, reduce polling and submission rates, and add randomized backoff. Do not open more concurrent clients.
 - **VM is `Running` but bootstrap failed:** inspect console, network, metadata/user-data, DNS, repository access, and cloud-init logs. Do not redeploy until duplicate prevention is in place.
 - **Only later VMs fail networking:** inspect network IP capacity, virtual router health, DHCP leases, and security groups rather than retrying deployment.
