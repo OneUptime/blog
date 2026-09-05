@@ -41,13 +41,16 @@ Inspect storage-class configuration and the running server release before an inc
 ```bash
 mc admin info production
 mc admin config get production storage_class
+mc admin config get production erasure
 ```
+
+Also inspect server environment overrides, which take precedence over stored configuration. The `erasure` subsystem applies to releases supporting the newer settings below.
 
 Current MinIO AIStor documentation defaults to parity upgrade when a set is degraded but still writable. If a 16-drive set normally writes `EC:4` and two drives are offline, a new object can be written with `EC:6`, preserving the same number of additional failures it could tolerate in a healthy set. The object's metadata records that higher parity.
 
 This behavior is release- and configuration-sensitive. `MINIO_ERASURE_PARITY_FAILURE=upgrade` is the current availability-oriented setting; `ignore` favors capacity and leaves objects written during the outage with less remaining protection. The legacy `MINIO_STORAGE_CLASS_OPTIMIZE=availability` maps to the availability behavior. Either capacity-oriented setting can prevent an upgrade.
 
-Do not change parity behavior reactively in the middle of an outage without testing it against the exact server release. Current releases also enforce a per-erasure-set parity-upgrade capacity budget. Upgraded objects retain their higher parity after healing, so a long write-heavy outage consumes extra space permanently.
+Do not change parity behavior reactively in the middle of an outage without testing it against the exact server release. Current releases also enforce a per-erasure-set parity-upgrade capacity budget. As the budget is consumed, a decreasing fraction of writes receives upgraded parity; other writes use configured parity and have less remaining protection until healing. Enabling `upgrade` alone does not guarantee an upgrade for every write. Upgraded objects retain their higher parity after healing, so a long write-heavy outage consumes extra space permanently.
 
 ## Reject Reduced-Redundancy Writes
 
@@ -72,7 +75,7 @@ Do not confuse erasure coding with backup. A valid quorum cannot recover an obje
 
 ## Verify New Writes End to End
 
-For a canary, create a local digest, upload through the same client path as production, then retrieve through a different endpoint:
+For a canary, create a local digest, upload through the same client path as production, then retrieve through a different endpoint. The example uses GNU coreutils and assumes the bucket exists and `production-read` is an authenticated alias for a different endpoint of the same deployment. If production uses an SDK or gateway, use that upload path in place of `mc cp`:
 
 ```bash
 dd if=/dev/urandom of=/tmp/degraded-write-canary.bin \
@@ -83,7 +86,7 @@ sha256sum /tmp/degraded-write-canary.bin \
 mc cp /tmp/degraded-write-canary.bin \
   production/durability-canaries/incident-2026-09-04.bin
 
-mc cat production/durability-canaries/incident-2026-09-04.bin |
+mc cat production-read/durability-canaries/incident-2026-09-04.bin |
   sha256sum
 ```
 
@@ -96,13 +99,13 @@ mc admin object info \
   production/durability-canaries/incident-2026-09-04.bin
 ```
 
-Current documentation describes this command as reporting object parts, including missing or damaged shards. Keep it in the evidence record along with the server version and storage-class configuration.
+Current documentation describes this command as reporting object parts, including missing or damaged shards. Add `--bitrot` to check shard contents for bit rot. Keep it in the evidence record along with the server version and storage-class configuration.
 
 ## Restore Full Protection Quickly
 
-Replace a failed drive with an empty XFS device of equal or greater capacity and performance at the same configured mount. MinIO detects and aggressively heals a correct replacement. Do not use `rsync` or filesystem tools to populate the backend.
+Replace a failed drive with an empty XFS device of the same drive type and equal or greater capacity and performance at the same configured mount. MinIO detects and aggressively heals a correct replacement. Do not use `rsync` or filesystem tools to populate the backend.
 
-Monitor until online drives, write tolerance, and set health return to their designed values:
+Monitor until online drives, write tolerance, and set health return to their designed values and replacement-drive healing completes. Check `minio_cluster_erasure_set_healing_drives_count` and server healing logs; online status alone does not prove all missing shards have been restored:
 
 ```bash
 mc admin info --watch --interval 5s production
