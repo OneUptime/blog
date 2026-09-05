@@ -32,13 +32,13 @@ kubectl get pod -n payments api-abc123 \
   -o jsonpath='{range .status.containerStatuses[*]}{.name}{" exit="}{.lastState.terminated.exitCode}{" reason="}{.lastState.terminated.reason}{"\n"}{end}'
 ```
 
-`--previous` is essential after a crash loop because the current container may not have produced the useful failure. Events can reveal failed mounts, image pulls, OOM kills, and probe failures before application code starts.
+`--previous` is essential after a crash loop because the current container may not have produced the useful failure. Events can reveal failed mounts and image pulls before application code starts, as well as probe failures after the container starts. Inspect container termination state for `OOMKilled`.
 
 Confirm the exact deployed image ID. A tag in the workload specification and a digest in status can differ after tag movement.
 
 ## Inspect Image Metadata Without Running a Shell
 
-Image configuration is data and does not require starting the application. Buildx can inspect a registry reference, while `docker image inspect` requires the image to be present in the selected local daemon:
+Image configuration is data and does not require starting the application. Buildx can inspect manifests for a registry reference, while `docker image inspect` requires the image to be present in the selected local daemon:
 
 ```bash
 docker buildx imagetools inspect "$IMAGE_REF"
@@ -49,11 +49,12 @@ If the image is local, create a stopped container and copy known files without s
 
 ```bash
 cid=$(docker create "$IMAGE_REF")
-docker cp "$cid:/ko-app" /tmp/ko-app
+mkdir -p /tmp/ko-app
+docker cp "$cid:/ko-app/." /tmp/ko-app
 docker rm "$cid"
 ```
 
-This is useful for examining the binary and bundled `kodata`. Avoid copying secrets from live writable layers into shared incident artifacts.
+This copies the application binary. To examine bundled `kodata`, read `KO_DATA_PATH` from the image configuration and copy that directory separately before removing the stopped container. Avoid copying secrets from live writable layers into shared incident artifacts.
 
 The Go binary itself carries useful build information:
 
@@ -100,10 +101,10 @@ debug_image_ref=$(ko build ./cmd/api --debug)
 `--debug` includes Delve, changes the entrypoint to run the application under Delve, listens on port `40000`, and retains information needed for debugging. Run it locally:
 
 ```bash
-docker run --rm -p 40000:40000 "$debug_image_ref"
+docker run --rm -p 127.0.0.1:40000:40000 "$debug_image_ref"
 ```
 
-Connect a Delve-compatible client to port 40000. This mode is explicitly for development and must not be used for production: a remotely accessible debugger can control the process.
+Connect a Delve-compatible client to `127.0.0.1:40000` and continue execution; the application initially waits for the debugger. This mode is explicitly for development and must not be used for production: a remotely accessible debugger can control the process.
 
 For debugging without Delve, `--disable-optimizations` can make stack traces and stepping easier, at a performance cost. Keep release and debug images under distinct tags and digests.
 
@@ -131,7 +132,7 @@ For crash diagnosis, configure the orchestrator to retain termination messages a
 | HTTPS fails with unknown authority | Inspect trust roots and corporate CA configuration |
 | Timezone lookup fails | Supply tzdata or import Go's `time/tzdata` where suitable |
 | Health probe fails | Call the endpoint from the Pod network namespace |
-| Exit 137 / `OOMKilled` | Inspect memory limits, working set, and Go heap telemetry |
+| Exit 137 / `OOMKilled` | Exit 137 commonly indicates SIGKILL, not necessarily OOM; confirm the termination reason, then inspect memory limits, working set, and Go heap telemetry |
 | Permission denied | Inspect effective user, volume modes, and security context |
 
 A package manager would not directly solve most of these problems.
@@ -144,7 +145,7 @@ Do not use a mutable `debug` tag for incident evidence. Record both the failing 
 
 ## Conclusion
 
-A shell-less container changes the debugging method, not the amount of available evidence. Capture logs, exit state, image metadata, and the deployed digest; inspect files from outside; join namespaces with a controlled ephemeral container; and use `ko --debug` for a separate Delve-enabled development build. Keep production images immutable throughout the investigation.
+A shell-less container changes the debugging method, not the amount of available evidence. Capture logs, exit state, image metadata, and the deployed digest; inspect files from outside; join namespaces with a controlled ephemeral container; and use `ko build --debug` for a separate Delve-enabled development build. Keep production images immutable throughout the investigation.
 
 ## Official Documentation
 
