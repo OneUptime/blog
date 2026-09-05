@@ -10,7 +10,7 @@ Description: Verify a replacement MinIO drive at the operating-system, server, e
 
 A mounted replacement is not automatically a completed recovery. MinIO must recognize the drive at the configured endpoint, heal the missing shards, and restore the erasure set's read and write tolerance. Verification should cross five layers: hardware identity, mount identity, MinIO inventory, healing state, and application-visible object bytes.
 
-Use a before-and-after record. Capture the same commands when the incident begins, when the new drive first appears, and when healing is believed complete.
+These commands follow the current MinIO AIStor server and client documentation for a Linux deployment managed by systemd; older MinIO or `mc` releases may not expose the same flags or metrics. Use a before-and-after record. Capture the same commands when the incident begins, when the new drive first appears, and when healing is believed complete.
 
 ## Verify the Operating-System View
 
@@ -28,7 +28,7 @@ Expected evidence includes:
 - `xfs` as the filesystem;
 - the exact MinIO volume path;
 - no accidental mount on the root filesystem;
-- capacity and performance at least as large as the failed member.
+- the same drive type, with capacity and performance at least equal to the failed member (verify performance from hardware specifications or prior benchmark records; these commands do not measure it).
 
 Confirm that `/etc/fstab` resolves to the same label or UUID after a mount cycle. Do not browse or modify the MinIO backend tree to check object files. MinIO requires exclusive ownership of those files, and manual changes can create corruption that healing cannot safely resolve.
 
@@ -44,7 +44,7 @@ mc admin info --watch --interval 5s production
 
 `mc admin info` reports node state and aggregate online and offline drive counts. The replacement should appear online on the expected node, and the offline-only view should no longer list its endpoint.
 
-Review server logs around the mount time:
+Review retained server logs around the mount time with `journalctl`, and use `mc admin logs` for recent/live logs (it defaults to up to ten recent entries):
 
 ```bash
 journalctl -u minio \
@@ -62,7 +62,7 @@ MinIO v3 metrics expose per-pool and per-set state. Print them directly for a sp
 
 ```bash
 mc admin prometheus metrics production cluster --api-version v3 |
-  grep -E 'minio_cluster_erasure_set_(online_drives_count|healing_drives_count|health|read_tolerance|write_tolerance)'
+  grep -E 'minio_cluster_erasure_set_(online_drives_count|healing_drives_count|health|read_health|write_health|read_tolerance|write_tolerance)'
 ```
 
 Filter on the recorded `pool_id` and `set_id`. At completion:
@@ -76,14 +76,14 @@ Do not use a cluster-wide healthy summary to hide a degraded set. Objects map de
 
 ## Verify Healing Progress and Errors
 
-Current MinIO metrics include counters for objects scanned, objects healed, heal errors, and time since last healing activity. Capture them throughout the operation:
+Current MinIO metrics include counters for objects scanned, objects healed, and heal errors, plus a gauge for seconds since last healing activity. Capture them throughout the operation:
 
 ```bash
 mc admin prometheus metrics production --api-version v3 |
   grep -E 'minio_(heal|debug_heal)_'
 ```
 
-Interpret counters as counters. A nonzero cumulative heal-error value may predate this incident; the important questions are whether it increased during the replacement and whether unresolved manual-intervention signals remain.
+Interpret counters within their documented scope: the object scan, heal, and error counters describe the current self-healing run, while lock errors are counted since server startup. Account for run changes and counter resets when comparing snapshots. Investigate errors recorded during the replacement and any unresolved manual-intervention signals; a zero or missing sample alone does not prove completion.
 
 Avoid using a new full `mc admin heal` run as the definition of completion. The command starts a resource-intensive scan when the requested bucket or prefix does not already have one. MinIO automatically heals a fresh replacement. Use a targeted command only when the runbook or MinIO support calls for it:
 
@@ -101,11 +101,12 @@ Infrastructure signals cannot prove that a business-critical object matches its 
 mc stat production/critical-bucket/checkpoint.bin
 mc admin object info --bitrot \
   production/critical-bucket/checkpoint.bin
+set -o pipefail
 mc cat production/critical-bucket/checkpoint.bin |
   sha256sum
 ```
 
-Compare the digest with the trusted manifest. Do not treat the ETag as a general-purpose MD5; multipart uploads, encryption, and implementation details can make that assumption false.
+`mc admin object info --bitrot` is a MinIO administrative shard check; `mc stat` and `mc cat` use the S3 API. Accept the digest only if the read pipeline succeeds, then compare it with the trusted manifest. Do not treat the ETag as a general-purpose MD5; multipart uploads, encryption, and implementation details can make that assumption false.
 
 For a versioned bucket, verify the intended version explicitly. A successful read of the current version does not prove that retained historical versions healed.
 
