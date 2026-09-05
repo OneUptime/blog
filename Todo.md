@@ -175,7 +175,6 @@
 
 ## ko
 
-20. How to Embed ko's `pkg/build` and `pkg/publish` APIs in a Go Tool
 
 ## yq
 
