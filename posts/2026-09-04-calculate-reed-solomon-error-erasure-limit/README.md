@@ -8,7 +8,7 @@ Description: Calculate Reed-Solomon correction capacity from code distance, unkn
 
 ---
 
-For a conventional Reed-Solomon code written as `RS(N,K)`, each codeword contains `K` data symbols and `P = N-K` parity symbols. Its minimum distance is:
+For a systematic Reed-Solomon code written as `RS(N,K)`, each codeword contains `K` data symbols and `P = N-K` parity symbols. Its minimum distance is:
 
 ```text
 dmin = N - K + 1 = P + 1
@@ -20,11 +20,11 @@ That distance gives the mixed guaranteed correction condition:
 2E + S <= N - K
 ```
 
-`E` is the count of unknown erroneous symbols and `S` is the count of erasures whose positions are known. The equation applies per codeword.
+`E` is the count of unknown erroneous symbols and `S` is the count of erasures whose positions are known. The equation applies per codeword, with errors counted only outside the erased positions. Achieving this bound requires a decoder that supports both errors and erasures; erasure-only decoders such as Backblaze JavaReedSolomon require bad shard positions to be identified first.
 
 ## Calculate the Basic Cases
 
-From `P = N-K`:
+From `P = N-K`, with `0 <= S <= P` for the mixed case:
 
 ```text
 maximum erasures only = P
@@ -49,8 +49,8 @@ One known missing location costs one unit. One unknown wrong value costs two bec
 ```javascript
 function correctionBudget(n, k, errors, erasures) {
   for (const value of [n, k, errors, erasures]) {
-    if (!Number.isInteger(value) || value < 0) {
-      throw new TypeError('all inputs must be non-negative integers');
+    if (!Number.isSafeInteger(value) || value < 0) {
+      throw new TypeError('all inputs must be non-negative safe integers');
     }
   }
   if (k === 0 || k >= n) {
@@ -59,6 +59,9 @@ function correctionBudget(n, k, errors, erasures) {
 
   const parity = n - k;
   const spent = (2 * errors) + erasures;
+  if (!Number.isSafeInteger(spent)) {
+    throw new RangeError('correction budget exceeds safe integer precision');
+  }
   return {
     parity,
     spent,
@@ -77,7 +80,7 @@ Use this as a precondition, not a decoder. An application rarely knows the count
 
 Reed-Solomon operates on symbols from a finite field. With 8-bit symbols, any number of flipped bits in one symbol still counts as one symbol error. Flips spread across three byte symbols count as three errors.
 
-In shard-based storage, coding is usually performed horizontally across equal-sized shards. At byte offset `j`, the bytes at offset `j` in all `N` shards form a codeword. A wholly missing shard creates one erasure in every such codeword. Corruption confined to part of a shard affects only the corresponding codewords, but the shard is often discarded as a whole when its authenticated digest fails.
+In shard-based storage, coding is usually performed horizontally across equal-sized shards. With 8-bit symbols, at byte offset `j`, the bytes at offset `j` in all `N` shards form a codeword. A wholly missing shard creates one erasure in every such codeword. Corruption confined to part of a shard affects only the corresponding codewords, but the shard is often discarded as a whole when its authenticated digest fails.
 
 Do not compare `M` parity shards with the percentage of corrupt bytes without mapping the damage to codeword symbols.
 
@@ -137,4 +140,4 @@ The Reed-Solomon correction budget is simple but easy to miscount: `P=N-K`, eras
 - [EZPWD: Reed-Solomon Error and Erasure API](https://github.com/pjkundert/ezpwd-reed-solomon)
 - [Backblaze: JavaReedSolomon Implementation Limits](https://github.com/Backblaze/JavaReedSolomon/blob/master/src/main/java/com/backblaze/erasure/ReedSolomon.java)
 - [Microsoft Research: A Reed-Solomon Code for Disk Storage](https://www.microsoft.com/en-us/research/wp-content/uploads/2016/02/wdas.pdf)
-- [USENIX FAST: Open-Source Erasure Coding Libraries for Storage](https://www.usenix.org/legacy/events/fast08/tech/full_papers/plank/plank.pdf)
+- [USENIX FAST: The RAID-6 Liberation Codes](https://www.usenix.org/legacy/events/fast08/tech/full_papers/plank/plank.pdf)
