@@ -8,9 +8,9 @@ Description: Understand who initiates each xDS exchange and trace Envoy bootstra
 
 ---
 
-Operators often say that Istiod pushes configuration to Envoy. That is useful shorthand, but it can mislead a network investigation. In generic xDS, the client initiates a long-lived bidirectional gRPC connection and sends discovery requests that establish subscriptions. In a current Istio sidecar there are normally two connected streams: Envoy connects to pilot-agent's local xDS proxy over a Unix-domain socket, and pilot-agent opens the TLS/gRPC connection to Istiod. The agent forwards ordinary Envoy discovery requests and Istiod responses between those streams.
+Operators often say that Istiod pushes configuration to Envoy. That is useful shorthand, but it can mislead a network investigation. In streaming gRPC xDS, the client initiates a long-lived bidirectional gRPC connection and sends discovery requests that establish subscriptions. In a current Istio sidecar there are normally two connected streams: Envoy connects to pilot-agent's local xDS proxy over a Unix-domain socket, and pilot-agent opens the TLS/gRPC connection to Istiod. The agent forwards ordinary Envoy discovery requests and Istiod responses between those streams.
 
-So the accurate answer is both, with clear ownership:
+So the accurate answer is both, with clear ownership (using state-of-the-world message names here):
 
 ```text
 Envoy                 pilot-agent xDS proxy                 Istiod
@@ -53,7 +53,7 @@ Read pilot-agent's effective upstream address from its startup and connection lo
 ```bash
 kubectl -n bookinfo logs reviews-v2-6f9f8b8bcb-t5j7n \
   -c istio-proxy --timestamps |
-  grep -E 'Initializing with upstream address|connected to upstream XDS server|failed to connect to upstream'
+  grep -E 'Initializing with upstream address|connected to (delta )?upstream XDS server|failed to connect to upstream'
 
 kubectl -n bookinfo get pod reviews-v2-6f9f8b8bcb-t5j7n -o json |
   jq '{revision: .metadata.annotations["istio.io/rev"],
@@ -61,7 +61,7 @@ kubectl -n bookinfo get pod reviews-v2-6f9f8b8bcb-t5j7n -o json |
        discoveryAddressOverride: .metadata.annotations["sidecar.istio.io/discoveryAddress"]}'
 ```
 
-The injected `PROXY_CONFIG` environment value and those Pod annotations explain where the address came from; the `xdsproxy` initialization log is the clearest runtime value. If the startup line has rotated out, inspect previous logs and the configuration for the injector revision recorded on the Pod. External control planes and revisions can change the upstream address, trust roots, and metadata.
+The injected `PROXY_CONFIG` environment value and those Pod annotations help explain where the address came from; `sidecar.istio.io/discoveryAddress` is deprecated, so treat it as a legacy clue and verify the effective configuration. Here, the `xdsproxy` initialization log is the clearest runtime value. If the startup line has rotated out, inspect retained logs and the configuration for the injector revision recorded on the Pod; `kubectl logs --previous` reads the previous container instance after a restart, not older rotated files from the current instance. External control planes and revisions can change the upstream address, trust roots, and metadata.
 
 Treat the dump as sensitive operational data. Node metadata can reveal workload, cluster, and network identifiers. Never publish service-account tokens, workload private keys, or Secret volume contents alongside it.
 
@@ -72,13 +72,13 @@ For a standard in-cluster control plane, pilot-agent reaches Istiod's TLS/mTLS g
 ```bash
 kubectl -n istio-system get service istiod -o wide
 kubectl -n istio-system get endpointslice \
-  -l kubernetes.io/service-name=istiod -o wide
+  -l kubernetes.io/service-name=istiod -o yaml
 kubectl -n istio-system get pods -l app=istiod -o wide
 ```
 
-Check egress NetworkPolicy and node/firewall routing from the workload to those endpoints. A successful TCP probe is only one layer; xDS also depends on TLS, workload credentials, gRPC, and Istiod authorization. Port `15010` is plaintext and should not be introduced as an incident workaround in a production network.
+Check each EndpointSlice endpoint's `conditions.ready` value; the wide summary does not expose readiness. For a revisioned installation, substitute the actual Istiod Service name and its EndpointSlice label value. Check egress NetworkPolicy and node/firewall routing from the workload to those endpoints. A successful TCP probe is only one layer; xDS also depends on TLS, workload credentials, gRPC, and Istiod authorization. Port `15010` is plaintext and should not be introduced as an incident workaround in a production network.
 
-The upstream connection is long-lived. Repeated TLS handshakes or frequent `StreamAggregatedResources` reconnects are not normal configuration pushes; they indicate transport churn, credential rotation problems, load-balancer idle timeout, Istiod restarts, or resource pressure. Correlate agent and Istiod logs by timestamp and proxy ID. Also distinguish an Envoy-to-agent UDS failure from an agent-to-Istiod network failure; current Istio re-establishes the upstream stream when Envoy makes a fresh downstream connection.
+The upstream connection is long-lived. Repeated TLS handshakes or frequent `StreamAggregatedResources` or `DeltaAggregatedResources` reconnects are not configuration pushes. They can result from configured graceful connection aging as well as transport churn, credential rotation problems, load-balancer idle timeout, Istiod restarts, or resource pressure. Correlate agent and Istiod logs by timestamp and proxy ID. Also distinguish an Envoy-to-agent UDS failure from an agent-to-Istiod network failure; current Istio re-establishes the upstream stream when Envoy makes a fresh downstream connection.
 
 ## Understand the First DiscoveryRequest
 
@@ -93,19 +93,19 @@ With Aggregated Discovery Service, multiple xDS resource types share one gRPC st
 
 Dependencies still matter. A listener can reference an RDS route, a route can reference a cluster, and a cluster can use EDS. Envoy initialization and warming prevent some resources from serving traffic until their dependencies arrive.
 
-Istio can use delta xDS, where requests add or remove named subscriptions and responses carry changes, rather than sending the complete state for a type every time. Do not decode a delta exchange using state-of-the-world version assumptions. In both variants, Envoy initiates the downstream stream and pilot-agent initiates the corresponding upstream stream; subscription state flows toward Istiod.
+Istio can use delta xDS, where `DeltaDiscoveryRequest` messages add or remove named subscriptions and `DeltaDiscoveryResponse` messages carry changed or removed resources. In state-of-the-world xDS, complete-state responses are required for LDS and CDS; other types can return subsets of resources. Do not decode a delta exchange using state-of-the-world version assumptions. In both variants, Envoy initiates the downstream stream and pilot-agent initiates the corresponding upstream stream; subscription state flows toward Istiod.
 
 ## Interpret DiscoveryResponse, Version, and Nonce
 
-Istiod sends a `DiscoveryResponse` when it has an initial answer or subscribed resources change. For state-of-the-world xDS, the response carries resources, a `version_info`, a type URL, and a nonce. Pilot-agent normally forwards responses for ordinary Envoy types onto the downstream stream. The nonce ties the next ACK or NACK to this specific response and is scoped to its stream; it does not survive a reconnect.
+In state-of-the-world xDS, Istiod sends a `DiscoveryResponse` when it has an initial answer, subscriptions change, or subscribed resources change. The response carries resources, a `version_info`, a type URL, and a nonce. Pilot-agent normally forwards responses for ordinary Envoy types onto the downstream stream. The nonce ties the next ACK or NACK to this specific response and is tracked per resource type within an ADS stream; it does not survive a reconnect.
 
-The server should not continuously resend identical resources just to poll the client. Envoy's protocol documentation warns that doing so creates needless work. Operationally, an Istio push means that Istiod wrote a response on an existing client-created stream after its computed configuration changed.
+The server should not continuously resend identical resources just to poll the client. Envoy's protocol documentation warns that doing so creates needless work. Operationally, an Istio push delivers configuration over an existing client-created stream; initial subscriptions and resynchronization can also cause responses without a change to the underlying configuration.
 
 A response can be empty for a valid reason: the proxy may have no resources of that type in scope. `NOT SENT` in `istioctl proxy-status` similarly can mean Istiod had nothing to send. Always compare the missing type with the proxy's role; an ingress gateway and a sidecar do not require identical route sets.
 
 ## ACK Is Another Client Request
 
-After validating a response, Envoy sends a `DiscoveryRequest` with the response nonce, and pilot-agent forwards it upstream for ordinary Envoy resources. For an ACK, it carries the accepted response version and no `error_detail`. For a NACK, `error_detail` is populated and the version represents the configuration the client is still using under the protocol's rules.
+In state-of-the-world xDS, after validating a response, Envoy sends a `DiscoveryRequest` with the response nonce, and pilot-agent forwards it upstream for ordinary Envoy resources. For an ACK, it carries the accepted response version and no `error_detail`. For a NACK, `error_detail` is populated and the version represents the configuration the client is still using under the protocol's rules. Delta ACKs and NACKs use `DeltaDiscoveryRequest` with the response nonce and optional `error_detail`, without a request-level `version_info`.
 
 Do not assume every ACK or NACK visible at Istiod came from Envoy. Pilot-agent consumes some Istio-internal types and acknowledges them itself. It can also NACK an ECDS response if enabled remote-Wasm conversion fails before the response reaches Envoy. Correlate the type URL and agent log with the Envoy validation log before assigning ownership.
 
@@ -180,7 +180,7 @@ If state is `STALE` without a clear NACK, inspect network churn, Istiod load, En
 
 ## Trace Safely at the Network Layer
 
-A packet capture in the Pod network can prove that pilot-agent initiated the remote TCP connection and show its lifetime, retransmissions, resets, TLS records, and keepalives. It will not show the local Unix-socket leg as IP packets. Production upstream xDS is encrypted, so the capture will not reveal DiscoveryRequest resources without TLS session material. Do not extract credentials or disable transport security merely to decode it.
+A packet capture in the Pod network that includes the TCP handshake can establish which endpoint initiated the remote connection and show its lifetime, retransmissions, resets, TLS records, and TCP keepalives. Correlate it with agent logs or socket ownership to attribute the connection to pilot-agent; packet headers alone do not identify the process, and encrypted HTTP/2 keepalive PINGs are not directly visible. It will not show the local Unix-socket leg as IP packets. Production upstream xDS is encrypted, so the capture will not reveal DiscoveryRequest resources without TLS session material. Do not extract credentials or disable transport security merely to decode it.
 
 Use logs, `proxy-status`, config dumps, and metrics for protocol semantics. Use packet capture only to answer transport questions such as:
 
