@@ -14,15 +14,17 @@ The reliable pattern is: tag for discovery, deploy by digest.
 
 ## Validate the Release Inputs
 
-Start from a clean, known Git state:
+Run the release commands in a Bash script that stops on failure, starting from a clean, known Git state:
 
 ```bash
+set -euo pipefail
+
 version=v2.7.0
 commit=$(git rev-parse HEAD)
 short_commit=$(git rev-parse --short=12 HEAD)
 
 test "$(git status --porcelain)" = ""
-test "$(git rev-parse "$version^{commit}")" = "$commit"
+test "$(git rev-parse --verify "refs/tags/$version^{commit}")" = "$commit"
 ```
 
 The second check expects an existing lightweight or annotated Git tag whose peeled commit is `HEAD`. Verify an annotated tag's signature separately when that is part of release policy, and account for CI systems that check out synthetic merge commits. Validate that the version matches the project's version syntax before passing it to registry commands.
@@ -59,7 +61,7 @@ containers:
     image: ko://example.com/acme/api/cmd/api
 ```
 
-Render a release artifact:
+Render a release artifact. `ko resolve` builds and publishes the referenced packages; it does not reuse `dist/api-image.txt`. Use it as an alternative to the standalone build above, and test the digest it emits. To deploy an already tested build, insert its recorded digest reference into the manifests instead of rebuilding with `ko resolve`:
 
 ```bash
 ko resolve -f config/ \
@@ -153,7 +155,7 @@ At release time, assert all views agree:
 1. `ko` completed successfully and wrote the image reference file.
 2. Every reference includes `@sha256:`.
 3. Registry inspection shows the release and commit tags on the expected digest.
-4. The binary and OCI labels report the expected version and commit.
+4. If version and commit metadata are configured in the binary and OCI labels, they report the expected values. `--tags` does not set these; configure binary metadata through the application's build settings and labels through `--image-label`.
 5. Multi-platform releases contain every supported architecture.
 6. The resolved Kubernetes YAML passes policy and server-side dry-run.
 
