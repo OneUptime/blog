@@ -61,7 +61,7 @@ sudo fsfreeze --freeze /srv/application-data
 sudo fsfreeze --unfreeze /srv/application-data
 ```
 
-Put the unfreeze command in an independent timeout or operational runbook so a failed API call cannot leave production frozen. Do not freeze `/` casually, and do not assume freezing two filesystems at different times creates a transaction-consistent multi-volume set.
+Arrange an independent timed unfreeze before freezing, and document manual recovery in the operational runbook so a failed API call cannot leave production frozen. The recurring policy below does not run these guest commands; application-consistent scheduled snapshots require orchestration that coordinates quiescing with the actual snapshot capture, not just its scheduled time. Do not freeze `/` casually, and do not assume freezing two filesystems at different times creates a transaction-consistent multi-volume set.
 
 For databases, prefer the database vendor's snapshot integration or native backup procedure. A snapshot that replays a journal successfully is crash-consistent, which is different from application-consistent.
 
@@ -78,7 +78,7 @@ qemu-system-x86_64 --version
 virsh --version
 ```
 
-The optional file-based incremental mode requires at least libvirt 7.6 and QEMU 6.1. A volume snapshot of an encrypted disk is supported only while its VM is stopped. Separately, CloudStack 4.23 does not support VM snapshots or incremental volume snapshots on CLVM/CLVM_NG. Do not toggle either setting globally merely to make a job pass. Confirm the storage type, package versions, encryption state, and upgrade history. If the supported path requires stopping the VM, schedule that outage. Test snapshot and restore on a disposable clone before production; do not use a revert test against the source VM.
+The optional file-based incremental mode requires at least libvirt 7.6 and QEMU 6.1. A manual volume snapshot of an encrypted disk is supported only while its VM is stopped. CloudStack 4.23 rejects recurring snapshot policies for volumes whose disk offering enables encryption; stopping the VM does not remove that policy restriction. Separately, CloudStack 4.23 does not support VM snapshots or incremental volume snapshots on CLVM/CLVM_NG. Do not toggle either setting globally merely to make a job pass. Confirm the storage type, package versions, encryption state, and upgrade history. If the supported path requires stopping the VM, schedule that outage. Test snapshot and restore on a disposable clone before production; do not use a revert test against the source VM.
 
 ## Create a Recurring Policy
 
@@ -112,7 +112,7 @@ Use an explicit IANA timezone. Recheck schedules around daylight-saving changes 
 
 ## Request an Off-Cluster Copy
 
-Current `createSnapshotPolicy` parameters can include `zoneids`, a comma-separated set of CloudStack zones where the snapshot should be made available. The source zone remains included. A policy that also makes the snapshot available in a separate recovery zone can be created as follows:
+Current `createSnapshotPolicy` parameters can include `zoneids`, a comma-separated set of CloudStack zones where the snapshot should be made available. The source zone remains included. For the secondary-storage copy workflow, verify that `snapshot.backup.to.secondary` is enabled at the applicable scope; selecting zones does not make a primary-only snapshot an off-cluster backup. A policy that also makes the snapshot available in a separate recovery zone can be created as follows:
 
 ```bash
 cmk create snapshotpolicy \
@@ -124,7 +124,7 @@ cmk create snapshotpolicy \
   zoneids=RECOVERY_ZONE_UUID
 ```
 
-Use `cmk help create snapshotpolicy` to confirm parameter spelling for the installed API profile. Some releases and provider paths also expose destination storage IDs or storage replication. These are not interchangeable: a second pool in the same rack may not satisfy an off-cluster requirement.
+Use `cmk help createSnapshotPolicy` to confirm parameter spelling for the installed API profile. Some releases and provider paths also expose destination storage IDs or storage replication. These are not interchangeable: a second pool in the same rack may not satisfy an off-cluster requirement.
 
 Verify that the recovery zone has separate secondary storage, network, power, credentials, and deletion controls. If both zones ultimately write to the same NFS appliance, object bucket, Ceph cluster, or administrative account, the copy may share the original failure domain.
 
@@ -135,7 +135,7 @@ For a true off-site or immutable requirement, use a CloudStack backup provider o
 Do not wait until an incident to learn that the policy never ran. After the first due time:
 
 ```bash
-cmk list snapshots volumeid=VOLUME_UUID listall=true
+cmk list snapshots volumeid=VOLUME_UUID listall=true showunique=false locationtype=secondary
 cmk list events type=SNAPSHOT.CREATE level=ERROR
 cmk list asyncjobs listall=true
 ```
@@ -146,14 +146,14 @@ For a specific async job:
 cmk query asyncjobresult jobid=SNAPSHOT_JOB_UUID
 ```
 
-Check that the newest snapshot reaches a completed state such as `BackedUp`, reports the expected zones or stores, and has a plausible size and creation time. On the management server, correlate failures without exposing secrets:
+Check that the newest snapshot reaches `BackedUp` and has a plausible size and creation time. With `showunique=false`, verify a secondary-storage entry for each expected zone and confirm its `datastorestate` is `Ready`; the overall snapshot state alone does not prove that every destination copy completed. On the management server, correlate failures without exposing secrets:
 
 ```bash
 sudo grep -nE 'SNAPSHOT_JOB_UUID|VOLUME_UUID' \
   /var/log/cloudstack/management/management-server.log | tail -n 300
 ```
 
-Also alert on policy age. A green storage dashboard does not reveal that a snapshot schedule stopped three weeks ago.
+Also alert on the age of the latest successful snapshot, accounting for intentional skips while a volume is inactive. A green storage dashboard does not reveal that a snapshot schedule stopped three weeks ago.
 
 ## Test a Restore Without Overwriting the Source
 
@@ -176,22 +176,22 @@ cmk attach volume id=RESTORED_VOLUME_UUID virtualmachineid=RECOVERY_VM_UUID
 cmk query asyncjobresult jobid=ATTACH_JOB_UUID
 ```
 
-Inside the recovery guest, identify the device by size, serial, or filesystem UUID. Do not format it:
+Inside the recovery guest, identify the device by size, serial, or filesystem UUID. Do not format it. A read-only mount can still replay a journal and write to the restored disk; for an ext3/ext4 inspection without replay, use `ro,noload` as below. Other filesystems require their own recovery options:
 
 ```bash
 lsblk -o NAME,SIZE,TYPE,FSTYPE,UUID,MOUNTPOINTS,SERIAL
 sudo blkid
 sudo mkdir -p /mnt/restore-check
-sudo mount -o ro /dev/RESTORED_PARTITION /mnt/restore-check
+sudo mount -o ro,noload /dev/RESTORED_PARTITION /mnt/restore-check
 ```
 
-Run application-specific integrity checks against the read-only or isolated copy. Measure the time from restore request to validated service, record it against the recovery-time objective, then unmount and detach through CloudStack.
+Skipping journal replay can expose an inconsistent filesystem. If filesystem or database recovery needs writes, perform it on the disposable isolated copy before running application-specific integrity checks; a read-only file inspection alone does not validate service recovery. Measure the time from restore request to validated service, record it against the recovery-time objective, then unmount and detach through CloudStack.
 
 When the snapshot came from a root volume, CloudStack requires an explicit compatible disk offering for `createVolume`; do not assume it can infer one from the old root disk. For a data-volume snapshot, select a compatible offering when required by the API and storage policy. CloudStack does not generally boot an instance directly from a restored root data volume. The documented recovery workflow may require creating a template from the volume or attaching it to a helper VM, depending on the goal and hypervisor.
 
 ## Retention, Deletion, and Rollback
 
-Before replacing a policy, list and record its ID. Create the new schedule only after checking whether the release permits one policy of that interval per volume and whether times collide. Observe a successful new snapshot before removing the old policy.
+Before changing a policy, list and record its ID and settings. In CloudStack 4.23, `createSnapshotPolicy` for the same volume and interval updates the existing policy in place, including when adding the recovery zone in the example above. Verify the returned policy and observe a successful snapshot with the new settings. Do not delete the recorded policy ID afterward: it still identifies the active policy. To roll back the schedule, reapply the recorded settings.
 
 To stop future snapshots without deleting existing recovery points:
 
@@ -200,13 +200,13 @@ cmk list snapshotpolicies volumeid=VOLUME_UUID
 cmk delete snapshotpolicies id=POLICY_UUID
 ```
 
-Confirm the exact delete command with CloudMonkey help because command grouping can vary by profile. Policy deletion and snapshot deletion are different actions. Do not bulk-delete old snapshots until the new path has produced and restored a verified copy.
+Confirm the parameters with `cmk help deleteSnapshotPolicies` for the installed API profile. Policy deletion and snapshot deletion are different actions. Do not bulk-delete old snapshots until the new path has produced and restored a verified copy.
 
 For a restore drill, unmount the test filesystem, detach the restored volume, confirm it is the disposable copy by UUID, and only then delete it. Never automate deletion by display name alone.
 
 ## Troubleshooting Failed Backups
 
-- **No snapshot appears:** verify policy timezone and schedule, retention/global limits, volume state, management-server scheduling, and events.
+- **No snapshot appears:** verify policy timezone and schedule, retention/global limits, volume state, management-server scheduling, and events. Recurring snapshots may be skipped for a detached volume or one attached to a stopped VM after at least one snapshot has been taken since it became inactive.
 - **Snapshot stays in `Creating` or fails:** follow the async job into management and agent logs; inspect primary capacity, provider health, and system VM connectivity.
 - **Snapshot exists only in the source zone:** verify the policy's returned zone list, destination secondary storage, zone permissions, network reachability, and provider support.
 - **KVM snapshot fails while the VM runs:** stop and review the current KVM snapshot setting and version prerequisites instead of forcing the flag.
