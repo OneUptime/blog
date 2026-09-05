@@ -32,7 +32,7 @@ ko build ./cmd/api
 
 `KOCACHE` must name a directory. With it set, `ko` can use its local input mapping and the layer present in the image registry to skip the underlying `go build` in a matching case. It is not a standalone copy of the registry and does not make an offline build possible.
 
-Go manages the integrity and eviction policy of its own caches. Do not manually copy arbitrary binaries into them.
+Go automatically prunes old build-cache entries, but the module cache has no size limit and is not automatically pruned. Use `go clean -modcache` when you need to clear the module cache. Do not manually copy arbitrary binaries into them.
 
 ## Restore Modules Before Downloading
 
@@ -44,7 +44,7 @@ go test ./...
 ko build ./cmd/api
 ```
 
-With a restored module cache, `go mod download` verifies and reuses content. With a restored build cache, tests and the final compile can reuse packages built with compatible inputs. `ko` executes the Go tool in the same environment, so it naturally benefits from those caches.
+With a restored module cache, `go mod download` reuses downloaded content and checks recorded checksums, but does not rehash already-extracted source files. Use `go mod verify` to detect changes to cached module archives and extracted directories since download; this does not make an untrusted cache trustworthy. With a restored build cache, tests and the final compile can reuse packages built with compatible inputs. `ko` executes the Go tool in the same environment, so it naturally benefits from those caches.
 
 Do not disable module checksum verification to improve cache hits. `go.sum` and the checksum database policy remain part of dependency integrity.
 
@@ -60,13 +60,13 @@ Include inputs that define compatibility:
 - important build tags and `.ko.yaml` changes; and
 - a cache format generation you can bump manually.
 
-A key can be layered. Restore a broad Go-version prefix when the exact dependency hash is absent, then save under the exact key after a successful trusted build.
+A key can be layered. For immutable CI caches, append the Git commit to a compatibility-and-dependency prefix so new build artifacts can be saved after source changes. Restore that prefix first, then a broader compatible prefix when the exact dependency hash is absent, and save under the new exact key after a successful trusted build.
 
 Do not key only on the Git commit. That prevents reuse between adjacent commits, eliminating much of the value. Conversely, a key of only `go-cache` can mix incompatible toolchains and architectures.
 
 ## Example with GitHub's Cache Action
 
-This fragment illustrates directory separation; it assumes an earlier trusted step installed `ko` 0.19.1 and authenticated the destination registry. Pin actions according to your organization's dependency policy:
+This fragment illustrates directory separation in a job restricted to protected-branch pushes; it assumes earlier steps checked out the repository, installed `ko` 0.19.1, and authenticated the destination registry. It assumes a fixed target-platform and CGO policy; include those inputs in both key and restore prefixes if they vary. Pin actions according to your organization's dependency policy:
 
 ```yaml
 - uses: actions/setup-go@v5
@@ -86,17 +86,21 @@ This fragment illustrates directory separation; it assumes an earlier trusted st
       .cache/go-mod
       .cache/go-build
       .cache/ko
-    key: ko-${{ runner.os }}-${{ runner.arch }}-${{ steps.go-env.outputs.goversion }}-${{ hashFiles('**/go.sum', 'go.work.sum', '.ko.yaml') }}
+    key: ko-v1-trusted-${{ runner.os }}-${{ runner.arch }}-${{ steps.go-env.outputs.goversion }}-${{ hashFiles('**/go.sum', '**/go.work.sum', '.ko.yaml') }}-${{ github.sha }}
     restore-keys: |
-      ko-${{ runner.os }}-${{ runner.arch }}-${{ steps.go-env.outputs.goversion }}-
+      ko-v1-trusted-${{ runner.os }}-${{ runner.arch }}-${{ steps.go-env.outputs.goversion }}-${{ hashFiles('**/go.sum', '**/go.work.sum', '.ko.yaml') }}-
+      ko-v1-trusted-${{ runner.os }}-${{ runner.arch }}-${{ steps.go-env.outputs.goversion }}-
 
-- name: Build image
+- name: Test and build image
   env:
     KO_DOCKER_REPO: registry.example.com/acme/services
     GOMODCACHE: ${{ github.workspace }}/.cache/go-mod
     GOCACHE: ${{ github.workspace }}/.cache/go-build
     KOCACHE: ${{ github.workspace }}/.cache/ko
-  run: ko build ./cmd/api
+  run: |
+    go mod download
+    go test ./...
+    ko build ./cmd/api
 ```
 
 Avoid interpolating untrusted branch names into shell commands. The action expressions above are data fields, while the script reads controlled tool output.
@@ -142,7 +146,7 @@ A warm `GOCACHE` can make compilation fast even if `KOCACHE` misses. A `KOCACHE`
 
 Architecture and CGO inputs must not be mixed carelessly. Go's build cache keys include compiler inputs, but CI cache organization should still separate OS/architecture for size, clarity, and native toolchain artifacts.
 
-For CGO, include compiler version and relevant native dependency versions in cache policy. A restored cached result must not hide that the release runner lacks the actual compiler or runtime library contract needed for a clean build.
+For CGO, include compiler version and relevant native dependency versions in cache policy, including restore prefixes. Go does not detect changes to external C libraries: when they change, use fresh `GOCACHE` and `KOCACHE` directories without restoring older entries, or explicitly clear the affected caches before rebuilding. A restored cached result must not hide that the release runner lacks the actual compiler or runtime library contract needed for a clean build.
 
 Periodically run a cold release rehearsal. It proves the repository and declared dependencies can build without an old cache masking missing setup.
 
