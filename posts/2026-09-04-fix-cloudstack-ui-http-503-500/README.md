@@ -8,7 +8,7 @@ Description: Isolate CloudStack UI HTTP 503 and 500 errors across the reverse pr
 
 ---
 
-An HTTP 503 and an HTTP 500 point to different layers. A reverse proxy normally returns 503 when it has no healthy CloudStack upstream or cannot connect to one. A 500 means a request reached an HTTP application that failed while handling it, although that application might itself be the proxy or an intermediary. The status code alone is not enough; identify who generated it.
+HTTP 503 and HTTP 500 do not identify the failing layer. A 503 indicates temporary unavailability, such as overload or maintenance, and can originate in CloudStack or a proxy. A reverse proxy may return 503 when no healthy upstream is available; upstream failures can also produce 502 or 504 depending on the proxy and failure. A 500 means a request reached an HTTP application that failed while handling it, although that application might itself be the proxy or an intermediary. The status code alone is not enough; identify who generated it.
 
 Avoid restarting every component at once. That destroys timing evidence and can turn a database or disk problem into a restart loop.
 
@@ -53,7 +53,7 @@ sudo journalctl -u cloudstack-management -b --no-pager -n 250
 sudo tail -n 250 /var/log/cloudstack/management/management-server.log
 ```
 
-Apache's troubleshooting guide identifies `/var/log/cloudstack/management/` as the source for UI, middle-tier, and database diagnostics. Search a narrow time range and correlate a request/job ID:
+Apache's troubleshooting guide identifies `/var/log/cloudstack/management/` as the source for UI, middle-tier, and database diagnostics. Find the last 200 matching lines, then narrow the investigation to the incident time range and correlate a request/job ID:
 
 ```bash
 sudo grep -iE 'exception|unable|fail|invalid|warn|error' \
@@ -79,21 +79,21 @@ If the service is active but not listening, inspect its startup log. If it liste
 
 ## Verify MySQL Without Modifying It
 
-The management server depends on the `cloud` and `cloud_usage` databases. Check service, listener, capacity, and a read-only login using securely supplied credentials:
+The management server depends on the `cloud` and `cloud_usage` databases. Check the service and listener on the database host, using `mysql` instead of `mysqld` on Ubuntu/Debian. Run the read-only SQL check from the management host using securely supplied credentials and the same database host and port that CloudStack uses:
 
 ```bash
 sudo systemctl status mysqld --no-pager -l
 sudo ss -ltnp | grep ':3306\b'
-mysql --defaults-extra-file=/root/.my-cloudstack-check.cnf \
-  -e 'SELECT NOW(); SHOW DATABASES; SHOW STATUS LIKE "Threads_connected";'
+sudo mysql --defaults-extra-file=/root/.my-cloudstack-check.cnf \
+  -e "SELECT NOW(); SHOW DATABASES; SHOW GLOBAL STATUS LIKE 'Threads_connected';"
 ```
 
-Protect the option file with mode `0600` and remove it after the check. Never put production passwords directly in a shared shell history.
+Use a root-owned option file with a `[client]` group containing `user`, `password`, `host`, `port`, and `protocol=TCP` so the check exercises database network reachability. Protect it with mode `0600` and remove it after the check. Never put production passwords directly in a shared shell history.
 
-CloudStack's installation guide sets `max_connections` to 350 times the number of management servers and recommends `innodb_rollback_on_timeout=1`, `innodb_lock_wait_timeout=600`, binary logging, and row format. Compare effective values rather than assuming the file was loaded:
+CloudStack's installation guide sets `max_connections` to 350 times the number of management servers and recommends `innodb_rollback_on_timeout=1`, `innodb_lock_wait_timeout=600`, binary logging, and row-based binary logging (`binlog_format=ROW`). Compare effective values rather than assuming the file was loaded:
 
 ```sql
-SHOW VARIABLES WHERE Variable_name IN
+SHOW GLOBAL VARIABLES WHERE Variable_name IN
   ('max_connections','innodb_rollback_on_timeout',
    'innodb_lock_wait_timeout','log_bin','binlog_format');
 SHOW GLOBAL STATUS LIKE 'Threads_connected';
@@ -143,7 +143,7 @@ After recovery, require:
 4. KVM agents and System VMs remain connected on their separate management path.
 5. Error rate, JVM memory, database connections, and proxy health remain stable.
 
-The management server is stateless relative to its database, but an outage stops new provisioning, UI/API activity, dynamic allocation, and HA orchestration even though already-running guests continue. Treat UI recovery as control-plane recovery, not merely webpage recovery.
+The management server is stateless relative to its database, but an outage of all management servers stops new provisioning, UI/API activity, dynamic allocation, and HA orchestration even though already-running guests continue. Treat UI recovery as control-plane recovery, not merely webpage recovery.
 
 ## Roll Back Safely
 
