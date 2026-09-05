@@ -18,7 +18,7 @@ Pause tenant network changes during diagnosis. Record the affected network UUID,
 
 ```bash
 cmk list networks id=NETWORK_UUID
-cmk list routers networkid=NETWORK_UUID
+cmk list routers networkid=NETWORK_UUID listall=true
 cmk list firewallrules networkid=NETWORK_UUID listall=true
 cmk list egressfirewallrules networkid=NETWORK_UUID listall=true
 cmk list portforwardingrules networkid=NETWORK_UUID listall=true
@@ -33,7 +33,7 @@ cmk list securitygroups virtualmachineid=VM_UUID
 cmk list nics virtualmachineid=VM_UUID
 ```
 
-Save JSON output in the incident workspace outside the repository. Scrub credentials and tenant data before sharing. This snapshot is your comparison and rollback reference, not a script to replay blindly.
+For project-owned resources, add `projectid=PROJECT_UUID` to the list calls that support it. Retrieve every page using `page` and `pagesize` where needed; `listall=true` expands account visibility but does not disable pagination or automatically include project resources. Save JSON output in the incident workspace outside the repository. Scrub credentials and tenant data before sharing. This snapshot is your comparison and rollback reference, not a script to replay blindly.
 
 ## Establish the Scope
 
@@ -76,7 +76,7 @@ Check the upgrade guide for the exact source-to-target path. Confirm required Sy
 
 ```bash
 cmk list templates templatefilter=all listall=true zoneid=ZONE_UUID
-cmk list routers zoneid=ZONE_UUID
+cmk list routers zoneid=ZONE_UUID listall=true
 cmk list systemvms zoneid=ZONE_UUID
 ```
 
@@ -87,17 +87,17 @@ Do not assume `Running` means upgraded. Older VRs may keep existing services run
 For an eligible network and healthy VR, restart the network **without cleanup** first:
 
 ```bash
-cmk help restart network
+cmk restart network -h
 cmk restart network id=NETWORK_UUID cleanup=false
 ```
 
-This tells CloudStack to reapply managed rules while retaining the existing VR. Track the returned asynchronous job and do not submit repeated restarts:
+This tells CloudStack to reapply managed rules while retaining the existing VR; it does not request live patching unless `livepatch=true` is also supplied for a supported upgrade path. CloudMonkey waits for asynchronous jobs by default (`asyncblock=true`). If `asyncblock` is set to `false`, track the returned job with the following command. Do not submit repeated restarts:
 
 ```bash
 cmk query asyncjobresult jobid=JOB_UUID
 ```
 
-CloudMonkey profiles expose API names differently; verify the local `cmk help` output before executing. Observe management, VR, and agent logs throughout the operation.
+CloudMonkey profiles select the server and credentials; API availability depends on the server version and caller permissions. Run `cmk sync` after an upgrade and check `cmk restart network -h` before executing. Observe management, VR, and agent logs throughout the operation.
 
 If the official upgrade matrix calls for **Upgrade Router Template**, use the UI/API in a controlled group (zone, pod, cluster, account, or single router). With redundant VRs, verify which node is master and confirm failover health rather than upgrading both blindly.
 
