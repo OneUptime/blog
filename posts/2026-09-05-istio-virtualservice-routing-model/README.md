@@ -62,7 +62,7 @@ istioctl proxy-config routes pod/client-7ccfd5b8d7-s8m2q.apps
 istioctl proxy-config clusters pod/client-7ccfd5b8d7-s8m2q.apps
 ```
 
-At a gateway, query the gateway proxy instead of the application sidecar. Capture the access-log response flag, response-code detail, route name, authority, and upstream cluster. `NR` means no matching HTTP route; `NC` means the selected upstream cluster was not found. A `503 UH` means the cluster exists but has no healthy endpoints, which is a later problem.
+At a gateway, query the gateway proxy instead of the application sidecar. Capture the access-log response flag, response-code detail, route name, authority, and upstream cluster. `NR` means no matching HTTP route or no matching listener filter chain; `NC` means the selected upstream cluster was not found. A `503 UH` means the cluster exists but has no healthy endpoints, which is a later problem.
 
 Read the relevant objects:
 
@@ -229,6 +229,7 @@ Prefer one clear owner per host, delegation for HTTP ownership boundaries, and e
 ```bash
 istioctl analyze -f candidate/
 kubectl apply --dry-run=server -f candidate/
+# After applying candidate/ to a test cluster and waiting for proxy synchronization:
 istioctl proxy-config routes pod/GATEWAY_POD.gateway-namespace -o json
 ```
 
@@ -246,7 +247,7 @@ The first matching HTTP rule wins. Put specific matches before catch-all routes 
 | Apply policy at another proxy | Route to a gateway Service, then gateway-bound rules |
 | Return without an upstream | Direct response |
 
-This table also clarifies observability. Delegation produces one compiled routing decision; a gateway hop produces two proxy spans and two upstream connections; redirect produces a second client request.
+This table also clarifies observability. Delegation produces one compiled routing decision; the illustrated gateway path has two proxy routing stages and two upstream legs, with connections potentially reused from pools. Trace spans depend on tracing configuration and sampling. A redirect produces a second client request only if the client follows it.
 
 ## Verify the Compiled Result
 
