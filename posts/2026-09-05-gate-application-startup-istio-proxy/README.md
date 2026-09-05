@@ -12,7 +12,7 @@ A normal Kubernetes Pod does not guarantee that one regular container becomes re
 
 There are two distinct controls for this race:
 
-- Istio's `holdApplicationUntilProxyStarts` adds a blocking `postStart` hook to the legacy proxy container, delaying later application startup until the proxy's status endpoint is ready.
+- Istio's `holdApplicationUntilProxyStarts` adds a blocking `postStart` hook to the legacy proxy container, delaying later application startup while it waits for the proxy's status endpoint to become ready, subject to the hook's timeout.
 - Kubernetes native sidecars model a long-running sidecar as a restartable init container, giving kubelet an ordered startup lifecycle.
 
 Neither option means all remote dependencies are healthy. The goal is narrower: do not let the application race ahead of its local proxy.
@@ -88,7 +88,7 @@ Understand its limits:
 
 - proxy readiness means the local proxy can accept traffic, not that every EDS endpoint or external database is healthy;
 - the hold increases rollout latency when Istiod is slow or unavailable;
-- a broken proxy can intentionally keep the application from starting, which is safer for mesh-dependent applications but changes failure behavior; and
+- `pilot-agent wait` times out after 60 seconds by default. A failed `postStart` hook causes kubelet to kill the proxy container, but kubelet can proceed to start the remaining regular containers; this is not an indefinite fail-closed gate; and
 - lifecycle hooks can interact with custom hooks, unusual entrypoints, or strict admission policy, so inspect the fully injected Pod.
 
 Do not combine this with an arbitrary fixed `sleep 30`. Fixed sleeps make fast starts slower and still fail when the control plane takes 31 seconds.
@@ -114,7 +114,7 @@ spec:
         sidecar.istio.io/nativeSidecar: "true"
 ```
 
-This is an Istio feature-selection value, so the quoted YAML boolean is intentional here. It takes precedence over the injector's `ENABLE_NATIVE_SIDECARS` setting. Current Istio documents that setting's default as `auto`, but check release-matched command documentation and every node version before enabling it; do not hand-edit webhook templates.
+Kubernetes annotation values must be strings, so the quoted YAML boolean is intentional here. It takes precedence over the injector's `ENABLE_NATIVE_SIDECARS` setting. Current Istio documents that setting's default as `auto`, but check release-matched command documentation and every node version before enabling it; do not hand-edit webhook templates.
 
 After injection, verify the actual Pod rather than assuming the annotation was honored:
 
@@ -125,7 +125,7 @@ kubectl -n orders get pod orders-api-66bd54c9f7-j8xrn -o json |
       {name, restartPolicy, startupProbe, readinessProbe}'
 ```
 
-The important evidence is that `istio-proxy` is represented as a restartable init container. Native sidecar ordering considers a sidecar started according to Kubernetes lifecycle rules; when a startup probe exists, subsequent init progress waits for that probe. Do not manually move the injected proxy between `containers` and `initContainers`, because Istio also manages mounts, security context, ports, and shutdown behavior.
+The important evidence is that `istio-proxy` is represented as a restartable init container. Native sidecar ordering considers a sidecar started according to Kubernetes lifecycle rules; when a startup probe exists, subsequent init progress waits for that probe to succeed. Istio 1.31 enables a startup probe against `/healthz/ready` on port `15021` by default. Verify that it is present: without a startup probe, process startup alone can release the ordering gate, and a readiness probe does not delay application startup. Do not manually move the injected proxy between `containers` and `initContainers`, because Istio also manages mounts, security context, ports, and shutdown behavior.
 
 Native sidecars are especially valuable for Jobs. A legacy always-running regular sidecar can prevent a Job Pod from reaching completion, whereas a native sidecar does not extend the Pod's completion condition. Test Jobs separately from Deployments because startup and termination semantics both matter.
 
@@ -184,13 +184,13 @@ istioctl proxy-status orders-api-NEW-POD.orders
 kubectl -n orders logs orders-api-NEW-POD -c orders-api --timestamps
 ```
 
-`pilot-agent request GET ready` is not interchangeable here: it queries Envoy's raw admin `/ready`, not the full agent handler used by `pilot-agent wait`. Correlate the first application log and first outbound request with the `15021` transition. Run a controlled restart during an Istiod disruption test only in a non-production environment or approved resilience exercise. The intended failure mode should be explicit: either the application waits because it requires the mesh, or it starts with a documented degraded behavior.
+`pilot-agent request GET ready` is not interchangeable here: it queries Envoy's raw admin `/ready`, not the full agent handler used by `pilot-agent wait`. Correlate the first application log and first outbound request with the `15021` transition. Run a controlled restart during an Istiod disruption test only in a non-production environment or approved resilience exercise. The intended failure mode should be explicit: native sidecar startup probing can keep the application waiting because it requires the mesh, whereas the legacy hold hook can fail after its timeout and allow application startup. Test that the application handles the resulting dependency failures as intended.
 
 Watch rollout duration, unready Pod counts, Job completion time, startup failure rate, and proxy connection errors. If startup latency grows, fix the control-plane or xDS bottleneck rather than weakening the gate without analysis.
 
 ## Conclusion
 
-Regular containers start concurrently, so an Istio proxy and its application can race. `holdApplicationUntilProxyStarts` supplies an Istio-managed gate for conventional Pods, while Kubernetes native sidecars provide ordered, kubelet-native lifecycle semantics and better Job completion behavior. Select the mechanism supported by the deployed versions, inspect the injected Pod, and retain bounded application retries for dependencies beyond the local proxy.
+Regular containers have no readiness-based startup ordering, so an Istio proxy and its application can race. `holdApplicationUntilProxyStarts` supplies an Istio-managed gate for conventional Pods, while Kubernetes native sidecars provide ordered, kubelet-native lifecycle semantics and better Job completion behavior. Select the mechanism supported by the deployed versions, inspect the injected Pod, and retain bounded application retries for dependencies beyond the local proxy.
 
 ## Official Documentation
 
