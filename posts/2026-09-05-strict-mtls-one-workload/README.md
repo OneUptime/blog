@@ -23,12 +23,12 @@ Record results for the same host and port from at least:
 - a known-good meshed Pod in another namespace; and
 - any legitimate non-mesh caller such as a node health check or monitoring system.
 
-Use an idempotent endpoint and explicit timeouts:
+Use an idempotent endpoint and explicit timeouts. Replace `failing-client-POD` with the exact failing Pod; this example uses the Service port `80` shown below:
 
 ```bash
-kubectl -n clients exec deploy/failing-client -c app -- \
+kubectl -n clients exec failing-client-POD -c app -- \
   curl -sv --connect-timeout 3 --max-time 10 \
-  http://ledger.finance.svc.cluster.local:8080/health -o /dev/null
+  http://ledger.finance.svc.cluster.local:80/health -o /dev/null
 ```
 
 Keep the exact Service DNS name. A test to a Pod IP may select a different outbound cluster and bypass Service-based mTLS detection. Do not include application credentials in verbose output.
@@ -45,13 +45,15 @@ for pod in failing-client-POD ledger-POD; do
     jq '{name: .metadata.name,
          containers: [.spec.containers[].name],
          initContainers: [.spec.initContainers[]?.name],
+         proxyReady: ([.status.containerStatuses[]?, .status.initContainerStatuses[]?] |
+           map(select(.name == "istio-proxy") | .ready)),
          sidecarStatus: .metadata.annotations["sidecar.istio.io/status"],
          requestedRevision: .metadata.labels["istio.io/rev"],
          actualRevision: .metadata.annotations["istio.io/rev"]}'
 done
 ```
 
-Run the commands separately with the real namespaces; the loop is illustrative because the two Pods may not share one namespace. Strong evidence of sidecar injection is the `istio-proxy` container plus the generated status annotation. Check that the proxy itself is ready and connected:
+Run the commands separately with the real namespaces; the loop is illustrative because the two Pods may not share one namespace. Strong evidence of sidecar injection is the `istio-proxy` container plus the generated status annotation. With native sidecars, `istio-proxy` appears in `initContainers`. Check `proxyReady` above, then check xDS sync separately; the Pod-specific commands below compare Envoy configuration with Istiod:
 
 ```bash
 istioctl proxy-status failing-client-POD.clients
@@ -85,7 +87,7 @@ Evaluate them from broadest to most specific:
 3. a workload-selector policy in that namespace targets matching Pod labels; and
 4. `portLevelMtls` can change the mode for a particular workload port.
 
-Do not assume `istio-system` is the mesh root namespace if the installation changed `meshConfig.rootNamespace`. Workload selectors in the root namespace have special limitations; use the current Istio reference and `istioctl` output for the deployed release.
+Do not assume `istio-system` is the mesh root namespace if the installation changed `meshConfig.rootNamespace`. The current PeerAuthentication reference states that policies with workload selectors in the root namespace are ignored; check the reference for the deployed release. Omitted or `UNSET` modes inherit from the broader scope. If multiple policies match at the same scope, Istio uses the oldest matching policy rather than merging them.
 
 The port in `portLevelMtls` is the **workload port**, not the Kubernetes Service port. With this Service mapping:
 
@@ -154,10 +156,10 @@ Inspect every endpoint behind the Service:
 kubectl -n finance get endpointslice \
   -l kubernetes.io/service-name=ledger -o yaml
 kubectl -n finance get pods -l app=ledger \
-  -o custom-columns='NAME:.metadata.name,IP:.status.podIP,READY:.status.conditions[?(@.type=="Ready")].status,REV:.metadata.annotations.istio\.io/rev,CONTAINERS:.spec.containers[*].name'
+  -o custom-columns='NAME:.metadata.name,IP:.status.podIP,READY:.status.conditions[?(@.type=="Ready")].status,REV:.metadata.annotations.istio\.io/rev,CONTAINERS:.spec.containers[*].name,INIT_CONTAINERS:.spec.initContainers[*].name'
 ```
 
-A mixed Deployment can have some endpoints with sidecars and some without. Requests then fail intermittently under strict mTLS or an explicit client TLS policy. Drain and recreate only the nonconforming replicas after capacity is available.
+A mixed Deployment can have some endpoints with sidecars and some without. A non-mesh caller can fail against strict sidecars while still reaching unproxied replicas in plaintext, because PeerAuthentication cannot protect a Pod without a proxy. A meshed caller using auto mTLS can reach both kinds of endpoint, whereas an explicit `ISTIO_MUTUAL` policy can fail against unproxied replicas. Drain and recreate only the nonconforming replicas after capacity is available.
 
 Compare actual revision annotations, proxy image versions, trust domain metadata, and `istioctl proxy-status`. During a canary control-plane upgrade, both revisions must compute compatible endpoint and security state. A proxy synced to the wrong revision can still show `SYNCED` while missing the policy you expected.
 
@@ -166,12 +168,12 @@ Compare actual revision annotations, proxy image versions, trust domain metadata
 After an Istio mTLS handshake, AuthorizationPolicy may still deny the source identity. Check policies and the destination proxy log:
 
 ```bash
-kubectl -n finance get authorizationpolicy -o yaml
+kubectl get authorizationpolicy -A -o yaml
 kubectl -n finance logs ledger-POD -c istio-proxy \
   --since=10m --timestamps
 ```
 
-If logs show a principal and an RBAC denial, transport identity likely succeeded; fix authorization scope rather than weakening PeerAuthentication.
+If logs show an authenticated peer principal and an RBAC denial, transport identity likely succeeded; fix authorization scope rather than weakening PeerAuthentication. Access logs or RBAC debug logging must be enabled to expose the relevant request details; default proxy logs may not show them.
 
 Application-owned TLS is another layer. A backend that directly serves HTTPS can receive TLS bytes after the destination sidecar's Istio mTLS has been terminated. That can be valid passthrough, but client URL, Service protocol, and DestinationRule must reflect it. Do not assume every TLS-looking error belongs to Istio mTLS.
 
@@ -186,7 +188,7 @@ istioctl proxy-config secret pod/failing-client-POD.clients
 istioctl proxy-config secret pod/ledger-POD.finance
 ```
 
-Compare expiry, trust domain, root information, and certificate state. Do not dump private keys or Secret volume contents. Check node clocks if certificates appear not yet valid or expired. Repeated certificate-signing failures in proxy logs may trace back to service-account token audience, Istiod reachability, CA configuration, or revision mismatch.
+The default summary shows certificate validity, serial numbers, and validity dates. Compare those first; trust-domain SANs and root details require inspecting the public certificates separately. Do not dump private keys or Secret volume contents. Check node clocks if certificates appear not yet valid or expired. Repeated certificate-signing failures in proxy logs may trace back to service-account token audience, Istiod reachability, CA configuration, or revision mismatch.
 
 A proxy can continue using cached traffic configuration during an Istiod outage, but certificate expiry will eventually affect new mTLS connections. Treat xDS sync and certificate health as separate control-plane dependencies.
 
@@ -202,7 +204,7 @@ Preferred fixes, in order, are:
 
 Temporarily changing one workload to `PERMISSIVE` can be a migration bridge, but it allows both plaintext and mTLS to that target. Scope it with an exact selector, time-bound it, monitor plaintext, and retain a tracked rollback. Changing the namespace or mesh default is much broader.
 
-NetworkPolicy provides useful defense in depth. Restrict who can reach the workload port so a temporary permissive mode is not accessible from every namespace or node. Account for CNI-specific handling of node-originated health checks.
+NetworkPolicy provides useful defense in depth. Restrict which Pods and namespaces can reach the workload port during a temporary permissive mode. Standard Kubernetes NetworkPolicy always allows traffic from the node hosting the Pod; account for this exception and any CNI-specific host policies when assessing node-originated health checks.
 
 ## Verify Both Positive and Negative Cases
 
