@@ -15,7 +15,7 @@ example.com/acme/orders/cmd/server
 example.com/acme/billing/cmd/server
 ```
 
-If both become `registry.example.com/apps/server:latest`, the last push moves the tag and makes the name ambiguous. `ko` avoids this by default: it appends an MD5 hash of the full import path to the base package name.
+If both become `registry.example.com/apps/server:latest`, the last push moves the tag and makes the name ambiguous. `ko` avoids this by default: it appends an MD5 hash of the lowercased full import path to the lowercased base package name. Paths that differ only by case can still collide.
 
 Given `KO_DOCKER_REPO=registry.example.com/apps`, the default canonical output resembles:
 
@@ -46,7 +46,7 @@ This handles commands with equal base names without maintaining a separate namin
 
 ## Preserve the Full Import Path
 
-`--preserve-import-paths` or `-P` appends the entire Go import path:
+`--preserve-import-paths` or `-P` appends the entire Go import path, converted to lowercase:
 
 ```bash
 ko build --preserve-import-paths ./orders/cmd/server
@@ -58,7 +58,7 @@ For a module named `example.com/acme/platform`, the result is shaped like:
 registry.example.com/apps/example.com/acme/platform/orders/cmd/server
 ```
 
-This is deterministic and collision-resistant as long as import paths are unique. It can also create deeply nested registry repositories. Confirm that the registry accepts the depth and characters involved, and understand how it applies permissions and retention to nested names.
+This is deterministic and collision-resistant as long as import paths remain unique after lowercasing. It can also create deeply nested registry repositories. Confirm that the registry accepts the depth and characters involved, and understand how it applies permissions and retention to nested names.
 
 This mode is useful when registry policy permits an import-path hierarchy and operators value traceability more than short names.
 
@@ -78,7 +78,7 @@ registry.example.com/apps/server
 
 That is readable, but it collides with every other command whose base directory is `server`. Use it only when one of these controls makes uniqueness explicit:
 
-- every command has a unique final package directory;
+- every command has a unique final package directory after lowercasing;
 - each build receives a distinct `KO_DOCKER_REPO` prefix;
 - CI validates the complete planned destination set before pushing; or
 - only one package is ever published to that repository.
@@ -120,7 +120,7 @@ go list -f '{{if eq .Name "main"}}{{.ImportPath}}{{end}}' ./... |
   sed '/^$/d'
 ```
 
-When considering `-B`, compare the last path component. A simple review can spot repeated `server`, `worker`, `controller`, or `main` directory names.
+When considering `-B`, compare the lowercased last path component. A simple review can spot repeated `server`, `worker`, `controller`, or `main` directory names.
 
 For a large repository, run release builds with a staging registry prefix first and record `--image-refs`. Assert that every expected package produced a unique repository before promoting by digest.
 
@@ -140,13 +140,13 @@ If a registry enforces immutable tags, parallel attempts to publish different co
 
 ## Plan Renames as Migrations
 
-Renaming a Go module or moving a command changes its full import path. Under the default mode, that changes the appended hash; under preserve mode, it changes the visible hierarchy. Existing digest-pinned deployments keep working while the registry retains their manifests, but automation and retention policies may see a new repository.
+Renaming a Go module or moving a command to a different import path changes its full import path. Unless the change is only in letter case, under the default mode that changes the appended hash; under preserve mode, it changes the visible hierarchy. Existing digest-pinned deployments keep working while the registry retains their manifests and all referenced blobs, but automation and retention policies may see a new repository.
 
 Publish the new name, update deployments by digest, and retain the old repository until no environment references it. Do not delete it merely because the source moved.
 
 ## Conclusion
 
-The default hashed name is the best collision defense for mixed repositories. Preserve import paths when a visible hierarchy is acceptable, use base paths only after proving all base names are unique, and reserve bare mode for a one-command repository chosen by the caller. Whatever name you choose, capture and deploy the content digest rather than depending on tag order.
+The default hashed name is the best collision defense for mixed repositories. Preserve import paths when a visible hierarchy is acceptable, use base paths only after proving all lowercased base names are unique, and reserve bare mode for a one-command repository chosen by the caller. Whatever name you choose, capture and deploy the content digest rather than depending on tag order.
 
 ## Official Documentation
 
