@@ -10,7 +10,7 @@ Description: Distinguish continuously updated Event series from broken expiratio
 
 Kubernetes Events are best-effort, short-lived diagnostic objects. The kube-apiserver flag `--event-ttl` controls retention and defaults to one hour. Yet `kubectl get events` can show an Event whose apparent age is days old. That is not automatically a TTL failure: repeated occurrences can update the same Event series, preserving its original creation time while refreshing its last-observed time and storage lease.
 
-Before deleting data or touching etcd, prove whether old, inactive Event objects really remain. Then align every kube-apiserver replica, stop the event source if it is flooding, and let Kubernetes delete through its API. Compaction and defragmentation solve different storage layers and must be handled as etcd maintenance.
+Before deleting data or touching etcd, prove whether old, inactive Event objects really remain. Then align every kube-apiserver replica, stop the event source if it is flooding, and allow the etcd leases to expire or request immediate deletion through the Kubernetes API. Compaction and defragmentation solve different storage layers and must be handled as etcd maintenance.
 
 ## Measure the Right Event Timestamp
 
@@ -21,8 +21,8 @@ kubectl get events --all-namespaces -o json |
   jq -r '.items[] |
     [.metadata.namespace, .metadata.name,
      .metadata.creationTimestamp,
-     (.series.lastObservedTime // .eventTime //
-      .deprecatedLastTimestamp // .lastTimestamp // "-"),
+     (.series.lastObservedTime // .deprecatedLastTimestamp //
+      .lastTimestamp // .eventTime // "-"),
      (.series.count // .deprecatedCount // .count // 1),
      .reason] | @tsv' |
   sort -k4
@@ -30,7 +30,7 @@ kubectl get events --all-namespaces -o json |
 
 Field availability differs between the `events.k8s.io/v1` and legacy core representations. Use the server's returned schema and inspect a sample object rather than assuming every timestamp is present.
 
-Classify an Event as suspicious only when its **last observation or update** is older than the configured TTL plus reasonable clock and observation delay. A three-day creation timestamp with a last observation two minutes ago is an active series, not an unexpired dead Event.
+Classify an Event as suspicious only when its **last observation or update** is older than the configured TTL plus lease-reuse slack and reasonable clock and observation delay. TTL runs from the storage write, not the Event's observation timestamp. In Kubernetes v1.35, the default lease manager can add up to the smaller of 60 seconds or 5% of the TTL for lease reuse. A three-day creation timestamp with a last observation two minutes ago is an active series, not an unexpired dead Event.
 
 Also compare the Event object's `.metadata.resourceVersion` over time. If it keeps changing, a producer is refreshing it. Events are supplemental diagnostics, not a durable audit trail; export selected data to a log or event backend if longer retention is required.
 
@@ -41,7 +41,7 @@ On a kubeadm control plane, inspect each static Pod manifest and running process
 ```bash
 sudo grep -n -- '--event-ttl' /etc/kubernetes/manifests/kube-apiserver.yaml
 sudo crictl ps --name kube-apiserver
-sudo crictl inspect <container-id>
+sudo crictl inspect "$CONTAINER_ID"  # Set CONTAINER_ID to the ID shown above.
 ```
 
 If the flag is absent, the documented default is `1h0m0s`. Check all replicas for:
@@ -72,7 +72,7 @@ Do not delete evidence first. Preserve a bounded export of relevant Events, comp
 
 ## Verify Deletion Through the Kubernetes API
 
-Once the TTL is consistent, create a harmless Event in a test namespace through a supported recorder or observe an existing inactive test Event. Confirm it disappears after the configured period. Do not use a continually updated object for this test.
+Once the TTL is consistent, create a harmless Event in a test namespace through a supported recorder. Changing the flag does not retroactively replace leases on existing inactive Events; those retain their previous expiry, or remain without expiry if created with zero TTL, until a subsequent stored update or deletion. Confirm the new test Event disappears after the configured period plus lease-reuse slack and observation delay. Do not use a continually updated object for this test.
 
 If immediate cleanup is required because etcd is near quota, delete Events through kube-apiserver in controlled namespace batches:
 
@@ -118,7 +118,7 @@ Normal scheduled compaction is preferable. If an approved incident runbook requi
 3. Choose the compaction revision according to the runbook's history window. Compacted revisions cannot be watched or read again and can force clients to relist.
 4. Compact once at cluster level.
 5. Defragment one member at a time, confirming health and catch-up before the next.
-6. Recheck alarms, database size, proposal latency, leader stability, and kube-apiserver readiness.
+6. Recheck alarms and database size. If a `NOSPACE` alarm was raised, clear it with `etcdctl alarm disarm` using the same endpoint and TLS flags only after verifying sufficient space has been reclaimed on every member. Then recheck proposal latency, leader stability, and kube-apiserver readiness.
 
 Example snapshot structure:
 
