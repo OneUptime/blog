@@ -8,7 +8,7 @@ Description: Recover when an accidental injection label mutates Istiod itself, b
 
 ---
 
-The Istio system namespace is not an ordinary application namespace. If it is accidentally labelled for sidecar injection, newly created control-plane Pods can receive an `istio-proxy` container and traffic-capture setup intended for workloads. The resulting Istiod may fail readiness, call through an unexpected proxy path, or never become a ready endpoint for the injector that created it.
+The Istio system namespace is not an ordinary application namespace. The stock Istiod chart explicitly disables injection on its Pod template, so an accidental namespace label alone should not inject Istiod. If that opt-out has been removed or overridden, or a custom injector ignores it, newly created control-plane Pods in an injection-enabled namespace can receive an `istio-proxy` container and traffic-capture setup intended for workloads. The resulting Istiod may fail readiness, call through an unexpected proxy path, or never become a ready endpoint for the injector that created it.
 
 This can form a bootstrap loop:
 
@@ -46,7 +46,7 @@ kubectl -n istio-system get pods -l app=istiod -o json |
 
 Strong evidence includes an `istio-proxy` container on Istiod, an `istio-init` or native proxy init container, and a `sidecar.istio.io/status` annotation. Do not infer injection from the number of containers alone; control-plane charts can include legitimate helpers.
 
-Compare older, healthy Istiod Pods with newly created failures. Injection happens when a Pod is admitted, so an accidental namespace label does not retrofit existing Pods. A mixed ReplicaSet is therefore common.
+Compare older, healthy Istiod Pods with newly created failures. Injection happens when a Pod is admitted, so an accidental namespace label does not retrofit existing Pods. Pods from the same ReplicaSet can therefore differ if replacements were admitted under different namespace labels.
 
 Inspect the owning Deployment's Pod template too:
 
@@ -57,16 +57,16 @@ kubectl -n istio-system get deployment istiod -o json |
        containers: [.spec.template.spec.containers[].name]}'
 ```
 
-A chart may already place `sidecar.istio.io/inject: "false"` on the control-plane template. If the resulting Pods are still injected, identify which revisioned webhook matched and whether custom selectors or templates ignored that opt-out.
+The stock Istiod chart places `sidecar.istio.io/inject: "false"` on the control-plane template. If the resulting Pods are still injected, identify which revisioned webhook matched and whether the opt-out was overridden or a custom mutating webhook added the proxy. Custom selectors can cause a webhook call, but the standard injector also checks the Pod opt-out before mutating it.
 
 ## Preserve a Working Recovery Anchor
 
-Before changing anything, list ready webhook endpoints and controller health:
+Before changing anything, list webhook endpoints and their readiness conditions, along with controller health. In revisioned installations, use the Deployment and the Service referenced by the affected webhook's `clientConfig.service` throughout these commands:
 
 ```bash
 kubectl -n istio-system get service istiod -o yaml
 kubectl -n istio-system get endpointslice \
-  -l kubernetes.io/service-name=istiod -o wide
+  -l kubernetes.io/service-name=istiod -o yaml
 kubectl -n istio-system get deployment istiod
 kubectl -n istio-system get pods -l app=istiod -o wide
 ```
@@ -87,7 +87,7 @@ Store these incident artifacts securely and delete them under the retention poli
 
 ## Stop Future Injection in the System Namespace
 
-Istio's documented injection policy treats an explicit disabled legacy label as an opt-out. The quickest reversible guard is:
+Istio's documented injection policy treats an explicit disabled legacy label as an opt-out. This guard also disables injection-dependent gateways or other workloads on their next creation, so inventory those workloads before applying it:
 
 ```bash
 kubectl label namespace istio-system \
@@ -123,16 +123,16 @@ Use the label form supported by current Istio injection policy. Make the change 
 
 ## Prove the Webhook Will Skip Istiod Before Restarting It
 
-Render the intended control plane or obtain the live Deployment, then use server-side dry run under the corrected namespace labels. Inspect whether the dry-run Pod contains a proxy. With a generated Pod manifest named distinctly for the test:
+Render the intended control plane or obtain the live Deployment, then use server-side dry run under the corrected namespace labels. Inspect whether the dry-run Pod contains a proxy. Extract the intended Deployment's `.spec.template` into a `v1` Pod manifest, preserving its labels, annotations, and spec, and give it a unique name that does not already exist. A dry run of the Deployment itself does not admit its future Pods:
 
 ```bash
-kubectl -n istio-system apply --dry-run=server -f istiod-recovery-pod.yaml -o json |
+kubectl -n istio-system create --dry-run=server -f istiod-recovery-pod.yaml -o json |
   jq '{containers: [.spec.containers[].name],
        initContainers: [.spec.initContainers[]?.name],
        sidecarStatus: .metadata.annotations["sidecar.istio.io/status"]}'
 ```
 
-Do not submit a hand-built Istiod Pod as the recovery workload; use the supported installer-rendered template. The dry-run check is only to prove admission selection. A clean result has no injected `istio-proxy`, `istio-init`, or sidecar status annotation unless your supported control-plane architecture explicitly requires one.
+Do not submit a hand-built Istiod Pod as the recovery workload; use the supported installer-rendered template. The dry-run check verifies the resulting Pod mutation, not runtime health or that no webhook was called. A skipped or failed-open webhook can also return an unmodified Pod; confirm selector exclusions as well. A clean result has no injected `istio-proxy`, `istio-init`, or sidecar status annotation unless your supported control-plane architecture explicitly requires one.
 
 Inspect the matching webhook's selectors if it still injects:
 
@@ -140,13 +140,13 @@ Inspect the matching webhook's selectors if it still injects:
 kubectl get mutatingwebhookconfiguration INJECTOR_NAME -o yaml
 ```
 
-Replace the placeholder with the name from the admission result. Check both namespace and object selectors. Restore the webhook from the same Istio revision's installer output rather than inventing a selector that might exclude application namespaces.
+Replace the placeholder with the MutatingWebhookConfiguration name from the earlier inventory. Successful dry-run Pod output does not identify the webhook; map a webhook name from an error to its containing configuration, or use API-server mutation audit annotations when available. Check both namespace and object selectors. Restore the webhook from the same Istio revision's installer output rather than inventing a selector that might exclude application namespaces.
 
 If the webhook is unreachable and `failurePolicy: Fail` blocks even an explicitly opted-out Pod, use the organization's break-glass admission procedure. The safest change is the narrowest one that makes the system namespace not match. Changing the whole injector to `Ignore` can admit application Pods without proxies across the cluster and must include detection and recreation of every bypassed Pod.
 
 ## Create One Clean Istiod Replica
 
-Once dry run shows that Istiod will not be injected, reconcile the Deployment through its owner. Ensure the rollout strategy can add a new replica without first deleting the last healthy one. Then watch the new Pod:
+Once dry run shows that Istiod will not be injected, reconcile the Deployment through its owner. Use `RollingUpdate` with `maxUnavailable: 0`, a positive `maxSurge`, and enough capacity to preserve available replicas during replacement. A restart rolls all replicas, so if manual verification must precede removal of any existing replica, stage a clean replica through the installation owner first. If template reconciliation already started a rollout, omit the redundant restart. Then watch the rollout:
 
 ```bash
 kubectl -n istio-system rollout restart deployment/istiod
@@ -154,7 +154,7 @@ kubectl -n istio-system rollout status deployment/istiod --timeout=5m
 kubectl -n istio-system get pods -l app=istiod -w
 ```
 
-In a multi-revision installation, use the exact revision-labelled Deployment rather than the generic example. If disruption budgets, capacity, or `maxSurge` prevent a safe additional replica, adjust them through an approved, reversible change before terminating a good Pod.
+In a multi-revision installation, use the exact revision-labelled Deployment rather than the generic example. If capacity, quota, or `maxSurge` prevent a safe additional replica, adjust them through an approved, reversible change before terminating a good Pod. PodDisruptionBudgets do not constrain Deployment rolling updates or direct Pod deletion.
 
 Verify the new Pod shape and endpoints:
 
@@ -162,10 +162,12 @@ Verify the new Pod shape and endpoints:
 kubectl -n istio-system get pod ISTIOD_NEW_POD -o json |
   jq '{containers: [.spec.containers[].name],
        initContainers: [.spec.initContainers[]?.name],
-       ready: [.status.containerStatuses[] | {name, ready}]}'
+       ready: [.status.containerStatuses[]? | {name, ready}],
+       initReady: [.status.initContainerStatuses[]? | {name, ready}],
+       conditions: .status.conditions}'
 
 kubectl -n istio-system get endpointslice \
-  -l kubernetes.io/service-name=istiod -o wide
+  -l kubernetes.io/service-name=istiod -o yaml
 ```
 
 Confirm the webhook port is serving, control-plane readiness is healthy, and the clean Pod appears as a ready EndpointSlice address before removing an injected replica.
@@ -179,7 +181,7 @@ kubectl -n istio-system logs ISTIOD_NEW_POD \
   -c discovery --since=20m --timestamps
 ```
 
-The container name can differ; read it from the Pod first. Verify the Istiod Service maps webhook port `443` to the deployed serving port, commonly `15017`, and xDS port `15012` to ready endpoints. Confirm injector CA bundles are populated and reconcile them through the installer.
+The container name can differ; read it from the Pod first. Verify the Istiod Service maps webhook port `443` to the deployed serving port, commonly `15017`, and xDS port `15012` to ready endpoints. Confirm injector CA bundles match the CA that signs the webhook serving certificate; restore the revision's supported CA reconciliation if they are empty or stale.
 
 Use a harmless server-side dry-run application Pod in a dedicated test namespace labelled for the intended revision. It should now receive exactly one proxy. Then create a real canary and verify:
 
@@ -188,7 +190,7 @@ istioctl proxy-status
 istioctl analyze --all-namespaces
 ```
 
-Inventory Pods created during the incident. Any application Pod admitted while injection was bypassed must be treated as outside the mesh even if its namespace is labelled. Detect it by inspecting `sidecar.istio.io/status` and container names, quarantine it if policy requires, and recreate it through its owner after admission is healthy.
+Inventory Pods created during the incident. Any application Pod intended for sidecar mode that was admitted without its proxy must be treated as outside the sidecar mesh even if its namespace is labelled. Ambient-mode workloads do not require sidecars. Detect missing sidecars by inspecting `sidecar.istio.io/status` and container names in both `containers` and `initContainers`, quarantine it if policy requires, and recreate it through its owner after admission is healthy.
 
 ## Prevent the Namespace from Being Relabelled Again
 
@@ -200,7 +202,7 @@ Monitor for:
 - changes to `istio-injection` and `istio.io/rev` on protected namespaces;
 - injector webhook timeouts and CA drift;
 - Istiod Service ready-endpoint count; and
-- mesh-labelled application Pods without a proxy.
+- application Pods intended for sidecar mode without a proxy in either `containers` or `initContainers`.
 
 Separating gateways into their own revision-labelled namespaces reduces pressure to label `istio-system` broadly and makes the control-plane exclusion easier to reason about.
 
