@@ -175,7 +175,6 @@
 
 ## ko
 
-11. How to Avoid ko Image-Name Collisions with `--preserve-import-paths`, `--base-import-paths`, and `--bare`
 12. How to Tag ko Images for Releases While Keeping Digest-Pinned Deployments
 13. How to Speed Up Repeated ko Builds in CI with `KOCACHE` and Shared Go Caches
 14. How to Build and Push a Go Image to GHCR with ko in GitHub Actions
