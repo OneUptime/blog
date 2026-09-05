@@ -175,7 +175,6 @@
 
 ## ko
 
-17. How to Add a Corporate Root CA to a ko-Built Go Container
 18. How to Generate, Download, and Verify SPDX SBOMs for ko Images
 19. How to Export a ko Image as an OCI Layout for Air-Gapped Delivery
 20. How to Embed ko's `pkg/build` and `pkg/publish` APIs in a Go Tool
