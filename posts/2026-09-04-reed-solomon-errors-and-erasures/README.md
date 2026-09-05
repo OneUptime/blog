@@ -8,7 +8,7 @@ Description: Decode a Reed-Solomon codeword containing both known missing symbol
 
 ---
 
-Reed-Solomon terminology distinguishes an **erasure**, whose position is known, from an **error**, whose position and value are unknown. A conventional RS code with `P = N - K` parity symbols can correct a mixture only while:
+Reed-Solomon terminology distinguishes an **erasure**, whose position is known, from an **error**, whose position and value are unknown. A conventional RS code with `P = N - K` parity symbols guarantees correction of a mixture when:
 
 ```text
 2E + S <= P
@@ -98,7 +98,7 @@ If authenticated hashes identify every bad shard, prefer an erasure-only decoder
 
 ## Enforce the Bound Before Calling Decode
 
-If the system knows there are `S` erasures but does not know how many silent errors remain, reserve explicit margin:
+Reject `S > P` before decoding. Otherwise, if the system knows there are `S` erasures but does not know how many silent errors remain, reserve explicit margin. This is a guaranteed capacity, not a measurement of the actual unknown errors:
 
 ```text
 maximum unknown errors = floor((P - S) / 2)
@@ -140,4 +140,4 @@ Mixed recovery is governed by `2E + S <= P`, and the safest way to spend less of
 - [EZPWD: Reed-Solomon Error and Erasure API](https://github.com/pjkundert/ezpwd-reed-solomon)
 - [EZPWD: rs_base Decoder Source](https://github.com/pjkundert/ezpwd-reed-solomon/blob/master/c%2B%2B/ezpwd/rs_base)
 - [Microsoft Research: A Reed-Solomon Code for Disk Storage](https://www.microsoft.com/en-us/research/wp-content/uploads/2016/02/wdas.pdf)
-- [USENIX FAST: Open-Source Erasure Coding Libraries for Storage](https://www.usenix.org/legacy/events/fast08/tech/full_papers/plank/plank.pdf)
+- [USENIX FAST: Open-Source Erasure Coding Libraries for Storage](https://www.usenix.org/legacy/event/fast09/tech/full_papers/plank/plank.pdf)
