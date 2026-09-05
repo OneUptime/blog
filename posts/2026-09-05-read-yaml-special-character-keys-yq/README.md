@@ -46,7 +46,7 @@ Output:
 30
 ```
 
-The official traverse documentation also shows the equivalent dotted form with a quoted bracket component:
+yq v4.53.3 also accepts the equivalent dotted form with a quoted bracket component:
 
 ```bash
 yq '.database.["connection.timeout"]' config.yml
@@ -204,12 +204,13 @@ In v4.53.3, `has` compares a map key's textual value exactly, so `*` is not expa
 
 Mike Farah yq supports wildcard matching in string equality and traversal. That means a lookup for a key literally named `*` can match every child rather than one entry—even when the key text came from `strenv`.
 
-For pathological keys containing yq wildcard characters, inspect map entries and compare strings by mutual containment. Mutual containment is true only when the complete strings are the same:
+For pathological keys containing yq wildcard characters, inspect map entries, select string keys, and compare strings by mutual containment. Mutual containment is true only when the complete strings are the same:
 
 ```bash
 KEY='*' yq '
   to_entries |
   .[] |
+  select((.key | tag) == "!!str") |
   .key as $candidate |
   select(
     ($candidate | contains(strenv(KEY))) and
@@ -219,7 +220,7 @@ KEY='*' yq '
 ' config.yml
 ```
 
-Most configuration schemas prohibit wildcard characters in key names, so ordinary bracket notation remains the right default. This longer form is useful when consuming arbitrary maps that do not make that guarantee.
+When a configuration schema prohibits wildcard characters in key names, ordinary bracket notation remains the right default. This longer form is useful when consuming arbitrary maps that do not make that guarantee.
 
 Before updating such a map, also count exact entry matches and reject duplicates. It is often simpler to normalize or reject wildcard-bearing keys at the schema boundary.
 
@@ -234,7 +235,7 @@ KEY=$key yq '.[strenv(KEY)]' config.yml
 
 There is no manual quote escaping inside the yq program. Bash environment variables can also contain newline characters, and `strenv` can represent them as a string node. They cannot contain a NUL byte; Unix environment strings have that fundamental limitation.
 
-If a schema allows control characters or arbitrary binary keys, a text environment variable is the wrong transport. Use a properly serialized YAML or JSON input and process its entries instead.
+If a schema allows NUL characters or arbitrary binary keys, a text environment variable is the wrong transport. Use a properly serialized YAML or JSON input and process its entries instead.
 
 ## Preserve Meaning Across Multiple Documents
 
