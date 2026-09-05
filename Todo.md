@@ -175,7 +175,6 @@
 
 ## ko
 
-4. How to Deploy `ko://` Image References with `ko resolve` and `ko apply`
 5. How to Build amd64 and arm64 Go Images with ko as a Multi-Platform Manifest
 6. How to Make ko Work with CGO by Choosing a Compatible Base Image
 7. How to Replace ko's Chainguard Static Base When Your Go App Needs OS Packages or a Shell
