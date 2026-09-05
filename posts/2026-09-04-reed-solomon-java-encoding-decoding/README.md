@@ -14,7 +14,7 @@ This walkthrough uses four data shards and two parity shards. Any two known miss
 
 ## Build a Reviewed Library Revision
 
-The official repository includes Gradle configuration, tests, sample encoder and decoder programs, and a benchmark. Pin a reviewed commit instead of building an unbounded branch:
+The official repository includes Gradle configuration, tests, sample encoder and decoder programs, and a benchmark. The current wrapper uses Gradle 6.9.1, which cannot run on Java 17; use a compatible build JDK such as JDK 11 and set `JAVA_HOME` accordingly. Upgrading Gradle also requires migrating the legacy `testCompile` configuration. Pin a reviewed commit instead of building an unbounded branch (replace the placeholder below with its commit hash):
 
 ```bash
 git clone https://github.com/Backblaze/JavaReedSolomon.git
@@ -88,7 +88,7 @@ The four-byte header limits this example to files smaller than 2 GiB. A producti
 
 ## Decode Only Verified Shards
 
-Before decoding, read the trusted manifest. Reject files with a wrong size or digest and mark their indexes absent. Never mark a zero-filled replacement buffer as present. This method reconstructs known erasures and returns the original bytes:
+Before decoding, read the trusted manifest. Reject files with a wrong size or digest and mark their indexes absent. Never mark a zero-filled replacement buffer as present. Add this method inside `RsFiles`; it reconstructs known erasures and returns the original bytes:
 
 ```java
 static byte[] decode(
@@ -163,8 +163,8 @@ Do not update the live shard set one file at a time. That can mix generations af
 1. Generate a new random generation ID.
 2. Write every shard under that ID with create-only semantics.
 3. Flush and verify every stored shard by reading it back or using storage checksums with defined semantics.
-4. Write and authenticate an immutable manifest.
-5. Atomically replace the small pointer to the current manifest.
+4. Write and authenticate an immutable manifest, and make it durable before publishing its pointer.
+5. Atomically replace the small pointer to the current manifest and make that update durable. On a local filesystem, persist the relevant directory entries as well as file contents; atomic rename alone does not guarantee crash durability.
 6. Retain the previous generation until the new one passes a recovery drill and the rollback window expires.
 
 During recovery, write reconstructed shards to new temporary paths, hash them, and rename or publish only after they match their manifest entries. Preserve suspect inputs for diagnosis. Never reconstruct directly over the sole surviving copy.
