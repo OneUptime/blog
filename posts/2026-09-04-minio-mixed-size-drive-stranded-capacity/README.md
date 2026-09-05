@@ -23,7 +23,7 @@ effective raw capacity = n * Cmin
 size-stranded capacity = sum(Ci - Cmin)
 ```
 
-Then apply the erasure-code ratio. For an `N = K + M` layout at full-stripe efficiency:
+Then apply the erasure-code ratio. For an erasure-set layout of `N = K + M` at full-stripe efficiency (`N` is the drive count per set, not necessarily the pool drive count):
 
 ```text
 estimated logical capacity = effective raw * K / N
@@ -35,7 +35,7 @@ Calculate each server pool separately because each can have a different minimum 
 
 ## Work an Example
 
-Consider a 16-drive pool with twelve 8 TiB drives and four 16 TiB drives using `EC:4`, so `K = 12` and `N = 16`:
+Consider a 16-drive pool with twelve 8 TiB drives and four 16 TiB drives in a single 16-drive erasure set using `EC:4`, so `K = 12` and `N = 16`:
 
 ```text
 physical raw       = (12 * 8) + (4 * 16) = 160 TiB
@@ -47,7 +47,7 @@ parity allocation  = 128 * 4 / 16 = 32 TiB
 installed efficiency = 96 / 160 = 60%
 ```
 
-The pool has 32 TiB stranded by size mismatch and another estimated 32 TiB used for parity. Saying only that `EC:4` is 75% efficient misses why the installed hardware delivers 60% logical efficiency.
+The pool has 32 TiB stranded by size mismatch and another estimated 32 TiB used for parity. Saying only that `EC:4` on a 16-drive erasure set is 75% efficient misses why the installed hardware delivers 60% logical efficiency.
 
 This is a planning estimate for full stripes. Real available space will be lower because of metadata, filesystem allocation, object tails, multipart state, versions, delete markers, and the free-space margin needed for safe operation.
 
@@ -75,7 +75,7 @@ mc admin prometheus metrics production system --api-version v3 \
   >/tmp/minio-system-capacity.prom
 ```
 
-Do not run `du` against backend object directories or infer object ownership from individual shard files. MinIO requires exclusive access to those paths, and backend sizes are not the logical S3 namespace.
+Do not use `du` against backend object directories to estimate logical S3 usage or infer object ownership from individual shard files. Current AIStor documentation permits read-only `du` inspection of specific system paths for diagnostics, but backend sizes are not logical S3 sizes. Follow the documented procedure for the path being inspected and do not modify backend object files.
 
 ## Account for the Actual Parity of Objects
 
@@ -88,7 +88,7 @@ mc admin info production
 
 Parity changes affect only newly written objects. Existing objects retain the parity assigned when they were created, so a long-lived pool can contain several storage ratios. Current AIStor releases can also upgrade parity for objects written during a degraded event; those objects keep the higher parity after healing and consume extra capacity.
 
-Versioning and object retention multiply logical versions before erasure coding is applied. Estimate the retained-version distribution rather than multiplying only the current object size.
+Versioning preserves separate object versions, and object retention prevents protected versions from being deleted; retention does not itself create additional copies. Count the logical bytes of all retained versions before applying erasure-code overhead. Estimate the retained-version distribution rather than multiplying only the current object size.
 
 For planning, model cohorts:
 
@@ -106,7 +106,7 @@ MinIO's drive-recovery documentation requires replacement media to have equal or
 
 Replacing one 8 TiB disk with 16 TiB in the example increases physical raw capacity by 8 TiB but leaves effective raw and estimated logical capacity unchanged. It increases stranded capacity by 8 TiB.
 
-To gain usable capacity, deploy a supported expansion with a properly sized new server pool or replace the limiting devices as part of a complete, documented hardware transition. Do not resize MinIO backend filesystems, change erasure-set parameters, or add individual drives to an initialized layout by improvisation.
+To gain usable capacity, deploy a supported expansion with a properly sized new server pool and, when retiring old hardware, follow the documented pool-decommissioning procedure to migrate its data to pools with sufficient free capacity. Do not resize MinIO backend filesystems, change erasure-set parameters, or add individual drives to an initialized layout by improvisation.
 
 ## Add an Operational Reserve
 
@@ -130,5 +130,5 @@ Estimate mixed-drive waste before applying EC efficiency: cap every drive in a s
 - [MinIO AIStor: Recover After Drive Failure](https://docs.min.io/aistor/operations/failure-and-recovery/recover-after-drive-failure/)
 - [MinIO AIStor: Erasure Coding](https://docs.min.io/aistor/operations/core-concepts/erasure-coding/)
 - [MinIO AIStor: Erasure Code Settings](https://docs.min.io/aistor/reference/aistor-server/settings/storage-class/)
-- [MinIO AIStor: Expand Available Storage](https://docs.min.io/aistor/operations/scaling/)
+- [MinIO AIStor: Expand Available Storage](https://docs.min.io/aistor/operations/scaling/expansion/)
 - [MinIO Erasure Code Calculator](https://min.io/product/erasure-code-calculator)
