@@ -8,7 +8,7 @@ Description: Diagnose Kubernetes request and storage size failures, then move la
 
 ---
 
-Kubernetes API objects are control-plane metadata, not a general-purpose blob store. A roughly 3 MB manifest can fail before admission because the generic API server defaults to a 3 MiB maximum decoded write-request body. A smaller object can still fail later: ConfigMap data has a documented 1 MiB limit, and the default etcd maximum client request is 1.5 MiB. Encoding, metadata, admission mutations, and storage serialization mean there is no universal payload size just below one of those numbers that is guaranteed to fit.
+Kubernetes API objects are control-plane metadata, not a general-purpose blob store. A roughly 3 MB manifest can fail before admission because the generic API server defaults to a 3 MiB maximum write-request body, enforced before object decoding. A smaller object can still fail later: ConfigMap data has a documented 1 MiB limit, and the default etcd maximum client request is 1.5 MiB. Encoding, metadata, admission mutations, and storage serialization mean there is no universal payload size just below one of those numbers that is guaranteed to fit.
 
 The right repair is usually to make the Kubernetes object small and put the large artifact in storage designed for it. Raising one limit merely moves pressure to admission, etcd, watch caches, clients, and kubelets.
 
@@ -21,7 +21,7 @@ kubectl --request-timeout=30s --v=8 apply \
   --server-side --dry-run=server -f oversized.yaml
 ```
 
-Use a sanitized manifest and do not enable verbose output for Secrets in shared logs. Typical failure shapes include:
+Use a sanitized manifest and do not enable verbose output for Secrets in shared logs. Server-side dry-run exercises admission and validation but skips persistence, so it cannot reproduce an etcd write-size rejection. For storage failures, inspect the original failed write response and API-server logs. Typical failure shapes across dry-run and actual writes include:
 
 - HTTP `413 Request Entity Too Large` from an ingress, load balancer, or API request-body limit;
 - an API validation error stating that a ConfigMap is too large;
@@ -46,7 +46,7 @@ Client-side apply normally stores the last-applied configuration annotation. Ser
 
 Three boundaries are frequently confused:
 
-1. The upstream generic API-server code defaults `MaxRequestBodyBytes` to `3 * 1024 * 1024` for decoded write requests. A reverse proxy may use a smaller request-body limit.
+1. The upstream generic API-server code defaults `MaxRequestBodyBytes` to `3 * 1024 * 1024` for write-request bodies before object decoding. A reverse proxy may use a smaller request-body limit.
 2. Kubernetes explicitly limits ConfigMap data to 1 MiB. Individual Secrets also have a documented 1 MiB limit.
 3. etcd defaults `--max-request-bytes` to 1,572,864 bytes. The final storage transaction includes more than the application's obvious payload.
 
