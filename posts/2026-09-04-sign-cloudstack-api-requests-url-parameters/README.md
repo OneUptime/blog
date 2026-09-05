@@ -8,13 +8,13 @@ Description: Implement and verify CloudStack HMAC-SHA1 request signing without c
 
 ---
 
-CloudStack API signing becomes deceptively difficult when a parameter value is itself a URL. The inner URL can contain `?`, `&`, `=`, `+`, `%`, spaces, and a signed token. Those characters belong to one parameter value, but they also have meanings in the outer form-encoded CloudStack request.
+CloudStack API signing becomes deceptively difficult when a parameter value is itself a URL. The inner URL can contain `?`, `&`, `=`, `+`, `%`, percent-encoded spaces, and a signed token. Those characters belong to one parameter value, but they also have meanings in the outer form-encoded CloudStack request.
 
 The safe approach is to keep logical parameters as structured values until the last moment, generate the CloudStack canonical string exactly once, and independently encode the transmitted request. Never concatenate an inner URL into the outer query string by hand.
 
 ## Understand the Two Encodings
 
-Consider this logical parameter:
+Consider this logical parameter as an encoding test (a real download URL must already encode its space as `%20`):
 
 ```text
 url=https://images.example.net/base.qcow2?token=a+b&mirror=west coast
@@ -35,7 +35,7 @@ If the inner URL already contains a percent escape such as `%2F`, its percent ch
 The official CloudStack developer guide defines this signing sequence:
 
 1. Exclude the `signature` field from the command string.
-2. URL-encode each parameter value, using `%20` rather than `+` for a space.
+2. URL-encode each parameter value using Java `URLEncoder` rules, then use `%20` rather than `+` for a space. In particular, leave `*` unescaped and encode `~` as `%7E` to match the server.
 3. Lowercase parameter names and the entire canonical command string.
 4. Sort field-value pairs alphabetically by field name.
 5. Compute HMAC-SHA1 over the canonical UTF-8 bytes with the user's secret key.
@@ -65,7 +65,8 @@ import requests
 
 def cloudstack_encode_for_signature(value):
     """Encode one logical value using CloudStack's signing rules."""
-    return quote_plus(str(value), safe="").replace("+", "%20")
+    # Match Java URLEncoder: preserve *, but escape ~ even on Python 3.7+.
+    return quote_plus(str(value), safe="*").replace("~", "%7E").replace("+", "%20")
 
 
 def canonical_string(params):
@@ -108,6 +109,7 @@ def call_api(endpoint, api_key, secret_key, command, **arguments):
         data=body,
         headers={"Content-Type": "application/x-www-form-urlencoded"},
         timeout=(5, 60),
+        allow_redirects=False,
     )
     response.raise_for_status()
     return response.json()
@@ -133,7 +135,7 @@ if __name__ == "__main__":
     print(json.dumps(result, indent=2))
 ```
 
-Run it with a virtual environment and a trusted HTTPS endpoint:
+Save the client as `cs_call.py`, then run it in Bash with a virtual environment and a trusted HTTPS endpoint. Replace the example download URL with a real template URL. Deployments that enforce expiring signatures also require `signatureversion="3"` and an `expires` UTC timestamp in the API arguments; include both in the signed parameters and use a short future expiry (at most 15 minutes when enforced).
 
 ```bash
 python3 -m venv .venv
@@ -141,7 +143,8 @@ python3 -m venv .venv
 python -m pip install requests
 
 export CLOUDSTACK_API_URL=https://cloud.example.net/client/api
-export CLOUDSTACK_API_KEY=REDACTED_API_KEY
+read -r -s CLOUDSTACK_API_KEY
+export CLOUDSTACK_API_KEY
 read -r -s CLOUDSTACK_SECRET_KEY
 export CLOUDSTACK_SECRET_KEY
 python cs_call.py OS_TYPE_UUID ZONE_UUID
@@ -170,6 +173,9 @@ assert (
     "%3ftoken%3da%2bb%26mirror%3dwest%20coast"
 ) in canonical
 assert "+" not in canonical
+assert canonical_string({"url": "https://example.net/~User/*?x=%2F"}) == (
+    "url=https%3a%2f%2fexample.net%2f%7euser%2f*%3fx%3d%252f"
+)
 assert canonical.split("&") == sorted(canonical.split("&"))
 print(hashlib.sha256(canonical.encode()).hexdigest())
 ```
@@ -178,7 +184,7 @@ The `count` assertion reflects four outer parameters. There are three separators
 
 Do not print the full canonical string in production. It contains the API key and can contain short-lived secrets embedded in URLs. A hash of the canonical string is usually enough to compare two implementations safely, provided both parties build it from the same test values.
 
-## Do Not Parse an Already Encoded Query by Splitting on Ampersands
+## Do Not Build an Outer Query by Concatenating an Unencoded URL
 
 This is unsafe:
 
@@ -210,8 +216,8 @@ Build signing input from the logical dictionary, not from a proxy log or copied 
 | Signature differs intermittently | Parameter iteration order is unstable | Sort by lowercase field name before HMAC |
 | Mixed-case token stops working | Canonical values were sent instead of original values | Lowercase only signing input; preserve transmitted values |
 | HMAC matches locally but server rejects it | Signature itself was not URL-encoded or body changed in transit | Encode the Base64 signature as an outer value and inspect proxy behavior |
-| ASCII works but Unicode fails | Implementations disagree on text encoding or normalization | Use UTF-8 and preserve one normalized logical value end to end |
-| Request works over HTTP only | TLS trust is misconfigured, unrelated to signing | Install the CA chain and keep hostname verification enabled |
+| ASCII works but Unicode fails | Implementations disagree on text encoding or normalization | Use UTF-8 and preserve the original logical value without changing Unicode normalization |
+| Request works over HTTP only | HTTPS listener, proxy routing, or TLS trust is misconfigured | Check the HTTPS endpoint and CA chain; keep hostname verification enabled |
 
 ## Diagnose Without Leaking Keys
 
@@ -225,7 +231,7 @@ Capture the following from client and server-side diagnostics:
 - client clock and request time; and
 - a request or correlation ID if the proxy supplies one.
 
-On the management server, search the request time and caller without logging the secret key or a signed template URL:
+On management servers using systemd, inspect the service journal for the request time. Detailed API diagnostics may instead be in `/var/log/cloudstack/management/management-server.log`; the journal command does not filter by caller. Avoid enabling debug output that exposes the secret key or a signed template URL:
 
 ```bash
 sudo journalctl -u cloudstack-management \
@@ -245,7 +251,9 @@ result = call_api(
     api_key=os.environ["CLOUDSTACK_API_KEY"],
     secret_key=os.environ["CLOUDSTACK_SECRET_KEY"],
     command="listZones",
-    listall="false",
+    available="true",
+    page="1",
+    pagesize="1",
 )
 print(json.dumps(result, indent=2))
 ```
