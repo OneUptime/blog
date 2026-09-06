@@ -181,7 +181,6 @@
 
 ## Contour
 
-15. How to Preserve the Original Client IP Through Contour with PROXY Protocol and Trusted Hops
 16. How to Run Separate Public and Private Contour Ingress Classes in One Kubernetes Cluster
 17. How to Route Raw TCP and TLS-Passthrough Services with Contour `TCPProxy`
 18. How to Configure Contour Active Health Checks Without Confusing Them with Kubernetes Probes
