@@ -43,7 +43,7 @@ spec:
       port: 1883
 ```
 
-The Secret must be a valid TLS certificate for `mqtt.example.com`. After Envoy terminates TLS, the backend receives a plain TCP stream. Configure backend port 1883 for that exact behavior. Do not terminate at Envoy if the application's wire protocol performs a protocol-specific negotiation before starting TLS. For example, PostgreSQL sends an SSL negotiation message before its TLS ClientHello, so it is not interchangeable with direct TLS-wrapped TCP.
+The Secret must have type `kubernetes.io/tls` and contain a certificate valid for `mqtt.example.com` in `tls.crt` and its matching private key in `tls.key`. After Envoy terminates TLS, the backend receives a plain TCP stream. Configure backend port 1883 for that exact behavior. Do not terminate at Envoy if the application's wire protocol performs a protocol-specific negotiation before starting TLS. For example, PostgreSQL's default SSL negotiation sends an SSLRequest before its TLS ClientHello, which cannot use this SNI routing in either mode. PostgreSQL 17 and later also support direct TLS negotiation with `sslnegotiation=direct`, which skips that initial SSLRequest.
 
 When `tcpproxy` exists, HTTP routes on the same HTTPProxy are ignored. Use a dedicated hostname and a root HTTPProxy for the TCP service.
 
@@ -87,7 +87,7 @@ openssl s_client -connect ENVOY_ADDRESS:443 -servername mqtt.example.com -brief
 
 Keep the hostname in the client configuration and point that hostname to Envoy. Test the application client itself because `openssl s_client` proves only the TLS handshake, not MQTT or another application protocol.
 
-Passthrough preserves the original ClientHello and lets the backend see the TLS session. It does not necessarily preserve the original source IP. That depends on the load balancer, kube-proxy path, `externalTrafficPolicy`, and any configured PROXY protocol support.
+Passthrough preserves the original ClientHello and lets the backend see the TLS session. Envoy opens a separate TCP connection to the backend, so TLS passthrough does not preserve the client's source IP on that connection. The load balancer, kube-proxy path, `externalTrafficPolicy`, and downstream PROXY protocol support determine which client address Envoy sees; they do not by themselves forward that address to the TCP backend.
 
 ## Balance Multiple Backends Deliberately
 
