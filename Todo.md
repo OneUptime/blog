@@ -184,7 +184,6 @@
 
 ## OneUptime
 
-11. How to Run a OneUptime Probe Through an HTTP Proxy in an Egress-Restricted Network
 12. How to Configure On-Call Rotations, Overrides, and Escalation Policies in OneUptime
 13. How to Prevent Alert Storms in OneUptime with Dependencies, Acknowledgements, and Cooldowns
 14. How to Send OpenTelemetry Logs, Metrics, and Traces to a Self-Hosted OneUptime Collector
