@@ -181,7 +181,6 @@
 
 ## Contour
 
-3. How to Expose gRPC-Web Through Contour with HTTP/2, TLS, and a Safe CORS Policy
 4. How to Add Basic Auth or OIDC to Contour with an External Authorization Service
 5. How to Issue and Renew Let's Encrypt Certificates for Contour with cert-manager
 6. How to Share a Wildcard TLS Secret Across Namespaces with Contour Certificate Delegation
