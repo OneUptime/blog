@@ -148,7 +148,7 @@ If the count is zero, the outer `select` emits nothing and `-e` returns nonzero.
 
 ## Transform Each Old Value Relatively
 
-Use `|=` when the new value depends on the old value. To double every integer key ending in `_limit`:
+Use `|=` when the new value depends on the old value. To double every integer value whose string key ends in `_limit`:
 
 ```bash
 KEY_PATTERN='_limit$' yq '
@@ -164,12 +164,12 @@ The right side runs once with each selected scalar as context. Plain `=` evaluat
 
 ## Rename Matching Keys Instead of Their Values
 
-`..` visits values but excludes map key nodes. The three-dot form, `...`, includes both values and map keys. Filter with `is_key` before rewriting names:
+`..` visits values but excludes map key nodes. The three-dot form, `...`, includes both values and map keys. Filter with `is_key` and a string-tag check before rewriting names:
 
 ```bash
 KEY_PATTERN='^old_' REPLACEMENT='' yq '
   (... | select(
-    is_key and test(strenv(KEY_PATTERN))
+    is_key and (tag == "!!str") and test(strenv(KEY_PATTERN))
   )) |= sub(strenv(KEY_PATTERN); strenv(REPLACEMENT))
 ' config.yml
 ```
