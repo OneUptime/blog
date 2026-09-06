@@ -10,7 +10,7 @@ Description: Send logs, metrics, and traces through an OpenTelemetry Collector t
 
 OneUptime accepts OpenTelemetry logs, metrics, and traces at the self-hosted `/otlp` endpoint. An upstream OpenTelemetry Collector gives applications one local destination and centralizes batching, retries, memory protection, authentication, and TLS. In this topology, the Collector is a component you operate and OneUptime is its OTLP/HTTP destination; there is no separate configuration step for a product-specific OneUptime Collector.
 
-The OneUptime settings below match 12.0.33. Collector component options still depend on the Collector distribution and version you run.
+The OneUptime settings below match 12.0.33. Collector component options still depend on the Collector distribution and version you run. The example uses the current `otlp_http` exporter name; older Collector releases use `otlphttp`.
 
 ## Create an ingestion key
 
@@ -43,7 +43,7 @@ processors:
   batch: {}
 
 exporters:
-  otlphttp/oneuptime:
+  otlp_http/oneuptime:
     endpoint: https://oneuptime.example.com/otlp
     encoding: json
     headers:
@@ -54,18 +54,18 @@ service:
     traces:
       receivers: [otlp]
       processors: [memory_limiter, batch]
-      exporters: [otlphttp/oneuptime]
+      exporters: [otlp_http/oneuptime]
     metrics:
       receivers: [otlp]
       processors: [memory_limiter, batch]
-      exporters: [otlphttp/oneuptime]
+      exporters: [otlp_http/oneuptime]
     logs:
       receivers: [otlp]
       processors: [memory_limiter, batch]
-      exporters: [otlphttp/oneuptime]
+      exporters: [otlp_http/oneuptime]
 ```
 
-Set `ONEUPTIME_TOKEN` through a Kubernetes Secret, systemd credential, container secret, or equivalent. Do not commit it in the Collector YAML. OneUptime's OTLP/HTTP endpoint supports JSON and protobuf in current integrations; explicit JSON here follows its general Collector example and removes protocol ambiguity.
+Inject `ONEUPTIME_TOKEN` into the Collector process environment through a Kubernetes Secret or equivalent. File-mounted secrets, including systemd credentials and container secrets, must be explicitly read into that environment variable by the launcher for this YAML to work. Do not commit it in the Collector YAML. OneUptime's OTLP/HTTP endpoint supports JSON and protobuf in current integrations; explicit JSON here follows its general Collector example and removes protocol ambiguity.
 
 Keep HTTPS certificate verification enabled. If the self-hosted endpoint uses a private CA, mount that CA and configure the exporter's TLS trust. `insecure: true` is not a production fix.
 
@@ -81,7 +81,7 @@ export OTEL_SERVICE_NAME=checkout-api
 
 The application does not need the OneUptime token when only the Collector can reach OneUptime. Add stable resource attributes such as deployment environment, service version, and region through the SDK or Collector. Use the same `service.name` across logs, metrics, and traces so OneUptime can group signals meaningfully.
 
-For direct application export, set the endpoint to `https://oneuptime.example.com/otlp` and supply `OTEL_EXPORTER_OTLP_HEADERS=x-oneuptime-token=...`. Check whether that SDK appends `/v1/traces`, `/v1/metrics`, or `/v1/logs`; start with the base `/otlp` endpoint as OneUptime documents.
+For direct application export, keep `OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf`, set `OTEL_EXPORTER_OTLP_ENDPOINT=https://oneuptime.example.com/otlp`, and supply `OTEL_EXPORTER_OTLP_HEADERS=x-oneuptime-token=...`. Standard OTLP/HTTP exporters append `/v1/traces`, `/v1/metrics`, or `/v1/logs` to this base endpoint. Signal-specific endpoint variables use the URL as-is and must include the corresponding signal path.
 
 ## Validate one signal at a time
 
@@ -95,7 +95,7 @@ curl -i \
   https://oneuptime.example.com/otlp/v1/validate
 ```
 
-A valid key returns 200; an unknown or revoked key returns 401. This check matters because OneUptime's ingest endpoints deliberately return a quiet 200 for an invalid token to avoid a client retry storm. Exporter success alone therefore does not prove that data was stored.
+A valid key returns 200; an unknown or revoked key returns 401. In OneUptime 12.0.33, the ingest endpoints also return 401 for missing or invalid tokens; OTLP/HTTP treats this as a non-retryable error. The validation endpoint checks credentials without ingesting data. Exporter success alone still does not prove that data was stored, so confirm each sample in OneUptime.
 
 ## Harden and observe the pipeline
 
