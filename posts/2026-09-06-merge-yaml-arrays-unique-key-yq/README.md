@@ -41,7 +41,7 @@ services:
     image: registry.example.com/cron:v1
 ```
 
-Run:
+Run with one YAML document per input file; `fi` selects files, not individual documents:
 
 ```bash
 yq eval-all '
@@ -127,7 +127,7 @@ Validation also prevents null, boolean, or numeric identities from becoming surp
 
 ## Change the Identity Field Explicitly
 
-For objects keyed by `id`, replace both references to `.name`:
+For objects keyed by `id`, use `.id` as the identity and `.rules` as the array path, and update the validation expression to use those fields too:
 
 ```bash
 yq ea '
