@@ -19,19 +19,19 @@ It usually means the request matched a route, Envoy selected an upstream cluster
 
 ## Capture the Envoy Response Flag
 
-Send one request with an identifiable request ID:
+Send one request with an identifiable request ID and User-Agent marker:
 
 ```bash
 request_id=$(uuidgen)
-curl -sv -H "X-Request-ID: $request_id" \
+curl -sv -H "X-Request-ID: $request_id" -A "contour-debug/$request_id" \
   https://api.example.com/orders/healthz -o /dev/null
 ```
 
-Then find it in the Envoy access log:
+Then find it across the Envoy Pods' access logs. Envoy can replace an external client's request ID, so use the User-Agent marker, which is also logged by the default format:
 
 ```bash
 kubectl -n projectcontour logs daemonset/envoy -c envoy \
-  --since=5m | grep "$request_id"
+  --all-pods=true --since=5m --tail=-1 | grep -F "contour-debug/$request_id"
 ```
 
 With Contour's default format, inspect response code, response flags, duration, upstream service time, authority, and upstream host. The most useful first split is:
@@ -40,7 +40,7 @@ With Contour's default format, inspect response code, response flags, duration, 
 - `UH`: no healthy upstream endpoint;
 - `NR`: no route matched.
 
-A `UF` example often lasts close to Envoy's default two-second upstream connection timeout and has no upstream service time. A `UH` points toward endpoint readiness or active health checking instead. Do not change timeouts until the flag supports a timeout diagnosis.
+A `UF` caused by a connection timeout may last close to the default two-second upstream connection timeout in Contour and have no upstream service time; a refused connection can fail immediately. A `UH` points toward endpoint readiness or active health checking instead. Do not change timeouts until the flag supports a timeout diagnosis.
 
 ## Confirm the HTTPProxy Is Valid
 
@@ -69,7 +69,7 @@ Check:
 
 - Service selector matches the live Pods;
 - endpoint addresses are current;
-- `conditions.ready` is true for usable endpoints;
+- endpoint readiness permits traffic; `publishNotReadyAddresses: true` can publish unready Pods as ready, so also check Pod readiness;
 - a named target port exists on every selected Pod; and
 - the selected container listens on the Pod IP and endpoint port, not only on `127.0.0.1`.
 
@@ -79,7 +79,7 @@ A Pod can be Ready because its probe checks a different port while the applicati
 
 Use a short-lived approved diagnostic container in the Envoy Pod's network namespace, or an existing debug image managed by the platform team. Do not assume the Envoy image contains curl or a shell.
 
-Test the exact endpoint from the access log, then the Service:
+Test the exact endpoint from the access log, then the Service. These examples assume a plaintext HTTP backend and the default `cluster.local` DNS domain; use the actual backend protocol, host, path, and cluster domain:
 
 ```bash
 curl -sv --connect-timeout 2 http://10.244.3.27:8080/healthz
@@ -89,24 +89,24 @@ curl -sv --connect-timeout 2 http://orders-api.orders.svc.cluster.local:80/healt
 Interpret the difference:
 
 - endpoint fails and Service fails: listener, network policy, node routing, or Pod lifecycle;
-- endpoint works but Service fails: Service port or service-routing path;
+- endpoint works but Service fails: DNS, Service port, service-routing path, or a different failing endpoint selected by the Service;
 - both work but Envoy fails: upstream protocol, TLS, active health state, or Envoy-specific policy;
 - only some endpoint IPs fail: mixed rollout, node, or replica-specific problem.
 
-Remove the diagnostic container or Pod after use and avoid sending production credentials.
+Exit the diagnostic process and delete any standalone diagnostic Pod after use. An ephemeral container cannot be removed from an existing Pod; its record remains until the Pod is deleted. Avoid sending production credentials.
 
 ## Match the Upstream Protocol
 
-An HTTPProxy service can explicitly set:
+An HTTPProxy service selects its upstream protocol as follows:
 
-- no protocol for ordinary HTTP/1.1 selection;
+- an omitted `protocol` falls back to Service protocol annotations, otherwise ordinary plaintext HTTP/1.1;
 - `h2c` for cleartext HTTP/2, commonly plaintext gRPC;
 - `h2` for HTTP/2 over TLS; or
 - `tls` for HTTP over TLS without forcing HTTP/2.
 
-A TLS client connecting to a plaintext port, or cleartext HTTP sent to a TLS port, commonly produces a reset and `UF`. Inspect the application listener and HTTPProxy field instead of toggling values blindly.
+A TLS client connecting to a plaintext port can produce a TLS handshake failure and `UF`. Cleartext HTTP sent to a TLS port can instead fail after TCP connection establishment, for example with `UC` (upstream connection termination) or `UPE` (upstream protocol error). Inspect the application listener and HTTPProxy field instead of toggling values blindly.
 
-For validated TLS, confirm the CA Secret, certificate SAN, and subject name:
+For validated TLS, confirm the CA Secret, certificate SAN, and subject name. The CA Secret must contain a PEM CA bundle under `ca.crt`. In Contour 1.33, retain the deprecated `subjectName` field for compatibility and make it match the first `subjectNames` entry:
 
 ```yaml
 services:
@@ -124,7 +124,7 @@ services:
       value: orders-api.orders.svc.cluster.local
 ```
 
-Temporarily removing validation is not a safe fix. For a ClusterIP Service, the Host rewrite above supplies upstream SNI as well as HTTP authority; SAN validation alone does not set SNI. Use `openssl s_client` with SNI and the CA bundle to identify chain or SAN failures.
+Temporarily removing validation is not a safe fix. For a ClusterIP Service, the Host rewrite above supplies upstream SNI as well as HTTP authority; SAN validation alone does not set SNI. Use `openssl s_client` with `-servername` for SNI, `-CAfile` for the CA bundle, `-verify_hostname` for the expected DNS name, and `-verify_return_error` to fail on verification errors; SNI alone does not verify the SAN.
 
 ## Check Network and Process State
 
@@ -133,7 +133,7 @@ If a direct endpoint connection times out, inspect NetworkPolicy in both the Env
 ```bash
 kubectl get networkpolicy -A
 kubectl -n orders get pod -l app=orders-api -o wide
-kubectl -n orders logs deployment/orders-api --since=10m
+kubectl -n orders logs deployment/orders-api --all-pods=true --since=10m --tail=-1
 ```
 
 Policies must allow traffic from the actual Envoy Pods or nodes to the backend port. An allow rule for the Contour control-plane Deployment does not authorize the Envoy data plane.
