@@ -181,7 +181,6 @@
 
 ## Contour
 
-11. How to Mirror Contour Traffic to a Service in Another Cluster Without Host-Header 404s
 12. How to Delegate Contour Routes to Application Namespaces with HTTPProxy Includes
 13. How to Diagnose an Invalid HTTPProxy with Status Conditions and Contour's Configuration Graph
 14. How to Troubleshoot Contour 503 and Envoy `connection failure` Errors from Route to Endpoint
