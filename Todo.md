@@ -184,7 +184,6 @@
 
 ## OneUptime
 
-6. How to Upgrade Self-Hosted OneUptime Without Losing Monitors, Incidents, or Telemetry
 7. How to Back Up and Restore OneUptime’s PostgreSQL, ClickHouse, and Object Storage Data
 8. How to Monitor Private LAN Services with OneUptime Probes Without Exposing Them Publicly
 9. How to Run OneUptime Probes in Multiple Regions and Avoid False Outage Alerts
