@@ -178,7 +178,6 @@
 
 ## yq
 
-20. How to Convert Selected YAML Fields to CSV with yq Without Losing Quoting
 
 ## Contour
 
