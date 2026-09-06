@@ -181,7 +181,6 @@
 
 ## Contour
 
-1. Why a Contour HTTPProxy Says `unresolved service reference`: Fixing Service Names, Ports, and Namespaces
 2. How to Enable WebSockets and SignalR on a Specific Contour Route
 3. How to Expose gRPC-Web Through Contour with HTTP/2, TLS, and a Safe CORS Policy
 4. How to Add Basic Auth or OIDC to Contour with an External Authorization Service
