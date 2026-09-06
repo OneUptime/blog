@@ -181,7 +181,6 @@
 
 ## Contour
 
-9. How to Strip or Replace a URL Prefix in Contour Without Breaking Application Redirects
 10. Why Contour Returns 504 for Long Requests: Aligning Response, Idle, and Retry Timeouts
 11. How to Mirror Contour Traffic to a Service in Another Cluster Without Host-Header 404s
 12. How to Delegate Contour Routes to Application Namespaces with HTTPProxy Includes
