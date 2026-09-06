@@ -181,7 +181,6 @@
 
 ## Contour
 
-19. How to Deploy Kubernetes Gateway API with Contour Using `GatewayClass`, `Gateway`, and `HTTPRoute`
 20. How to Migrate NGINX Ingress Annotations to Contour HTTPProxy Without Silent No-Ops
 
 ## OneUptime
