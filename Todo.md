@@ -178,7 +178,6 @@
 
 ## yq
 
-11. How to Deep-Merge Multiple YAML Files with Explicit Override Precedence in yq
 12. How to Merge YAML Arrays by a Unique Key Instead of Replacing Them with yq
 13. How to Keep Every Conflicting Value When Merging YAML Files with yq
 14. How to Select and Modify One Kubernetes Resource in a Multi-Document YAML File with yq
