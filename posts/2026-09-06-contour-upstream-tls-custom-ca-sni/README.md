@@ -100,7 +100,7 @@ For native gRPC over TLS, use `protocol: h2`, not `tls`, so Envoy negotiates HTT
 
 ## Validate from Envoy's Network Position
 
-A successful request from a laptop does not prove Envoy can resolve or reach the Service. First inspect the Service and ready endpoints:
+A successful request from a laptop does not prove Envoy can reach the backend endpoints. For an ordinary ClusterIP Service, Contour discovers endpoint addresses through Kubernetes and Envoy connects directly to them; Envoy does not need to resolve the Service DNS name. First inspect the Service and ready endpoints:
 
 ```bash
 kubectl -n payments get service ledger -o yaml
@@ -108,7 +108,7 @@ kubectl -n payments get endpointslice \
   -l kubernetes.io/service-name=ledger -o yaml
 ```
 
-Then run a temporary diagnostic from a tightly controlled namespace that has the same egress policy as Envoy, or exec a supported diagnostic tool already present in the environment:
+Then run a temporary diagnostic with the same effective network access as Envoy, accounting for both source egress and backend ingress policies, including Pod and namespace selectors, or exec a supported diagnostic tool already present in the environment:
 
 ```bash
 openssl s_client \
@@ -119,11 +119,11 @@ openssl s_client \
   -verify_return_error </dev/null
 ```
 
-Verify the chain result, SAN, validity dates, and negotiated protocol. Never work around a name failure with `-verify_hostname` set to an unrelated value or by disabling verification.
+This probes the Service address. Repeat with `-connect` set to each ready endpoint IP and its EndpointSlice port, retaining the same `-servername` and `-verify_hostname` values, to test the destinations Envoy actually uses. Verify the chain result, SAN, validity dates, and negotiated TLS version. For an HTTP/2 backend, add `-alpn h2` and check that ALPN selects `h2`. Never work around a name failure with `-verify_hostname` set to an unrelated value or by disabling verification.
 
 ## Read Contour and Envoy Evidence
 
-Contour rejects a route when the CA Secret is missing or malformed:
+Contour rejects a route when the CA Secret is missing or fails its type, key, or PEM-bundle checks. A valid HTTPProxy status does not guarantee that Envoy will accept the certificate contents or complete the upstream handshake:
 
 ```bash
 kubectl -n payments describe httpproxy ledger
@@ -133,16 +133,17 @@ Once the HTTPProxy is valid, send a request and inspect Envoy's access log:
 
 ```bash
 curl --fail --show-error https://ledger.example.com/healthz
-kubectl -n projectcontour logs daemonset/envoy -c envoy --since=5m |
-  grep 'ledger.example.com'
+kubectl -n projectcontour logs daemonset/envoy -c envoy --all-pods=true --since=5m
 ```
+
+Adjust the namespace and workload name for your installation. Correlate the request by path, time, or request ID; the logged authority may be the rewritten upstream host. If access logs use a different destination, inspect that destination instead.
 
 Common causes are:
 
 | Evidence | Likely fault |
 | --- | --- |
 | HTTPProxy invalid, CA Secret missing | Wrong namespace, name, type, or `ca.crt` key |
-| TLS alert for unknown CA | CA bundle does not chain to the server certificate |
+| Envoy reports upstream certificate verification failure | Check the server chain, trusted CA bundle, certificate validity, and SAN; an unknown-CA alert received from the backend can instead indicate rejection of an mTLS client certificate |
 | SAN match failure | None of the configured subject names appears in the server certificate |
 | Connection reset or `UF` | Backend is plaintext, wrong port, network policy, or TLS handshake failure |
 | HTTP 404 from backend | TLS worked, but the upstream HTTP authority or path is wrong |
