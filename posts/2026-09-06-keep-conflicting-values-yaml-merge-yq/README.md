@@ -181,7 +181,7 @@ If the output schema represents a set rather than an ordered history, deduplicat
 .service.endpoint |= unique
 ```
 
-In v4.53.6, `unique` retains the first occurrence and preserves input order. Do not add it merely to make output shorter. Duplicate occurrences can carry useful evidence about redundant configuration layers.
+In v4.53.6, `unique` retains the first occurrence and preserves input order. It compares node values, so different spellings of null such as `null` and `~` remain separate entries. Normalize those spellings first if deduplication or a CI conflict check should treat them as the same value. Do not add it merely to make output shorter. Duplicate occurrences can carry useful evidence about redundant configuration layers.
 
 ## Keep Precedence Explicit
 
