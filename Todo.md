@@ -178,7 +178,6 @@
 
 ## yq
 
-14. How to Select and Modify One Kubernetes Resource in a Multi-Document YAML File with yq
 15. How to Split a Kubernetes YAML Bundle into Files Named by Kind and Resource Name with yq
 16. How to Move or Rename a Nested YAML Key Without Losing Its Children in yq
 17. How to Update Every Nested Key Matching a Name Pattern with Recursive yq Queries
