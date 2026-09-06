@@ -184,7 +184,6 @@
 
 ## OneUptime
 
-20. How to Troubleshoot Missing Telemetry in OneUptime from Collector to Dashboard
 
 ## Rightsizing
 
