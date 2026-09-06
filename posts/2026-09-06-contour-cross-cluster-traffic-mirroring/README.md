@@ -15,7 +15,7 @@ Cross-cluster mirroring adds two details that local examples often hide:
 - the mirror needs a resolvable, routable Service abstraction in the source cluster; and
 - Envoy appends `-shadow` to the mirrored request's Host or `:authority` by default.
 
-If the receiving ingress recognizes only the original host, the mirror reaches the remote cluster and returns a 404 there. Since mirror responses are discarded, that failure can be invisible to the original client.
+If the receiving ingress recognizes only the original host, the mirror can reach the remote cluster and receive a 404 there. Since mirror responses are discarded, that failure can be invisible to the original client.
 
 ## Make the Remote Target Safe First
 
@@ -99,7 +99,7 @@ Contour 1.33's HTTPProxy mirror field does not expose Envoy's `disable_shadow_ho
 
 Use one of these explicit designs:
 
-1. Configure the remote ingress to accept the exact `api.example.com-shadow` authority and route it only to the shadow application.
+1. Configure the remote ingress to accept the exact `api.example.com-shadow` authority on the TLS listener selected by SNI `shadow-ingress.cluster-b.example.net` and route it only to the shadow application. This requires an ingress that permits that SNI/Host combination. A normal Contour TLS virtual host binds Host to SNI, so merely adding a shadow-host HTTPProxy in cluster B does not make this example work; use the relay design in that case.
 2. Point the mirror at a local relay that accepts the suffixed authority and sends the remote host expected by cluster B.
 
 The relay pattern is usually cleaner when the remote ingress is shared or cannot claim the unusual shadow hostname. It also creates a good control point for redaction, authentication, sampling, and failure metrics.
@@ -118,7 +118,7 @@ kubectl -n projectcontour logs daemonset/envoy -c envoy --since=10m |
   grep 'api.example.com'
 ```
 
-At the receiver, log the authority and a correlation ID, but not credentials or bodies. Envoy preserves the original request ID for tracing unless another hop replaces it, so it can correlate primary and shadow processing.
+At the receiver, log the authority and a correlation ID, but not credentials or bodies. The mirror carries the request ID forwarded by the source Envoy, which may already have replaced a client-supplied `x-request-id`. A receiving edge proxy can replace it again, so verify ID propagation across both clusters before relying on it to correlate primary and shadow processing.
 
 Watch mirror-cluster connection failures, TLS errors, request counts, remote 404s, and application side-effect guards. Because the source ignores mirror responses, receiver-side telemetry is essential.
 
@@ -132,7 +132,7 @@ Keep cross-cluster failures out of the primary availability path. A relay should
 
 ## Conclusion
 
-Cross-cluster mirroring needs a safe receiver, an approved network target, explicit upstream TLS verification, and separate telemetry. Expect Envoy to append `-shadow` to the mirrored authority. Configure that exact remote host or place a relay in front of the remote cluster, since Contour 1.33 does not expose a mirror-only switch to disable the suffix.
+Cross-cluster mirroring needs a safe receiver, an approved network target, explicit upstream TLS verification, and separate telemetry. Expect Envoy to append `-shadow` to the mirrored authority. Configure that exact remote host with compatible TLS SNI routing or place a relay in front of the remote cluster, since Contour 1.33 does not expose a mirror-only switch to disable the suffix.
 
 ## Official Documentation
 
