@@ -97,7 +97,7 @@ yq -e -i '
 ' config.yml
 ```
 
-If the guard is false, `select` emits nothing and `-e` returns nonzero. This pattern assumes one YAML document. For a multi-document file, first select the intended document by stable identity and separately enforce an exact-one match across the stream.
+If the guard is false, `select` emits nothing and `-e` returns nonzero. This pattern assumes one YAML document. For a multi-document file, first select the intended document by stable identity and separately enforce an exact-one match across the stream while preserving the other documents; a top-level `select` used with `-i` would discard unmatched documents.
 
 ## Move the Whole Subtree to Another Parent
 
@@ -126,7 +126,7 @@ infrastructure:
         poolSize: 20
 ```
 
-Assignment creates missing destination maps. The variable holds the complete selected node, not only one child, so the nested `host`, `port`, and `options` data moves together.
+Assignment creates missing destination maps, but existing destination parents must be maps or null; scalar parents can prevent assignment even after the source is deleted. The variable holds the complete selected node, not only one child, so the nested `host`, `port`, and `options` data moves together.
 
 ## Capture Before Calling `del`
 
@@ -151,12 +151,16 @@ del(.service.database) |
 
 ## Guard a Move Against Overwrite
 
-Check source shape, source membership, and target absence:
+Check source shape, source membership, destination parent types, and target absence:
 
 ```bash
 yq -e '
   ((.service | tag) == "!!map") and
   (.service | has("database")) and
+  ((.infrastructure // {} | tag) == "!!map") and
+  (.infrastructure != false) and
+  ((.infrastructure.databases // {} | tag) == "!!map") and
+  (.infrastructure.databases != false) and
   (((.infrastructure.databases // {}) | has("primary")) | not)
 ' config.yml >/dev/null
 ```
@@ -168,6 +172,10 @@ yq -e -i '
   select(
     ((.service | tag) == "!!map") and
     (.service | has("database")) and
+    ((.infrastructure // {} | tag) == "!!map") and
+    (.infrastructure != false) and
+    ((.infrastructure.databases // {} | tag) == "!!map") and
+    (.infrastructure.databases != false) and
     (((.infrastructure.databases // {}) | has("primary")) | not)
   ) |
   .service.database as $database |
@@ -218,7 +226,7 @@ service:
   replica: *databaseDefaults
 ```
 
-Renaming the `database` key does not need to rename `&databaseDefaults`; the alias still refers to the anchor name. When moving a subtree that contains anchors or aliases, inspect the emitted YAML and verify that every alias still has a corresponding anchor.
+Renaming the `database` key does not need to rename `&databaseDefaults`; the alias still refers to the anchor name. When moving a subtree that contains anchors or aliases, inspect the emitted YAML and verify that every alias still refers to the intended anchor defined earlier in the same document. Moving an anchor after an alias can produce YAML that fails to parse even though the anchor still exists.
 
 ## Use `setpath` for Path Arrays
 
@@ -241,7 +249,7 @@ Preview the transformed document without `-i`, inspect the destination subtree, 
 ```bash
 yq -e '
   (.service | has("database") | not) and
-  (.infrastructure.databases | has("primary"))
+    (.infrastructure.databases | has("primary"))
 ' moved.yml >/dev/null
 ```
 
