@@ -184,7 +184,6 @@
 
 ## OneUptime
 
-8. How to Monitor Private LAN Services with OneUptime Probes Without Exposing Them Publicly
 9. How to Run OneUptime Probes in Multiple Regions and Avoid False Outage Alerts
 10. How to Import Existing Uptime Kuma Monitors into OneUptime
 11. How to Run a OneUptime Probe Through an HTTP Proxy in an Egress-Restricted Network
