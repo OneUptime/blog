@@ -184,7 +184,6 @@
 
 ## OneUptime
 
-13. How to Prevent Alert Storms in OneUptime with Dependencies, Acknowledgements, and Cooldowns
 14. How to Send OpenTelemetry Logs, Metrics, and Traces to a Self-Hosted OneUptime Collector
 15. How to Create an Authenticated API Monitor in OneUptime with Headers and JSON Assertions
 16. How to Monitor a Login Flow in OneUptime When the Site Uses SSO
