@@ -61,6 +61,17 @@ metadata:
   name: worker
 spec:
   replicas: 1
+  selector:
+    matchLabels:
+      app: worker
+  template:
+    metadata:
+      labels:
+        app: worker
+    spec:
+      containers:
+        - name: worker
+          image: registry.example.com/worker:v1
 ```
 
 Preview the update:
@@ -90,7 +101,7 @@ yq '
 ' bundle.yaml
 ```
 
-It prints only the selected Deployment. Redirecting that output over the bundle would discard every other resource.
+It prints only the selected Deployment. Replacing the bundle with that output would discard every other resource. Do not redirect directly to the input file with `> bundle.yaml`: Bash truncates it before yq reads it.
 
 In the safe form, the complete selector and leaf path are the assignment target:
 
@@ -107,7 +118,7 @@ The assignment operates against each original document, so roots that do not pro
 
 Names are unique within the relevant Kubernetes scope, not across an arbitrary bundle. Two namespaces can each contain a Deployment named `api`.
 
-For a namespaced resource, include the namespace and define how an omitted namespace is interpreted:
+For a namespaced resource, include the namespace and define how an omitted namespace is interpreted. Here, an omitted namespace means `default`; when applying with kubectl, the actual namespace can instead come from `--namespace` or the current context:
 
 ```bash
 yq '
@@ -120,7 +131,7 @@ yq '
 ' bundle.yaml
 ```
 
-Do not add a namespace predicate to cluster-scoped kinds. For custom resources, include the exact `apiVersion` as well as kind, name, and namespace so similarly named objects from different API groups cannot collide.
+Do not add a namespace predicate to cluster-scoped kinds. For custom resources, include the exact `apiVersion` as well as kind, name, and namespace so similarly named objects from different API groups cannot collide. The version selects the manifest representation; Kubernetes object identity itself uses the API group, resource type, name, and namespace, not the API version.
 
 ## Pass a Typed Value from Bash
 
@@ -142,12 +153,13 @@ yq '
 
 Validate shell-supplied identity fields before using them. yq string equality supports wildcard matching, so an unexpected `*` or `?` can broaden a match. Valid Kubernetes names do not contain those characters; rejecting invalid input protects the assumption.
 
-Also verify the value type and range:
+Also verify the value type and range: Deployment replicas must fit a nonnegative 32-bit signed integer.
 
 ```bash
 REPLICAS=3 yq -n -e '
   ((env(REPLICAS) | tag) == "!!int") and
-  (env(REPLICAS) >= 0)
+  (env(REPLICAS) >= 0) and
+  (env(REPLICAS) <= 2147483647)
 ' >/dev/null
 ```
 
