@@ -30,7 +30,7 @@ Capture a baseline from Envoy access logs. Include downstream peer address, down
 
 ## Prefer Native Source Preservation When Available
 
-For a Kubernetes LoadBalancer or NodePort Service, `externalTrafficPolicy: Local` prevents kube-proxy from forwarding external traffic to a Pod on another node and preserves the source IP in supported topologies:
+For a Kubernetes LoadBalancer or NodePort Service, `externalTrafficPolicy: Local` prevents kube-proxy from forwarding external traffic to a Pod on another node and preserves the source IP in supported topologies. The following is a fragment to merge into the existing Envoy Service; retain its ports and selector:
 
 ```yaml
 apiVersion: v1
@@ -43,13 +43,13 @@ spec:
   externalTrafficPolicy: Local
 ```
 
-This has a tradeoff. Nodes without a local ready Envoy endpoint do not forward traffic, so the external load balancer needs correct health checks and Envoy must be distributed across enough nodes. Verify balancing and availability during rolling updates.
+This has a tradeoff. Nodes without a local Envoy endpoint do not forward traffic, so the external load balancer needs correct health checks and Envoy must be distributed across enough nodes. With `ProxyTerminatingEndpoints` (stable since Kubernetes 1.28), kube-proxy can forward to serving, terminating local endpoints when all local endpoints are terminating, allowing graceful draining. Verify balancing and availability during rolling updates.
 
 Some managed network load balancers already deliver the original source address. Contour's PROXY guide notes that this is the normal GKE network-load-balancer behavior. Do not enable PROXY protocol when direct preservation already works.
 
 ## Enable PROXY Protocol at Both Ends
 
-When the load balancer supports PROXY v1 or v2, configure it to send the preamble and configure Contour with `--use-proxy-protocol`. The Contour setting applies to all Envoy listening ports:
+When the load balancer supports PROXY v1 or v2, configure it to send the preamble and configure Contour with `--use-proxy-protocol`. The Contour setting applies to all Contour-managed Envoy ingress listeners, not separate health or admin listeners:
 
 ```yaml
 containers:
@@ -62,13 +62,13 @@ containers:
 
 Use the supported installation mechanism, such as Helm values or `ContourDeployment`, rather than hand-editing a generated Deployment.
 
-Both sides must change together. If Envoy expects PROXY but a health checker sends raw HTTP or TLS, the check fails. If the load balancer sends a PROXY line to a listener that does not expect one, Envoy interprets it as application bytes and the connection fails.
+Both sides must change together. If a health checker sends raw HTTP or TLS to a PROXY-enabled ingress listener, the check fails; checks on a separate health endpoint are unaffected. If the load balancer sends a PROXY line to a listener that does not expect one, Envoy interprets it as application bytes and the connection fails.
 
 Restrict direct network access to a PROXY-enabled listener. The protocol carries asserted address metadata but does not authenticate the sender. Only a trusted load balancer should be able to connect and claim a source address.
 
 ## Set Trusted XFF Hops for Known HTTP Proxies
 
-When a CDN or another layer 7 proxy is in front of Envoy, it appends to `X-Forwarded-For`. Contour's `num-trusted-hops` tells Envoy how many additional addresses from the right side of XFF to trust when determining the remote client.
+When a CDN or another layer 7 proxy is in front of Envoy, configure and verify its handling of `X-Forwarded-For`; appending the observed client address is common but is not universal. Contour's `num-trusted-hops` tells Envoy how many additional addresses from the right side of XFF to trust when determining the remote client.
 
 In the Contour configuration file:
 
@@ -77,7 +77,7 @@ network:
   num-trusted-hops: 1
 ```
 
-Use `1` only when exactly one trusted HTTP proxy is always immediately before Envoy. Count stable trusted proxies from the right, not all entries and not client-controlled intermediaries. Too small a value reports a proxy. Too large a value can select a spoofed address inserted by the client.
+Use `1` when exactly one trusted HTTP proxy supplies the observed client address as the rightmost XFF entry on every request path. An intervening layer 4 load balancer does not add an XFF hop. Count stable trusted proxies from the right, not all entries and not client-controlled intermediaries. Too small a value reports a proxy. Too large a value can select a spoofed address inserted by the client.
 
 The upstream proxy should overwrite or sanitize incoming forwarding headers according to its official security guidance. Network policy or load-balancer controls should prevent users from bypassing that proxy and reaching Envoy directly.
 
@@ -93,7 +93,7 @@ curl --fail -H 'X-Forwarded-For: 203.0.113.99' \
   https://whereami.example.com/
 ```
 
-The second request must not make the application believe `203.0.113.99` is the authenticated client. Repeat through every supported entry path, including IPv6, CDN bypass domains, direct load-balancer addresses, and health checks.
+The second request must not make the application believe `203.0.113.99` is the validated client address; an IP address alone does not authenticate a user. Repeat through every supported entry path, including IPv6, CDN bypass domains, direct load-balancer addresses, and health checks.
 
 If access is controlled by IP, Contour's HTTPProxy IP filtering distinguishes:
 
