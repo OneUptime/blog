@@ -8,13 +8,13 @@ Description: Provision OneUptime monitors and status pages through the REST API 
 
 ---
 
-The OneUptime REST API can automate resources available in the dashboard, including monitors, monitor steps, and status pages. Reliable provisioning needs more than a sequence of POST requests: it needs least-privilege authentication, version-current request schemas, stable identity, read-after-write checks, and an activation gate.
+The OneUptime REST API can automate resources available in the dashboard, including monitors with their steps and status pages. Reliable provisioning needs more than a sequence of POST requests: it needs least-privilege authentication, version-current request schemas, stable identity, read-after-write checks, and an activation gate.
 
 This guide targets OneUptime 12.0.33 and deliberately sends readers to the live reference for resource fields because API request bodies evolve.
 
 ## Create a dedicated API key
 
-Create a key under **Project Settings > API Keys**. OneUptime API keys begin with no permissions. Grant only the create, read, and edit permissions needed for Monitor, Monitor Step, Status Page, and any owner or label resources the automation manages.
+Create a key under **Project Settings > API Keys**. OneUptime API keys begin with no permissions. Grant only the create, read, and edit permissions needed for Monitor, Status Page, and any status page resource, group, probe assignment, owner, or label resources the automation manages.
 
 Requests use an `ApiKey` header:
 
@@ -53,7 +53,7 @@ statusPages:
 
 ## Use the current resource schemas
 
-OneUptime's create endpoints use a JSON object containing `data`. A minimal monitor request in the current API includes project and status references in addition to type and name. For example, the shape is:
+OneUptime's create endpoints use a JSON object containing `data`. A minimal monitor request in 12.0.33 includes a project reference, type, and name; the server assigns the initial operational status. For example, the shape is:
 
 ```json
 {
@@ -61,15 +61,14 @@ OneUptime's create endpoints use a JSON object containing `data`. A minimal moni
     "projectId": "PROJECT_ID",
     "name": "Checkout health",
     "monitorType": "API",
-    "currentMonitorStatusId": "STATUS_ID",
     "disableActiveMonitoring": true
   }
 }
 ```
 
-Submit it to `POST /api/monitor` only after obtaining a valid initial monitor-status ID for the project. Read the Monitor API reference for the exact required fields and enum values in your installed release.
+Submit it to `POST /api/monitor` after ensuring the project has an operational monitor status. The server sets `currentMonitorStatusId` automatically. Read the Monitor API reference for the exact required fields and enum values in your installed release.
 
-An API monitor's URL, method, headers, body, and criteria are monitor-step resources. Reconcile them through `/api/monitor-step`; creating the monitor row alone does not create a working check. Likewise, status pages have their own `/api/status-page` schema and separate resources for what the page displays.
+An API monitor's URL, method, headers, body, and criteria belong to nested `MonitorStep` values in the monitor's `monitorSteps` field. Reconcile that field through `PUT /api/monitor/:id` using the documented `MonitorSteps` serialization; `/reference/en/monitor-step` documents a data type, not a separate `/api/monitor-step` resource endpoint. Creating the monitor row alone does not create a working check. Likewise, status pages have their own `/api/status-page` schema and separate resources for what the page displays.
 
 Use files or a JSON generator for request bodies instead of interpolating untrusted names into shell strings:
 
@@ -88,7 +87,7 @@ For every desired resource:
 
 1. list or filter existing resources in the same project
 2. match one resource by the stable automation identity
-3. create it disabled if none exists
+3. create it if none exists, with active monitoring disabled for monitors
 4. compare managed fields and update only genuine drift
 5. read it back and validate IDs, steps, criteria, and relationships
 6. refuse to continue if multiple resources match
@@ -113,13 +112,13 @@ OneUptime also publishes a Terraform provider for teams that want an existing de
 
 ## Conclusion
 
-Safe API provisioning is an idempotent controller, not a one-shot script. Use a permission-empty key with only required grants, follow the installed release's Monitor, Monitor Step, and Status Page schemas, create checks disabled, and verify every relationship before activation.
+Safe API provisioning is an idempotent controller, not a one-shot script. Use a permission-empty key with only required grants, follow the installed release's Monitor and Status Page schemas and MonitorSteps/MonitorStep data types, create checks disabled, and verify every relationship before activation.
 
 ## Official Documentation
 
 - [OneUptime API reference guide](https://oneuptime.com/docs/en/api-reference/api-reference)
 - [OneUptime API authentication](https://oneuptime.com/reference/en/authentication)
 - [OneUptime Monitor API](https://oneuptime.com/reference/en/monitor)
-- [OneUptime Monitor Step API](https://oneuptime.com/reference/en/monitor-step)
+- [OneUptime Monitor Step data type](https://oneuptime.com/reference/en/monitor-step)
 - [OneUptime Status Page API](https://oneuptime.com/reference/en/status-page)
 - [OneUptime Terraform provider guide](https://oneuptime.com/docs/en/terraform/index)
