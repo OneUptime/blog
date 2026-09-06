@@ -22,7 +22,7 @@ The final `.` is the main yq expression. It emits every input document unchanged
 
 ## Split a Multi-Document Bundle
 
-Given `bundle.yaml`:
+Given `bundle.yaml` (the Deployment is abbreviated for this splitting example and is not ready to apply):
 
 ```yaml
 apiVersion: v1
@@ -63,7 +63,7 @@ out/configmap-api-settings.yaml
 out/deployment-api.yaml
 ```
 
-Each file contains one complete Kubernetes object. `--no-doc` suppresses a leading `---` in each standalone file.
+Each file contains the entire corresponding input document. `--no-doc` suppresses a leading `---` in each standalone file.
 
 ## Add the Extension Yourself
 
@@ -154,15 +154,13 @@ out/_none-namespace-payments.yaml
 
 `_none` is a local marker for an absent namespace field. It cannot be a Kubernetes namespace because underscores are not allowed, but it does not prove that the kind is cluster-scoped. A namespaced object can also omit its namespace and rely on the client's default. Distinguishing namespaced from cluster-scoped kinds requires Kubernetes API discovery or a trusted schema.
 
-Preflight the identity produced by this namespace-aware scheme as well:
+Before running the namespace-aware split, preflight the actual generated filenames as well. Hyphens in namespaces and names can make distinct identity tuples produce the same filename:
 
 ```bash
 yq ea -e '
   [. |
-    [(.metadata.namespace // "_none"),
-     (.kind | downcase),
-     .metadata.name] |
-    join("/")
+    "out/" + (.metadata.namespace // "_none") + "-" +
+    (.kind | downcase) + "-" + .metadata.name + ".yaml"
   ] |
   length == (unique | length)
 ' bundle.yaml >/dev/null
@@ -208,7 +206,7 @@ items:
       name: second
 ```
 
-Emit each array item as a result before splitting:
+Emit each array item as a result before splitting. First apply the component validation and collision checks above to the items: replace the initial `[.]` with `[.items[]]` in the component check and the initial `[. |` with `[.items[] |` in the collision check, and use `list.yaml` as the input:
 
 ```bash
 yq --no-doc \
