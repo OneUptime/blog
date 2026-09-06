@@ -178,7 +178,6 @@
 
 ## yq
 
-18. How to Edit YAML Comments, Anchors, Aliases, and Scalar Styles with Mike Farah yq
 19. How to Validate YAML with yq and Return a Clean Exit Code in CI
 20. How to Convert Selected YAML Fields to CSV with yq Without Losing Quoting
 
