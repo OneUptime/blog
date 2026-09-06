@@ -7260,3 +7260,233 @@
 18. How to Model Hot-Key and Tenant Skew Instead of Assuming Uniform Traffic
 19. How to Design Backpressure and Backlog Drain Capacity for Traffic Spikes
 20. How to Practice a NALSD Interview by Iterating from Requirements to Capacity and Failure Modes
+
+## 1Password
+
+1. How to Install 1Password CLI and Enable Biometric Desktop-App Integration on macOS, Windows, and Linux
+2. How to Authenticate `op` on a Headless or SSO-Enforced Server with `OP_SERVICE_ACCOUNT_TOKEN`
+3. How to Create a Least-Privilege Service Account with `op service-account create` and Rotate Its Token Safely
+4. How to Replace Plaintext `.env` Values with `op://` References and `op run --env-file`
+5. How to Debug `op run` When `printenv` Resolves a Secret but Your Application Still Sees the `op://` URI
+6. How to Render Configuration with `op inject` Without Leaving Resolved Secrets on Disk
+7. How to Choose Between `op read`, `op run`, `op inject`, and Shell Plugins for Runtime Secrets
+8. How to Read Custom Fields Reliably with `op item get --format=json`, Field IDs, and `jq`
+9. How to Fix “connecting to desktop app: connection reset” When Calling `op` from Go, Python, `sudo`, or systemd
+10. How to Configure `SSH_AUTH_SOCK` and Verify the 1Password SSH Agent with `ssh-add -l`
+11. How to Fix “Too Many Authentication Failures” by Ordering Keys in `agent.toml` and Pinning Hosts with SSH Bookmarks
+12. How to Use Different 1Password SSH Keys for Multiple Accounts on the Same Host
+13. How to Use the 1Password SSH Agent from WSL with `ssh.exe` and `core.sshCommand`
+14. How to Sign Git Commits and Tags with an SSH Key Stored in 1Password
+15. How to Troubleshoot `sign_and_send_pubkey: signing failed` and `Permission denied (publickey)` with 1Password
+16. How to Keep Work and Personal SSH Keys Separate with `[[ssh-keys]]` Account and Vault Filters
+17. How to Load 1Password Secrets into GitHub Actions Without Exposing Them in Workflow Logs
+18. How to Sync 1Password Items to Kubernetes Secrets with Connect and a `OnePasswordItem` Resource
+19. How to Configure the 1Password AWS Shell Plugin for MFA-Backed Temporary Credentials
+20. How to Remove Plaintext API Keys and SSH Private Keys from Developer Workstations After Moving to 1Password
+
+## LSM Trees
+
+1. How to Decide Between an LSM Tree and a B+ Tree Using Read/Write Mix, Dataset Size, and SSD Endurance
+2. How to Recover an LSM Tree After a Crash by Replaying the WAL Without Reintroducing Flushed Records
+3. How to Trace a Point Lookup Through Memtables, Bloom Filters, SSTable Indexes, and Multiple Levels
+4. How to Design Fast Range Scans in an LSM Tree When Bloom Filters Cannot Prune the Range
+5. How to Choose Between Leveled, Universal, and FIFO Compaction for a RocksDB Workload
+6. How to Size LSM Levels with Fanout, `max_bytes_for_level_base`, and `level_compaction_dynamic_level_bytes`
+7. How to Measure Read, Write, and Space Amplification with `rocksdb.stats` and `iostat`
+8. How to Diagnose “Stopping Writes Because We Have N Level-0 Files” in RocksDB
+9. How to Tune `max_background_jobs` and Compaction Triggers When L0 Cannot Drain Fast Enough
+10. How to Rate-Limit Flushes and Compactions Without Creating a Growing Compaction Backlog
+11. How to Size `write_buffer_size`, `max_write_buffer_number`, and `min_write_buffer_number_to_merge`
+12. How to Choose Bloom-Filter Bits per Key and Measure the Real False-Positive Rate
+13. How to Accelerate Prefix Seeks with `prefix_extractor`, Prefix Blooms, and `whole_key_filtering`
+14. How to Prevent Block-Cache Cliffs with Partitioned Indexes and Partitioned Bloom Filters
+15. How to Keep Tombstones from Overwhelming Reads—and Know When Compaction Can Finally Drop Them
+16. How to Delete Large Key Ranges with `DeleteRange` Instead of Millions of Point Tombstones
+17. How to Find Long-Lived Snapshots That Prevent Old Versions and Tombstones from Being Reclaimed
+18. How to Bulk-Load RocksDB with `SstFileWriter` and `IngestExternalFile` Without a Compaction Storm
+19. How to Run `CompactRange` Safely Without Exhausting Disk Space or Destroying Tail Latency
+20. How to Cut RocksDB Recovery Time with `Checkpoint` Snapshots and Incremental SST Backups
+
+## Cloud-Init
+
+1. How to Validate User Data Before Launch with `cloud-init schema -c user-data.yaml --annotate`
+2. How to Fix `runcmd` That Never Runs: Required Headers, YAML Quoting, and the Final-Stage Handoff
+3. How to Diagnose a Failed or Stuck Boot with `cloud-init status --long`, systemd Units, and Both Log Files
+4. How to Find What Slows First Boot with `cloud-init analyze blame` and `cloud-init analyze show`
+5. How to Re-run One Module Safely with `cloud-init single --name scripts-user --frequency always`
+6. How to Run a Command on Every Boot with `bootcmd` or `text/x-shellscript-per-boot`
+7. How to Handle Updated EC2 User Data When Cloud-Init Will Not Re-run Per-Instance Modules
+8. How to Wait for Cloud-Init with `status --wait` or `After=cloud-init.target` Without Deadlocking `runcmd`
+9. How to Inspect Cached Instance Metadata Safely with `cloud-init query`
+10. How to Render Provider-Aware User Data with Jinja and `v1.instance_id`, Region, and Availability Zone
+11. How to Debug `DataSourceNone` and Force the Correct Datasource with `datasource_list` or `ds=`
+12. How to Build a NoCloud Seed ISO with `cloud-localds`, the `cidata` Label, and a Stable `instance-id`
+13. How to Apply a Static IP Correctly with Network Config Version 2 and the Separate `network-config` File
+14. How to Stop Cloud-Init from Rewriting Network Configuration or Creating Fallback DHCP
+15. How to Fix Boot Delays Caused by an Unconnected NIC with Network V2 `optional: true`
+16. How to Use `write_files.defer` for Package-Owned Paths and Avoid the `/tmp` Cleanup Race
+17. How to Create Users Securely with `ssh_authorized_keys`, `disable_root`, and Hashed Passwords
+18. How to Prepare a Golden Image with `cloud-init clean --machine-id` So Every Clone Gets a True First Boot
+19. How to Combine Cloud Config, Shell Scripts, and Boothooks with MIME Multipart or `#cloud-config-archive`
+20. How to Deliver Cloud-Init Metadata over VMware GuestInfo with Correct Base64 and Gzip Encodings
+
+## Packet Loss
+
+1. How to Read `mtr` Without Mistaking ICMP Rate Limiting for End-to-End Packet Loss
+2. How to Prove Where Packet Loss Starts with Bidirectional ICMP and TCP `mtr -T -P 443`
+3. How to Isolate Wi-Fi, Router, and ISP Packet Loss with Simultaneous Gateway and Internet Pings
+4. How to Catch Intermittent Packet Loss with Timestamped `mtr`, SmokePing, and Interface Counters
+5. How to Measure UDP Packet Loss and Jitter Correctly with `iperf3 -u -b` and Reverse Tests
+6. How to Diagnose Clean Ping Results When Games, Calls, or APIs Still Drop Packets
+7. How to Distinguish TCP Retransmissions, Duplicate ACKs, and Capture Loss in Wireshark
+8. How to Fix `tcpdump: packets dropped by kernel` Without Misdiagnosing On-Wire Loss
+9. How to Trace Linux Receive Drops with `ip -s link`, `ethtool -S`, and `/proc/net/softnet_stat`
+10. How to Diagnose an MTU Black Hole with Don’t-Fragment Pings, `tracepath`, and MSS Clamping
+11. How to Find Duplex Mismatches and Bad Links from CRC, FCS, and Late-Collision Counters
+12. How to Separate Congestion Queue Drops from Physical Interface Errors on Switches and Routers
+13. How to Fix Bufferbloat Packet Loss for Gaming and VoIP with CAKE or `fq_codel` SQM
+14. How to Diagnose One-Way Packet Loss with Dual-Ended Captures and Reverse-Path Tests
+15. How to Troubleshoot Packet Loss Across Site-to-Site VPNs: MTU, Encryption Overhead, and TCP MTR
+16. How to Debug Kubernetes Packet Drops Caused by a Full `nf_conntrack` Table
+17. How to Find Pod-to-Pod Packet Loss Caused by CNI or VXLAN MTU Mismatches
+18. How to Identify the Exact Windows Packet-Drop Reason with `pktmon`, ETL Conversion, and WFP Events
+19. How to Reproduce Random and Bursty Packet Loss Safely with Linux `tc netem`
+20. How to Build Packet-Loss Alerts That Correlate Loss, Latency, Jitter, and Queue Discards
+
+## Clair
+
+1. How to Run Clair V4 in Combo Mode with Docker Compose, PostgreSQL, `CLAIR_MODE`, and `CLAIR_CONF`
+2. How to Scan a Locally Built Image by Publishing It to a Registry Reachable by Both Clair and `clairctl`
+3. How to Fix `flag provided but not defined: -log-level` by Matching Clair V4 and `clairctl` Versions
+4. How to Debug `failed to fetch layers: 403 Forbidden` from a Private or S3-Backed Registry
+5. How to Fix `x509: certificate signed by unknown authority` with `SSL_CERT_DIR` and an Internal CA
+6. How to Secure Clair’s API with PSK-Signed JWTs and an Allowlisted `iss` Claim
+7. How to Debug an Empty Clair Report by Checking the `IndexReport`, Updater Runs, and Matcher Inputs
+8. How to Interpret Debian CVEs Reported as `Unknown` Severity and Use CVSS Enrichment Safely
+9. How to Keep Unpatched RHEL Advisories Visible During Clair’s OVAL-to-VEX Migration
+10. How to Update Clair in an Air-Gapped Cluster with `clairctl export-updaters` and `import-updaters`
+11. How to Fix Clair Updater Timeouts with Proxy Allowlists, `HTTPS_PROXY`, and Custom CA Trust
+12. How to Limit Clair to the Matcher and Updater Sets Your Image Estate Actually Needs
+13. How to Gate a CI Pipeline on Clair V4 JSON Reports Without Deprecated `clair-scanner` Threshold Flags
+14. How to Notify Teams About Newly Disclosed CVEs with Clair Webhooks, AMQP, or STOMP
+15. How to Scale Clair from Combo Mode to Separate Indexer, Matcher, and Notifier Services
+16. How to Tune `layer_scan_concurrency`, `scanlock_retry`, and Request Limits When Clair Returns HTTP 429
+17. How to Diagnose Clair PostgreSQL Growth with `update_retention`, Garbage Collection, and `VACUUM` Visibility
+18. How to Validate Clair 4.7+ Configuration Drop-Ins and JSON Patches with `clairctl check-config`
+19. How to Monitor Clair Through Its Introspection Port and Migrate Deprecated Jaeger Tracing to OTLP
+20. How to Trigger Re-Indexing When Clair’s `/indexer/api/v1/index_state` ETag Changes
+
+## Ironic
+
+1. How to Match Ironic Documentation to Your OpenStack and Ubuntu Release When `ironic-novncproxy` Is Missing
+2. How to Enroll a Server with `baremetal node create`, Set BMC Credentials, and Reach `manageable`
+3. How to Choose `ipmi` or `redfish` Hardware Types and Validate Every Enabled Interface
+4. How to Configure Managed Ironic Inspection with an Inspection Network and IPA Collectors
+5. How to Fix Intermittent PXE DHCP Failures with PortFast, Packet Captures, and Competing-DHCP Checks
+6. How to Fix iPXE `Nothing to boot: No such file or directory` by Installing the Correct BIOS and UEFI Loaders
+7. How to Choose PXE, iPXE, UEFI HTTP Boot, or Redfish Virtual Media for Secure-Boot Deployments
+8. How to Recover an Ironic Node Stuck in `wait call-back` by Checking IPA Heartbeats, TLS, and Clock Skew
+9. How to Debug Failed Deployments with `ipa-debug=1`, `journalctl`, Node History, and `/var/log/ironic/deploy`
+10. How to Recover Safely from Ironic’s `clean failed` State with `last_error`, `manage`, and `provide`
+11. How to Resolve IPA `ProtectedDeviceError` Without Accidentally Erasing Shared SAN or Cluster Storage
+12. How to Select the Correct Deployment Disk with Ironic Root-Device Hints for WWN, Serial, Size, or SSD
+13. How to Configure Glance Metadata Correctly for Whole-Disk, Partition, Ramdisk, and ISO Images
+14. How to Speed Up Direct Deploy with Raw-Image Streaming, `image_download_source`, and SHA-256 Checksums
+15. How to Fix Ironic `NoValidHost` by Aligning Resource Classes, Flavor Inventories, Traits, and Placement
+16. How to Fix Neutron `binding_failed` with `physical_network`, `local_link_connection`, and Networking Bare Metal
+17. How to Provision LACP Bonds Without Breaking iPXE Fallback or `standalone_ports_supported`
+18. How to Build Hardware or Software RAID with `target_raid_config` and Manual Cleaning Steps
+19. How to Enable Ironic Fast-Track Provisioning Without Losing IPA Heartbeats During Image Conversion
+20. How to Adopt an Already-Running Bare-Metal Server into Ironic Without Reprovisioning—and When Nova Prevents It
+
+## RED Method
+
+1. How to Instrument an HTTP Service for the RED Method with Prometheus Counters and Duration Histograms
+2. How to Calculate Request Rate Correctly with `sum(rate(...))` Across Replicas and Pod Restarts
+3. How to Build a 5xx Error-Rate Percentage in PromQL Without Dividing Mismatched Label Sets
+4. How to Decide Which HTTP 4xx, 5xx, Timeouts, and Cancellations Count as RED Errors
+5. How to Calculate p95 and p99 Latency Across Pods with `histogram_quantile()` and `sum by (le)`
+6. How to Choose Prometheus Histogram Buckets That Match Your Latency SLO
+7. How to Fix Empty or Gappy `rate()` Panels with Grafana’s `$__rate_interval` and the Real Scrape Interval
+8. How to Stop Averaging Summary Quantiles Across Instances and Migrate to Aggregatable Histograms
+9. How to Label RED Metrics by Route Without Exploding Cardinality on User IDs and Raw URLs
+10. How to Turn OpenTelemetry Spans into RED Metrics with Tempo’s Span-Metrics Processor
+11. How to Prevent Child Spans from Inflating RED Request and Error Counts
+12. How to Add Exemplars So a Grafana Latency Spike Opens the Exact Trace
+13. How to Reconcile Trace-Derived RED Metrics with Unsampled Application Metrics
+14. How to Create Recording Rules for Expensive p95/p99 RED Queries
+15. How to Alert on Error Rate for Low-Traffic Services Without One Failure Causing a False Page
+16. How to Combine RED Metrics with Multi-Window Burn-Rate Alerts for an Availability SLO
+17. How to Normalize RED Metrics Across HTTP, gRPC, and Messaging Services
+18. How to Apply the RED Method to Async Workers and Batch Jobs That Do Not Serve Requests
+19. How to Diagnose `histogram_quantile` Monotonicity Warnings and Bad Bucket Aggregation
+20. How to Migrate RED Latency Dashboards from Classic to Native Prometheus Histograms
+
+## Layer 4
+
+1. How to Choose Layer 4 Instead of Layer 7 for TLS Passthrough, Databases, and Non-HTTP Protocols
+2. How to Configure HAProxy `mode tcp` with `leastconn` for Long-Lived Database Connections
+3. How to Fix NGINX’s `unknown directive "stream"` Before Configuring TCP/UDP Load Balancing
+4. How to Preserve the Real Client IP with PROXY Protocol v2 Between HAProxy and NGINX
+5. How to Diagnose Immediate 400s and Garbled Handshakes Caused by a PROXY Protocol Mismatch
+6. How to Route TLS Passthrough by SNI with NGINX `ssl_preread` Without Terminating TLS
+7. How to Replace Port-Open Checks with HAProxy `tcp-check send`/`expect` Application Probes
+8. How to Load Balance UDP Safely When There Is No Connection Handshake or Reliable Health Check
+9. How to Explain Uneven Layer 4 Distribution Caused by Keep-Alive and Long-Lived TCP Flows
+10. How to Drain a Layer 4 Backend Without Resetting Existing TCP Connections
+11. How to Align Load-Balancer Idle Timeouts and TCP Keepalives to Stop Surprise RSTs
+12. How to Diagnose `nf_conntrack: table full` on a NAT-Based Layer 4 Load Balancer
+13. How to Avoid SNAT Ephemeral-Port Exhaustion Under Tens of Thousands of Backend Flows
+14. How to Debug Asymmetric Return Paths That Break NAT or Direct Server Return
+15. How to Configure Linux IPVS Direct Routing Without VIP ARP Flux on Real Servers
+16. How to Build a Highly Available Layer 4 VIP with Keepalived/VRRP and Prevent Split Brain
+17. How to Choose Between NAT, Direct Server Return, and Full TCP Proxying
+18. How to Find MTU and MSS Black Holes That Stall Large TLS Records Through a Layer 4 Balancer
+19. How to Preserve Client IPs in Kubernetes with `externalTrafficPolicy: Local` Without Blackholing Nodes
+20. How to Trace SYN Drops, Backend RSTs, and Timeouts with `ss`, `tcpdump`, `conntrack`, and HAProxy Logs
+
+## Notation
+
+1. How to Install the CNCF Notary Project’s Notation CLI and Verify Its Downloaded Release
+2. How to Run a Local Notation Quickstart with `notation cert generate-test --default` and a Test OCI Registry
+3. How to Sign an OCI Image by Digest—and Why Signing a Mutable Tag Can Surprise You
+4. How to Register a Local Private Key and X.509 Certificate Chain with `notation key add`
+5. How to Authenticate Notation to a Private Registry Without Leaking Passwords in CI Logs
+6. How to Build a Named CA Trust Store with `notation cert add`
+7. How to Write a Least-Privilege `trustpolicy.json` with Exact `registryScopes` and `x509.subject` Identities
+8. How to Fix Notation’s “no applicable trust policy” Error Caused by an Incomplete Repository Scope
+9. How to Choose `strict`, `permissive`, `audit`, or `skip` Signature Verification Without Silently Weakening Trust
+10. How to Fix “no signature is associated” When a Registry’s OCI Referrers Support Is Incomplete
+11. How to Discover and Inspect Every Signature Attached to an Artifact with `notation list` and `notation inspect`
+12. How to Install a Notation Signing Plugin with `--sha256sum` and Troubleshoot “plugin not found”
+13. How to Sign with Azure Key Vault, AWS Signer, or HashiCorp Vault Without Exporting the Private Key
+14. How to Choose JWS Versus COSE for a Notary Project Signature Envelope
+15. How to Attach Build Provenance with `--user-metadata` and Require It During Verification
+16. How to Add RFC 3161 Timestamping with `--timestamp-url`, `--timestamp-root-cert`, and a TSA Trust Store
+17. How to Troubleshoot Expired or Revoked Signing Certificates Under Notation’s CRL/OCSP Checks
+18. How to Rotate a Notation Signing Certificate Without Breaking Verification of Older Images
+19. How to Sign and Verify OCI Artifacts in GitHub Actions with `notaryproject/notation-action`
+20. How to Enforce Notation-Signed Images at Kubernetes Admission with Ratify and Gatekeeper
+
+## Proxmox Ceph
+
+1. How to Build a Three-Node Proxmox VE Ceph Cluster with `pveceph` and Separate Public/Cluster Networks
+2. How to Validate Latency, MTU, and Bandwidth Before Putting Ceph on a 10/25GbE Fabric
+3. How to Choose `size` and `min_size` So a Three-Node Pool Survives One Host Failure
+4. How to Create Separate SSD and HDD Pools with CRUSH Device Classes and Rules
+5. How to Benchmark Proxmox Ceph Correctly with `rados bench`, `fio`, and OSD Commit/Apply Latency
+6. How to Diagnose `SLOW_OPS` with `ceph health detail`, Historic Ops, Disk SMART, and OSD Heartbeats
+7. How to Find a Bad NIC, Cable, or MTU Mismatch Behind `OSD_SLOW_PING_TIME_BACK`
+8. How to Replace a Failed OSD Safely with `ceph osd safe-to-destroy` and `pveceph osd destroy`
+9. How to Replace OSDs with Larger Drives One Failure Domain at a Time Without Rebalancing Twice
+10. How to Use `noout` Safely for Planned Proxmox Ceph Maintenance—and Remember to Unset It
+11. How to Recover PGs Stuck `active+degraded`, `undersized`, `peering`, or `remapped`
+12. How to Repair `active+clean+inconsistent` PGs After Deep-Scrub Errors
+13. How to Recover from `OSD_NEARFULL`, `backfill_toofull`, and a Cluster That Refuses Writes
+14. How to Fix Uneven OSD Utilization with the Ceph Balancer Instead of Blind Manual Reweighting
+15. How to Size BlueStore DB/WAL on NVMe and Fix `BLUEFS_SPILLOVER`
+16. How to Decide Whether Enterprise SSD Power-Loss Protection Will Fix High Ceph Write Latency
+17. How to Tune Ceph’s mClock Recovery Profile So VM I/O Does Not Stall During Backfill
+18. How to Restore Ceph Monitor Quorum and Fix `MON_CLOCK_SKEW` with Chrony
+19. How to Upgrade a Proxmox VE Ceph Cluster to Ceph Squid Without Mixing Daemon Releases Indefinitely
+20. How to Shut Down and Restart a Hyper-Converged Proxmox VE Ceph Cluster Without Losing Quorum
