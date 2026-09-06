@@ -19,7 +19,7 @@ For HTTPProxy, create an explicit `Certificate`. cert-manager's ingress-shim ann
 
 ## Make HTTP-01 Reachable
 
-HTTP-01 works only when public DNS for the requested name reaches Envoy on port 80 and cert-manager's temporary solver Ingress is handled by Contour. Create a solver with the current `ingressClassName` field:
+HTTP-01 works only when public DNS for the requested name reaches Envoy on port 80 and cert-manager's temporary solver Ingress is handled by Contour. Create a solver with the `ingressClassName` field (requires cert-manager 1.12 or later):
 
 ```yaml
 apiVersion: cert-manager.io/v1
@@ -38,7 +38,7 @@ spec:
           ingressClassName: contour-public
 ```
 
-The class must match the public Contour instance. Omitting all solver class settings causes cert-manager to create an unclassified Ingress that every ingress controller may serve, which can add cost and make challenge routing nondeterministic.
+The class must match the public Contour instance: configure Contour to accept `contour-public`, or replace it throughout with your configured class (the default is `contour`). Omitting all solver class settings causes cert-manager to create an unclassified Ingress that every ingress controller may serve, which can add cost and make challenge routing nondeterministic.
 
 Use Let's Encrypt staging while proving DNS, routing, and policy. Its certificates are intentionally untrusted. Move to the production directory only after the complete flow succeeds, which avoids unnecessary production rate-limit consumption.
 
@@ -46,7 +46,7 @@ HTTP-01 cannot issue wildcard certificates. Use a DNS-01 solver for `*.example.c
 
 ## Create the Certificate and HTTPProxy
 
-Keep the Certificate in the same namespace as the HTTPProxy. cert-manager writes its Secret into that namespace:
+These examples assume Contour and cert-manager are installed, the `storefront` namespace exists, and a `shop` Service exposes port 80 there. Keep the Certificate in the same namespace as the HTTPProxy. cert-manager writes its Secret into that namespace:
 
 ```yaml
 apiVersion: cert-manager.io/v1
@@ -101,21 +101,21 @@ kubectl -n storefront get ingress,service,pod \
 kubectl -n storefront describe challenge
 ```
 
-NetworkPolicy must allow Envoy to reach the solver Pod and the Kubernetes API server to reach the cert-manager webhook.
+If NetworkPolicies restrict traffic, allow Envoy to reach the solver Pod and the Kubernetes API server to reach the cert-manager webhook. Also allow cert-manager to resolve DNS, contact the ACME server, and reach the HTTP-01 URL for its self-check.
 
 ## Test the Challenge Path from Outside
 
 Let's Encrypt validates from outside your cluster. An internal curl is not enough if split-horizon DNS, NAT, a CDN, or a firewall changes the public path.
 
-Check authoritative DNS and the public listener:
+Check DNS through your configured resolver and the public listener from outside the cluster:
 
 ```bash
 dig +short shop.example.com A
 dig +short shop.example.com AAAA
-curl -I http://shop.example.com/.well-known/acme-challenge/test
+curl -i http://shop.example.com/.well-known/acme-challenge/test
 ```
 
-A test token need not return 200, but it must reach the intended public Contour instead of another controller or a network-level block. If both A and AAAA records exist, both paths must be usable; a stale IPv6 record can break validation even when IPv4 works.
+A test token need not return 200, but it must reach the intended public Contour instead of another controller or a network-level block. This is only a connectivity check: while a Challenge is pending, verify that a GET to its actual token URL returns 200 with the expected key authorization; an arbitrary test path does not prove solver routing. If both A and AAAA records exist, both paths must be usable; a stale IPv6 record can break validation even when IPv4 works.
 
 Contour normally redirects HTTP to HTTPS when an HTTPProxy has TLS, while the temporary solver Ingress owns the specific challenge path. Avoid custom blanket redirects at a CDN or upstream load balancer that prevent the solver route from being reached.
 
@@ -140,16 +140,21 @@ spec:
           ingressClassName: contour-public
 ```
 
-Then change only the Certificate's `issuerRef.name` to `letsencrypt-prod`. cert-manager reissues it and updates the same Secret. Wait for `Ready=True` before calling the migration complete:
+Then change only the Certificate's `issuerRef.name` to `letsencrypt-prod`. cert-manager reissues it and updates the same Secret. After applying that change, wait for the Ready condition to observe the new Certificate generation and then for `Ready=True` before calling the migration complete:
 
 ```bash
+certificate_generation=$(kubectl -n storefront get certificate shop-example-com \
+  -o jsonpath='{.metadata.generation}')
+kubectl -n storefront wait certificate/shop-example-com \
+  --for="jsonpath={.status.conditions[?(@.type==\"Ready\")].observedGeneration}=$certificate_generation" \
+  --timeout=5m
 kubectl -n storefront wait certificate/shop-example-com \
   --for=condition=Ready --timeout=5m
 kubectl -n storefront wait httpproxy/shop \
   --for=condition=Valid --timeout=60s
 ```
 
-Verify the served certificate from outside without disabling trust checks:
+Inspect the served certificate with OpenSSL, then use curl from outside to verify certificate trust and hostname without disabling trust checks. The OpenSSL pipeline below only displays certificate details; it does not enforce trust or hostname verification. Replace `/healthz` with an endpoint your application provides:
 
 ```bash
 openssl s_client -connect shop.example.com:443 \
@@ -176,7 +181,9 @@ Alert with enough lead time to investigate a failed Order or Challenge. Also tes
 
 ```bash
 cmctl renew -n storefront shop-example-com
-kubectl -n storefront get certificate,certificaterequest --watch
+kubectl -n storefront get certificate shop-example-com --watch
+# In a second terminal:
+kubectl -n storefront get certificaterequest --watch
 ```
 
 Do not delete the TLS Secret as the routine renewal mechanism. cert-manager documents `cmctl renew` as the supported manual trigger. Deletion creates an avoidable interval with no Secret and can make the HTTPProxy invalid.
