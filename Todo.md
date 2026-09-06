@@ -184,7 +184,6 @@
 
 ## OneUptime
 
-1. How to Self-Host OneUptime with Docker Compose Behind an Existing Reverse Proxy
 2. OneUptime Docker Compose Won’t Start: How to Diagnose Unhealthy Containers, Port Conflicts, and Invalid Secrets
 3. How to Configure SMTP for a Self-Hosted OneUptime Instance and Troubleshoot Missing Email Alerts
 4. How to Deploy OneUptime on Kubernetes with Helm and Production-Ready Persistent Storage
