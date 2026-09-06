@@ -29,7 +29,7 @@ Use one explicit time zone and inspect daylight-saving transitions in the schedu
 
 ## Build the schedule in layers
 
-Create an on-call policy and add schedule layers for the rotations your organization actually uses. A primary weekly rotation and a separate secondary rotation are clearer than a single complicated sequence. Add users in the intended order and check several future weeks in the preview.
+Create an on-call policy and separate primary and secondary schedules, then add layers within each schedule for the rotations your organization actually uses. Attach each schedule to the appropriate escalation rule. A primary weekly rotation and a separate secondary rotation are clearer than a single complicated sequence. Add users in the intended order and check several future weeks in the preview.
 
 Layers model recurring responsibility. Do not edit the base rotation for one vacation or sick day; that changes future rotations and makes the exception hard to audit.
 
@@ -42,7 +42,7 @@ Create a user override with:
 - an exact start and end timestamp
 - the relevant on-call policy
 
-OneUptime applies active and future overrides to schedule output and routing. Check the preview at both boundaries and ask the substitute to confirm the assignment. Avoid an open-ended informal handoff outside the tool.
+OneUptime applies overrides within their time windows and policy scope. Schedule previews include global overrides and, when exactly one policy uses the schedule, that policy's overrides. For schedules shared by multiple policies, verify policy-specific substitutions through the relevant policy's routing; the shared preview shows only global overrides. Check the preview at both boundaries and ask the substitute to confirm the assignment. Avoid an open-ended informal handoff outside the tool.
 
 Calendar feeds include schedule information and overrides, but subscribed calendar clients cache them. OneUptime documents that Google Calendar may refresh only every 8 to 24 hours. For a late override, rely on OneUptime's reassignment notices and shift reminders, not the external calendar becoming current immediately.
 
@@ -50,19 +50,19 @@ Calendar feeds include schedule information and overrides, but subscribed calend
 
 Add escalation rules in the order they should execute. A simple policy might be:
 
-| Delay | Target | Purpose |
+| Approximate elapsed time from first rule | Target | Purpose |
 | --- | --- | --- |
 | 0 minutes | Primary schedule | Wake the current primary immediately |
 | 5 minutes | Secondary schedule | Add an independent responder |
 | 10 minutes | Incident commander team | Establish coordination and ownership |
 
-OneUptime rules can target users, teams, or on-call schedules. The delay is an operational promise, so choose it from incident severity and human response time, not from a convenient round number.
+OneUptime rules can target users, teams, or on-call schedules. The `escalateAfterInMinutes` field is the wait after the current rule before executing the next one. For the timing above, set it to 5 on both the primary and secondary rules; the final rule's wait controls when the policy can complete or repeat. The escalation worker checks pending executions once per minute, and notification delivery adds latency, so these are approximate timings. Choose the waits from incident severity and human response time, not from a convenient round number.
 
-Configure the policy's repeat behavior only if repeated paging is intentional. `repeatPolicyIfNoOneAcknowledges` repeats after the rules complete, for the configured number of times, and acknowledgement stops escalation. Always provide a final human or team fallback before relying on repeats.
+Configure the policy's repeat behavior only if repeated paging is intentional. The UI exposes `repeatPolicyIfNoOneAcknowledges` and the additional-repeat count `repeatPolicyIfNoOneAcknowledgesNoOfTimes`. In 12.0.33, the execution worker uses the numeric count to decide whether to repeat after the final rule's wait, so set that count to 0 when disabling repeats through the API. Acknowledgement stops further escalation; notifications already dispatched may still arrive. Always provide a final human or team fallback before relying on repeats.
 
 ## Attach the policy to real alert sources
 
-An on-call policy does nothing until an incident, alert, monitor workflow, or other supported source routes to it. Attach the policy at the correct project resource and severity. Check for duplicate paths that page the same person through both a direct user target and a schedule.
+An on-call policy does nothing until an incident, alert, monitor workflow, or other supported source routes to it. Attach the policy to the incident or alert, or configure a matching on-call rule for the relevant resources and severity; selecting a severity alone does not page anyone. Check for duplicate paths that page the same person through both a direct user target and a schedule.
 
 Keep owner/member informational email separate from paging. OneUptime's email rollup does not delay on-call pages, so inbox batching should not be used as an escalation control.
 
