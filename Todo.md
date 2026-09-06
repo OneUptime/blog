@@ -178,7 +178,6 @@
 
 ## yq
 
-12. How to Merge YAML Arrays by a Unique Key Instead of Replacing Them with yq
 13. How to Keep Every Conflicting Value When Merging YAML Files with yq
 14. How to Select and Modify One Kubernetes Resource in a Multi-Document YAML File with yq
 15. How to Split a Kubernetes YAML Bundle into Files Named by Kind and Resource Name with yq
