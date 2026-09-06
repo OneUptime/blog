@@ -25,15 +25,15 @@ OneUptime supports username and password authentication, OAuth 2.0, or no SMTP a
 Typical submission settings look like this:
 
 ```text
-Host: smtp.example.com
+Hostname: smtp.example.com
 Port: 587
-Authentication: Username and Password
+Authentication Type: Username and Password
 Email From: alerts@example.com
 From Name: OneUptime
-SSL or TLS: disabled for STARTTLS on port 587
+Use SSL / TLS: enabled to require STARTTLS on port 587
 ```
 
-Port 587 normally begins as plaintext and upgrades with STARTTLS, so the implicit SSL/TLS switch is commonly off. Port 465 normally uses TLS from connection start, so enable it there. Your provider's documentation is authoritative; do not choose encryption mode from the port number alone.
+Port 587 normally begins as plaintext and upgrades with STARTTLS. In OneUptime 12.0.33, enable the SSL/TLS switch to require that upgrade on ports other than 465; disabling it leaves STARTTLS opportunistic. Port 465 uses implicit TLS automatically in this version. Follow your provider's required port and encryption mode, noting that this version selects implicit TLS only on port 465.
 
 Use a dedicated credential with only mail-sending access. Store it in the OneUptime configuration UI or secret mechanism, not in a runbook or screenshot. Ensure the From address is one the provider permits that credential to use.
 
@@ -45,7 +45,7 @@ The project custom SMTP page includes a test-email action. Send a test to a mail
 - the SMTP provider's accepted, deferred, bounced, and rejected events
 - the recipient's inbox, spam folder, and mail gateway quarantine
 
-A successful test proves the transport and recipient path. It does not prove that a monitor alert is routed to that transport.
+A test message received in the target mailbox confirms the transport and recipient path for that test. A success response from OneUptime alone confirms sending, not final delivery. It does not prove that a monitor alert is routed to that transport.
 
 If the connection fails, test name resolution and TCP reachability from the OneUptime application environment, not only from your laptop:
 
@@ -63,7 +63,7 @@ When a test email succeeds but an incident email does not, work outward from One
 
 1. Confirm the monitor actually entered the expected state and created the intended alert or incident.
 2. Confirm the recipient is a project member, on-call target, or subscriber for that notification path.
-3. Confirm the relevant project notification settings have email enabled and point to the intended SMTP configuration.
+3. For owner and member notifications, check email is enabled for the event under **User Settings > Notification Settings** and the user has a verified notification email address. For on-call or subscriber notifications, check the corresponding rules and subscription settings. Check the SMTP selection on resources that support custom SMTP, such as the status page.
 4. Check acknowledgement, escalation, and notification rules that might intentionally stop or delay delivery.
 5. Review OneUptime delivery logs, then provider events, then the recipient gateway.
 
