@@ -21,13 +21,13 @@ Place the probe in a dedicated subnet, VM, container host, or Kubernetes namespa
 - target ports required by its assigned monitors
 - no general administrative access to the LAN
 
-Do not put an Internet-facing OneUptime global probe inside the private network. The private-network override applies to a separately deployed, project-owned probe. OneUptime's bundled global probes keep the strict public-target policy even if the environment variable is present.
+Do not put an Internet-facing OneUptime global probe inside the private network. Use a separately deployed, project-owned probe. In OneUptime 12.0.33, the private-network setting is read from each probe's environment, including bundled probes; it is not restricted to project-owned probes. Leave it off on probes you operate for other people.
 
 ## Register the custom probe
 
 In the project dashboard, open **Monitors > Settings > Probes**, create a custom probe, and copy its `PROBE_ID` and `PROBE_KEY`. Treat the key like a password.
 
-A Docker deployment can look like this:
+A Docker deployment can look like this (the private-network flag is needed only for Custom JavaScript Code monitors in 12.0.33):
 
 ```bash
 docker run --name oneuptime-lan-probe \
@@ -42,7 +42,7 @@ docker run --name oneuptime-lan-probe \
 
 Pin the image to the release you have tested in production rather than following a moving tag indefinitely. Inject the key through your platform's secret facility instead of committing it to a Compose file or shell script.
 
-Host networking is the official Docker example, but it is not mandatory in every design. A dedicated Docker network can be safer when its routing and DNS reach the targets. Choose the minimum connectivity that works.
+Host networking is the official Docker example, but it is not mandatory in every design. It requires Docker Engine on Linux or Docker Desktop 4.34 or later with host networking enabled. A dedicated Docker network can be safer when its routing and DNS reach the targets. Choose the minimum connectivity that works.
 
 ## Understand the private-address switch
 
@@ -52,7 +52,7 @@ The probe setting:
 PROBE_ALLOW_PRIVATE_NETWORK_MONITORS=true
 ```
 
-permits private ranges for API, Website, External Status Page, and Custom JavaScript Code monitors. It does not permit loopback, link-local, multicast, reserved, or cloud metadata addresses. Network-native monitor types such as Ping, Port, DNS, SQL, Synthetic, and Network Device use their own transports, so the HTTP private-address switch is not their access control.
+permits private ranges for Custom JavaScript Code monitors in OneUptime 12.0.33. For those monitors, it does not permit loopback, link-local, multicast, reserved, or cloud metadata addresses. API, Website, External Status Page, Ping, Port, DNS, SQL, Synthetic, and Network Device monitors are not governed by this switch in that version. Enforce their permitted destinations through network policy.
 
 Set the variable on the private probe itself, not only on the OneUptime API service. It intentionally expands what project members who can author those monitors may reach. Use a separate project and tightly scoped membership for especially sensitive networks.
 
@@ -66,7 +66,7 @@ https://orders.internal.example.com/health
 
 Select the new private probe for the monitor. Start with a health endpoint that exposes no secrets and assert both an expected status code and a small response condition. Check that the timeline identifies the private probe and reports a successful run.
 
-If the check fails, diagnose from the probe's network namespace:
+If the check fails, diagnose using the probe's network configuration. The following command matches the host-network deployment above; if the probe uses a dedicated Docker network, run the diagnostic container on that network instead:
 
 ```bash
 docker logs --tail=200 oneuptime-lan-probe
@@ -84,7 +84,7 @@ Monitor the probe itself for disconnection. A missing result is different from a
 
 ## Conclusion
 
-A project-owned probe turns private monitoring into an outbound-results path. Place it near the targets, authorize private HTTP checks only on that probe, restrict its network and project privileges, and test from the same namespace in which the checks run.
+A project-owned probe turns private monitoring into an outbound-results path. Place it near the targets, enable private Custom JavaScript Code requests only where needed, restrict its network and project privileges, and test using the network configuration in which the checks run.
 
 ## Official Documentation
 
