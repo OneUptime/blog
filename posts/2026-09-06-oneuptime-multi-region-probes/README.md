@@ -30,15 +30,15 @@ docker run --name oneuptime-probe \
   -d oneuptime/probe:release
 ```
 
-Pin and roll out the tested image version consistently. Store each key only in that region's secret manager.
+Replace the example `release` tag with a tested image version or digest and roll it out consistently. Store each key only in that region's secret manager.
 
 ## Configure probe agreement
 
-Assign all three probes to the monitor, then set the minimum probe agreement to `2`. With three connected probes, two must report the same status before the monitor changes state. This commonly filters a single regional path failure while still detecting a service failure visible from most locations.
+Assign all three probes to the monitor, then set the minimum probe agreement to `2`. With three enabled and connected probes, two must match the same criterion for the monitor step before its configured status change can proceed. Agreement is counted by criterion ID, so different criteria that set the same status do not combine their votes. This commonly filters a single regional path failure while still detecting a service failure visible from most locations.
 
-OneUptime's `minimumProbeAgreement` behavior has an important default: when no number is set, all enabled and connected probes must agree. A disconnected or disabled probe is excluded. The implementation also caps the effective threshold at the number of active probes. If only one of three probes remains connected, a configured threshold of two therefore becomes one for that evaluation. Alert on probe disconnections and decide whether degraded probe coverage should pause paging. A probe that remains connected but disagrees can still prevent an all-probes threshold from being reached.
+In OneUptime 12.0.33, `minimumProbeAgreement` behavior has an important default: when no number is set, all enabled and connected probes must agree. A disconnected or disabled probe is excluded. The implementation also caps the effective threshold at the number of active probes. If only one of three probes remains connected, a configured threshold of two therefore becomes one for that evaluation. Alert on probe disconnections and decide whether degraded probe coverage should pause paging. A probe that remains connected but disagrees can still prevent an all-probes threshold from being reached.
 
-Choose the number from your failure model:
+Choose the number from your failure model, assuming all listed probes are enabled and connected and agreeing results match the same criterion:
 
 | Probes | Agreement | Meaning |
 | --- | --- | --- |
@@ -46,7 +46,7 @@ Choose the number from your failure model:
 | 3 | 2 | majority tolerates one disagreeing region |
 | 5 | 3 | majority tolerates two disagreeing regions |
 
-Do not set agreement to `1` and call the system highly available. That makes any single bad vantage point sufficient to change status.
+Do not set agreement to `1` and call the system highly available. The implementation selects the largest group of matching criteria results, so a lone failure does not override two matching healthy results. However, a threshold of one permits an uncorroborated result to win when no larger group exists, including a tie.
 
 ## Keep check behavior identical
 
@@ -59,9 +59,9 @@ Account for endpoints that intentionally return different content by region. Ass
 Run controlled tests during a maintenance window:
 
 1. Block one probe's path to the target and confirm the monitor stays healthy with two successful regions.
-2. Block two independent paths and confirm the monitor changes state and the intended notification fires.
+2. Block two independent paths so both failures match the same outage criterion, and confirm the monitor changes state and the intended notification fires.
 3. Disconnect one probe from OneUptime and confirm it is shown as disconnected rather than silently healthy.
-4. Restore each path and confirm recovery requires the configured agreement.
+4. Restore each path and confirm recovery requires the effective agreement threshold, accounting for any disconnected probes.
 
 Keep tests at the network-policy or test-endpoint layer. Do not disrupt production DNS or delete a probe to simulate a transient fault.
 
