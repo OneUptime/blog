@@ -23,7 +23,7 @@ Decide whether each path should use the proxy. An external OneUptime instance no
 
 ## Register and configure the probe
 
-Create a custom probe under **Monitors > Settings > Probes** and obtain its unique ID and key. A Compose service can be configured as follows:
+Create a custom probe under **Monitors > Settings > Probes** and obtain its unique ID and key. Save the following service in `compose.yaml` and set `PROBE_ID` and `PROBE_KEY` in your shell or Compose `.env` file:
 
 ```yaml
 services:
@@ -66,28 +66,32 @@ docker compose up -d
 docker compose logs --follow --tail=200 oneuptime-probe
 ```
 
-Confirm the dashboard shows the probe connected. A `407 Proxy Authentication Required` points to proxy credentials or policy. A certificate error can indicate TLS interception; install the organization's trusted CA in the probe image or runtime rather than disabling certificate validation.
+Confirm the dashboard shows the probe connected. A `407 Proxy Authentication Required` points to proxy credentials or policy. A certificate error can indicate TLS interception; mount the organization's trusted CA bundle into the probe and set `NODE_EXTRA_CA_CERTS` to its PEM file path before starting the Node.js process rather than disabling certificate validation.
 
 If the control-plane connection fails, run a temporary diagnostic client in the same network namespace:
 
 ```bash
-curl -v --proxy http://egress-proxy.example.net:3128 \
+docker run --rm -it \
+  --network "container:$(docker compose ps -q oneuptime-probe)" \
+  curlimages/curl:latest -v --noproxy "" \
+  --proxy http://egress-proxy.example.net:3128 \
+  --proxy-user username \
   https://oneuptime.example.com
 ```
 
-Redact `Proxy-Authorization`, cookies, tokens, and internal hostnames before sharing output.
+Replace `username` with the proxy account; curl prompts for its password. Omit `--proxy-user username` for an unauthenticated proxy. Make the diagnostic image available beforehand if registry access is restricted. This client shares the probe's network namespace, but not its environment or CA files; mount any required CA bundle and select it with `--cacert`. A successful request verifies proxy connectivity and TLS to the site, not probe registration or result submission. Redact `Proxy-Authorization`, cookies, tokens, and internal hostnames before sharing output.
 
 ## Validate monitor traffic separately
 
 Assign one external HTTP monitor and one internal HTTP monitor. Confirm the proxy access log sees the external target but not the `NO_PROXY` target. Then trigger a controlled failure on each and verify that results still reach OneUptime.
 
-The OneUptime documentation describes proxy support across probe monitor types. In practice, an HTTP proxy naturally handles HTTP and HTTPS traffic; Ping, raw TCP, DNS, WHOIS, SNMP, or other protocol-specific checks may use transports an HTTP proxy cannot tunnel. Validate every assigned monitor type and arrange protocol-aware egress where required.
+The OneUptime documentation describes proxy support across probe monitor types. In practice, an HTTP proxy naturally handles HTTP and HTTPS traffic; Ping, raw TCP, DNS, WHOIS, SNMP, or other protocol-specific checks use separate transports that these HTTP proxy variables do not automatically redirect. CONNECT can carry TCP when the client implements tunneling and the proxy permits the destination; it does not by itself proxy ICMP or UDP. Validate every assigned monitor type and arrange protocol-aware egress where required.
 
 ## Operate the proxy path
 
 Monitor proxy latency, rejection rate, certificate expiry, and credential expiry. A shared egress proxy is now part of the monitoring path, so a proxy outage can make many independent targets fail together. Where that matters, run a second probe through a different egress path and use probe agreement.
 
-Rotate proxy and probe credentials independently. Restart one probe at a time, verify its heartbeat, and only then remove the old credential.
+Rotate proxy and probe credentials independently. For proxy credentials, keep the old account valid during rollout where supported, recreate one probe container at a time with the new environment, verify its heartbeat, and only then revoke the old account. OneUptime 12.0.33 stores a single key per probe, so coordinate a probe-key change with deployment of the new key; do not assume overlapping old and new probe keys are supported.
 
 ## Conclusion
 
