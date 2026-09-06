@@ -14,7 +14,7 @@ This runbook uses OneUptime 12.0.33 as the current target example.
 
 ## Establish the supported upgrade path
 
-OneUptime's upgrade guide says to move through major versions one at a time. A deployment on 10.x should go to 11.x and then 12.x. Minor and patch releases may be leapfrogged if their release notes permit it.
+OneUptime's upgrade guide says to move through major versions one at a time. A deployment on 10.x should go to 11.x and then 12.x. Minor and patch releases may be leapfrogged if their release notes permit it. For 10 → 11, preserving telemetry history requires the upgrade guide’s pre-upgrade table renames and post-upgrade copy; later v11 releases drop the old tables at startup. Follow that procedure before proceeding to v12.
 
 Before changing anything, record:
 
@@ -59,25 +59,27 @@ The official Compose flow tracks the `release` branch and uses the repository up
 ```bash
 git checkout release
 git pull
+# Review changes and configure the v12 Runner key before continuing.
 npm run update
 ```
 
-Review the fetched diff and release notes before running the update in production. If your operational policy pins tags or commits, select the reviewed release tag instead of accepting an unreviewed moving branch.
+Review the fetched diff and release notes before running the update in production. This moving-branch flow is not pinned: `npm run update` invokes configuration that runs another `git pull`. For a pinned upgrade, fetch and check out the reviewed release tag, run `node ./Scripts/Install/MergeEnvTemplate.js`, and review `config.env`. Set `APP_TAG=12.0.33` for this target and configure the Runner key before running `docker compose --env-file config.env pull` followed by `docker compose --env-file config.env up -d --remove-orphans`. Checking out a Git tag alone does not pin images because the default `APP_TAG` is `release`. Use the corresponding reviewed tag and image version for each intermediate major upgrade.
 
-For the 11 to 12 transition, Runbook Agent and AI Agent become the OneUptime Runner. Compose renames the `ai-agent` service to `runner` and renames its environment variables. Set `ONEUPTIME_RUNNER_KEY` to a long random value before startup; the generated placeholder is not safe. Ensure the retired `ai-agent` container is removed with `--remove-orphans`.
+For the 11 to 12 transition, Runbook Agent and AI Agent become the OneUptime Runner. Compose renames the `ai-agent` service to `runner` and renames its environment variables. Set `ONEUPTIME_RUNNER_KEY` in `config.env` to a long random value before running `npm run update` or starting the stack manually; the generated placeholder is not safe. Ensure the retired `ai-agent` container is removed with `--remove-orphans`.
 
-External runbook-agent containers should move to `oneuptime/runner:release` and `ONEUPTIME_RUNNER_*` variables. Existing identifiers and keys can be retained as documented, but old variable names are ignored by the new image.
+External runbook-agent containers should move to `oneuptime/runner:12.0.33` for this pinned target and `ONEUPTIME_RUNNER_*` variables. Existing identifiers and keys can be retained as documented, but old variable names are ignored by the new image.
 
 ## Upgrade Helm
 
-Update the repository, inspect the target chart, render it, then upgrade with the same reviewed values:
+Update the repository, inspect the target chart, render it, then upgrade with the same reviewed values. Replace `TARGET_CHART_VERSION` with the reviewed chart version and verify its application image versions and any overrides in `values-production.yaml`. Protect the rendered manifest as well, because it can contain Secrets:
 
 ```bash
 helm repo update oneuptime
+umask 077
 helm template oneuptime oneuptime/oneuptime \
   --namespace oneuptime \
   --version TARGET_CHART_VERSION \
-  --values values-production.yaml > /tmp/oneuptime-rendered.yaml
+  --values values-production.yaml > oneuptime-rendered.yaml
 
 helm upgrade oneuptime oneuptime/oneuptime \
   --namespace oneuptime \
