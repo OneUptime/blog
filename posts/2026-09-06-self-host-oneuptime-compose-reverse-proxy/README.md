@@ -14,18 +14,19 @@ This guide targets OneUptime 12.0.33. It assumes the proxy and Docker host are a
 
 ## Prepare the OneUptime configuration
 
-Check out the release branch, copy the example environment file, and replace every placeholder secret before starting the stack:
+Check out the 12.0.33 tag, copy the example environment file, and replace every placeholder secret before starting the stack:
 
 ```bash
 git clone https://github.com/OneUptime/oneuptime.git
 cd oneuptime
-git checkout release
+git checkout 12.0.33
 cp config.example.env config.env
 ```
 
 At minimum, set the external URL and disable OneUptime-managed certificates:
 
 ```dotenv
+APP_TAG=12.0.33
 HOST=oneuptime.example.com
 HTTP_PROTOCOL=https
 PROVISION_SSL=false
@@ -34,7 +35,7 @@ STATUS_PAGE_HTTPS_PORT=8443
 TRUSTED_PROXY_HOPS=2
 ```
 
-`HTTP_PROTOCOL=https` describes the URL seen by users. Traffic between the existing reverse proxy and OneUptime can remain HTTP on a protected host or private network. `PROVISION_SSL=false` prevents competing certificate automation for the primary host. The alternate published ports avoid competing with a proxy already listening on 80 and 443. If you do not use OneUptime-managed custom-domain TLS, keep port 8443 blocked rather than publishing it through the firewall.
+`APP_TAG=12.0.33` pins the OneUptime images; the example file otherwise uses the moving `release` image tag. `HTTP_PROTOCOL=https` describes the URL seen by users. Traffic between the existing reverse proxy and OneUptime can remain HTTP on a protected host or private network. `PROVISION_SSL=false` prevents competing certificate automation for the primary host. The alternate published ports avoid competing with a proxy already listening on 80 and 443. If you do not use OneUptime-managed custom-domain TLS, keep port 8443 blocked rather than publishing it through the firewall.
 
 The stock configuration uses `TRUSTED_PROXY_HOPS=1` for OneUptime's internal gateway. An additional external reverse proxy normally makes the value `2`. Count the actual trusted hops in your deployment. A value that is too small records a proxy address as the client; one that is too large can trust a client-supplied forwarding entry.
 
@@ -42,7 +43,7 @@ Also replace `ONEUPTIME_SECRET`, database passwords, encryption secrets, probe k
 
 ## Start and verify the stack
 
-Render the effective Compose model before applying it:
+Before starting, remove the PostgreSQL `5400:5432` port mapping from `docker-compose.yml` unless external backup access is required; if it is, restrict it to the backup client. Render the effective Compose model before applying it:
 
 ```bash
 docker compose --env-file config.env config >/dev/null
@@ -50,11 +51,11 @@ docker compose --env-file config.env up --remove-orphans -d
 docker compose --env-file config.env ps
 ```
 
-OneUptime's published HTTP port reaches its ingress container. Restrict that port with the host firewall or private network policy so clients cannot bypass the external proxy. When the proxy runs on the same host, forwarding to `127.0.0.1:8080` is suitable only if the Docker port is actually bound or firewalled accordingly. Do not assume changing a firewall and changing a Docker bind address are the same operation.
+OneUptime's published HTTP port reaches its ingress container. Restrict that port with Docker-aware firewall rules or private network policy (Docker-published ports can bypass UFW rules) so clients cannot bypass the external proxy. When the proxy runs on the same host, forwarding to `127.0.0.1:8080` is suitable only if the Docker port is actually bound or firewalled accordingly. Do not assume changing a firewall and changing a Docker bind address are the same operation.
 
 ## Configure the external proxy
 
-The following NGINX server is a practical baseline:
+The following configuration is a practical baseline for NGINX 1.25.1 or later with HTTP/2 support, running directly on the Docker host. Place both `map` and `server` inside the existing `http` context:
 
 ```nginx
 map $http_upgrade $connection_upgrade {
@@ -63,7 +64,8 @@ map $http_upgrade $connection_upgrade {
 }
 
 server {
-    listen 443 ssl http2;
+    listen 443 ssl;
+    http2 on;
     server_name oneuptime.example.com;
 
     ssl_certificate     /etc/letsencrypt/live/oneuptime.example.com/fullchain.pem;
@@ -84,7 +86,7 @@ server {
 }
 ```
 
-The larger body limit is useful if this hostname also accepts telemetry. Choose a limit that matches your ingestion design rather than copying it blindly. Apply equivalent forwarded-host, protocol, and client-address settings in another proxy product.
+The larger body limit is useful if this hostname also accepts telemetry. Choose a limit that matches your ingestion design rather than copying it blindly. This does not raise the bundled ingress or application limits; in 12.0.33, the `/otlp` and `/telemetry` ingress locations limit bodies to 4 MiB. Apply equivalent forwarded-host, protocol, and client-address settings in another proxy product.
 
 ## Test both routing and trust
 
@@ -95,7 +97,7 @@ curl -I https://oneuptime.example.com
 curl -sS -o /dev/null -w '%{http_code}\n' https://oneuptime.example.com
 ```
 
-Then check the OneUptime and external-proxy logs while signing in. Confirm that generated links use HTTPS, WebSocket connections remain open, and application audit data sees the expected client address. A redirect loop usually means `HTTP_PROTOCOL`, `Host`, or `X-Forwarded-Proto` disagrees with the public URL.
+Then check the OneUptime and external-proxy logs while signing in. Confirm that generated links use HTTPS, WebSocket connections remain open, and application audit data sees the expected client address. NGINX closes idle proxied WebSockets after 60 seconds without upstream data by default; use application ping frames or an appropriate `proxy_read_timeout` if needed. For redirect loops, check `HTTP_PROTOCOL`, `Host`, and redirect rules at both proxies. In 12.0.33, the bundled ingress sets `X-Forwarded-Proto` to its own `$scheme` (HTTP on this path), so the external proxy's HTTPS header is not preserved downstream; keep `HTTP_PROTOCOL=https` for the public URL.
 
 ## Production checklist
 
