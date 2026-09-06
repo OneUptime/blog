@@ -8,7 +8,7 @@ Description: Read and edit YAML comments, anchors, aliases, merge keys, and scal
 
 ---
 
-YAML carries presentation metadata that JSON does not: comments, anchors, aliases, and scalar styles. Mike Farah yq v4 exposes operators for each, but these features live on specific YAML nodes. A comment beside a map can belong to its key node, an alias is not the same as its resolved value, and quoting a non-string can change how another parser reads it.
+YAML carries presentation and serialization features that JSON does not: comments, anchors, aliases, and scalar styles. Mike Farah yq v4 exposes operators for each, but these features live on specific YAML nodes. A comment beside a map can belong to its key node, an alias is not the same as its resolved value, and quoting a non-string can change how another parser reads it.
 
 Preview these edits and inspect the serialized result before adding `-i`.
 
@@ -51,14 +51,14 @@ The comment operator returns the text without the `#` marker.
 
 ## Target the Key Node for Maps and Sequences
 
-Line comments attached to maps and sequences are commonly stored on the map key node rather than the value node. Set a comment on the `defaults` key like this:
+Line comments attached to maps and sequences are commonly stored on the map key node rather than the value node. Set a comment on the unanchored `api` key like this:
 
 ```bash
-yq '(.defaults | key) line_comment = "shared service settings"' \
+yq '(.api | key) line_comment = "API service settings"' \
   config.yml
 ```
 
-For a comment above the key, use `head_comment`:
+In v4.53.6, adding a line comment to the anchored `defaults` key can emit invalid YAML. For a comment above that key, use `head_comment`:
 
 ```bash
 yq '(.defaults | key) head_comment = "Managed by platform engineering"' \
@@ -110,13 +110,13 @@ For `&defaults`, the output is `defaults`.
 An alias node has `kind == "alias"`. List alias locations and names without confusing ordinary scalar values for aliases:
 
 ```bash
-yq '[.. | select(kind == "alias") | {
+yq '[... | select(kind == "alias") | {
   "path": path,
   "name": alias
 }]' config.yml
 ```
 
-The kind check matters. The `alias` operator is designed to act on selected nodes; using only `alias != ""` is not a reliable alias-node test for ordinary scalars.
+The three-dot traversal includes aliases used as map keys. The kind check matters. The `alias` operator is designed to act on selected nodes; using only `alias != ""` is not a reliable alias-node test for ordinary scalars.
 
 ## Create an Anchor and Alias
 
@@ -146,7 +146,7 @@ defaults: &defaults
 copy: *defaults
 ```
 
-Setting an alias discards the node's prior concrete value. Ensure the referenced anchor exists and confirm that replacing the destination is intentional.
+Setting an alias discards the node's prior concrete value. Ensure the referenced anchor exists earlier in the document and confirm that replacing the destination is intentional.
 
 ## Rename an Anchor and Its Aliases Together
 
@@ -155,7 +155,7 @@ Changing only the anchor name can leave aliases referring to the old name. Updat
 ```bash
 yq '
   .defaults anchor = "common" |
-  (.. | select(
+  (... | select(
     kind == "alias" and alias == "defaults"
   )) alias = "common"
 ' config.yml
@@ -164,7 +164,7 @@ yq '
 Review all alias nodes afterward:
 
 ```bash
-yq '[.. | select(kind == "alias") | alias]' config.yml
+yq '[... | select(kind == "alias") | alias]' config.yml
 ```
 
 Anchor names and map key names are independent. Renaming a YAML key does not automatically require changing its anchor, and changing an anchor does not rename the key.
@@ -178,7 +178,7 @@ yq --yaml-fix-merge-anchor-to-spec=true \
   'explode(.)' config.yml
 ```
 
-In v4.53.6, this flag is still opt-in and the command help advises enabling it. `explode(.)` resolves aliases and merge keys into concrete values and removes anchor names. The result may be semantically convenient, but it no longer preserves the shared YAML structure.
+In v4.53.6, this flag is still opt-in and the operator documentation recommends enabling it. `explode(.)` resolves aliases and merge keys into concrete values and removes anchor names. The result may be semantically convenient, but it no longer preserves the shared YAML structure.
 
 Use `explode` only when dereferencing is the desired output. If the goal is to keep anchors and aliases, edit their definitions or metadata directly.
 
@@ -192,7 +192,7 @@ The `style` operator changes how a node is emitted. Set a string to double-quote
 yq '.defaults.timeout style = "double"' config.yml
 ```
 
-Set a multiline string to literal block style:
+Set the folded string to literal block style:
 
 ```bash
 yq '.defaults.message style = "literal"' config.yml
@@ -267,7 +267,7 @@ This turns presentation state into reviewable output. It is especially useful in
 
 ## Conclusion
 
-Treat comments, anchors, aliases, and styles as node metadata, not plain text decoration. Locate comments on values or key nodes, filter alias nodes by `kind`, update anchor references together, enable the merge-anchor fix when exploding legacy merge keys, and restrict quote-style changes to strings when types must survive a second YAML parse.
+Treat comments and styles as node metadata and anchors and aliases as serialization structure, not plain text decoration. Locate comments on values or key nodes, filter alias nodes by `kind`, update anchor references together, enable the merge-anchor fix when exploding legacy merge keys, and restrict quote-style changes to strings when types must survive a second YAML parse.
 
 ## Official Documentation
 
