@@ -125,12 +125,14 @@ kubectl -n orders run grpcurl --rm -it --restart=Never \
 
 Use a trusted, pinned diagnostic image in production rather than copying a floating image reference. If reflection is disabled, call a known method with the relevant proto descriptors instead of treating reflection failure as a transport failure.
 
-Then test the public native gRPC route where supported:
+Then test the public native gRPC route with your compiled descriptor set (`orders.protoset`) and a valid JSON request (`request.json`):
 
 ```bash
-grpcurl -authority grpc.example.com \
-  grpc.example.com:443 list
+grpcurl -authority grpc.example.com -protoset orders.protoset -d @ \
+  grpc.example.com:443 orders.v1.OrderService/GetOrder < request.json
 ```
+
+The service-specific route above does not expose the separate gRPC reflection service, so `grpcurl list` will not work through it even if the backend enables reflection. Supply descriptors when invoking the public method.
 
 Finally test a browser client or a gRPC-Web command-line client. A CORS preflight can be inspected directly:
 
@@ -148,21 +150,21 @@ Verify the returned `Access-Control-Allow-Origin` matches the requesting origin 
 | Symptom | Check first |
 | --- | --- |
 | Browser reports a CORS error | Preflight status, exact Origin, allowed request headers, exposed response headers |
-| HTTP 415 | gRPC-Web content type reached an endpoint that does not understand it, or the expected Envoy route was missed |
+| HTTP 415 | Endpoint rejected the request content type; an unmatched Envoy route normally returns HTTP 404 instead |
 | HTTP 503 with `UH` | Service has no ready or actively healthy endpoint |
 | HTTP 503 with `UF` | Upstream port, `h2` or `h2c`, TLS trust, or application listener is wrong |
 | gRPC status 12 | Service or method path is not implemented |
 | Stream closes at a fixed duration | Route response, idle, or global connection-duration timeout |
 
-Inspect the HTTPProxy condition and Envoy log for the same request ID:
+Inspect the HTTPProxy condition for configuration validity, then search Envoy access logs for the host and correlate matching entries by request ID. HTTPProxy conditions do not contain per-request IDs. Adjust the namespace and workload name for your installation:
 
 ```bash
 kubectl -n orders describe httpproxy orders-grpc-web
-kubectl -n projectcontour logs daemonset/envoy -c envoy --since=10m |
+kubectl -n projectcontour logs daemonset/envoy --all-pods=true -c envoy --since=10m |
   grep 'grpc.example.com'
 ```
 
-Do not treat an HTTP 200 alone as success. gRPC-Web communicates the final RPC result through gRPC status metadata, commonly exposed as response trailers or translated headers. Check the client-visible `grpc-status` too.
+Do not treat an HTTP 200 alone as success. gRPC-Web normally carries final gRPC status metadata in a trailer frame inside the response body; trailers-only responses can carry it in response headers. Check the final `grpc-status` decoded by the gRPC-Web client too.
 
 ## Conclusion
 
