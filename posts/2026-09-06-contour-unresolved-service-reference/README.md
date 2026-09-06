@@ -170,14 +170,14 @@ kubectl -n storefront wait httpproxy/shop \
   --for=condition=Valid --timeout=60s
 ```
 
-Re-read the full condition after the wait. Then send a request with the intended authority and path:
+Re-read the full condition after the wait and confirm that its `observedGeneration` matches the HTTPProxy's `metadata.generation`; `kubectl wait` can return immediately for an older `Valid=True` condition. Check the child as well when using inclusion. Then send a request with the intended authority and path. The manifests above configure HTTP, so use port 80 and replace `203.0.113.20` with your Envoy address:
 
 ```bash
-curl -sv --resolve shop.example.com:443:203.0.113.20 \
-  https://shop.example.com/catalog/health -o /dev/null
+curl -sv --resolve shop.example.com:80:203.0.113.20 \
+  http://shop.example.com/catalog/health -o /dev/null
 ```
 
-Do not use `-k` as the normal test. A valid TLS result verifies that the request reached the intended virtual host rather than an unrelated fallback.
+If you configure TLS on the root with `spec.virtualhost.tls.secretName` referencing a certificate Secret for your hostname, test with `https://` and port 443 instead. Do not use `-k` as the normal test. Successful TLS verification checks the certificate trust and hostname; confirm the response and Envoy access log to verify that the intended route and backend handled the request.
 
 ## Conclusion
 
