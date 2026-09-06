@@ -81,6 +81,9 @@ If your application design requires affinity, Contour can use cookie load balanc
   - conditions:
     - regex: /realtime(/.*)?$
     enableWebsockets: true
+    timeoutPolicy:
+      response: 1h
+      idle: 5m
     loadBalancerPolicy:
       strategy: Cookie
     services:
@@ -128,13 +131,13 @@ Typical patterns are:
 | Symptom | Likely cause |
 | --- | --- |
 | Handshake returns 404 | Hub prefix or application base path is wrong |
-| Handshake returns 426 or never upgrades | `enableWebsockets` is absent on the matched route |
+| Handshake returns 403 with Envoy response-code detail `upgrade_failed` | `enableWebsockets` is absent on the matched route; other 403 responses can indicate authentication or authorization failures |
 | Connects, then drops at a fixed interval | An idle or maximum-duration limit exists in Envoy, the load balancer, or the app |
 | Negotiate succeeds, connect intermittently fails | Multi-replica state or affinity is incorrect |
 | WebSockets work but some clients fail | A fallback transport was not tested or has a shorter response timeout |
 | HTTPProxy is invalid | Service name, Service port, TLS Secret, or route configuration does not resolve |
 
-Check which route handled a request by enabling Contour's route-source metadata in structured access logs. That is more reliable than assuming the longest-looking prefix was selected.
+Identify the HTTPProxy resource that generated a route by enabling Contour's route-source metadata in structured access logs. This metadata does not distinguish routes within the same HTTPProxy; correlate the request path and upstream cluster with the generated Envoy route configuration to identify the matched route.
 
 ## Keep the Security Boundary Intact
 
