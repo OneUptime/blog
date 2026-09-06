@@ -184,7 +184,6 @@
 
 ## OneUptime
 
-4. How to Deploy OneUptime on Kubernetes with Helm and Production-Ready Persistent Storage
 5. How to Size CPU, Memory, and Storage for a Self-Hosted OneUptime Deployment
 6. How to Upgrade Self-Hosted OneUptime Without Losing Monitors, Incidents, or Telemetry
 7. How to Back Up and Restore OneUptime’s PostgreSQL, ClickHouse, and Object Storage Data
