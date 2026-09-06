@@ -103,7 +103,7 @@ Retries are useful only when the request is safe to repeat and another attempt c
       port: 8080
 ```
 
-This allows the initial attempt and at most two retries, but the overall response timeout still bounds the operation. Envoy applies `perTryTimeout` to the initial attempt and retries, and stops that timer once response headers begin. Leave time for connection setup and the final response.
+This allows the initial attempt and at most two retries, but the overall response timeout still bounds the operation. Envoy applies `perTryTimeout` to the initial attempt and retries, and stops applying that timeout once a response starts being sent downstream, normally after upstream response headers arrive. Leave time for connection setup and the final response.
 
 Do not attach that policy to a long-running report creation POST unless the operation is idempotent through a tested idempotency key. A timed-out attempt may keep running after Envoy retries, creating duplicate jobs and extra load. For long work, prefer an asynchronous API that returns a job ID and exposes a separate status resource.
 
@@ -116,7 +116,7 @@ A route problem can look similar from the client. Use access-log evidence:
 | Flag or symptom | Interpretation |
 | --- | --- |
 | `UT`, often 504 | Upstream request exceeded its deadline |
-| `UF`, usually 503 | Envoy failed to establish or maintain the upstream connection before headers |
+| `UF`, usually 503 | Envoy failed to establish the upstream connection |
 | `UH`, usually 503 | No healthy upstream endpoint was available |
 | `NR`, usually 404 | No configured route matched |
 | App returns its own 504 | Dependency deadline inside the application, not necessarily Envoy's route timer |
@@ -148,5 +148,5 @@ Treat a Contour 504 as a deadline investigation. Identify the hop and Envoy resp
 - [Contour 1.33 HTTPProxy API reference](https://projectcontour.io/docs/1.33/config/api-reference/)
 - [Contour 1.33 access logging](https://projectcontour.io/docs/1.33/config/access-logging/)
 - [Contour 1.33 common proxy errors](https://projectcontour.io/docs/1.33/troubleshooting/common-proxy-errors/)
-- [Envoy response flags](https://www.envoyproxy.io/docs/envoy/latest/configuration/observability/access_log/usage)
+- [Envoy response flags](https://www.envoyproxy.io/docs/envoy/latest/configuration/advanced/substitution_formatter#response-flags)
 - [Envoy router timeout configuration](https://www.envoyproxy.io/docs/envoy/latest/faq/configuration/timeouts)
