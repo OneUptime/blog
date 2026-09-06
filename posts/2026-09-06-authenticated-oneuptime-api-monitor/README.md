@@ -58,26 +58,28 @@ If the service requires mutual TLS, enable the API monitor's client-certificate 
 
 ## Add layered criteria
 
-Start with an online criterion for the transport result:
+Create one Online criterion that requires all filters to match. Start with a JavaScript Expression filter for the HTTP status:
 
 ```javascript
 {{responseStatusCode}} === 200
 ```
 
-Then verify the parsed JSON contract:
+In the same criterion, add a second JavaScript Expression filter to verify the parsed JSON contract:
 
 ```javascript
 "{{responseBody.status}}" === "ok" &&
 "{{responseBody.database}}" === "connected"
 ```
 
-For API and Website criteria, OneUptime exposes `responseBody`, `responseHeaders`, `responseStatusCode`, and `responseTimeInMs`. A JavaScript expression must return a boolean and times out after one second. Keep it deterministic and small.
+For API and Website criteria, OneUptime exposes `responseBody`, `responseHeaders`, `responseStatusCode`, and `responseTimeInMs`. Write a JavaScript expression that returns a boolean. In version 12.0.33, the evaluator uses the sandbox’s default five-second timeout; an error or timeout leaves the filter unmatched. Keep it deterministic and small.
+
+API criteria are evaluated in order, and the first match wins. Replace any broader Online criterion that would accept a 200 response alone. After the combined Online criterion, add an Offline criterion with the JavaScript expression `true` as a catch-all, and configure its alert or incident actions. This gives failed status checks, unhealthy JSON, and expression errors an explicit failure path.
 
 You can also use built-in status, response-time, body, and header criteria. Built-ins are easier for another operator to review; use JavaScript only when the JSON relationship needs it.
 
 ## Decide how much evidence is enough
 
-A single failure gives fast detection but can page on a transient network event. OneUptime can evaluate criteria over a period of past checks. `Any Value` reacts to one breach, while `All Values` waits until the configured window is covered and all samples match. Choose `If No Data` deliberately so a stopped check is not mistaken for health.
+A single failure gives fast detection but can page on a transient network event. OneUptime can evaluate supported metric filters, such as response status code, response time, and Is Online, over a period of past checks. The JavaScript expressions above evaluate the current response, not a history of expression results. `Any Value` reacts to one breach, while `All Values` waits until the configured window is covered and all samples match. Choose `If No Data` deliberately for those filters; it controls missing history when evaluation runs and does not itself schedule an evaluation when checks stop arriving.
 
 For a critical health API, a common pattern is a short interval, limited retries, and a small sustained-failure window. Measure the resulting time to detect and align it with the service objective.
 
