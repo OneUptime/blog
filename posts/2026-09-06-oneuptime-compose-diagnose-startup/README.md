@@ -21,7 +21,7 @@ docker compose --env-file config.env config --quiet
 docker compose --env-file config.env config --services
 ```
 
-The first command catches invalid YAML and unresolved Compose interpolation. Inspect the fully rendered configuration if a port, image, volume, or environment value looks wrong:
+The first command catches invalid YAML and invalid Compose configuration. Unset interpolation variables without defaults can produce warnings and become empty strings without making validation fail, so review warnings and check required values too. Inspect the fully rendered configuration if a port, image, volume, or environment value looks wrong:
 
 ```bash
 docker compose --env-file config.env config > /tmp/oneuptime-compose.yaml
@@ -50,7 +50,7 @@ Replace `CONTAINER_NAME` with the exact database container name from `docker com
 
 ## Check ports and host capacity
 
-The public HTTP port is controlled by `ONEUPTIME_HTTP_PORT`. The 12.0.33 root Compose file also publishes PostgreSQL on host port 5400 for backups, and `STATUS_PAGE_HTTPS_PORT` defaults to 443. Inspect the rendered `ports` entries, then check whether another process already owns any of them:
+The public HTTP port is controlled by `ONEUPTIME_HTTP_PORT`. The 12.0.33 root Compose file also publishes PostgreSQL on host port 5400 for backups, and `STATUS_PAGE_HTTPS_PORT` defaults to 443. Inspect the rendered `ports` entries, then check whether another process already owns any of them. The example below checks the default ports; adjust the port numbers to match your rendered configuration:
 
 ```bash
 ss -ltnp | grep -E ':(80|443|5400) '
@@ -92,7 +92,7 @@ docker compose --env-file config.env ps
 
 Use this sequence:
 
-1. Confirm `docker compose config --quiet` succeeds.
+1. Confirm `docker compose --env-file config.env config --quiet` succeeds and review interpolation warnings and required values.
 2. Confirm sufficient disk, memory, and free ports.
 3. Make PostgreSQL, ClickHouse, and Redis healthy.
 4. Inspect migrations and application service logs.
