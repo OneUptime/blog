@@ -96,7 +96,7 @@ This guarantees the header labels and column order regardless of source map orde
 ```bash
 yq -o=csv '
   [["Service", "Team", "Replica Count"]] +
-  [.items[] | [.name, .owner, .replicas]]
+  [.items[] | [.name, .owner, ([.replicas] | .[0])]]
 ' report.yml
 ```
 
@@ -104,7 +104,7 @@ Every row must emit the same number of scalar columns.
 
 ## Handle Missing and Null Fields Deliberately
 
-With a manually constructed row, a missing path evaluates to null, and the CSV encoder writes `null`. If an optional string should be blank, use an explicit default:
+In v4.53.6, a missing path can be omitted from a manually constructed row when the row expression is evaluated inside `+`, shortening the row. Use `([.owner] | .[0])` to retain a null cell, which the CSV encoder writes as `null`. Explicit YAML nulls retain their scalar text, so `null`, `~`, and an empty YAML value can produce different CSV text. If an optional string should be blank, use an explicit default:
 
 ```bash
 yq -o=csv '
