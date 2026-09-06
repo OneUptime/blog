@@ -20,7 +20,7 @@ Start with a correct readiness probe. Add Envoy active checks only when faster, 
 
 A health endpoint should be cheap, bounded, and honest about whether the process can serve the proxied traffic. Avoid an expensive recursive check of every dependency on every request. If every Envoy replica probes every application endpoint, even a modest interval can create substantial aggregate traffic.
 
-This route checks `/readyz` every ten seconds and treats any status from 200 through 299 as healthy:
+This route configures a ten-second check interval for `/readyz` and treats any status from 200 through 299 as healthy:
 
 ```yaml
 apiVersion: projectcontour.io/v1
@@ -84,7 +84,7 @@ Project Contour 1.33 documents these HTTP defaults:
 - `expectedStatuses`: only status 200
 - `host`: `contour-envoy-healthcheck`
 
-On startup, one successful check is enough to mark a host healthy even when `healthyThresholdCount` is greater than one. An HTTP 503 response immediately marks the host unhealthy without waiting for the normal unhealthy threshold.
+On startup, one successful check is enough to mark a host healthy even when `healthyThresholdCount` is greater than one. An HTTP response outside `expectedStatuses`, including 503 in this example, immediately marks the host unhealthy without waiting for the normal unhealthy threshold. Contour does not configure Envoy retriable status ranges; the failure threshold applies to failures such as connection errors and timeouts.
 
 `expectedStatuses` uses half-open ranges. `start: 200` and `end: 300` includes 200 through 299, but not 300. If the field is present and status 200 should count, include it explicitly. Broad ranges such as 200 through 499 can hide authentication or routing mistakes, so accept only statuses the health endpoint intentionally returns.
 
@@ -105,13 +105,13 @@ readinessProbe:
   failureThreshold: 3
 ```
 
-Kubernetes removes an unready Pod from the Service's ready endpoints. Envoy can react within its own check cadence and may have a different view briefly. That is expected. Do not assume that changing an HTTPProxy health policy updates Pod readiness or EndpointSlice conditions.
+Kubernetes removes an unready Pod from the Service's ready endpoints unless the Service sets `publishNotReadyAddresses: true`. Envoy can react within its own check cadence and may have a different view briefly. That is expected. Do not assume that changing an HTTPProxy health policy updates Pod readiness or EndpointSlice conditions.
 
 Use startup probes for slow initialization. A liveness probe should detect an unrecoverable process, not a transient dependency outage. Otherwise a database incident can trigger restart storms while Envoy is already removing affected endpoints from traffic.
 
 ## Tune for Failure Detection and Recovery
 
-With a ten-second interval and three ordinary failures, detection takes roughly twenty to thirty seconds depending on when failure begins and how quickly each probe times out. The exact time is not a hard guarantee. Network scheduling and timeouts matter.
+Once the cluster has received traffic, a ten-second interval and three consecutive connection failures give a rough detection estimate of twenty to thirty seconds, with probe timeouts potentially adding to that time. The exact time is not a hard guarantee. Before a cluster has received traffic, Envoy uses its default sixty-second no-traffic interval, so detection can take substantially longer.
 
 Make `timeoutSeconds` comfortably longer than the healthy endpoint's high-percentile latency but much shorter than the interval. Require enough failures to tolerate brief packet loss. Require multiple successes for recovery when the application needs warmup, while remembering that startup has special one-success behavior.
 
@@ -127,7 +127,7 @@ If all endpoints flap together, first check the health host header, path, separa
 
 ## Configure Connect-Only Checks for TCPProxy
 
-TCPProxy has a separate connect-only health policy with no HTTP path or expected status:
+TCPProxy has a separate connect-only health policy with no HTTP path or expected status. The TLS passthrough example below requires clients to begin with a TLS handshake carrying SNI `db.example.com`, and the backend must support that handshake. For PostgreSQL on port 5432, the usual SSLRequest negotiation does not work with this SNI routing; use a client and server that support direct TLS negotiation:
 
 ```yaml
 spec:
