@@ -8,7 +8,7 @@ Description: Monitor an SSO login with a OneUptime synthetic check, a dedicated 
 
 ---
 
-An SSO login is a browser journey across at least two systems: the application and its identity provider. A simple HTTP check can prove the login page responds, but only a synthetic browser check can prove that authentication returns a user to a working session.
+An SSO login is a browser journey across at least two systems: the application and its identity provider. A simple HTTP check can prove the login page responds, but a synthetic browser check can verify that the browser login journey returns a user to a working session.
 
 OneUptime synthetic monitors provide a secure Playwright-compatible `page` object and failure-preserved screenshots. The examples here match OneUptime 12.0.33.
 
@@ -18,7 +18,7 @@ Provision a dedicated user with the smallest possible application role. It shoul
 
 Do not disable MFA for all users to make monitoring convenient. Choose one explicit test design:
 
-- a non-interactive test account under a tightly scoped IdP policy
+- a dedicated test account permitted to complete the browser login under a tightly scoped IdP policy
 - a test tenant that mirrors the production SSO configuration
 - a machine-friendly authentication path specifically supported by the application
 
@@ -26,7 +26,7 @@ This verifies the chosen synthetic path. If real users must complete MFA or a di
 
 ## Store credentials in monitor secrets
 
-Open **Monitors > Settings > Secrets**, create `SyntheticUsername` and `SyntheticPassword`, and grant only this monitor access. OneUptime secrets cannot be viewed or updated after saving, so document the rotation procedure without recording their values.
+Open **Monitors > Settings > Secrets**, create `SyntheticUsername` and `SyntheticPassword`, and grant only this monitor access. OneUptime secret values cannot be viewed after saving, but can be replaced using **Update Secret Value**, so document the rotation procedure without recording their values.
 
 Never log the substituted variables or capture a screenshot while a plaintext password is visible.
 
@@ -46,7 +46,7 @@ await page.getByRole('button', { name: 'Next' }).click();
 await page.getByLabel('Password').fill(password);
 await page.getByRole('button', { name: 'Sign in' }).click();
 
-await page.waitForURL(/app\.example\.com\/dashboard/);
+await page.waitForURL(/^https:\/\/app\.example\.com\/dashboard\/?(?:[?#].*)?$/);
 await page.getByTestId('signed-in-user').waitFor();
 
 screenshots['authenticated-dashboard'] = await page.screenshot();
@@ -61,7 +61,7 @@ return {
 
 Replace every selector and URL with the actual flow. The final assertion should prove user-specific authenticated content, not just a generic dashboard shell or a redirect back to the application.
 
-The `screenshots` side channel preserves images even if a later assertion fails. Capture only pages cleared for operational evidence, and ensure the synthetic account sees no sensitive data.
+The `screenshots` side channel preserves images already assigned to it even if a later assertion fails. The example captures only after successful login; for evidence of earlier steps, explicitly capture approved pages before those steps can fail. Capture only pages cleared for operational evidence, and ensure the synthetic account sees no sensitive data.
 
 ## Handle popups and redirects explicitly
 
@@ -94,7 +94,7 @@ Run from the same probe regions real users depend on. Separate the login journey
 
 ## Operate the identity
 
-Alert on upcoming secret and certificate expiry. Rotate the credential in the IdP, create new OneUptime monitor secrets, update the script references, run a successful check, then revoke the old value. Check sign-in audit logs for activity outside the monitor schedule.
+Alert on upcoming secret and certificate expiry. Rotate the credential in the IdP, replace the corresponding OneUptime secret with **Update Secret Value**, and run a successful check. If the IdP supports overlapping credentials, revoke the old value after verification; otherwise coordinate the update because changing a password may invalidate the old one immediately. Check sign-in audit logs for activity outside the monitor schedule.
 
 SSO interfaces can change without an application deployment. Coordinate selector changes with the identity team and treat an unexpected consent, CAPTCHA, or MFA prompt as a real change to investigate, not an element to click around automatically.
 

@@ -128,7 +128,7 @@ yq eval-all -e '
 ' bundle.yaml >/dev/null
 ```
 
-`[.]` creates one array from the document stream. `length > 0` rejects an empty stream, and `all_c` applies the structural predicate to every document. The command emits exactly one true or false value for `-e` to interpret.
+`[.]` creates one array from the document stream. `length > 0` rejects an empty array, and `all_c` applies the structural predicate to every document. In v4.53.6, an empty input file produces a synthetic null node, so the map predicate rejects it. The command emits exactly one true or false value for `-e` to interpret.
 
 This proves only the listed shape. It does not validate Kubernetes OpenAPI schemas, API compatibility, or admission policy.
 
@@ -140,13 +140,13 @@ In yq v4.53.6, parsing an empty file with this command succeeds because there is
 yq eval '.' empty.yml >/dev/null
 ```
 
-Adding `-e` makes a no-result stream fail:
+Adding `-e` makes this fail because yq evaluates `.` against a synthetic null node when no documents are read:
 
 ```bash
 yq -e '.' empty.yml >/dev/null
 ```
 
-For a multi-document policy, the explicit `length > 0` check documents the same requirement instead of relying only on printer behavior.
+For the multi-document policy above, `[.]` contains that synthetic null node for an empty file, so its length is 1. The `tag == "!!map"` check inside `all_c` rejects it; `length > 0` alone would not.
 
 ## Preserve Failure Through Pipelines
 

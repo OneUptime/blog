@@ -106,12 +106,12 @@ For a browser request, the external authorization component normally needs to:
 2. return an allow decision and identity headers when the session is valid;
 3. return a redirect to the identity provider when it is absent;
 4. bind callback state and nonce to the browser session;
-5. exchange the authorization code using a server-side client secret; and
+5. exchange the authorization code using the registered client authentication method, such as a server-side client secret or `private_key_jwt`, and validate the returned ID token before creating a session; and
 6. refresh or revoke sessions according to policy.
 
 Confirm that the selected product implements Envoy's v3 external authorization gRPC API directly, or deploy a documented adapter. A product exposing only an NGINX `auth_request` endpoint is not automatically compatible.
 
-Use Authorization Code flow with PKCE when supported, exact callback URIs, a narrow issuer and audience, and short-lived sessions. Store the OIDC client secret in a Kubernetes Secret and grant only the auth workload access. Never send refresh tokens to the protected application unless it explicitly owns them.
+Use Authorization Code flow with PKCE when supported, exact callback URIs, a narrow issuer and audience, and short-lived sessions. Store any OIDC client secret or private key in a Kubernetes Secret and grant only the auth workload access. Never send refresh tokens to the protected application unless it explicitly owns them.
 
 Identity headers returned by the checker must replace untrusted client headers. Test that a client cannot inject `X-User`, `X-Email`, or group values by sending them directly. The auth service should return only the minimum headers the application needs.
 
@@ -130,6 +130,7 @@ spec:
       issuer: https://id.example.com/
       audiences:
       - orders-api
+      forwardJWT: true
       remoteJWKS:
         uri: https://id.example.com/.well-known/jwks.json
         timeout: 2s
@@ -144,7 +145,7 @@ spec:
       port: 8080
 ```
 
-This checks token validity properties documented by Contour. Application authorization still needs to decide whether the validated identity may perform a particular action. Also review upstream TLS validation for the JWKS endpoint; Contour's documented default does not validate that server certificate unless `remoteJWKS.validation` is configured.
+This checks token validity properties documented by Contour. Application authorization still needs to decide whether the validated identity may perform a particular action. `forwardJWT: true` preserves the bearer token for that purpose; by default, Contour removes it before forwarding the request. Also review upstream TLS validation for the JWKS endpoint; Contour's documented default does not validate that server certificate unless `remoteJWKS.validation` is configured.
 
 ## Verify Positive, Negative, and Failure Cases
 
