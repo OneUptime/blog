@@ -40,17 +40,17 @@ A practical design is:
 - treat missing data as failure only for heartbeat-style monitors
 - use a shorter window for severe availability failures than for performance degradation
 
-Long windows reduce noise but delay detection. Record that cost explicitly.
+Long windows with sustained-breach or averaging criteria can reduce noise but delay detection; `Any Value` can still match on the first breach. Record that cost explicitly.
 
 ## Stop escalation when someone owns the event
 
-Configure on-call policies so acknowledgement stops remaining escalation steps and repeats. For alert and incident reminders, select whether reminders stop at the acknowledged state or continue until resolution.
+Acknowledgement stops pending on-call policy execution, including remaining escalation steps and repeats. Configure policy repeats for events that remain unacknowledged. For alert and incident reminders, select whether reminders stop at the acknowledged state or continue until resolution.
 
 Acknowledgement does not fix the service and should not erase the alert. It changes the human-notification state: somebody has accepted responsibility. Track unresolved acknowledged incidents separately so quiet does not become forgotten.
 
 ## Understand automatic email rollup
 
-OneUptime automatically rolls up owner and member email bursts. For each recipient, project, email address, and category, the first four messages in a ten-minute window are immediate. The fifth and later messages are held and arrive in a grouped email about five minutes later. Nothing is discarded.
+OneUptime automatically rolls up owner and member email bursts. For each recipient, project, email address, and category, the first four messages in a ten-minute window are immediate. The fifth and later messages are held for a grouped email about five minutes later. Each rollup carries at most 500 notifications, with overflow queued for later rollups, and renders at most 100 resource rows. Notifications are grouped by resource, so the email can show the latest state and an update count rather than every event separately; beyond the row limit, it shows totals and a project link.
 
 This does not apply to on-call paging, account security, instance-health warnings, status-page subscribers, or non-email channels. A user can disable rollup for one project under **User Settings > Notification Settings**. Rollup limits inbox volume after events exist; it does not suppress alert or incident creation.
 
