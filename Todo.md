@@ -184,7 +184,6 @@
 
 ## OneUptime
 
-16. How to Monitor a Login Flow in OneUptime When the Site Uses SSO
 17. How to Provision Monitors and Status Pages Automatically with the OneUptime API
 18. How to Add a Custom Domain and Subscriber Notifications to a OneUptime Status Page
 19. How to Build a OneUptime Dashboard That Correlates Incidents, Alerts, Logs, and Traces
