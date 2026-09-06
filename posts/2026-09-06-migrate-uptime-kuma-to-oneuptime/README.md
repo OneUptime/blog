@@ -44,7 +44,7 @@ Pause entries that do not have an unambiguous mapping. Maintenance windows, retr
 
 ## Prepare OneUptime safely
 
-Create a migration-specific OneUptime API key under **Project Settings > API Keys**. API keys start without permissions, so grant only the monitor and monitor-step permissions required for the target project. Send it as the `ApiKey` header, never in a query string.
+Create a migration-specific OneUptime API key under **Project Settings > API Keys**. API keys start without permissions, so grant only the monitor create, read, and update permissions and the permissions for any related resources your migration manages in the target project. Send it as the `ApiKey` header, never in a query string.
 
 Create monitor secrets first and grant only the appropriate monitors access. Translate tokens in headers to references such as:
 
@@ -52,24 +52,24 @@ Create monitor secrets first and grant only the appropriate monitors access. Tra
 Authorization: Bearer {{monitorSecrets.ApiToken}}
 ```
 
-The OneUptime API separates a monitor resource from its monitor steps and criteria. Creating only `/api/monitor` is not enough to reproduce an active HTTP check. Use the current Monitor and Monitor Step API reference to construct and validate both objects.
+The OneUptime API stores steps and criteria inside the monitor resource's `monitorSteps` field. Create or update this field through `/api/monitor`; Monitor Step is a nested data type, not a separate resource endpoint. Use the Monitor API and Monitor Steps and Monitor Step data-type references for your installed version to construct and validate the complete check configuration.
 
 ## Migrate in disabled batches
 
-Start with five representative monitors, one of each important type. Create them disabled, attach the correct probe, steps, criteria, labels, owners, and notification policies, then have a second person review the result.
+Start with five representative monitors, one of each important type. Create them with `disableActiveMonitoring: true`, configure steps, criteria, labels, owners, and notification policies, and assign the correct probe where the monitor type requires one, then have a second person review the result.
 
 For API automation, use this control flow rather than blind repeated POSTs:
 
 ```text
 for each reviewed source monitor:
-    look up target by migration label and source id
+    look up target by migration label and a persisted source-instance/source-id mapping
     if it exists, compare and update deliberately
     otherwise, create a disabled monitor
-    create or reconcile its monitor steps
+    reconcile its embedded monitorSteps configuration through the Monitor API
     read the result back and record the OneUptime id
 ```
 
-The migration label makes retries idempotent. The API request bodies are version-specific, so generate them from the current OneUptime reference rather than copying a stale payload. Log IDs and validation errors, but redact the `ApiKey` header and secret values.
+A migration label alone does not make retries idempotent. Persist the source-instance/source-id mapping when creating each target, serialize creation for each source, and reconcile ambiguous POST outcomes before retrying. The API request bodies are version-specific, so construct them from the OneUptime reference matching your installed version rather than copying a stale payload. Log IDs and validation errors, but redact the `ApiKey` header and secret values.
 
 ## Run both systems side by side
 
@@ -99,6 +99,6 @@ There is no verified built-in Uptime Kuma importer in OneUptime 12.0.33. Treat m
 - [OneUptime API reference guide](https://oneuptime.com/docs/en/api-reference/api-reference)
 - [OneUptime API authentication](https://oneuptime.com/reference/en/authentication)
 - [OneUptime Monitor API](https://oneuptime.com/reference/en/monitor)
-- [OneUptime Monitor Step API](https://oneuptime.com/reference/en/monitor-step)
+- [OneUptime Monitor Step data type](https://oneuptime.com/reference/en/monitor-step)
 - [Uptime Kuma repository](https://github.com/louislam/uptime-kuma)
 - [Uptime Kuma migration from v1 to v2](https://github.com/louislam/uptime-kuma/wiki/Migration-From-v1-To-v2)
