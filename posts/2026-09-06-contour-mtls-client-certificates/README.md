@@ -49,9 +49,9 @@ spec:
       port: 8080
 ```
 
-With `caSecret` configured and `optionalClientCertificate` omitted, a client certificate is required. Contour validates that the CA Secret exists and is usable before accepting the HTTPProxy.
+With `caSecret` configured and `optionalClientCertificate` omitted, a client certificate is required. Contour checks that the CA Secret exists and contains a nonempty PEM certificate bundle before marking the HTTPProxy valid. Envoy performs the certificate validation; HTTPProxy validity alone does not prove the trust bundle works.
 
-TLS passthrough cannot provide this edge validation because Envoy does not terminate the handshake. If the backend must terminate TLS itself, configure client verification there and use `tls.passthrough: true` with `TCPProxy` instead.
+TLS passthrough cannot provide this edge validation because Envoy does not terminate the handshake. If the backend must terminate TLS itself, configure client verification there and use `tls.passthrough: true` with `spec.tcpproxy` on the HTTPProxy instead.
 
 ## Forward Only the Identity Data the App Needs
 
@@ -69,7 +69,7 @@ Contour removes any client-supplied XFCC header before adding its own. Select th
 
 The application must trust identity headers only from Envoy. NetworkPolicy should prevent clients from reaching the backend Service or Pod directly, where they could bypass TLS validation and supply their own headers.
 
-For authorization by subject, SAN, organization, or revocation state, either validate the sanitized values carefully in the application or use an external authorization service. Certificate subjects are structured names; unsafe string parsing can create identity collisions.
+For authorization by subject, SAN, or organization, either validate the sanitized values carefully in the application or use an external authorization service. The forwarded subject and URI SAN do not contain revocation status; use CRL checking at Envoy or provide certificate data and a revocation source to the application or authorization service for that check. Certificate subjects are structured names; unsafe string parsing can create identity collisions.
 
 ## Test Required, Trusted, and Untrusted Cases
 
@@ -123,7 +123,7 @@ Check the control plane first:
 ```bash
 kubectl -n partner-api describe httpproxy partner-api
 kubectl -n partner-api get secret partner-client-ca \
-  -o jsonpath='{.type}{" keys="}{range $k,$v := .data}{$k}{" "}{end}{"\n"}'
+  -o go-template='{{.type}}{{" keys="}}{{range $k, $v := .data}}{{$k}}{{" "}}{{end}}{{"\n"}}'
 ```
 
 Then inspect Envoy TLS metrics and temporary debug logs for handshake failures. A request rejected in the handshake will not appear in application logs. Common causes include an incomplete client chain, the wrong trust bundle, expiration, clock skew, a stale CRL, and clients that never sent a certificate.
