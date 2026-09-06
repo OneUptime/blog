@@ -35,7 +35,7 @@ kubectl -n storefront get httpproxy shop -o yaml
 kubectl -n storefront describe httpproxy shop
 ```
 
-Contour writes one normal-true condition of type `Valid`. `status: 'True'` means the object was ingested without a fatal error, although warnings may appear. `status: 'False'` means its error entries prevented a valid configuration.
+Contour writes one normal-true condition of type `Valid`. `status: 'True'` means the object was ingested without a fatal error, although warnings may appear. `status: 'False'` means Contour recorded fatal validation errors; depending on the error, some routes may still be generated.
 
 Compare `metadata.generation` with the condition's `observedGeneration`. If they differ, you may be reading status from an older spec. Wait briefly and confirm that the intended Contour instance is healthy, watches the namespace, and accepts the object's ingress class.
 
@@ -48,11 +48,11 @@ Read the error literally and inspect its owner. Common branches are:
 | Status clue | Objects to inspect |
 | --- | --- |
 | Unresolved service reference | Service in the route HTTPProxy namespace and its numeric Service port |
-| TLS Secret invalid or not found | Secret type and keys, FQDN coverage, TLSCertificateDelegation |
+| TLS Secret invalid or not found | Secret type, certificate and private-key data, and TLSCertificateDelegation |
 | Include not found or invalid | Child HTTPProxy namespace, non-root shape, composed conditions |
-| Duplicate route | Root and included routes after prefixes and conditions are combined |
-| Root namespace or class mismatch | Contour flags and `spec.ingressClassName` |
-| Invalid route condition | One path matcher per route and valid header or query rules |
+| Duplicate include conditions | Sibling includes with identical match conditions |
+| Disallowed root namespace, or missing/stale status from class filtering | Contour flags, `spec.ingressClassName`, and any legacy `kubernetes.io/ingress.class` annotation (which takes precedence) |
+| Invalid route condition | At most one path matcher per route and valid header or query rules |
 
 For a Service branch:
 
@@ -92,7 +92,7 @@ curl --fail --silent http://127.0.0.1:6060/debug/dag \
 dot -Tsvg /tmp/contour-dag.dot -o /tmp/contour-dag.svg
 ```
 
-Search the DOT for the FQDN, namespace, Service, and port. The graph helps answer whether a root connects to the intended child and cluster. A rejected object or route may be absent, so absence plus a `Valid=False` status is expected evidence, not proof that Contour never observed it.
+Search the DOT for the FQDN, namespace, Service, and port. The graph helps answer whether a virtual host connects to the intended routes, clusters, and Services. Includes are flattened into routes; child HTTPProxy objects are not separate DOT nodes. A rejected object or route may be absent, so absence plus a `Valid=False` status is expected evidence, not proof that Contour never observed it.
 
 Run the check against the leader's current view when replicas could differ. Also verify the port-forwarded Pod belongs to the Contour deployment and ingress class handling this HTTPProxy.
 
@@ -120,11 +120,11 @@ The layers answer different questions:
 - EDS: which endpoint addresses and ports did Contour send?
 - LDS: is the expected HTTP or TLS listener present?
 
-Do not jump to EDS when the HTTPProxy remains invalid. Contour cannot produce a healthy downstream route from a rejected configuration.
+Do not jump to EDS when the HTTPProxy remains invalid. Depending on the validation error, Contour may still generate unaffected routes or direct 502 responses; inspect the specific failed route rather than assuming the whole HTTPProxy is absent from xDS.
 
 ## Use Logs as Supporting Evidence
 
-Temporarily enabling Contour `--debug` can show more about API processing. `--kubernetes-debug` is much more verbose and should be used sparingly. Prefer status and object inspection first.
+Temporarily enabling Contour `--debug` can show more about API processing. `--kubernetes-debug` requires an integer verbosity level (for example, `--kubernetes-debug=4`) and should be used sparingly. Prefer status and object inspection first.
 
 Correlate timestamps with an apply and filter on namespace, kind, and name. Never assume the final log line is the root cause; one invalid child can produce follow-on messages for multiple parents.
 
