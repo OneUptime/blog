@@ -184,7 +184,6 @@
 
 ## OneUptime
 
-5. How to Size CPU, Memory, and Storage for a Self-Hosted OneUptime Deployment
 6. How to Upgrade Self-Hosted OneUptime Without Losing Monitors, Incidents, or Telemetry
 7. How to Back Up and Restore OneUptime’s PostgreSQL, ClickHouse, and Object Storage Data
 8. How to Monitor Private LAN Services with OneUptime Probes Without Exposing Them Publicly
