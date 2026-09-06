@@ -22,7 +22,7 @@ Write the mapping before writing YAML:
 | `/app/orders` | `/orders` |
 | `/app/assets/main.css` | `/assets/main.css` |
 
-Normalize the no-slash form separately. This avoids depending on duplicate-slash normalization when replacing `/app` with `/`:
+Normalize the no-slash form separately to give clients a canonical public URL. Contour already generates slash-aware prefix rewrites, but that does not redirect the browser to `/app/`:
 
 ```yaml
 apiVersion: projectcontour.io/v1
@@ -58,17 +58,17 @@ spec:
 
 The `308` preserves the request method and body. That matters when a client sends a non-GET request to `/app`, although clients should normally use the canonical slash form directly.
 
-Contour requires the optional rewrite `prefix` to exactly match the rendered route prefix. Omitting it applies the replacement to every prefix produced by an include chain. An explicit value is easier to review in a root proxy; multiple entries are mainly useful when one child HTTPProxy is included under different parent prefixes.
+Contour applies an entry with an explicit rewrite `prefix` only when it exactly matches the rendered route prefix. If no entry matches and no default replacement is supplied, the path is left unchanged. Omitting it applies the replacement to every prefix produced by an include chain. An explicit value is easier to review in a root proxy; multiple entries are mainly useful when one child HTTPProxy is included under different parent prefixes.
 
 ## Configure the Application's External Base URL
 
-The most reliable fix for redirects is application configuration. Set its public base URL or path base to:
+The most reliable fix for redirects is application configuration. Set its public base URL to:
 
 ```text
 https://portal.example.com/app
 ```
 
-Framework names vary: base path, root URL, external URL, context path, script name, or forwarded prefix. Configure the documented option for the application rather than expecting Envoy to parse and transform arbitrary response headers or HTML.
+If the setting accepts only a path base, use `/app` instead of the full URL. Framework names vary: base path, root URL, external URL, context path, script name, or forwarded prefix. Configure the documented option for the application rather than expecting Envoy to parse and transform arbitrary response headers or HTML.
 
 The example sets `X-Forwarded-Prefix: /app`, overwriting any client value. That header helps only if the framework is configured to trust it from known proxies. Do not trust forwarded headers from arbitrary direct clients, and prevent direct Pod access where the trust boundary depends on Envoy.
 
@@ -124,8 +124,8 @@ Use a browser for OIDC or cookie flows. Redirect URI registration is exact in ma
 | Browser leaves `/app` after login | Application generated a root-relative `Location` |
 | CSS or JavaScript returns 404 | HTML contains root-relative asset URLs |
 | Login loops | Callback URL, forwarded scheme, cookie Path, or trust-proxy setting is wrong |
-| HTTPProxy becomes invalid | Rewrite prefix does not equal the route or rendered include prefix |
-| Backend sees `/app/...` unchanged | Request matched a different route |
+| HTTPProxy becomes invalid | Prefix replacement configured on an exact or regex route instead of a prefix route |
+| Backend sees `/app/...` unchanged | Request matched a different route, or no rewrite entry matched the rendered prefix and no default was supplied |
 
 Contour's access logs can include route-source metadata and the original request path. Compare that with an application log of the received path and forwarded headers. This provides evidence at both sides of the rewrite.
 
