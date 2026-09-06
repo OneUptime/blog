@@ -92,7 +92,7 @@ Nested maps are combined. The later `cpu`, `image`, and `logging.level` values r
 
 ## Understand `eval-all` and `ireduce`
 
-Normal `eval` processes documents one at a time. A merge needs all input documents available together, so use `eval-all`, whose short form is `ea`.
+Normal `eval` processes documents one at a time. This reducer needs all input documents available together, so use `eval-all`, whose short form is `ea`.
 
 The expression has three parts:
 
@@ -106,7 +106,7 @@ The expression has three parts:
 
 Because `$doc` is on the right, each later document has precedence over earlier documents. Reversing the filenames reverses the conflict outcome.
 
-For exactly two files, the file index makes the same rule visible:
+For exactly two files containing one document each, the file index makes the same rule visible:
 
 ```bash
 yq eval-all '
@@ -148,7 +148,7 @@ yq ea '{
 }' "${layers[@]}"
 ```
 
-A file may itself contain several YAML documents. Each document participates in `eval-all`; `fi` identifies the file and `di` identifies a document within the stream. If one merged configuration per file is the contract, reject multi-document inputs before merging them.
+A file may itself contain several YAML documents. Each document participates in `eval-all`; `fi` identifies the file and `di` identifies a document within its file, starting at zero for each file. If one configuration document per file is the contract, reject multi-document inputs before merging them.
 
 ## Choose Array Semantics Deliberately
 
@@ -196,10 +196,10 @@ layers=(base.yml region-eu.yml production.yml)
 yq ea -e '
   [.] |
   ((length > 0) and all_c(tag == "!!map"))
-' "${layers[@]}" >/dev/null
+' "${layers[@]}" >/dev/null || exit 1
 ```
 
-Collecting the stream into `[.]` lets `all_c` test every document and emits one final boolean. The `-e` flag turns a false result, null result, or no match into a nonzero exit status.
+Collecting the stream into `[.]` lets `all_c` test every document and emits one final boolean. The `-e` flag turns a false result, null result, or no match into a nonzero exit status, and `|| exit 1` stops the Bash script on failure. This checks loaded documents, so an empty file alongside valid maps can go unnoticed; it also rejects custom-tagged maps because their tag is not `!!map`.
 
 Then write the output only after that check succeeds:
 
