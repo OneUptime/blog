@@ -184,7 +184,6 @@
 
 ## OneUptime
 
-15. How to Create an Authenticated API Monitor in OneUptime with Headers and JSON Assertions
 16. How to Monitor a Login Flow in OneUptime When the Site Uses SSO
 17. How to Provision Monitors and Status Pages Automatically with the OneUptime API
 18. How to Add a Custom Domain and Subscriber Notifications to a OneUptime Status Page
