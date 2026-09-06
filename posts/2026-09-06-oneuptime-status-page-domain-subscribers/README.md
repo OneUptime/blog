@@ -33,17 +33,17 @@ Before a status page can use `status.example.com`, verify its parent domain in *
 
 ## Add and verify the status-page domain
 
-Open **Status Pages > your page > Branding > Custom Domains**, add the full hostname, and choose the verified parent domain. OneUptime presents the required record:
+Open **Status Pages > your page > Branding > Custom Domains**, enter `status` in **Subdomain**, and choose the verified parent domain `example.com`. OneUptime presents the required record:
 
 ```text
 Type: CNAME
-Name: status
+Name: status.example.com
 Content: status-pages.oneuptime.example.com
 ```
 
 Use the name format expected by the DNS provider. Some expect `status`; others expect the fully qualified name. Keep the record unproxied initially if a DNS provider's proxy would obscure CNAME verification.
 
-Check public resolution from more than one resolver:
+Check public resolution using your configured resolver and a public resolver (use a different public resolver if your configured resolver is already `1.1.1.1`):
 
 ```bash
 dig +short CNAME status.example.com
@@ -54,14 +54,15 @@ Then click **Verify CNAME**. Automatic verification can take time, but the manua
 
 ## Provision TLS
 
-After CNAME verification, select **Order Free SSL** or upload a certificate and matching private key. OneUptime documents automatic renewal for its provisioned certificate. Uploaded certificates remain your rotation responsibility.
+After CNAME verification, select **Order Free SSL**. On self-hosted installations, this requires `LETS_ENCRYPT_ACCOUNT_KEY` (a base64-encoded account private key) and `LETS_ENCRYPT_NOTIFICATION_EMAIL`, or the Helm values `letsEncrypt.accountKey` and `letsEncrypt.email`. Alternatively, enable **Upload Custom Certificate** when creating or editing the domain and supply a certificate and matching private key. OneUptime documents automatic renewal for its provisioned certificate. Uploaded certificates remain your rotation responsibility.
 
 Test the public endpoint after provisioning:
 
 ```bash
-curl -I https://status.example.com
+curl -IL https://status.example.com
 openssl s_client -connect status.example.com:443 \
-  -servername status.example.com </dev/null
+  -servername status.example.com -verify_hostname status.example.com \
+  -verify_return_error -showcerts </dev/null
 ```
 
 Confirm hostname validation, full chain, redirect behavior, and expiry. Do not publish the HTTP URL while certificate provisioning is incomplete.
