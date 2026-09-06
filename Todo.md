@@ -178,7 +178,6 @@
 
 ## yq
 
-15. How to Split a Kubernetes YAML Bundle into Files Named by Kind and Resource Name with yq
 16. How to Move or Rename a Nested YAML Key Without Losing Its Children in yq
 17. How to Update Every Nested Key Matching a Name Pattern with Recursive yq Queries
 18. How to Edit YAML Comments, Anchors, Aliases, and Scalar Styles with Mike Farah yq
