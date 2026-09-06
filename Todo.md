@@ -184,7 +184,6 @@
 
 ## OneUptime
 
-10. How to Import Existing Uptime Kuma Monitors into OneUptime
 11. How to Run a OneUptime Probe Through an HTTP Proxy in an Egress-Restricted Network
 12. How to Configure On-Call Rotations, Overrides, and Escalation Policies in OneUptime
 13. How to Prevent Alert Storms in OneUptime with Dependencies, Acknowledgements, and Cooldowns
