@@ -81,13 +81,15 @@ spec:
       validation:
         caSecret: api-upstream-ca
         subjectName: api.storefront.svc.cluster.local
+        subjectNames:
+        - api.storefront.svc.cluster.local
       requestHeadersPolicy:
         set:
         - name: Host
           value: api.storefront.svc.cluster.local
 ```
 
-`api-upstream-ca` is an Opaque Secret with the trusted CA bundle in `ca.crt`. The upstream certificate must be valid for `api.storefront.svc.cluster.local`. The Host rewrite also supplies that name as SNI for this ClusterIP backend. Do not set `protocol: tls` without deciding how the upstream identity will be verified.
+`api-upstream-ca` is an Opaque Secret with the trusted CA bundle in `ca.crt`. The upstream certificate must be valid for `api.storefront.svc.cluster.local`. Contour 1.33 deprecates `subjectName` in favor of `subjectNames`, but still requires `subjectName` to match the first entry in `subjectNames`. The Host rewrite also supplies that name as SNI for this ClusterIP backend. Do not set `protocol: tls` without deciding how the upstream identity will be verified.
 
 Contour's prefix replacement is literal. It does not implement NGINX capture groups such as `$1`. It also rewrites the request sent upstream, not `Location` headers returned by the application. Configure the application with its public base URL or handle response redirects explicitly.
 
@@ -143,11 +145,11 @@ Install Contour with an explicit class such as `contour`, and leave existing Ing
 
 Do not let NGINX and Contour claim the same production hostname and DNS address unintentionally. Two controllers can publish conflicting status or serve different behavior depending on which load balancer receives a request.
 
-Build a request-level comparison suite:
+Build a request-level comparison suite. These requests use the configured hostname on separate load-balancer addresses without changing DNS; replace `CONTOUR_IP` and `NGINX_IP` with the actual IP addresses:
 
 ```bash
-curl --resolve migration.shop.example.com:443:CONTOUR_IP \
-  https://migration.shop.example.com/api/health
+curl --resolve shop.example.com:443:CONTOUR_IP \
+  https://shop.example.com/api/health
 
 curl --resolve shop.example.com:443:NGINX_IP \
   https://shop.example.com/api/health
