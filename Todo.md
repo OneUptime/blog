@@ -181,7 +181,6 @@
 
 ## Contour
 
-14. How to Troubleshoot Contour 503 and Envoy `connection failure` Errors from Route to Endpoint
 15. How to Preserve the Original Client IP Through Contour with PROXY Protocol and Trusted Hops
 16. How to Run Separate Public and Private Contour Ingress Classes in One Kubernetes Cluster
 17. How to Route Raw TCP and TLS-Passthrough Services with Contour `TCPProxy`
