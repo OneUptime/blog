@@ -44,7 +44,7 @@ PGPASSFILE=/run/secrets/oneuptime-pgpass pg_dump \
 pg_restore --list oneuptime-postgres.backup | head
 ```
 
-The PostgreSQL password file must be readable only by the backup user. Keep credentials out of shell history and process listings through that protected file or your platform's secret injection. Capture the PostgreSQL major version and use compatible client tools.
+The PostgreSQL password file must be readable only by the backup user. Keep credentials out of shell history and process listings through that protected file or your platform's secret injection. Capture the PostgreSQL major version and use compatible client tools. A single-database `pg_dump` does not include cluster-wide roles or tablespaces; preserve their definitions separately or document how to recreate the required ones before restoring.
 
 The bundled `restore.sh` uses `pg_restore --clean --if-exists`. That is destructive to matching objects in the target database. Restore first into a newly created isolated database and confirm the target host and database name before authorizing any overwrite.
 
@@ -56,7 +56,7 @@ The root OneUptime backup script does not back up ClickHouse. Use ClickHouse's n
 BACKUP DATABASE oneuptime TO Disk('backups', 'oneuptime-2026-09-06.zip');
 ```
 
-The disk and database name are deployment-specific. Configure and test the destination before using this command. In an Altinity operator deployment, the OneUptime chart documentation describes integration with `clickhouse-backup`; follow the operator and storage backend procedures for the installed versions.
+The disk and database name are deployment-specific. Configure and test the destination before using this command. This example backs up the connected server; for a sharded deployment, use a tested cluster-wide or per-shard backup procedure that includes every shard. In an Altinity operator deployment, the OneUptime chart documentation describes integration with `clickhouse-backup`; follow the operator and storage backend procedures for the installed versions.
 
 Verify backup status in ClickHouse's backup system tables or managed console, record the latest telemetry timestamp, and retain the schema along with the data.
 
@@ -76,7 +76,7 @@ Encrypt the recovery bundle. Losing the encryption key can be equivalent to losi
 
 ## Create a consistent recovery point
 
-Independent database backups taken during heavy writes may describe different moments. For strict cross-store consistency, enter a maintenance window, stop or buffer ingestion and state-changing operations, wait for in-flight work, and then take both backups. Where brief interruption is unacceptable, accept and document the consistency gap and design reconciliation checks.
+Independent database backups taken during heavy writes may describe different moments. For strict cross-store consistency, enter a maintenance window, stop or buffer ingestion and state-changing operations, drain queued and in-flight work, and then take both backups. Where brief interruption is unacceptable, accept and document the consistency gap and design reconciliation checks.
 
 Create a manifest with backup identifiers, checksums, timestamps, versions, and the last known PostgreSQL and ClickHouse records. Do not place plaintext secrets in the manifest.
 
@@ -84,15 +84,15 @@ Create a manifest with backup identifiers, checksums, timestamps, versions, and 
 
 Restore into an isolated network:
 
-1. Deploy the recorded OneUptime version and dependencies.
-2. Restore PostgreSQL to an empty target.
+1. Provision the recorded OneUptime version and dependencies, keeping application processes, workers, and migrations stopped until data and secrets are restored.
+2. Recreate required PostgreSQL roles and tablespaces, then restore PostgreSQL to an empty target.
 3. Restore ClickHouse and verify tables and latest timestamps.
 4. Restore required object-storage artifacts and configuration secrets.
 5. Start OneUptime without public traffic or outbound notifications.
 6. Compare monitors, incidents, users, telemetry queries, and dashboards with the manifest.
 7. Rotate any credentials exposed to the recovery environment.
 
-Redis is not the system of record in OneUptime, so rebuild it empty unless your architecture documents a special reason otherwise.
+Redis holds caches and sessions, but also BullMQ queues for background work, including telemetry and workflows. Rebuilding it empty discards pending jobs. Drain queues before a planned recovery point; for disaster recovery, document and accept that loss or include a tested Redis persistence and recovery procedure, with reconciliation to avoid replaying already completed work.
 
 Automate restore tests and alert on backup age, failed jobs, missing replicas, checksum failure, and unexpected size drops. A successful job log without a successful restore is not a recovery guarantee.
 
