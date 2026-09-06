@@ -181,7 +181,6 @@
 
 ## Contour
 
-12. How to Delegate Contour Routes to Application Namespaces with HTTPProxy Includes
 13. How to Diagnose an Invalid HTTPProxy with Status Conditions and Contour's Configuration Graph
 14. How to Troubleshoot Contour 503 and Envoy `connection failure` Errors from Route to Endpoint
 15. How to Preserve the Original Client IP Through Contour with PROXY Protocol and Trusted Hops
