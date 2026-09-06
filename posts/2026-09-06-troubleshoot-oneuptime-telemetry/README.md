@@ -47,12 +47,12 @@ service:
     traces:
       receivers: [otlp]
       processors: [memory_limiter, batch]
-      exporters: [otlphttp/oneuptime]
+      exporters: [otlp_http/oneuptime]
 ```
 
-Repeat for metrics and logs. Collector startup logs should name every configured component and reject invalid configuration. Inspect its internal metrics for accepted, refused, sent, failed, queued, and dropped items.
+Repeat for metrics and logs. These snippets belong in a complete Collector configuration with the referenced receivers and processors defined. Check startup logs for component errors and validate the configuration with `otelcol validate --config=collector.yaml`, using your Collector binary and configuration path. Inspect its internal metrics for accepted, refused, sent, failed, queued, and dropped items.
 
-Temporarily add the Collector's supported debug exporter to one affected pipeline in a non-production or tightly controlled environment. If the marker appears there, the receiver and upstream SDK work. Debug output can contain request data and attributes, so bound the test and remove it immediately.
+Temporarily configure the Collector's supported debug exporter with `verbosity: detailed` and add it to one affected pipeline in a non-production or tightly controlled environment. If the marker appears there, the receiver and upstream SDK work. Debug output can contain request data and attributes, so bound the test and remove it immediately.
 
 ## Verify the OneUptime exporter
 
@@ -60,7 +60,7 @@ The exporter should use the base self-hosted endpoint and ingestion header:
 
 ```yaml
 exporters:
-  otlphttp/oneuptime:
+  otlp_http/oneuptime:
     endpoint: https://oneuptime.example.com/otlp
     headers:
       x-oneuptime-token: ${env:ONEUPTIME_TOKEN}
@@ -91,7 +91,7 @@ docker compose --env-file config.env ps
 docker compose --env-file config.env logs --since=20m ingress app clickhouse
 ```
 
-Use the actual service names shown by `docker compose config --services`; deployments can differ. In Kubernetes, inspect the matching Pods, events, restarts, PVC fullness, and service endpoints.
+Use the actual service names shown by `docker compose --env-file config.env config --services`; deployments can differ. In Kubernetes, inspect the matching Pods, events, restarts, PVC fullness, and service endpoints.
 
 Do not delete ClickHouse data or volumes to clear an ingestion error. Capture diagnostics and correct the specific storage, schema, or capacity problem.
 
