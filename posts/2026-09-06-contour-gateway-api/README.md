@@ -115,7 +115,7 @@ spec:
       port: 8080
 ```
 
-The Service reference is local to the HTTPRoute namespace. If a backend must live in another namespace, create a narrowly scoped `ReferenceGrant` in the backend namespace. Listener `allowedRoutes` controls route attachment; it does not authorize cross-namespace backend references.
+This example requires an existing `storefront` Service in the `storefront` namespace, exposing Service port `8080` and selecting ready application Pods. The backend port is the Service port, not necessarily the Pod's container port. The Service reference is local to the HTTPRoute namespace. If a backend must live in another namespace, create a narrowly scoped `ReferenceGrant` in the backend namespace. Listener `allowedRoutes` controls route attachment; it does not authorize cross-namespace backend references.
 
 The listener hostname and HTTPRoute hostname must intersect. A typo can leave the route unaccepted even when DNS and the Service are correct.
 
@@ -131,10 +131,12 @@ kubectl -n storefront get httproute storefront -o yaml
 
 Focus on:
 
-1. `GatewayClass` has an `Accepted` condition from Contour's controller.
-2. `Gateway` reports `Accepted` and `Programmed`, and each listener has its own conditions.
-3. `HTTPRoute` reports `Accepted` and `ResolvedRefs` for the named parent.
+1. `GatewayClass` has `Accepted=True` from Contour's controller.
+2. `Gateway` reports `Accepted=True` and `Programmed=True`, and each listener has its own conditions.
+3. `HTTPRoute` reports `Accepted=True` and `ResolvedRefs=True` for the named parent.
 4. `Gateway.status.addresses` contains the address to publish in DNS.
+
+Check that each condition's `observedGeneration` matches the resource's current `metadata.generation` so stale status is not mistaken for success.
 
 Common reasons include a controller-name mismatch, a missing certificate Secret, an HTTPRoute namespace that does not match `allowedRoutes`, an incorrect `sectionName`, a backend Service or port that does not exist, or a missing `ReferenceGrant`.
 
@@ -154,8 +156,10 @@ Obtain the Gateway address and test with the intended hostname:
 kubectl -n projectcontour get gateway public \
   -o jsonpath='{.status.addresses[0].value}{"\n"}'
 
-curl --resolve shop.example.com:443:GATEWAY_ADDRESS https://shop.example.com/
+curl --connect-to "shop.example.com:443:GATEWAY_ADDRESS:443" https://shop.example.com/
 ```
+
+Replace `GATEWAY_ADDRESS` with the returned IP address or load-balancer hostname; enclose an IPv6 literal in square brackets. `--connect-to` preserves `shop.example.com` for HTTP routing, TLS SNI, and certificate verification.
 
 Use a trusted certificate or provide a test CA to curl. Avoid `--insecure` as a permanent runbook step because it hides certificate and hostname failures.
 
