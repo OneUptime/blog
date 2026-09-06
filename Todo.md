@@ -184,7 +184,6 @@
 
 ## OneUptime
 
-18. How to Add a Custom Domain and Subscriber Notifications to a OneUptime Status Page
 19. How to Build a OneUptime Dashboard That Correlates Incidents, Alerts, Logs, and Traces
 20. How to Troubleshoot Missing Telemetry in OneUptime from Collector to Dashboard
 
