@@ -181,7 +181,6 @@
 
 ## Contour
 
-6. How to Share a Wildcard TLS Secret Across Namespaces with Contour Certificate Delegation
 7. How to Encrypt and Verify Contour-to-Upstream Traffic with a Custom CA and SNI
 8. How to Require Client Certificates with Contour mTLS and HTTPProxy
 9. How to Strip or Replace a URL Prefix in Contour Without Breaking Application Redirects
