@@ -190,7 +190,6 @@
 
 ## Colocation
 
-2. How to Calculate Colocation Power Requirements from Real Server Draw, Not PSU Nameplates
 3. How to Size A and B Power Circuits Without Violating the 80 Percent Continuous-Load Rule
 4. How to Choose Between Per-Amp, Metered-kWh, and Flat-Rate Colocation Power Pricing
 5. How to Estimate How Many Servers a Colocation Rack Can Actually Support
