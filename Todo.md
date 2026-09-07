@@ -190,7 +190,6 @@
 
 ## Colocation
 
-8. How to Design Redundant Internet Connectivity for a Single Colocation Rack
 9. How to Connect an Office to a Colocation Facility with VPN, Metro Ethernet, or SD-WAN
 10. How to Bring Your Own IP Addresses and BGP to a Colocation Provider
 11. How to Build Out-of-Band Management for Colocated Servers with IPMI, Console, and Smart PDUs
