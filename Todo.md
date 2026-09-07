@@ -187,7 +187,6 @@
 
 ## Rightsizing
 
-1. How to Choose a Rightsizing Observation Window That Captures Peaks, Seasonality, and Deployments
 2. P95, P99, or Maximum? How to Turn Utilization History into Safe Rightsizing Recommendations
 3. How to Add Headroom to Rightsizing Recommendations Without Preserving Chronic Waste
 4. How to Rightsize Bursty Workloads Without Optimizing Away Their Capacity to Spike
