@@ -76,7 +76,7 @@ WHERE table_schema = 'sales'
 ORDER BY ordinal_position;
 ```
 
-That predicate is the MySQL form, where `sales` is the database and `TABLE_CATALOG` is documented as `def`. For the PostgreSQL target in this example, use both its database and schema:
+That predicate is the MySQL form, where `sales` is the database and `TABLE_CATALOG` is documented as `def`. For the PostgreSQL target in this example, connect to the `analytics` database and filter by both its database and schema; `information_schema.columns` only describes the current database:
 
 ```sql
 WHERE table_catalog = 'analytics'
@@ -104,7 +104,7 @@ def validate_mapping(mapping, source_columns, target_columns):
         raise ValueError("; ".join(errors))
 ```
 
-Also validate type compatibility and nullability. A MySQL `unsigned bigint`, zero date, enum, collation, or timezone-naive timestamp can require a semantic conversion even when a generic `data_type` string looks familiar. Supplement the common projection with MySQL `column_type`, numeric precision and scale, character set, and collation fields. For PostgreSQL, capture `udt_schema`, `udt_name`, precision, and scale when the declared type alone is not enough to validate a conversion.
+Also validate type compatibility and nullability. A MySQL `BIGINT UNSIGNED`, zero date, enum, collation, or timezone-naive `DATETIME` can require a semantic conversion even when a generic `data_type` string looks familiar. Supplement the common projection with MySQL `column_type`, numeric precision and scale, character set, and collation fields. For PostgreSQL, capture `udt_schema`, `udt_name`, precision, and scale when the declared type alone is not enough to validate a conversion.
 
 ## Emit the bridge at successful commit
 
@@ -122,7 +122,7 @@ Emit `START` before extraction and a terminal event after transaction outcome. I
 
 ## Carry resumable checkpoints without turning them into names
 
-For change data capture, store source positions as run or output evidence:
+For change data capture, store source positions as run or output evidence. This JSON is application-defined checkpoint metadata, not a complete OpenLineage event; embed it in a custom facet with the required producer and schema metadata when emitting it through OpenLineage:
 
 ```json
 {
@@ -135,7 +135,7 @@ For change data capture, store source positions as run or output evidence:
 }
 ```
 
-The position proves the consumed range and supports replay. It should not become part of the logical dataset name. A run UUID distinguishes executions, and a dataset version facet can carry a store-defined version when one exists.
+The position identifies one checkpoint, not a consumed range by itself. Record both start and end positions tied to the source server and advance the durable checkpoint with the target commit; replay also requires the relevant binlog files to remain available. The `targetTransaction` UUID here is an application-assigned commit correlation ID, not a native PostgreSQL transaction ID. It should not become part of the logical dataset name. A run UUID distinguishes executions, and a dataset version facet can carry a store-defined version when one exists.
 
 MySQL's binary log records changes to structure or content; ordinary `SELECT` statements are not normally recorded because they make no changes. Row-based logging records how rows are affected, while DDL remains statement-based. A copy pipeline that only reads MySQL therefore still needs extractor-side knowledge to declare the source read.
 
