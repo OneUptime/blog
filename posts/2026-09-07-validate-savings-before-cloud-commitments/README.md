@@ -54,7 +54,7 @@ account, project, or subscription scope
 
 Use the provider's billing data and recommendation APIs rather than multiplying list prices alone. Enterprise agreements, licenses, credits, sharing rules, taxes, and negotiated rates can change economics.
 
-For resource-based commitments, normalize units such as vCPU, memory, GPU, region, and family. For spend-based plans, normalize eligible currency per hour or other documented commitment unit.
+For resource-based commitments, normalize quantities such as vCPU counts, memory capacity, and GPU counts within the applicable region and family constraints. For spend-based plans, normalize eligible currency per hour or other documented commitment unit.
 
 ## Evaluate coverage conservatively
 

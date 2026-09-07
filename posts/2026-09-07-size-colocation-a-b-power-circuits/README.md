@@ -76,7 +76,7 @@ The breaker is only one constraint. For A and B separately, record:
 - automatic transfer switch rating and transfer time
 - provider alarm and enforced shutdown thresholds
 
-The usable capacity is the smallest applicable limit. A 30 A branch circuit does not help if a PDU bank or transfer switch is rated lower.
+For each component, compare its failover load with its applicable limit. A 30 A branch circuit does not permit overloading a lower-rated PDU bank or transfer switch; a bank limit applies to the outlets on that bank, not to the entire PDU.
 
 Ask the provider to identify shared upstream components and the contractual capacity of the pair. Two receptacles labelled A and B may still share a panel, UPS module, maintenance bypass, or generator. Separate colors and PDUs do not prove end-to-end independence. Equinix, for example, documents matching primary and redundant circuits fed by diverse UPS systems and requires the pair's load to remain within one circuit's capacity. Other providers can define redundancy and draw caps differently.
 
@@ -97,7 +97,7 @@ Set warning and critical thresholds below the actual limit so operators have tim
 
 ## Conclusion
 
-Treat A/B as two complete survival paths. Convert measured design watts to amps, apply the governing continuous-load rule, size each side for full failover, and verify the weakest component and upstream independence through an approved loaded test.
+Treat A/B as two complete survival paths. Convert measured design watts to amps, apply the governing continuous-load rule, size each side for full failover, verify component limits through an approved loaded test, and confirm upstream independence with the facility engineer and distribution documentation.
 
 ## Official Documentation
 

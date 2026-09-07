@@ -43,7 +43,7 @@ Common options include:
 - portable addresses announced with BGP to two independent providers
 - one provider with redundant ports and a managed routing service
 
-Portable addressing and BGP provide routing control but add registry, filtering, security, and operational duties. If using BGP, obtain an ASN or agree on an approved private-AS design, define inbound and outbound policy, and filter by exact prefixes. RFC 8212 recommends default-reject behavior when no explicit import or export policy exists.
+Portable addressing and BGP provide routing control but add registry, filtering, security, and operational duties. If using BGP, obtain an ASN or agree on an approved private-AS design, define inbound and outbound policy, and filter by exact prefixes. RFC 8212 requires default-reject behavior for eBGP: routes are not eligible for selection without an explicit import policy and are not advertised without an explicit export policy.
 
 Use maximum-prefix limits, route-origin validation where supported, documented communities, and a controlled maintenance policy. Do not accept a full routing table unless the routers have capacity and the design needs it. A default route from each provider is sufficient for many small deployments.
 
@@ -53,13 +53,13 @@ A practical design uses two edge devices, two top-of-rack paths, and dual-homed 
 
 Do not connect both carrier handoffs to one line card or one unmanaged switch. Synchronize only the state that must survive; shared state systems can themselves become a failure domain.
 
-Size remaining capacity after a failure. If either 1 Gbps link regularly carries 700 Mbps, losing one link may push the survivor to 1.4 Gbps, which cannot work. Shape, shed, or purchase enough capacity for the intended degraded mode.
+Size remaining capacity after a failure. If both 1 Gbps links regularly carry 700 Mbps in the same direction, losing one link may push the survivor to 1.4 Gbps, which cannot work. Shape, shed, or purchase enough capacity for the intended degraded mode.
 
 ## Control convergence and sessions
 
 Use routing timers and Bidirectional Forwarding Detection only when both parties support and have tested them. Very aggressive timers can turn transient loss or control-plane load into route churn.
 
-Applications must tolerate the planned convergence interval. Existing TCP sessions may reset when egress changes, stateful firewalls lose synchronized state, or providers filter the new source path. Test source-address symmetry, NAT, health checks, DNS behavior, and upstream anti-spoofing.
+Applications must tolerate the planned convergence interval. Existing TCP sessions may fail or time out when egress changes the NAT mapping, stateful firewalls lose session state, or providers filter the new source path. A path change alone need not break TCP if endpoint addresses and ports remain unchanged and required state remains available. Test routing asymmetry, source-address validity, NAT, health checks, DNS behavior, and upstream anti-spoofing.
 
 ## Prove the design with failure tests
 
@@ -70,7 +70,7 @@ During an approved window, capture traffic and timestamps while testing:
 3. router A restart or maintenance
 4. router B restart or maintenance
 5. switch or port-channel member failure
-6. power feed A down, then B down
+6. power feed A down, restore and verify A, then test B down
 
 For each, measure detection time, route convergence, packet loss, session impact, and surviving utilization. Verify monitoring through an independent external vantage point. A dashboard reached over the failed circuit cannot report the outage reliably.
 

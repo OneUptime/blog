@@ -26,7 +26,7 @@ List the events that can change demand before choosing a number of days:
 
 The window must include the longest relevant recurring cycle. A useful starting rule is to capture at least two complete cycles so that one abnormal occurrence does not define the recommendation. For a stable API with a weekly pattern, 14 to 32 days can be reasonable. A financial workload with quarter-end processing needs a longer study or a separate capacity policy for that event.
 
-This is consistent with the options exposed by cloud tools. AWS Compute Optimizer supports 14, 32, and 93 day lookback periods for customizable rightsizing preferences; AWS specifically notes that 32 days can capture monthly patterns. Azure Advisor offers 7 through 90 day periods for eligible VM recommendations. Google Compute Engine machine-type recommendations use the previous eight days of metrics and base CPU analysis on 60-second averages; Google warns that this can miss brief CPU spikes and infrequent monthly spikes. Those are product settings, not universal proof that a workload is represented.
+This is consistent with the options exposed by cloud tools. AWS Compute Optimizer supports 14, 32, and 93 day lookback periods for customizable rightsizing preferences; AWS specifically notes that 32 days can capture monthly patterns. The 93-day option requires the paid enhanced infrastructure metrics feature. Azure Advisor offers 7, 14, 21, 30, 60, and 90 day periods for eligible VM recommendations. Google Compute Engine machine-type recommendations use the previous eight days of metrics and base CPU analysis on 60-second averages; Google warns that this can miss brief CPU spikes and infrequent monthly spikes. Those are product settings, not universal proof that a workload is represented.
 
 ## Split history into configuration epochs
 
@@ -47,7 +47,7 @@ Wait through normal warmup after a deployment. A Java service may compile hot me
 
 Aggregation can erase the very evidence needed for safe rightsizing. A five-minute average will understate a 20-second CPU spike. Keep a resolution shorter than the overload interval that could violate the service objective. AWS Compute Optimizer, for example, uses the maximum utilization point within each five-minute interval for EC2 recommendations.
 
-Retain several views of the same period:
+Retain several views of the same period; the one-minute resolution below is only suitable when shorter spikes do not need to be resolved:
 
 ```text
 resolution: 1 minute
@@ -94,7 +94,7 @@ known_gaps:
 next_seasonal_review: 2026-11-01
 ```
 
-Compare adjacent windows as a stability test. If the recommended CPU changes materially between days 1 to 14 and days 15 to 28, investigate demand growth, a release, or an incomplete cycle. A stable percentile with an unstable request rate can still be unsafe because efficiency is changing.
+Compare adjacent windows as a stability test. If the recommended CPU changes materially between days 1 to 14 and days 15 to 28, investigate demand growth, a release, or an incomplete cycle. A stable percentile with an unstable request rate can still be unsafe because efficiency or the workload mix may be changing.
 
 ## Recompute when the system changes
 

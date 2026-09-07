@@ -48,7 +48,7 @@ init-b:                300m CPU, 2Gi memory
 effective pod request: 1200m CPU, 2Gi memory
 ```
 
-CPU and memory maxima can come from different init containers. Summing all init requests would overstate capacity, while ignoring them would make the pod appear to fit when it does not.
+CPU and memory maxima can come from different init containers. Summing all init requests would overstate resource demand, while ignoring them would make the pod appear to fit when it does not.
 
 Kubernetes-native sidecars use restartable entries in `initContainers` and continue alongside application containers. They make the calculation order-sensitive. For each resource, calculate:
 
@@ -83,6 +83,7 @@ Inventory their requests and placement:
 ```bash
 kubectl get daemonsets -A -o wide
 kubectl get pods -A --field-selector spec.nodeName=worker-1 -o wide
+kubectl get pods -A --field-selector spec.nodeName=worker-1 -o yaml
 ```
 
 Node labels, selectors, affinity, taints, and tolerations determine which DaemonSets land on a candidate pool. A GPU node may receive extra device and telemetry daemons that general-purpose nodes do not.

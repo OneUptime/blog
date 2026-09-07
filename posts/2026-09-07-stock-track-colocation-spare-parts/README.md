@@ -30,7 +30,7 @@ Do not stock unsupported substitutes merely because the connector fits. Capture 
 A simple expected-demand estimate is:
 
 ```text
-expected failures during lead time = annual failure rate x lead time in years
+expected failures during lead time = expected replacements per year across the installed family x lead time in years
 reorder point = expected lead-time demand + safety stock
 ```
 
@@ -43,7 +43,7 @@ P(demand <= 2) is about 92 percent
 P(demand <= 3) is about 98 percent
 ```
 
-Three drives therefore provide roughly a 98 percent no-stockout target under those assumptions. Historical failures may not be independent or stationary, so combine the calculation with common-mode risk, array rebuild exposure, supplier volatility, and business impact. Review the quantity after every incident.
+Three usable drives available at the start of a three-month lead-time interval therefore give roughly a 98 percent probability of covering demand during that interval under those assumptions. This is a lead-time coverage probability, not an annual no-stockout guarantee. Historical failures may not be independent or stationary, so combine the calculation with common-mode risk, array rebuild exposure, supplier volatility, and business impact. Review the quantity after every incident.
 
 ## Define the inventory record
 
@@ -61,7 +61,7 @@ Put a human-readable label on the package and scan the identifier at receipt, is
 
 ## Prepare parts for remote use
 
-Store each part in suitable ESD and protective packaging with visible part and asset labels. Keep screws, carriers, adapters, and product-specific tools together. Separate tested good parts from failed or unknown parts physically, not only in software.
+Store each part in suitable ESD and protective packaging with visible part and asset labels, following facility storage rules. Equinix prohibits boxes, paper, and cardboard in the colocation area; use facility-approved protective storage there. Keep screws, carriers, adapters, and product-specific tools together. Separate tested good parts from failed or unknown parts physically, not only in software.
 
 For each common replacement, attach a reviewed runbook that identifies the target by model and slot, lists ESD and safety requirements, gives stop conditions, and requires old and new serials. Confirm the facility will store the item and that its remote-hands service permits the work.
 
@@ -75,7 +75,7 @@ The incident is not complete when service returns. The workflow should automatic
 2. bind its serial to the production asset and location
 3. quarantine the removed part
 4. create the RMA or disposal task
-5. order a replacement when stock reaches the reorder point
+5. order replenishment when the inventory position (usable on-hand stock plus outstanding replenishment orders minus unmet demand) reaches or falls below the reorder point
 6. reconcile the facility's physical count
 
 Drives and other media can contain data. Apply the organization's media-sanitization and chain-of-custody policy before vendor return or disposal. NIST SP 800-88 provides media sanitization guidance; an RMA label alone does not authorize release of data-bearing media.

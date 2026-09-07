@@ -35,13 +35,13 @@ NIST's zero trust guidance emphasizes protecting resources rather than trusting 
 
 Start with the current vendor security guide and a supported firmware release. Replace default credentials with unique secrets before connection to any shared network. Disable services not used, including IPMI over LAN, VNC, HTTP, Telnet, virtual media, discovery, or host pass-through where applicable.
 
-Prefer HTTPS and modern SSH configurations. DMTF's Redfish specification requires authentication and minimum encryption levels, but a secure protocol still needs a trusted certificate, supported TLS version, and correct authorization. Do not silently bypass certificate warnings in automation.
+Prefer HTTPS and modern SSH configurations. DMTF's Redfish specification requires authentication for protected resources, with exceptions for discovery resources such as the service root, and requires TLS 1.2 or later, but a secure protocol still needs a trusted certificate, supported TLS version, and correct authorization. Do not silently bypass certificate warnings in automation.
 
 Legacy IPMI may be required by existing tools. If so, constrain it to the smallest network and account set, use the strongest mutually supported mode, and plan migration. Dell's iDRAC security guide exposes controls for TLS, SSH, dedicated NICs, IP blocking, roles, default passwords, two-factor authentication, and disabling IPMI over LAN.
 
 ## Control identities and privileges
 
-Use individual accounts or centralized directory groups, not shared administrator passwords. Separate read-only monitoring, console, virtual-media, power, firmware, and account-management privileges. Require MFA before the management network, even if the embedded device cannot enforce MFA itself.
+Use individual accounts or centralized directory groups, not shared administrator passwords. Separate read-only monitoring, console, virtual-media, power, firmware, and account-management privileges as supported by the device's role model. Require MFA before the management network, even if the embedded device cannot enforce MFA itself.
 
 Store break-glass credentials in an audited vault. Define checkout, approval, rotation, and post-use review. Remove departed staff and expired vendor access promptly. Never place BMC credentials in a remote-hands ticket.
 

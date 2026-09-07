@@ -51,7 +51,7 @@ monthly energy = average kW x hours in billing month
 
 A 4.0 kW average load over a 730-hour month consumes about 2,920 kWh. A 5.0 kW peak still determines the required capacity even though it does not determine the metered energy total.
 
-For each quote, calculate:
+For each quote with constant monthly charges and a single energy rate, calculate:
 
 ```text
 annual cost = fixed monthly charges x 12
@@ -60,7 +60,7 @@ annual cost = fixed monthly charges x 12
             + annual adjustments
 ```
 
-Use the bidder's actual rates rather than market examples. Include installation, meter, PDU, redundant-circuit, and power-upgrade charges, plus taxes or levies that apply to your entity and location. Apply contractual annual escalators in the month they take effect. Keep currency and inflation assumptions consistent across bids.
+If charges or energy rates vary, sum the applicable fixed charges and each billing interval's kWh multiplied by its rate instead. Use the bidder's actual rates rather than market examples. Include installation, meter, PDU, redundant-circuit, and power-upgrade charges, plus taxes or levies that apply to your entity and location. Apply contractual annual escalators in the month they take effect. Keep currency and inflation assumptions consistent across bids.
 
 ## Run utilization and growth scenarios
 
@@ -70,7 +70,7 @@ Calculate at least three cases:
 - growth: approved hardware and workload forecast
 - stress: credible failover or seasonal peak
 
-For reserved power, show utilization as `average kW / paid usable kW`. For metered power, show the break-even average load where its variable bill equals the fixed alternative. Sensitivity-test utility rates and power factor if either affects price.
+For reserved power, show utilization as `average kW / paid usable kW`. For metered power, show the break-even average load where its total bill, including fixed, energy, and applicable demand or overage charges, equals the fixed alternative for the same period and load scenario. Sensitivity-test utility rates and power factor if either affects price.
 
 Power cost is not the whole decision. Confirm that the cooling allocation supports the same design load, and include the cost and lead time of a later circuit upgrade. A slightly dearer scalable design can be cheaper than an emergency migration.
 

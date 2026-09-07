@@ -14,7 +14,7 @@ AWS Compute Optimizer makes this tradeoff explicit. Its configurable CPU thresho
 
 ## Work in resource units, not only utilization percentages
 
-A utilization percentage is tied to the current size. Convert it back to demand before comparing candidates:
+A utilization percentage is tied to the current size. Convert it back to observed usage before comparing candidates, using utilization fractions and the capacity the metric is normalized against. Observed usage can understate demand when the workload is already throttled or saturated:
 
 ```text
 used CPU cores = current vCPU count * CPU utilization
@@ -39,7 +39,7 @@ When an autoscaler changes replica count or instance size inside the window, use
 | P95 | Highest 5 percent of samples | Tolerant batch work, queues, or horizontally scalable noncritical services |
 | P99 | Highest 1 percent of samples | Many user-facing services with tested burst handling |
 | P99.5 | Highest 0.5 percent of samples | Sensitive production services where rare peaks matter |
-| Maximum | Nothing | Hard memory bounds, singular jobs, or nonrepeatable safety analysis |
+| Maximum | No observed samples; unobserved peaks remain unknown | Evaluating memory peaks, singular jobs, or nonrepeatable safety analysis |
 
 A percentile is a frequency statement, not a duration statement. With one-minute samples over 30 days, 1 percent represents roughly 432 samples. They could be scattered one-minute bursts or one continuous seven-hour incident. Those patterns require different mitigations.
 
@@ -47,7 +47,7 @@ A percentile is a frequency statement, not a duration statement. With one-minute
 
 CPU is compressible. Exceeding available CPU normally increases queueing and latency; a CPU limit can add cgroup throttling. If replicas can scale before the service objective is breached, a high CPU percentile plus measured headroom can be reasonable.
 
-Memory is not safely compressible in the same way. A container that crosses its enforced memory limit can be killed. Use working-set or post-garbage-collection memory, inspect OOM history, and give leak, cache, native allocation, and failover behavior separate consideration. P95 memory is rarely a sufficient limit for a process that must survive occasional high-cardinality requests.
+Memory is not safely compressible in the same way. A container that crosses its enforced memory limit can be killed. Use working-set memory and inspect total container memory peaks; post-garbage-collection memory alone misses allocation peaks between collections. Inspect OOM history, and give leak, cache, native allocation, and failover behavior separate consideration. P95 memory is rarely a sufficient limit for a process that must survive occasional high-cardinality requests.
 
 Storage, network, and accelerators add more constraints. An instance may average low CPU while already approaching its network packet rate, EBS bandwidth, connection limit, or GPU memory ceiling.
 
@@ -74,7 +74,7 @@ If a maximum came from a bad deploy, telemetry error, or one-time data migration
 - Weight samples by time when scrape intervals vary.
 - Calculate workload-level demand as well as per-instance demand.
 - Segment by region, tenant class, job type, and deployment epoch where behavior differs.
-- Compare latency and error percentiles at the same timestamps.
+- Compare latency percentiles and error rates over the same time windows as resource usage.
 
 For HPA-managed Kubernetes workloads, CPU utilization is usage divided by the request. Changing the request changes the HPA signal even if actual CPU demand is unchanged. Recalculate the scaling threshold or use a direct average-value or business metric when appropriate.
 
@@ -97,11 +97,11 @@ The service has a 60-second autoscaling reaction time and a 200 ms latency objec
 5. Confirm the candidate against memory, network, and storage.
 6. Canary it and rollback on throttling, latency, errors, or OOMs.
 
-This may lead to a 3-core request with no tight CPU limit, rather than either 1.4 cores or 4.8 cores. The operational mechanism matters as much as the percentile.
+This may lead to a 3-core request with no tight CPU limit, rather than either 1.4 cores or 4.8 cores. Bursting above that request still requires available CPU on the node; validate it under realistic contention. The operational mechanism matters as much as the percentile.
 
 ## Conclusion
 
-Use P95 for deliberately tolerant workloads, higher percentiles for latency-sensitive production paths, and maximums to expose hard bounds and recovery events. Convert percentages into absolute demand, preserve peak context, apply resource-specific safety rules, and validate every candidate against service outcomes.
+Use P95 for deliberately tolerant workloads, higher percentiles for latency-sensitive production paths, and maximums to expose observed peaks and recovery events, without treating them as proven hard bounds. Convert percentages into absolute demand, preserve peak context, apply resource-specific safety rules, and validate every candidate against service outcomes.
 
 ## Official Documentation
 

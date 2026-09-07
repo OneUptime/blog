@@ -53,7 +53,7 @@ FROM pg_stat_database;
 
 This covers PostgreSQL shared-buffer hits and does not account for the operating-system cache. A lower ratio is not automatically bad for sequential scans, and a high ratio does not prove memory can be removed. Correlate it with query latency, physical reads, working-set churn, and execution plans.
 
-These counters are cumulative since the statistics were reset. Record `stats_reset` and compare counter deltas over equivalent workload windows. A ratio that spans a restart or manual reset is not comparable with one that does not.
+These counters are cumulative since the statistics were reset. Record `stats_reset` and compare counter deltas over equivalent workload windows. PostgreSQL preserves these statistics across clean restarts, but resets them after an unclean shutdown or recovery from a base backup. Do not calculate counter deltas across a statistics reset; compare windows with equivalent workload and cache conditions.
 
 MySQL exposes InnoDB buffer-pool statistics including reads, logical read requests, free and dirty pages, and a hit rate. Its documentation warns that some detailed buffer-pool information queries can affect production performance. Use low-impact counters and test intrusive analysis elsewhere.
 

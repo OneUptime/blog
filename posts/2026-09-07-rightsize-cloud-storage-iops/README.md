@@ -40,20 +40,22 @@ The basic relationship is:
 throughput = IOPS * average I/O size
 ```
 
-A workload issuing 10,000 random 8KiB operations needs about 78MiB/s but 10,000 IOPS. A sequential workload issuing 500 operations of 1MiB needs 500MiB/s but only 500 IOPS. The first usually needs an SSD IOPS profile; the second may be throughput-bound.
+A workload issuing 10,000 random 8KiB operations per second needs about 78MiB/s and 10,000 application IOPS. A sequential workload issuing 500 operations of 1MiB per second needs 500MiB/s and 500 application IOPS. Provider-counted IOPS can differ when requests are split or merged: AWS EBS SSD volumes count a 1MiB request as four 256KiB operations, so the second workload requires 2,000 EBS IOPS. The first usually needs an SSD IOPS profile; the second may be throughput-bound.
 
 Cloud documentation makes this distinction explicit. Google Persistent Disk describes small random I/O as commonly IOPS-bound and large sequential I/O as commonly throughput-bound. AWS EBS documents the relationship among demand, IOPS, queue length, latency, I/O size, and throughput.
 
 ## Find every performance ceiling
 
-The effective limit is the lowest applicable ceiling:
+For I/O reaching the volume, first find the lowest applicable ceiling in each dimension:
 
 ```text
-effective IOPS = min(volume IOPS, instance IOPS, path limits)
-effective throughput = min(volume throughput, instance bandwidth, path limits)
+IOPS ceiling = min(volume IOPS, instance IOPS, path IOPS limits)
+throughput ceiling = min(volume throughput, instance bandwidth, path throughput limits)
+effective IOPS ceiling = min(IOPS ceiling, throughput ceiling / average I/O size)
+effective throughput ceiling = min(throughput ceiling, IOPS ceiling * average I/O size)
 ```
 
-Also check aggregate limits across all volumes attached to a VM. Moving one disk to a faster tier does not help when the instance is already at its EBS, SCSI, network, or vCPU-dependent ceiling.
+Use consistent units and I/O accounting at the same layer. These are upper bounds, not guaranteed delivered performance; cache hits can bypass the volume. Also check aggregate limits across all volumes attached to a VM. Moving one disk to a faster tier does not help when the instance is already at its EBS, SCSI, network, or vCPU-dependent ceiling.
 
 Provider models differ:
 
@@ -108,7 +110,7 @@ Gate on application latency and completion objectives as well as storage counter
 For a tier or performance change that supports in-place modification, verify provider limits and cooldowns, then canary on a replica or low-risk volume. For a shrink that requires migration:
 
 - take a consistent snapshot or backup;
-- create the target with explicit IOPS and throughput;
+- create the target with explicit IOPS and throughput where supported, or select a size and tier that provide the required performance;
 - copy and verify data;
 - quiesce or replicate final changes;
 - switch a controlled consumer;

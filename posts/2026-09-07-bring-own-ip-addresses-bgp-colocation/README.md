@@ -30,7 +30,7 @@ Do not assume every network will propagate a more-specific prefix. Global routin
 
 Make organization, abuse, routing, and NOC contacts current with the relevant Regional Internet Registry. If requesting an ASN or addresses from ARIN, follow its resource request and qualification process rather than treating the provider as the resource authority.
 
-Create a Route Origin Authorization that permits the intended origin ASN and prefix. RFC 9319 recommends minimal ROAs and generally avoiding `maxLength`; authorize only prefixes the ASN actually originates. If the routing policy requires `maxLength`, keep it no broader than necessary. An overly permissive value authorizes unplanned more-specific routes from that ASN, while an overly restrictive value makes a legitimate more-specific announcement RPKI-invalid.
+Create a Route Origin Authorization that permits the intended origin ASN and prefix. RFC 9319 recommends minimal ROAs and generally avoiding `maxLength`; authorize only prefixes the ASN actually originates. If the routing policy requires `maxLength`, keep it no broader than necessary. An overly permissive value authorizes unplanned more-specific routes from that ASN, while an overly restrictive value makes a legitimate more-specific announcement RPKI-invalid unless another ROA authorizes that announcement.
 
 RPKI route-origin validation checks whether the origin ASN and prefix length are authorized. It does not validate the complete AS path. Create any required IRR route or route6 objects and keep them consistent with the ROA and actual announcement.
 

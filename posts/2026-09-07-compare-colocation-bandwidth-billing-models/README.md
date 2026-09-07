@@ -28,9 +28,9 @@ Do not derive peak Mbps from monthly transferred bytes. The same byte total can 
 
 A common method samples traffic on a fixed interval, sorts samples from highest to lowest, discards the highest 5 percent, and uses the next sample as billable demand. Contract details still matter: the provider may use the higher direction, sum directions, or calculate them separately.
 
-Equinix documents an example with 8,640 five-minute samples in a month. It discards the highest 432 and uses the remaining highest value. Under its burst model, demand above the purchased commit creates an additional charge.
+Equinix documents an example with 8,640 five-minute samples in a 30-day month. It discards the highest 432 and uses the remaining highest value. Under its burst model, demand above the purchased commit creates an additional charge.
 
-Reproduce the bidder's exact rule with your samples:
+Reproduce the bidder's exact rule with your samples. This example uses zero-based indexing and rounds the discarded count down:
 
 ```text
 sorted = samples ordered highest to lowest
@@ -47,7 +47,7 @@ Short bursts totaling less than about 5 percent of sampled time may not affect t
 
 The committed information rate is the capacity purchased every month. Ask whether it is:
 
-- a hard policer that drops or delays traffic above the commit
+- a hard policer that drops excess traffic or a shaper that queues and delays it
 - a minimum charge with burstable overage
 - paired with a port whose speed is the absolute ceiling
 - measured per circuit, aggregate, or billing account

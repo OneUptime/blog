@@ -86,9 +86,9 @@ Keep configuration exports and runbooks available outside both sites. Confirm th
 
 ## Execute and validate
 
-Freeze unrelated changes. Start with health and backup gates, quiesce writes only when required, perform final sync, shift a small portion of traffic, and expand only while service indicators remain within thresholds.
+Freeze unrelated changes. Start with health and backup gates, quiesce writes only when required, perform final sync, and shift traffic using the application’s supported cutover procedure. For single-writer systems, prevent writes to the old primary before enabling writes at the destination. Shift a small portion of traffic and expand only where both sites can safely serve it with consistent data and service indicators remain within thresholds.
 
-Validate externally: transactions, authentication, background jobs, queues, replication, backup, monitoring, logging, latency, packet loss, and security controls. Do not dismantle the old environment at first success. Hold it in a defined recoverable state until the observation window closes.
+Validate externally: transactions, authentication, background jobs, queues, replication, backup, monitoring, logging, latency, packet loss, and security controls. Do not dismantle the old environment at first success. Hold it in a defined recoverable state until the observation window closes. If the destination has accepted writes, rollback must synchronize or reconcile those changes before returning writes to the old site; retaining old hardware alone is not sufficient.
 
 Afterward, restore DNS TTLs, remove temporary access, update diagrams and inventory, reconcile shipped equipment, and close only after backup and failure tests pass at the new site.
 

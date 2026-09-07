@@ -47,7 +47,7 @@ Before changing a request, record:
 - topology spread, affinity, disruption budgets, and quotas;
 - node allocatable capacity and autoscaler limits.
 
-HPA creates pods, but it does not make nodes instantly available. A lower request may let more replicas fit on a node, while a higher replica count may trigger node provisioning. Test the entire chain.
+HPA updates the workload's desired replica count, and the workload controllers create pods, but this does not make nodes instantly available. A lower request may let more replicas fit on a node, while a higher replica count may trigger node provisioning. Test the entire chain.
 
 ## Separate request rightsizing from limit policy
 
@@ -55,11 +55,11 @@ The CPU request is a scheduling reservation and a share under contention. A CPU 
 
 Memory needs more caution. A memory limit can lead to an OOM kill, while a request that is too low makes placement and node consolidation optimistic. Use working-set peaks, OOM history, and failover behavior rather than average memory.
 
-Native sidecars and ordinary application containers also contribute to pod demand. Rightsize them individually so one noisy proxy does not distort the main container's HPA signal. Kubernetes supports a `ContainerResource` metric source when scaling should follow one named container rather than total Pod usage. If Pod-level resources are used, remember that this metric still requires and uses the named container's own request for a utilization target.
+Native sidecars and ordinary application containers also contribute to pod demand. Rightsize them individually, but remember that a noisy proxy still affects a Pod-wide HPA signal. Kubernetes supports a `ContainerResource` metric source when scaling should follow one named container rather than total Pod usage. If Pod-level resources are used, remember that this metric still requires and uses the named container's own request for a utilization target.
 
 ## Choose a metric that retains the intended behavior
 
-This HPA uses absolute CPU per pod, so changing the CPU request does not change the target itself:
+This HPA uses the average absolute CPU usage of the `application` container across pods, so changing the CPU request does not change the target itself:
 
 ```yaml
 apiVersion: autoscaling/v2
@@ -113,7 +113,7 @@ aggregate requested CPU = desired replicas * CPU request per pod
 aggregate requested memory = desired replicas * memory request per pod
 ```
 
-A change from four pods at 600m to six pods at 400m leaves requested CPU at 2.4 cores, but sidecar requests, memory, pod slots, connections, and per-replica overhead all increase. It may also improve availability. Decide from service and cluster outcomes rather than assuming fewer millicores per pod means savings.
+A change from four application containers at 600m to six at 400m leaves their requested CPU at 2.4 cores. With unchanged per-replica sidecar and memory requests, aggregate sidecar CPU and requested memory increase, as do pod slots; connections and other per-replica overhead can also increase. It may also improve availability. Decide from service and cluster outcomes rather than assuming fewer millicores per pod means savings.
 
 ## Conclusion
 

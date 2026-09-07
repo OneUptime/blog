@@ -25,7 +25,7 @@ Choose an outcome that matters:
 Then calculate:
 
 ```text
-cost per work = GPU-hour cost * elapsed GPU hours / successful work units
+cost per work = total workload cost / successful work units
 ```
 
 Include failed jobs, retries, checkpoint overhead, idle reservation, data transfer, and required CPU or memory hosts. The GPU with the lowest hourly price can be more expensive per completed unit.

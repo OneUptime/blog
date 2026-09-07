@@ -25,15 +25,17 @@ Get written permission before generating high-rate or UDP test traffic. Coordina
 
 ## Eliminate local bottlenecks
 
-Connect a known-capable test host at the customer demarcation. Verify negotiated speed and duplex, transceiver type, optical levels, interface errors, CPU, NIC queues, and host firewall. The far-end test server and every intermediate interface must exceed the target rate.
+Connect a known-capable test host at the customer demarcation. Verify negotiated speed and duplex, transceiver type, optical levels, interface errors, CPU, NIC queues, and host firewall. The test hosts and supporting network must sustain the target rate without becoming bottlenecks. Account for protocol overhead when comparing application throughput with the circuit’s committed rate.
 
 Record interface counters before and after each run. Drops on the test host or your own switch are not provider loss.
 
-Check the path MTU with appropriately sized packets and the do-not-fragment behavior supported by the operating system. Test both address families. A basic ping can pass while larger application packets fail because of an MTU mismatch.
+Check the path MTU with appropriately sized packets and the do-not-fragment behavior supported by the operating system. For IPv4, use the DF bit; IPv6 has no DF bit, and routers do not fragment packets, so check ICMPv6 Packet Too Big handling and prevent source fragmentation in the test tool. Test both address families. A basic ping can pass while larger application packets fail because of an MTU mismatch.
 
 ## Measure throughput with iperf3
 
 ESnet's iperf3 supports TCP, UDP, reverse, bidirectional, and parallel-stream testing. Begin with a single TCP stream, then use multiple streams only to distinguish a flow or host limitation from aggregate circuit capacity.
+
+Replace `test.example.net` with your controlled test server running `iperf3 -s`. Allow TCP port 5201 for control and TCP tests, and UDP port 5201 for UDP tests.
 
 ```bash
 # Forward TCP for 60 seconds

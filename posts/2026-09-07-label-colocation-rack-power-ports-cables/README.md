@@ -18,11 +18,11 @@ Define stable identifiers for site, room or cage, cabinet, cabinet face, rack un
 site:       LON1
 cage:       C03
 rack:       R12
-device:     LON1-C03-R12-SRV042
+device:     SRV042
 position:   front, U18-U19
 ```
 
-Declare whether rack units are counted from bottom to top and label both front and rear rails. Avoid embedding owner, application, or environment in the permanent asset ID because those can change. Store those meanings as attributes in the inventory.
+Declare whether rack units are counted from bottom to top and label both front and rear rails. Keep the permanent asset ID globally unique and separate from its current site, cage, rack, owner, application, or environment because those can change. Store those meanings as attributes in the inventory.
 
 Use identifiers that remain unique across sites. NIST component-inventory guidance calls for accountable, non-duplicated records and includes physical location among useful hardware fields.
 
@@ -45,7 +45,7 @@ Use `A` and `B` as text as well as distinct colors. Color is an aid, not an iden
 
 An example is `SRV042-PSU1 -> R12-PDU-A outlet A17`. Keep the arrow direction or source and destination fields consistent.
 
-Verify the mapping physically by reading PDU outlet data or performing an approved one-cord-at-a-time test on redundant equipment. Do not infer A/B from which side of the rack a cord occupies.
+Verify each cord by physically tracing it to the PDU outlet and corroborating the mapping with outlet-level telemetry where available. Confirm the PDU's upstream A/B feed with facility records or the provider; outlet data alone does not establish feed independence. If an approved one-cord-at-a-time test is needed, first verify healthy power redundancy and sufficient capacity on the remaining power path, and restore and verify each cord before testing the next. Do not infer A/B from which side of the rack a cord occupies.
 
 ## Give every data cable one ID
 
@@ -64,7 +64,7 @@ ANSI/TIA-606-D provides a standards framework for identifiers, records, and admi
 
 ## Label patch panels and ports
 
-Give each panel a rack and position identifier and each port an unambiguous number. Match device interface names exactly, including slot and sub-port notation. Use a consistent left-to-right and top-to-bottom numbering scheme and document unused, reserved, and provider-controlled positions.
+Give each panel a rack and position identifier and each port an unambiguous number. Match device interface names exactly, including slot and sub-port notation. Preserve manufacturer port numbering. Where ports have no existing numbering, use a consistent left-to-right and top-to-bottom scheme, and document unused, reserved, and provider-controlled positions.
 
 For a provider cross-connect, record the customer panel and port, provider circuit ID, carrier ID, demarcation, LOA/CFA reference, and remote endpoint. Do not relabel provider assets without authorization.
 

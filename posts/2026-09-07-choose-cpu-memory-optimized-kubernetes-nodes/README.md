@@ -47,7 +47,7 @@ base workload budget = node allocatable
                      - deliberate failure or rollout reserve
 ```
 
-Pod overhead is a per-Pod cost declared by a RuntimeClass, not one fixed subtraction from the node. Include it in each Pod's effective request during packing. Then pack the peak replica set, HPA surge, and one-node failure scenario. A node that fits steady state perfectly but cannot drain safely is too tight.
+Pod overhead is a per-Pod cost declared by a RuntimeClass, not one fixed subtraction from the node. Include it in each Pod's effective request during packing. Then pack the peak replica set, HPA scale-up, Deployment surge, and one-node failure scenario. A node that fits steady state perfectly but cannot drain safely is too tight.
 
 Google's GKE node-sizing guidance explicitly recommends considering workload requests, planned limits, scale-up overhead, allocatable resources, and the tradeoff between a few large nodes and many smaller ones. Larger nodes reduce repeated DaemonSet overhead but increase the disruption and blast radius when one fails. Smaller nodes give finer autoscaling increments but repeat per-node costs.
 
@@ -90,7 +90,7 @@ One node family does not need to serve every workload. A practical design might 
 - general-purpose nodes for system and mixed services;
 - special pools for GPU, local disk, or licensed software.
 
-Use taints, tolerations, and affinity only where isolation is required. Excessive hard placement constraints reduce bin-packing flexibility and can create new fragmentation.
+Use taints, tolerations, and affinity where isolation, hardware compatibility, or workload placement requirements justify them. Prefer soft affinity when placement is a preference rather than a requirement. Excessive hard placement constraints reduce bin-packing flexibility and can create new fragmentation.
 
 With a node autoscaler, expose a controlled set of allowed families and verify how it chooses among them. Autoscalers provision for pending pod requests and constraints, not measured runtime usage. Correct requests remain essential.
 

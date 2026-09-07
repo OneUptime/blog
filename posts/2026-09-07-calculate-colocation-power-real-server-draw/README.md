@@ -44,10 +44,10 @@ Start with the greater of the observed aggregate peak and the modeled credible p
 ```text
 design real power = credible rack peak
                   + approved growth
-                  + fixed rack infrastructure
+                  + fixed rack infrastructure not already included in the peak
 ```
 
-Suppose 12 servers and two switches reach 3.6 kW at the rack input. Planned additions need 0.45 kW and fixed management equipment needs 0.15 kW:
+Suppose 12 servers and two switches reach 3.6 kW at the rack input. Planned additions need 0.45 kW and fixed management equipment not included in that measurement needs 0.15 kW:
 
 ```text
 design real power = 3.60 + 0.45 + 0.15 = 4.20 kW
@@ -80,7 +80,7 @@ Before production cutover:
 
 - compare each device reading with the inventory
 - run the highest credible workload
-- fail A, then B, while watching both PDU and server telemetry
+- fail A, restore A and verify redundancy, then fail B and restore B, while watching both PDU and server telemetry
 - verify alarm thresholds below the enforced limit
 - retain a 24-hour baseline and review it after workload changes
 

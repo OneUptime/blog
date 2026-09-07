@@ -10,18 +10,18 @@ Description: Turn smaller pod requests into actual savings by fixing fragmentati
 
 Cloud providers bill for nodes or managed pod allocations, not for the YAML diff itself. Lowering Kubernetes requests creates potential capacity. It becomes a saving only when the cluster avoids adding capacity or can remove paid capacity.
 
-The missing step is usually placement and consolidation.
+For node-based billing, the missing step is usually placement and consolidation. With request-based pod billing, such as general-purpose GKE Autopilot workloads, lower effective requests can reduce charges without removing nodes, subject to provider minimums and resource ratios.
 
 ## Follow the chain from request to invoice
 
 A request affects scheduler placement. Node autoscalers use requests and scheduling constraints when deciding whether pods need new nodes and whether existing nodes can be consolidated. They do not base these decisions directly on low runtime usage.
 
-The savings chain is:
+For node-based billing, the savings chain is:
 
 ```text
 lower correct pod request
   -> scheduler can place pods more densely
-  -> all pods from one or more nodes can move elsewhere
+  -> movable workload pods from one or more nodes can be recreated elsewhere
   -> autoscaler or operator removes those nodes
   -> billed node hours decline
 ```
@@ -63,9 +63,9 @@ Rightsize the binding resource and improve the workload mix. Lowering an already
 An underfilled node may remain because its pods cannot be moved. Check:
 
 - PodDisruptionBudgets with no allowed disruptions;
-- unmanaged or singleton pods;
+- unmanaged pods, or singleton workloads whose disruption budgets prevent eviction;
 - local ephemeral data that cannot be recreated;
-- required node affinity or a unique taint;
+- required node affinity or untolerated taints on destination nodes;
 - insufficient capacity in another zone;
 - a node group minimum size;
 - autoscaler consolidation settings and delay;
@@ -80,11 +80,11 @@ Do not begin with a percentage reduction across every deployment. Begin with a n
 ```text
 goal: remove 3 general-purpose nodes
 per-node allocatable: 7.2 CPU, 28Gi memory
-capacity to free: 21.6 CPU, 84Gi memory
+allocatable capacity removed: 21.6 CPU, 84Gi memory
 constraints: keep one-node failure headroom in every zone
 ```
 
-Then select low-risk workload requests whose aggregate reduction and placement make that target feasible. Simulate the actual pod vectors, not just totals. Twenty pods each needing 2Gi cannot necessarily fit into an aggregate 40Gi spread across fragments.
+The required request reduction depends on existing spare capacity and the headroom you retain; it is not necessarily 21.6 CPU and 84Gi. Then select low-risk workload requests whose aggregate reduction and placement make that target feasible. Simulate the actual pod vectors, not just totals. Twenty pods each needing 2Gi cannot necessarily fit into an aggregate 40Gi spread across fragments.
 
 ## Improve placement and pool design
 

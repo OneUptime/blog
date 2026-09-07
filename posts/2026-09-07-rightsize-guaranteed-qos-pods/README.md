@@ -77,7 +77,7 @@ Do not confuse `PodLevelResources` with `PodLevelResourceManagers`. The latter i
 
 ## Decide whether Guaranteed is still the requirement
 
-Guaranteed pods are considered after BestEffort and Burstable pods during node-pressure eviction ordering, subject to actual usage relative to requests and other conditions. They also cannot burst beyond their configured CPU and memory limits. Preserving the label is not automatically more important than service performance.
+For memory-pressure eviction, the kubelet ranks pods by whether usage exceeds requests, then by Pod Priority and usage relative to requests. Guaranteed pods and Burstable pods using less than their requests are generally evicted last; QoS class is not itself the sorting key, and disk or PID pressure uses different criteria. CPU limits constrain CPU consumption, while memory limits are enforced reactively through OOM kills, so memory usage can temporarily exceed a limit. Preserving the label is not automatically more important than service performance.
 
 Document why it is required:
 
@@ -93,7 +93,7 @@ If the workload benefits from idle CPU and does not need a hard CPU ceiling, a c
 
 Collect CPU, memory working set, throttling, OOM, and startup peaks for application containers, ordinary sidecars, and init containers. Do not allocate every container from the pod average. A service-mesh proxy may need CPU based on request rate while the application needs memory based on active sessions.
 
-For a regular init container that finishes before the application starts, its peak can affect the pod's effective scheduling requirement even though it does not run in steady state. It still needs complete equal CPU and memory pairs to retain container-level Guaranteed QoS.
+For a regular init container that finishes before the application starts, the request sized for its peak can affect the pod's effective scheduling requirement in the container-level model even though it does not run in steady state. It still needs complete equal CPU and memory pairs to retain container-level Guaranteed QoS.
 
 ## Change all four values atomically
 

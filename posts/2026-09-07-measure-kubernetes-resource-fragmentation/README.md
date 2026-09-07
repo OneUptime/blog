@@ -8,7 +8,7 @@ Description: Measure stranded CPU and memory as unschedulable resource shapes, t
 
 ---
 
-Average node utilization does not reveal whether free capacity is usable. Kubernetes schedules a pod only when one eligible node can satisfy all its requests and constraints. Five nodes with spare CPU can still reject a pod when each lacks enough memory.
+Average node utilization does not reveal whether free capacity is usable. Kubernetes schedules a pod only when one eligible node can satisfy all its requests and hard scheduling constraints. Five nodes with spare CPU can still reject a pod when each lacks enough memory.
 
 Resource fragmentation is therefore a placement problem across multiple dimensions, not simply one minus utilization.
 
@@ -19,7 +19,7 @@ Export a point-in-time inventory containing:
 - node capacity and allocatable CPU, memory, ephemeral storage, pods, and extended resources;
 - every scheduled pod's effective requests;
 - pending pod requests and scheduler events;
-- node labels, taints, and readiness;
+- node labels, taints, readiness, and cordon status (`spec.unschedulable`);
 - pod selectors, affinity, anti-affinity, topology spread, and tolerations;
 - persistent-volume zones and attachment constraints;
 - DaemonSet placement and pod overhead.
@@ -34,7 +34,7 @@ kubectl get pods -A --field-selector=status.phase=Pending
 kubectl get events -A --field-selector=reason=FailedScheduling
 ```
 
-For repeatable analysis, query the API and preserve the snapshot with a timestamp. Metrics exporters can expose request totals, but reconstruct init and sidecar semantics carefully if the exporter only reports individual containers.
+For repeatable analysis, query the API and preserve the snapshot with a timestamp. Metrics exporters can expose request totals, but reconstruct init and sidecar semantics carefully if the exporter only reports individual containers. Account for pod-level requests when enabled and used, and include pod overhead.
 
 ## Calculate residual vectors
 
@@ -55,13 +55,13 @@ Example:
 | B | 300m | 5Gi | No |
 | C | 650m | 1400Mi | Yes |
 
-The cluster has 2.75 CPU and 6.8Gi free in aggregate, but only node C can place that pod.
+The cluster has 2.75 CPU and approximately 6.76Gi free in aggregate, but only node C can place that pod.
 
 ## Measure fragmentation against real pod shapes
 
 There is no single useful fragmentation percentage independent of the workload. Evaluate the shapes that actually arrive.
 
-For each common pod class, calculate:
+For each common pod class, calculate a resource-only upper bound:
 
 ```text
 fit_count(node, class) = min(
@@ -71,7 +71,7 @@ fit_count(node, class) = min(
 )
 ```
 
-Then apply eligibility constraints. A numerical fit on a node in the wrong zone is not a scheduler fit.
+Use effective class requests, including overhead. Skip division for a zero-request dimension and always include the remaining pod count limit. Treat a negative residual in a checked resource dimension as no fit. Then apply hard eligibility constraints; soft preferences affect scoring rather than eligibility. A numerical fit on a node in the wrong required zone is not a scheduler fit. Re-evaluate constraints after each simulated placement: affinity, anti-affinity, topology spread, and volume limits can make the actual replica count lower than this bound. Counts for different classes are alternative scenarios, not additive capacity.
 
 Useful measures include:
 
@@ -93,6 +93,8 @@ pod ratio = requested GiB / requested vCPU
 node ratio = allocatable GiB / allocatable vCPU
 ```
 
+For pods with zero requested CPU, report memory requests separately because this ratio is undefined.
+
 If most pods request 8Gi per vCPU and nodes offer 4Gi per vCPU, memory fills first and CPU becomes stranded. One complementary CPU-heavy workload can improve packing, or a memory-optimized pool may fit better.
 
 Use distributions, not only an average ratio. A mix of 1Gi-per-vCPU and 15Gi-per-vCPU pods may average to a general-purpose shape while remaining difficult to pack because replica counts and constraints do not align.
@@ -101,7 +103,7 @@ Use distributions, not only an average ratio. A mix of 1Gi-per-vCPU and 15Gi-per
 
 Replay the exact pod inventory through a bin-packing simulation for each allowed node type. Include:
 
-1. provider and kubelet reservations;
+1. provider and kubelet reservations, without subtracting reservations already reflected in allocatable twice;
 2. every matching DaemonSet;
 3. current pods in required topology domains;
 4. one-node or one-zone failure headroom;
@@ -122,7 +124,7 @@ raw free capacity
 = optimization candidate
 ```
 
-Likewise, an empty slot reserved by topology spread can be intentional resilience. The question is whether the constraint still represents a current requirement.
+Likewise, capacity left unused because a hard topology spread constraint prevents additional placement can be intentional resilience. Topology spread balances matching pod counts across domains; it does not reserve empty resource slots. The question is whether the constraint still represents a current requirement.
 
 ## Establish a before-and-after scorecard
 
@@ -139,7 +141,7 @@ A higher average allocation is only an improvement if pods remain schedulable du
 
 ## Conclusion
 
-Measure Kubernetes fragmentation as the inability of residual node vectors to fit real pod shapes. Start from allocatable and effective requests, enforce every scheduling constraint, and simulate failure and surge cases. Optimize the workload-node mix while keeping explicit resilience reserves visible.
+Measure Kubernetes fragmentation as the inability of residual node vectors to fit real pod shapes. Start from allocatable and effective requests, enforce hard scheduling constraints and account for soft preferences, and simulate failure and surge cases. Optimize the workload-node mix while keeping explicit resilience reserves visible.
 
 ## Official Documentation
 

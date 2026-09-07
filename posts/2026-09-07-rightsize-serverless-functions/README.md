@@ -40,7 +40,7 @@ Run representative payloads at several memory settings rather than moving one st
 
 AWS documents that 1,769 MB corresponds to the equivalent of one vCPU for Lambda and that CPU power increases with memory. Current ranges and pricing must come from the service documentation for the region.
 
-For on-demand Lambda duration charges, configured memory and billed duration determine GB-seconds. Billing does not use the function's measured maximum memory. A larger setting raises the rate per unit time, but a large enough duration reduction can offset it. Include request charges and any architecture, provisioned-concurrency, ephemeral-storage, or data-transfer charges that apply.
+For on-demand Lambda duration charges, configured memory and billed duration determine GB-seconds. Billing does not use the function's measured maximum memory. A larger setting raises the rate per unit time, but a large enough duration reduction can offset it. Use the duration rate for the selected CPU architecture, and include request charges and any provisioned-concurrency, ephemeral-storage, or data-transfer charges that apply.
 
 Use production-like SDK calls and data. A synthetic arithmetic loop misses network, serialization, decompression, and library initialization. AWS points to Lambda Power Tuning as an open-source method for testing multiple memory configurations in an account.
 

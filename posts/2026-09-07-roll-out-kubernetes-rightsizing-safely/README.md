@@ -8,7 +8,7 @@ Description: Stage Kubernetes resource changes through canaries with explicit av
 
 ---
 
-A resource-only change can be as risky as a code release. Lower memory can cause delayed OOM kills, lower CPU limits can create tail-latency regressions, and larger requests can leave pods pending. Roll it out with the same progressive controls used for application changes.
+A resource-only change can be as risky as a code release. Lower memory limits can cause delayed OOM kills, lower CPU limits can create tail-latency regressions, and larger requests can leave pods pending. Roll it out with the same progressive controls used for application changes.
 
 ## Define success before editing YAML
 
@@ -32,7 +32,7 @@ Use workload-specific thresholds. Compare canary and control over the same traff
 
 ## Isolate the canary
 
-Kubernetes Deployment rolling updates do not natively split traffic by resource configuration. For a controlled canary, create a second Deployment with the same image and configuration but different resource values. Give it a distinct version label and route a small share through a service mesh, gateway, or application-level partition.
+Kubernetes Deployment rolling updates do not natively split traffic by resource configuration. For a controlled canary, create a second Deployment with the same image and configuration but different resource values. Give its pods a distinct version label and ensure the two Deployments have non-overlapping selectors; an existing Deployment selector is immutable. Route a small share through a service mesh, gateway, or application-level partition.
 
 If precise traffic weighting is unavailable, canary on one low-risk tenant, worker partition, or replica and compare it carefully. Avoid sending all unusually easy traffic to the canary.
 
@@ -40,7 +40,7 @@ Change one sizing dimension at a time where possible. Lower the request, observe
 
 ## Configure rollout safety
 
-For a standard rolling Deployment, use availability settings appropriate to replica count:
+For a standard rolling Deployment, use availability settings appropriate to replica count. This partial manifest shows the rollout settings; merge them into your existing Deployment manifest, retaining its required `spec.selector` and `spec.template`:
 
 ```yaml
 apiVersion: apps/v1

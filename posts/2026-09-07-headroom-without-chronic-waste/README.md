@@ -14,7 +14,7 @@ Start from measured demand, state why each buffer exists, and remove buffers whe
 
 ## Separate the headroom components
 
-Use four explicit components rather than one unexplained multiplier:
+Use a baseline and four explicit reserve components rather than one unexplained multiplier:
 
 ```text
 baseline demand: selected statistic from a representative window
@@ -52,21 +52,21 @@ Measure cache warmup, replica catch-up, compaction, backup, and failover. Recove
 
 ### Reaction time
 
-Calculate demand that arrives before new capacity is usable:
+For approximately linear growth, estimate the increase in resource demand before new capacity is usable. Express the growth rate in capacity units per unit time, such as CPU cores per minute, and latency in matching time units:
 
 ```text
 reaction reserve = demand growth rate * end-to-end scale latency
 ```
 
-End-to-end latency includes metric delay, evaluation, provisioning, image pulls, startup, readiness, and load-balancer registration. Measuring only the cloud API launch time understates it.
+For abrupt or nonlinear increases, use the measured demand increase over the reaction window instead. End-to-end latency includes metric delay, evaluation, provisioning, image pulls, startup, readiness, and load-balancer registration. Measuring only the cloud API launch time understates it.
 
 ## Use asymmetric CPU and memory policies
 
 CPU shortages usually appear as throttling, queueing, and latency. A CPU buffer can be smaller when the workload sheds load, has a queue, or scales quickly. It must be larger when there is one replica, long startup, or a tight synchronous latency objective.
 
-Memory exhaustion can terminate a process. Size memory from working-set peaks plus native, kernel-accounted, cache, and diagnostic needs. Keep the request and limit policy distinct: a scheduler request expresses placement need, while a hard limit defines an enforcement boundary.
+Memory exhaustion can terminate a process. Size memory from working-set peaks plus native, kernel-accounted, cache, and diagnostic needs not already included in that metric. Keep the request and limit policy distinct: a scheduler request expresses placement need, while a hard limit defines an enforcement boundary.
 
-AWS Compute Optimizer exposes this asymmetry in its configurable preferences. It offers independent CPU and memory headroom and uses 20 percent for each in its documented default preset. Treat those values as provider defaults, not proof for a particular application.
+AWS Compute Optimizer exposes this asymmetry in its configurable preferences. For EC2 instance recommendations, it offers independent CPU and memory headroom and uses 20 percent for each in its documented default preset. Treat those values as provider defaults, not proof for a particular application.
 
 ## Put a ceiling on unexplained headroom
 
@@ -106,7 +106,7 @@ Before broad rollout, replay normal load, the chosen peak, a dependency slowdown
 - queue age and retry amplification;
 - database and storage latency.
 
-Set a consumption alert on each buffer. If baseline demand repeatedly enters the growth reserve, bring the review forward. If a buffer remains untouched across several representative cycles, reduce or reclassify it.
+Set a consumption alert on each buffer. If baseline demand repeatedly enters the growth reserve, bring the review forward. If a buffer remains untouched across several representative cycles, reassess it and reduce or reclassify it only when its risk is no longer present or another tested control covers it. Keep required failover and recovery reserves even when no failure occurred during the observation window.
 
 ## Prefer elasticity for rare, schedulable peaks
 

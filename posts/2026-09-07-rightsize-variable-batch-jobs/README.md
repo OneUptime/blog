@@ -33,13 +33,13 @@ Record both input and outcome for every job attempt:
 }
 ```
 
-Use a sampling interval that can see the memory high-water mark and CPU phases. Average memory across the run is unsafe when one aggregation phase determines whether the process is OOM-killed.
+Use a short sampling interval to observe memory and CPU phases, but remember that samples can miss brief memory peaks. Where available, also collect a kernel-maintained peak such as cgroup v2 `memory.peak`; it measures cgroup memory usage, not just the working set. Average memory across the run is unsafe when one aggregation phase determines whether the process is OOM-killed.
 
 Keep failed attempts. Removing OOM and timeout runs makes the surviving sample look artificially efficient. Label failures so logical errors do not become capacity demand.
 
 ## Classify jobs by a causal feature
 
-Useful classes include job type, input-size band, partition count, algorithm, tenant, and full versus incremental mode. Choose features known before scheduling so the scheduler can select a resource class.
+Useful classes include job type, input-size band, partition count, algorithm, tenant, and full versus incremental mode. Choose features known before scheduling so the submission logic can select a resource class and set requests and limits before Kubernetes schedules the pods.
 
 ```text
 small:  input < 5 GiB
@@ -96,7 +96,7 @@ spec:
             memory: 8Gi
 ```
 
-This example omits a CPU limit so the worker can use idle CPU, subject to cluster policy. That is not universally correct. Multi-tenant isolation or predictable performance may require a tested CPU limit.
+Replace `example/importer:4.2.1` with your own importer image. The importer must coordinate distinct work items, such as by claiming one item per pod from a queue; `completions: 32` counts successful pods and does not partition the input. This example omits a CPU limit so the worker can use idle CPU, subject to cluster policy. That is not universally correct. Multi-tenant isolation or predictable performance may require a tested CPU limit.
 
 Kubernetes Jobs retry failed pods according to `backoffLimit`; retries use more capacity and can duplicate external effects unless the job is idempotent. Set a deliberate failure policy instead of allowing capacity errors to multiply unnoticed.
 
@@ -108,7 +108,7 @@ Route exceptional jobs to a large-memory or high-CPU pool. Keep the common class
 
 ## Guard against skew inside a run
 
-Partitioned jobs can have one hot partition. Track per-task input size, runtime, and peak memory, not only the job average. Consider adaptive partitioning or work stealing before raising every worker to accommodate one recurring skewed key.
+Partitioned jobs can have one hot partition. Track per-task input size, runtime, and peak memory, not only the job average. Consider adaptive partitioning before raising every worker to accommodate one recurring skewed key. Work stealing can redistribute independent tasks, but cannot reduce the memory needed by a single indivisible task.
 
 Also distinguish initialization from steady work. A large init download can determine ephemeral storage, while the transform phase determines CPU and the reduce phase determines memory.
 

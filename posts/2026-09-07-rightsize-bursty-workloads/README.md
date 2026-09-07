@@ -40,7 +40,7 @@ Map the full reaction path:
 5. the image and application start;
 6. readiness succeeds and traffic arrives.
 
-The existing fleet must handle or buffer the load during that interval. If arrival rate grows by 200 requests per second each minute and usable capacity takes three minutes, the steady fleet, queue, or load-shedding design must cover the additional 600 requests per second at the end of the delay.
+The existing fleet must handle or buffer the load during that interval. If arrival rate grows by 200 requests per second each minute and usable capacity takes three minutes, the steady fleet, queue, or load-shedding design must cover the additional 600 requests per second at the end of the delay. Queue storage must cover accumulated excess arrivals over the whole interval: with a linear ramp, no initial backlog, and existing capacity exactly matching the initial arrival rate, that is 54,000 requests (0.5 × 180 seconds × 600 requests per second), with enough capacity afterward to drain them within their deadlines.
 
 Do not assume a pod starts immediately. A pending pod can trigger node provisioning, and the new node may take much longer than HPA evaluation.
 
@@ -96,13 +96,14 @@ Canary the smaller size on a subset of traffic and compare it with a control. Ro
 
 ## Review both cost and capacity
 
-Compute effective cost per completed unit of work:
+Compute effective cost per completed unit of work over the same measurement interval, counting each cost once:
 
 ```text
-effective cost = instance cost
-               + burst credit charges
-               + extra replicas
-               + retry and queue storage cost
+total cost = base instance cost
+           + burst credit charges
+           + extra replica cost
+           + additional retry and queue storage cost
+effective cost per completed unit = total cost / completed units of work
 ```
 
 A smaller instance that runs longer or repeatedly scales out can cost more. Keep the configuration that meets objectives at the lowest measured cost, even if its average utilization looks less tidy.

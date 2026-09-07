@@ -58,7 +58,7 @@ Validate how the provider isolates customer equipment during installation, cable
 
 ## Inspect delivery and removal controls
 
-Follow a sample package from advance authorization through loading dock, custody, staging, cage delivery, unpacking, and inventory update. Repeat for an outbound device and failed data-bearing drive.
+Follow a sample package from advance authorization through loading dock, custody, staging, unpacking in the designated area, cage delivery, and inventory update. Repeat for an outbound device and failed data-bearing drive.
 
 Verify serial or asset ID, sender and recipient, timestamps, storage duration, tamper evidence, and who can authorize removal. NIST physical controls explicitly include delivery and removal, and media controls add transport and sanitization requirements.
 

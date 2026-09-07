@@ -14,7 +14,7 @@ CPU sizing has a similar trap: a low average can coexist with short garbage-coll
 
 ## Establish container awareness first
 
-Use a supported JDK and verify what the running JVM sees:
+Use a supported JDK. Run the first two commands inside the Linux application container with the same JVM options as the application; they inspect a new JVM, not the running application. The `jcmd` commands inspect the running JVM and assume Java is PID 1; substitute its actual PID if needed and run with the same effective user and group, using the matching JDK version with `jcmd` available:
 
 ```bash
 java -XshowSettings:system -version
@@ -28,11 +28,11 @@ Pin the image digest and JVM flags in the sizing record. A JDK upgrade can chang
 
 ## Build a complete memory budget
 
-Measure these components under representative load:
+Budget for these components under representative load:
 
 ```text
 container limit
-  = peak committed Java heap
+  >= planned peak committed Java heap
   + metaspace and compressed class space
   + code cache
   + thread stacks
@@ -40,8 +40,11 @@ container limit
   + garbage collector native structures
   + JNI and other native libraries
   + memory-backed volumes charged to the cgroup
+  + other charged page cache and kernel memory
   + diagnostic and uncertainty reserve
 ```
+
+This is a sizing budget, not an exact cgroup accounting identity: committed memory is not necessarily resident, and mapped files and memory-backed volumes can overlap with page-cache accounting. Avoid double-counting and validate against total cgroup memory usage. Allow for heap growth up to `-Xmx` unless a smaller maximum is enforced.
 
 Use post-collection live set to understand durable heap demand, then preserve allocation headroom so the collector can work efficiently. Do not size `-Xmx` from RSS alone.
 

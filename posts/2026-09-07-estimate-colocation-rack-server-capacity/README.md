@@ -27,7 +27,7 @@ Start with the cabinet's actual rack-unit count and reserve space for:
 - top-of-rack switches and patch panels
 - console server, firewall, or load balancer
 - horizontal cable managers
-- blanking panels or airflow separation required by the design
+- dedicated airflow-separation space required by the equipment design (cover unused U positions with blanking panels; the panels do not themselves require a permanent U reservation)
 - future equipment that has already been approved
 
 If a 42U rack reserves 4U and each server is 2U:
@@ -40,7 +40,7 @@ Confirm server and rail depth, rear-door clearance, post spacing, mounting-hole 
 
 ## Calculate power-limited count
 
-Check real power, apparent power, current, and phase limits independently. Use the provider's permitted continuous load after fixed equipment, not the breaker nameplate:
+Check real power, apparent power, current, and phase limits independently. Use the provider's permitted continuous load, not the breaker nameplate. In these formulas, usable kW and kVA are the permitted totals before subtracting fixed equipment:
 
 ```text
 real-power count = floor((usable kW - fixed kW) / design kW per server)
