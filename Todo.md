@@ -190,7 +190,6 @@
 
 ## Colocation
 
-19. How to Audit Physical Access and Tenant Isolation in a Shared Colocation Facility
 20. How to Decide Whether Colocation or Dedicated Servers Cost Less for Your Workload
 
 ## Data Lineage
