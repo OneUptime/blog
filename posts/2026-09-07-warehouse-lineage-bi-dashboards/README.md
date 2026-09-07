@@ -33,7 +33,7 @@ warehouse field
   -> worksheet, tile, visual, report, or dashboard
 ```
 
-Include platform, tenant or site, workspace or project, immutable object ID, object type, display name, URL, owner, and capture version on every BI node. Display names are not IDs.
+Include platform, tenant or site, workspace or project, stable adapter ID, native object ID where available, object type, display name, URL, owner, and capture version on every BI node. Not every native object has an immutable ID: scope LookML names to the instance, project, and model, and reconcile renames explicitly. Display names are not IDs.
 
 Keep development and production separate. A workbook in a test Tableau site and one with the same name in production are different nodes even if their source points to the same warehouse.
 
@@ -85,7 +85,7 @@ query WarehouseInventory {
 
 Then add the upstream and downstream shortcut fields exposed by that site's schema, such as downstream data sources, workbooks, sheets, and columns. Use connection-style fields and pagination for large sites. Tableau explicitly scopes results to the caller's permissions, so an empty result can mean invisible metadata rather than no dependency.
 
-Store Tableau object IDs or LUIDs and the GraphQL path that proved each edge. Custom SQL is interpreted as a table only when it meets Tableau's supported criteria; retain `isUnsupportedCustomSql` or `containsUnsupportedCustomSql` as a coverage gap rather than inventing an upstream table.
+Store Tableau object IDs or LUIDs and the GraphQL path that proved each edge. Custom SQL is represented by a `CustomSQLTable`, but upstream lineage depends on Tableau's SQL support; retain `isUnsupportedCustomSql` or `containsUnsupportedCustomSql` as a coverage gap rather than inventing an upstream table.
 
 ## Ingest Looker from LookML and the API
 
@@ -100,8 +100,7 @@ GET /api/4.0/lookml_models?fields=name,project_name,explores
 For every model and Explore, request its field metadata:
 
 ```http
-GET /api/4.0/lookml_models/ecommerce/explores/orders
-    ?fields=id,name,connection_name,fields
+GET /api/4.0/lookml_models/ecommerce/explores/orders?fields=id,name,connection_name,fields
 ```
 
 Use the exact fields parameter supported by your Looker release and inspect the generated SDK types. The Explore response can describe dimensions and measures, while the LookML project remains the authoritative source for `sql_table_name`, derived SQL, joins, and field expressions.
@@ -124,9 +123,9 @@ view: orders {
 }
 ```
 
-For PostgreSQL, the Looker connection already selects the `analytics` database, so the executable table reference is `public.fct_orders`. Do not paste the OpenLineage `database.schema.table` name directly into PostgreSQL SQL. The adapter combines the connection's database with the observed schema and table to produce the canonical `analytics.public.fct_orders` identity.
+For PostgreSQL, the Looker connection already selects the `analytics` database, so the executable table reference is `public.fct_orders`. PostgreSQL also accepts `database.schema.table` when the database matches the current connection; it does not support cross-database references this way. The adapter combines the connection's database with the observed schema and table to produce the canonical `analytics.public.fct_orders` identity.
 
-Parse LookML references so `orders.total_revenue` depends on `orders.net_revenue`, which resolves through `sql_table_name` and the model's connection. Persistent derived tables and native derived tables create intermediate datasets; preserve them when they have independent build and refresh behavior.
+Parse LookML substitutions and SQL column references so `orders.total_revenue` depends on the physical `net_revenue` column, resolved through `sql_table_name` and the model's connection. `${TABLE}.net_revenue` does not reference a LookML field named `orders.net_revenue`. SQL-based and native derived tables can each be temporary or persistent; preserve intermediate datasets and, for persistent derived tables, their independent build and refresh behavior.
 
 Fetch saved content and dashboard elements to connect selected model, Explore, and fields to user-facing assets. Run Looker's Content Validator during model migrations, but treat validation and lineage as separate signals: valid content can still depend on a field you plan to remove.
 
@@ -134,13 +133,13 @@ Fetch saved content and dashboard elements to connect selected model, Explore, a
 
 Power BI's lineage view connects external sources, dataflows, semantic models, reports, and dashboards within the service. Use it for artifact-level context and impact analysis. Field and DAX measure dependencies require semantic-model metadata.
 
-For supported capacity workspaces, connect to the XMLA endpoint:
+For workspaces on supported capacity or Premium Per User, ensure XMLA read access is enabled and the caller has the required license and semantic-model permissions, then connect to the XMLA endpoint:
 
 ```text
 powerbi://api.powerbi.com/v1.0/contoso.com/Finance%20Workspace
 ```
 
-Inventory model objects and calculation dependencies:
+Select the semantic model as the connection's database and run each DMV query separately to inventory measures and calculation dependencies:
 
 ```sql
 SELECT * FROM $SYSTEM.TMSCHEMA_MEASURES;
@@ -153,12 +152,12 @@ Power BI projects can store semantic model definitions as TMDL files. Ingest the
 
 ## Store provenance for every edge
 
-One normalized edge record can serve all adapters:
+One normalized edge record can serve all adapters. Here `DEPENDS_ON` points from a consumer to its input, the reverse of the downstream path shown earlier. The illustrative measure and column keys use model-scoped lineage tags resolved from model metadata; the DMV proves only this model-level dependency:
 
 ```json
 {
-  "from": "warehouse-field:postgres-prod/analytics.public.fct_orders/net_revenue",
-  "to": "powerbi-measure:workspace-31/model-8/Gross Revenue",
+  "from": "powerbi-measure:workspace-31/model-8/lineage-tag-measure-17",
+  "to": "powerbi-column:workspace-31/model-8/lineage-tag-column-42",
   "relation": "DEPENDS_ON",
   "producer": "powerbi-xmla-adapter/3.2.0",
   "evidence": "DISCOVER_CALC_DEPENDENCY",
