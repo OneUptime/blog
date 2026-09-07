@@ -190,7 +190,6 @@
 
 ## Colocation
 
-16. How to Plan a Low-Downtime Migration from an On-Premises Server Room to Colocation
 17. How to Pack and Transport Servers for a Colocation Move Without Damaging Drives or Rails
 18. How to Verify Colocation Resilience: UPS, Generators, Cooling, Fire Suppression, and SLAs
 19. How to Audit Physical Access and Tenant Isolation in a Shared Colocation Facility
