@@ -190,7 +190,6 @@
 
 ## Colocation
 
-10. How to Bring Your Own IP Addresses and BGP to a Colocation Provider
 11. How to Build Out-of-Band Management for Colocated Servers with IPMI, Console, and Smart PDUs
 12. How to Secure IPMI and Remote Management in a Shared Colocation Network
 13. How to Write a Remote-Hands Runbook That Technicians Can Execute Without Guesswork
