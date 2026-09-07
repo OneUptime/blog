@@ -187,7 +187,6 @@
 
 ## Rightsizing
 
-16. How to Rightsize Cloud Storage Without Trading Capacity Savings for an IOPS Bottleneck
 17. How to Rightsize GPU Workloads Using Utilization, Memory, and Queue Time
 18. How to Rightsize Serverless Functions from Duration, Concurrency, Memory, and Cold Starts
 19. How to Validate Rightsizing Savings Before Changing Reserved Instances or Savings Plans
