@@ -17,14 +17,14 @@ sql = f"INSERT INTO {target} SELECT * FROM {source} WHERE ordered_at < %s"
 cursor.execute(sql, (cutoff,))
 ```
 
-The bind value does not change lineage, but the two identifiers do. A repository parser cannot know their runtime values. The reliable capture point is the component that has both the final identifiers and the execution outcome.
+The bind value does not change the named table dependencies in this example, but the two identifiers do. Values can still affect row-level lineage or which physical partitions are read. A repository parser alone cannot determine identifiers selected from runtime configuration. The reliable capture point is the component that has both the final identifiers and the execution outcome.
 
 ## Define observed lineage separately from declared lineage
 
 Keep two evidence classes:
 
 - **Declared lineage** comes from pipeline definitions, templates, and static SQL. It describes possible or intended dependencies.
-- **Observed lineage** comes from a particular run after identifiers resolve. It describes the datasets actually read or written.
+- **Observed lineage** comes from a particular run after identifiers resolve. It describes dependencies evidenced by that run. Resolved SQL identifies referenced datasets; proving which physical datasets were actually read or written requires execution-level evidence.
 
 Do not silently merge them. Store an evidence field such as `STATIC`, `RUNTIME_DRIVER`, `DATABASE_LOG`, or `MANUAL`, plus producer version and capture time. When the declared and observed graphs differ, the difference is a useful alert rather than something to hide.
 
@@ -42,7 +42,10 @@ The application layer knows job identity and template variables. The database la
 Add the run ID to the database session without putting it in a table name. For PostgreSQL, an application name is easy to inspect:
 
 ```python
-run_id = "7bf9fd33-417f-4f64-91eb-d69458cb292c"
+import psycopg
+from openlineage.client.uuid import generate_new_uuid
+
+run_id = str(generate_new_uuid())
 conn = psycopg.connect(
     dsn,
     application_name=f"lineage:{run_id}",
@@ -53,7 +56,7 @@ Also include the orchestrator run ID in the lineage event. Never derive identity
 
 ## Separate identifiers from values
 
-Parameterized values should stay parameterized. Capturing literal customer IDs, email addresses, or tokens in a lineage service creates an unnecessary sensitive-data copy. Record the query template or a redacted normalized form:
+Parameterized values should stay parameterized. Capturing literal customer IDs, email addresses, or tokens in a lineage service creates an unnecessary sensitive-data copy. Record the query template or a redacted normalized form (the `?` below is a normalization marker, not a Psycopg placeholder):
 
 ```sql
 INSERT INTO analytics.daily_orders_20260907
@@ -86,16 +89,14 @@ This approach prevents SQL injection and makes the selected dataset explicit wit
 
 OpenLineage models a recurring job separately from a run. Reuse one UUID throughout the run cycle. A normal batch emits `START`, then `COMPLETE`; emit `FAIL` or `ABORT` for a terminal failure instead.
 
-The official Python client can emit a runtime boundary directly:
+The official Python client can emit a runtime boundary directly. Configure its transport through `openlineage.yml` or environment variables to send events to your backend. Reuse the `run_id` propagated to the database session above:
 
 ```python
 from datetime import datetime, timezone
 from openlineage.client import OpenLineageClient
 from openlineage.client.event_v2 import Dataset, Job, Run, RunEvent, RunState
-from openlineage.client.uuid import generate_new_uuid
-
 client = OpenLineageClient()
-run = Run(str(generate_new_uuid()))
+run = Run(runId=run_id)
 job = Job(namespace="scheduler://production", name="orders.materialize_daily")
 
 def now():
@@ -109,7 +110,7 @@ client.emit(RunEvent(
     producer="https://pipelines.example/lineage/1.3.0",
 ))
 
-# Execute the SQL here and resolve actual datasets.
+# Execute the SQL here, resolve actual datasets, and confirm transaction commit.
 
 client.emit(RunEvent(
     eventType=RunState.COMPLETE,
@@ -140,7 +141,7 @@ CALL reporting.refresh_tenant_summary('tenant_42');
 
 The call text alone provides no table lineage. Choose one of these patterns:
 
-- Instrument the procedure to append resolved object names to a transaction-scoped audit table.
+- Instrument the procedure to append resolved object names to an audit table in the same transaction and collect the rows after commit. Rollback removes those rows too, so capture failed attempts separately if needed.
 - Capture its child statements from database auditing and associate them with session, transaction, and run IDs.
 - Maintain declared procedure lineage, then mark it as declared rather than observed.
 
