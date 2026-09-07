@@ -187,7 +187,6 @@
 
 ## Rightsizing
 
-17. How to Rightsize GPU Workloads Using Utilization, Memory, and Queue Time
 18. How to Rightsize Serverless Functions from Duration, Concurrency, Memory, and Cold Starts
 19. How to Validate Rightsizing Savings Before Changing Reserved Instances or Savings Plans
 20. How to Build a Rightsizing Policy with Minimum Samples, Confidence Scores, and Approval Gates
