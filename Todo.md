@@ -706,6 +706,26 @@
 18. How to Expose and Scrape OpenMetrics in Kubernetes with a ServiceMonitor
 19. How to Backfill Prometheus TSDB from OpenMetrics Files Without Losing Custom Labels
 20. How to Migrate a Prometheus Text 0.0.4 Endpoint to OpenMetrics 1.0 Without Breaking Scrapes
+21. How to Fix “Invalid Metric Type info” When Prometheus Scrapes a Micrometer OpenMetrics Endpoint
+22. How to Expose OpenMetrics StateSet Metrics Without Conflicting State Labels
+23. How to Encode GaugeHistograms with `_bucket`, `_gcount`, and `_gsum` Correctly
+24. How to Expose Counter Start Times with `_created` Without Misnaming the Metric Family
+25. How to Enable Created-Timestamp Zero Ingestion Without Polluting Prometheus with `_created` Series
+26. How to Add Sample Timestamps to OpenMetrics Without Causing Duplicate or Out-of-Order Samples
+27. How to Encode `NaN`, `+Inf`, and `-Inf` Correctly in OpenMetrics Values
+28. How to Attach Exemplars to the Correct OpenMetrics Histogram Bucket and Preserve Trace IDs
+29. How to Keep OpenMetrics Exemplar Labels Within Prometheus Length and Cardinality Limits
+30. How to Serve OpenMetrics with Gzip Compression Without Breaking Scrape Negotiation
+31. How to Implement OpenMetrics Version and Escaping Negotiation for Prometheus 3
+32. How to Preserve UTF-8 Metric Names When Exporters and Scrapers Use Different Escaping Schemes
+33. How to Diagnose OpenMetrics Histograms That Disappear When Native Histogram Scraping Is Disabled
+34. How to Expose Classic and Native Histograms Together Without Duplicate-Series Surprises
+35. How to Convert Classic Histogram Buckets to Native Histograms During Prometheus Scraping
+36. How to Encode OpenMetrics Units Without Duplicating or Misnaming Metric Suffixes
+37. How to Represent Stable Build and Version Metadata with OpenMetrics Info Metrics
+38. How to Handle an OpenMetrics `unknown` Type When the Backend Requires Gauge or Counter Semantics
+39. How to Reject Truncated OpenMetrics Responses Before They Create Incomplete Scrapes
+40. How to Dual-Serve OpenMetrics 1.0 and Experimental 2.0 During an Exporter Migration
 
 ## Metric Aggregation
 
@@ -4916,6 +4936,26 @@
 18. How to Update Firmware on Air-Gapped Servers with an Offline Repository
 19. How to Orchestrate Linux Fleet Firmware Updates with fwupd, LVFS, and Staged Rollout Policies
 20. How to Suspend and Resume BitLocker Safely Around BIOS and UEFI Updates
+21. How to Diagnose “No Updatable Devices” in fwupd When the Vendor Lists New Firmware
+22. How to Debug a fwupd UEFI Capsule Update That Stages but Never Runs After Reboot
+23. How to Retry a Failed fwupd Update That Remains Stuck in the Failed State
+24. How to Fix LVFS Metadata Refresh Failures Behind a Proxy or TLS-Inspecting Firewall
+25. How to Build an Internal LVFS Mirror and Restrict Linux Devices to Approved Firmware
+26. How to Pin a Fleet to a fwupd Best Known Configuration and Detect Firmware Drift
+27. How to Verify Firmware CAB Signatures, Checksums, and Hardware IDs Before Deployment
+28. How to Update UEFI db, KEK, and dbx Certificates Without Breaking Secure Boot
+29. How to Prevent BitLocker Recovery Loops During Multi-Reboot TPM and BIOS Updates
+30. How to Escrow and Verify BitLocker Recovery Keys Before a Firmware Rollout
+31. How to Rotate BIOS Administrator Passwords at Scale Without Exposing Them in Scripts
+32. How to Update USB-C Dock and Thunderbolt Firmware When Remote Users Rarely Connect Peripherals
+33. How to Separate Driver Regressions from Firmware Regressions After a Dock or NIC Update
+34. How to Enforce AC-Power and Battery Prerequisites Before Laptop Firmware Updates
+35. How to Diagnose Firmware That Was Flashed but Still Reports the Old Version After Reboot
+36. How to Roll Back a Firmware Release When Anti-Rollback Protection Blocks Downgrades
+37. How to Resume an Interrupted Peripheral Firmware Update After the Device Re-Enters Bootloader Mode
+38. How to Use fwupd Emulation to Test Update Logic Without Risking Physical Hardware
+39. How to Measure Firmware Rollout Success from fwupd History and LVFS Reports
+40. How to Coordinate OS Secure Boot Certificate Changes with OEM Firmware Readiness
 
 ## Veeam
 
@@ -7440,3 +7480,187 @@
 18. How to Restore Ceph Monitor Quorum and Fix `MON_CLOCK_SKEW` with Chrony
 19. How to Upgrade a Proxmox VE Ceph Cluster to Ceph Squid Without Mixing Daemon Releases Indefinitely
 20. How to Shut Down and Restart a Hyper-Converged Proxmox VE Ceph Cluster Without Losing Quorum
+
+## Reliability Engineering
+
+1. How to Define an Availability SLI from Complete User Journeys Instead of Server Uptime
+2. How to Set SLO Targets When You Have Little Traffic and No Reliable Baseline
+3. How to Choose Event-Based or Time-Slice SLIs for Bursty Services
+4. How to Measure Reliability for Batch Pipelines with Freshness and Correctness SLOs
+5. How to Model an End-to-End SLO When One Request Depends on Several Services
+6. How to Prevent Retries from Hiding Failures or Inflating SLI Denominators
+7. How to Calculate Multiwindow, Multi-Burn-Rate Alert Thresholds for Any SLO Window
+8. How to Alert on Low-Traffic Services Without Paging on Every Failed Request
+9. How to Turn an Exhausted Error Budget into an Enforceable Release Policy
+10. How to Exclude Planned Maintenance from an SLO Without Hiding User Impact
+11. How to Budget Reliability Work Against Feature Delivery Using Error-Budget Data
+12. How to Measure On-Call Load with Pages per Shift, Interrupt Time, and Incident Count
+13. How to Reduce Alert Fatigue by Auditing Every Page for Actionability and User Impact
+14. How to Find the Change That Triggered an Incident Across Deployments, Flags, and Configuration
+15. How to Build a Dependency Map That Identifies the Right Owner During an Incident
+16. How to Test Recovery from Partial Dependency Failure Without Causing a Production Outage
+17. How to Measure Whether Reliability Work Reduced Customer-Visible Incidents
+18. How to Prioritize Toil Automation by Frequency, Human Time, and Failure Risk
+19. How to Set Reliability Targets for Internal Platforms Whose Customers Are Other Engineers
+20. How to Run a Reliability Review for a Service You Did Not Design
+
+## Hyper-V
+
+1. How to Create an External Hyper-V Virtual Switch Without Disconnecting the Host
+2. How to Restore VM Network Connectivity After Importing a Hyper-V VM to a New Host
+3. How to Configure Hyper-V VLAN Trunking Without Dropping Tagged Guest Traffic
+4. How to Separate Hyper-V Management, Live Migration, Cluster, and Storage Traffic Across Host NICs
+5. How to Diagnose Slow Hyper-V VMs by Separating CPU, NUMA, Storage, and Network Bottlenecks
+6. How to Recover a Hyper-V VM Stuck in Paused-Critical After the Host Volume Fills
+7. How to Merge Orphaned AVHDX Checkpoints Safely When Hyper-V Manager Shows None
+8. How to Estimate Free Space and Avoid Filling a CSV During a Hyper-V Checkpoint Merge
+9. How to Repair a Broken Hyper-V Differencing-Disk Chain Without Deleting AVHDX Files
+10. How to Stop Backup Jobs from Leaving Hidden Hyper-V Recovery Checkpoints
+11. How to Fix Hyper-V Live Migration Error 0x80070005 with Kerberos Delegation and SPNs
+12. How to Migrate a Hyper-V VM Between Different CPUs with Processor Compatibility Mode
+13. How to Resolve Hyper-V Live Migration Failures Caused by Switch Names and VM Configuration Versions
+14. How to Resynchronize a Hyper-V Replica Stuck in Critical or Resynchronization Required
+15. How to Test Planned, Test, and Unplanned Hyper-V Replica Failover Without Split-Brain
+16. How to Back Up a Hyper-V Cluster Without Treating Replica or Checkpoints as Backups
+17. How to Convert a VMware VM to Hyper-V Without Boot, Driver, or Network Failures
+18. How to Drain and Patch a Hyper-V Failover Cluster Without Unexpected VM Downtime
+19. How to Fix “Not Enough Memory” When a Hyper-V VM Refuses to Start
+20. How to Manage a Workgroup Hyper-V Host Remotely with Hyper-V Manager and CredSSP
+
+## Multi-Region
+
+1. How to Choose Active-Active or Active-Passive Multi-Region Architecture from Your RTO, RPO, and Budget
+2. How to Find and Remove Hidden Cross-Region Dependencies Before They Break Failover
+3. How to Coordinate Application, Database, and DNS Failover Without Sending Traffic to an Unwritable Region
+4. How to Automate Multi-Region Failover While Keeping Failback a Verified Manual Decision
+5. How to Tune DNS Health Checks and TTLs for Fast Failover Without Flapping
+6. How to Test a Multi-Region Disaster-Recovery Plan in Production with a Safe Game Day
+7. How to Measure Replication Lag and Enforce a Realistic RPO Across Regions
+8. How to Prevent Split-Brain Writes and Resolve Conflicts in an Active-Active Database
+9. How to Preserve User Sessions When a Global Load Balancer Moves Traffic Between Regions
+10. How to Deploy the Same Artifact and Configuration to Every Region Without Drift
+11. How to Replicate Secrets, Certificates, and Feature Flags Without Creating a Global Single Point of Failure
+12. How to Monitor a Multi-Region System When the Primary Region and Its Observability Stack Are Down
+13. How to Size and Pre-Warm a Standby Region So It Can Absorb Full Production Traffic
+14. How to Run Cron Jobs and Queue Consumers in Multiple Regions Without Duplicate Work
+15. How to Design Regional Service Discovery Without Hard-Coding Cloud Endpoints
+16. How to Roll Out Backward-Compatible Database Migrations Across Regions at Different Versions
+17. How to Select Cloud Regions for Latency, Data Residency, Service Availability, and Failure Independence
+18. How to Calculate the True Cost of Cross-Region Replication, Egress, and Idle Capacity
+19. How to Fail Back to a Recovered Primary Region Without Losing or Replaying Writes
+20. How to Keep Multi-Region Kubernetes Clusters Independent While Failing Traffic Over Globally
+
+## Git
+
+1. How to Undo the Last Git Commit While Keeping Changes Staged or Unstaged
+2. How to Recover a Lost Git Commit After `reset --hard` with Reflog
+3. How to Rescue Commits Made in a Detached HEAD Before They Are Garbage-Collected
+4. How to Abort or Roll Back a Bad Git Rebase After Resolving Conflicts
+5. How to Revert a Git Merge Commit Without Blocking a Future Re-Merge
+6. How to Squash, Reorder, Split, and Edit Local Commits with Interactive Rebase
+7. How to Rebase a Long-Lived Feature Branch and Reuse Conflict Resolutions with `rerere`
+8. How to Sync a Git Fork with Upstream Without Overwriting Local Work
+9. How to Cherry-Pick a Commit Range and Handle Merge Commits Correctly
+10. How to Remove a Leaked Secret from Every Git Ref and Coordinate Credential Rotation
+11. How to Remove a Large File from Git History When a Remote Rejects Your Push
+12. How to Migrate Existing Binary Files to Git LFS Without Breaking Current Clones
+13. How to Fix a Git Submodule Stuck on a Detached HEAD or Missing Commit
+14. How to Make Git Select the Correct SSH Identity per Repository with `core.sshCommand`
+15. How to Correct Git Author Names and Emails in Unpushed Commits
+16. How to Stop LF and CRLF Normalization from Making Every File Look Modified
+17. How to Commit a Case-Only Filename Rename on Windows and macOS
+18. How to Use Git Worktrees for Parallel Branches Without Repeated Stashing
+19. How to Automate Git Bisect When Tests Are Slow, Flaky, or Sometimes Untestable
+20. How to Recover a Deleted Git Branch After Its Remote Ref Has Been Pruned
+
+## OKD
+
+1. How to Install OKD on Bare Metal with User-Provisioned Infrastructure, DNS, and Load Balancing
+2. How to Debug an OKD Bootstrap That Hangs Before the Control Plane Becomes Available
+3. How to Validate `api`, `api-int`, and `*.apps` DNS Records Before an OKD Installation
+4. How to Fix OKD `NetworkPluginNotReady` Errors Caused by Overlapping Machine, Cluster, and Service CIDRs
+5. How to Configure Static IP Addresses and Routes for OKD Nodes with NMState
+6. How to Approve Kubelet CSRs Safely When New OKD Nodes Stay `NotReady`
+7. How to Diagnose a Degraded OKD Cluster Operator with Events, Logs, and `must-gather`
+8. How to Install a Trusted Wildcard Certificate for the OKD Ingress Controller
+9. How to Replace the OKD API Server Certificate Without Breaking `api.<cluster>:6443`
+10. How to Issue Let's Encrypt Certificates for OKD Routes with cert-manager
+11. How to Mirror OKD Release Images and Operator Catalogs for a Disconnected Cluster
+12. How to Find a Valid OKD Upgrade Path When `oc adm upgrade` Shows No Available Updates
+13. How to Recover an OKD Upgrade Stuck on a Degraded Machine Config Operator
+14. How to Plan the OKD Migration from Fedora CoreOS to CentOS Stream CoreOS
+15. How to Provision Bare-Metal Persistent Volumes with the OKD Local Storage Operator
+16. How to Bring the OKD Integrated Image Registry from `Removed` to `Managed` with Persistent Storage
+17. How to Troubleshoot an OKD Route That Returns 503 or Fails Its Health Check
+18. How to Back Up OKD etcd and Test a Same-Version Restore Before an Emergency
+19. How to Recover OKD from etcd Quorum Loss Without Creating Split Brain
+20. How to Restart a Long-Powered-Off OKD Cluster and Recover Expired Control-Plane Certificates
+
+## SLO Burn-Rates
+
+1. How to Derive SLO Burn-Rate Thresholds from the Error-Budget Percentage You Can Spend
+2. How to Write Multi-Window Burn-Rate PromQL Without Vector-Matching Bugs
+3. How to Choose Short and Long Burn-Rate Windows for 7-Day, 28-Day, and 30-Day SLOs
+4. How to Calculate Burn Rates for a Latency SLO from Prometheus Histogram Buckets
+5. How to Add Minimum-Traffic Guards to Burn-Rate Alerts for Low-Volume Services
+6. How to Handle Zero-Traffic and No-Data Windows Without Hiding an SLO Outage
+7. How to Use Synthetic Transactions to Stabilize Burn-Rate Alerts for Sparse Services
+8. How to Backtest SLO Burn-Rate Thresholds Against Historical Incidents Before Paging On-Call
+9. How to Route Fast-Burn SLO Alerts to PagerDuty and Slow-Burn Alerts to Tickets
+10. How to Precompute SLO Burn Rates with Prometheus Recording Rules Without Expensive Queries
+11. How to Keep Burn-Rate Calculations Correct Across Counter Resets and Prometheus Scrape Gaps
+12. How to Aggregate Regional Burn Rates Without Averaging Away a Single-Region Outage
+13. How to Build Endpoint-Level Burn-Rate Alerts Without Creating High-Cardinality Metrics
+14. How to Calculate Burn Rates for Calendar-Month SLOs Without Assuming Every Month Has 30 Days
+15. How to Adapt Google’s 14.4x and 6x Burn-Rate Thresholds to a 99% or 99.99% SLO
+16. How to Calculate Error-Budget Burn for Time-Slice SLOs Instead of Request-Based SLIs
+17. How to Exclude Maintenance, Load Tests, and Admin Traffic from Burn Rates Without Gaming the SLO
+18. How to Detect Stale SLI Data Before a Burn-Rate Alert Silently Goes Green
+19. How to Tune Burn-Rate Alert Reset Time So Pages Clear Soon After Recovery
+20. How to Roll Out One Standard Multi-Window Burn-Rate Policy Across Hundreds of Services
+
+## OpenLIT
+
+1. How to Self-Host OpenLIT with Docker Compose and Persist ClickHouse and SQLite Data
+2. How to Deploy OpenLIT on Kubernetes with Helm and Expose OTLP Securely
+3. How to Diagnose Missing OpenLIT Traces When OTLP Ports 4317 and 4318 Are Misconfigured
+4. How to Send OpenLIT Telemetry to Grafana Tempo, Datadog, or Another OTLP Backend
+5. How to Stop Duplicate HTTP and LLM Spans When OpenLIT and Another Instrumentor Patch the Same Library
+6. How to Group LangGraph Nodes Under One Trace ID in OpenLIT
+7. How to Fix OpenLIT Auto-Instrumentation That Stops Working Under the VS Code Python Debugger
+8. How to Preserve OpenLIT Spans When a Streaming OpenAI, Anthropic, or Groq Response Ends Early
+9. How to Diagnose “Token Was Created in a Different Context” Errors in OpenLIT Async Streams
+10. How to Capture Tool-Call Names, Arguments, Token Usage, and Cost in OpenLIT Spans
+11. How to Add Session and User IDs to OpenLIT Traces for Conversation-Level Analysis
+12. How to Redact Prompt and Response Content Before OpenLIT Exports Telemetry
+13. How to Reduce OpenLIT Telemetry Volume with Sampling, Disabled Instrumentors, and Metrics Controls
+14. How to Add Custom Model Pricing and Recalculate Historical Costs in OpenLIT
+15. How to Instrument a Custom LLM Provider with Manual OpenTelemetry Spans That OpenLIT Understands
+16. How to Correlate Ollama Traces with NVIDIA and AMD GPU Metrics in OpenLIT
+17. How to Trace Vector-Database Retrieval and LLM Generation in One OpenLIT Request
+18. How to Upgrade OpenLIT Past 1.15 Without Leaving a Conflicting Collector Container
+19. How to Connect OpenLIT Fleet Hub to External Collectors and Debug OpAMP TLS Failures
+20. How to Deploy OpenLIT in an Air-Gapped Environment with Offline Images and Package Mirrors
+
+## AlmaLinux
+
+1. How to Upgrade AlmaLinux 8 to 9 with ELevate and Clear Every Leapp Inhibitor
+2. How to Upgrade AlmaLinux 9 to 10 with ELevate and Detect Unsupported x86-64-v2 Hardware
+3. How to Migrate CentOS 7 to AlmaLinux After the CentOS Mirrors Moved to Vault
+4. How to Recover an AlmaLinux ELevate Upgrade That Drops into the GRUB Shell
+5. How to Rescue an AlmaLinux Upgrade from Emergency Mode with the Installer ISO and chroot
+6. How to Find and Remove Leftover el7 or el8 Packages After an ELevate Migration
+7. How to Repair DNF When `/usr/bin/python3.9` Is Missing on AlmaLinux 9
+8. How to Fix “No Enabled Repositories” by Restoring AlmaLinux Release Packages and Repo Files
+9. How to Repair DNF Mirror 404s, Stale Metadata, and a Corrupted Cache on AlmaLinux
+10. How to Enable EPEL and CRB on AlmaLinux Without Creating Dependency Conflicts
+11. How to Build a Local AlmaLinux Mirror That DNF Can Actually Use
+12. How to Configure a Static IP on AlmaLinux 9 with NetworkManager Keyfiles Instead of ifcfg
+13. How to Stop Network Interfaces from Swapping Static IPs After Reboot on AlmaLinux
+14. How to Make IPv6 Configuration Persist Across Reboots on an AlmaLinux VPS
+15. How to Override cloud-init SSH Settings Safely on AlmaLinux Cloud Images
+16. How to Diagnose SELinux “Permission Denied” Errors for Nginx Content Outside `/usr/share/nginx/html`
+17. How to Recover AlmaLinux from a Kernel Panic by Booting an Older Kernel and Rebuilding initramfs
+18. How to Install AlmaLinux NVIDIA Open Kernel Modules That Still Work with Secure Boot
+19. How to Enroll the Microsoft 2023 UEFI Certificates on AlmaLinux with fwupd
+20. How to Scan and Remediate AlmaLinux 9 Against CIS, STIG, or PCI-DSS with OpenSCAP
