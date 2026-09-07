@@ -193,7 +193,6 @@
 
 ## Data Lineage
 
-1. How to Generate Column-Level Data Lineage from Complex SQL with CTEs, Window Functions, and Temp Tables
 2. How to Capture Runtime Data Lineage for Dynamic SQL That Static Parsers Miss
 3. How to Trace Data Lineage from dbt Models All the Way to Power BI Measures
 4. How to Catch Breaking Column Changes in CI with Lineage-Based Impact Analysis
