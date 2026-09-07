@@ -187,7 +187,6 @@
 
 ## Rightsizing
 
-12. How to Measure Kubernetes Resource Fragmentation Before Changing Node Shapes
 13. How to Choose CPU-Optimized vs Memory-Optimized Nodes from Workload Request Ratios
 14. How to Rightsize JVM Containers Without Triggering Heap OOMs or CPU Throttling
 15. How to Rightsize Stateful Databases Using Connections, Cache Hit Rate, IOPS, and Latency
