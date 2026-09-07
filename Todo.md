@@ -190,7 +190,6 @@
 
 ## Colocation
 
-7. How to Test a Colocation Provider’s Bandwidth, Latency, Peering, and Packet Loss
 8. How to Design Redundant Internet Connectivity for a Single Colocation Rack
 9. How to Connect an Office to a Colocation Facility with VPN, Metro Ethernet, or SD-WAN
 10. How to Bring Your Own IP Addresses and BGP to a Colocation Provider
