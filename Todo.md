@@ -190,7 +190,6 @@
 
 ## Colocation
 
-20. How to Decide Whether Colocation or Dedicated Servers Cost Less for Your Workload
 
 ## Data Lineage
 
