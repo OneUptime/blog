@@ -187,7 +187,6 @@
 
 ## Rightsizing
 
-14. How to Rightsize JVM Containers Without Triggering Heap OOMs or CPU Throttling
 15. How to Rightsize Stateful Databases Using Connections, Cache Hit Rate, IOPS, and Latency
 16. How to Rightsize Cloud Storage Without Trading Capacity Savings for an IOPS Bottleneck
 17. How to Rightsize GPU Workloads Using Utilization, Memory, and Queue Time
