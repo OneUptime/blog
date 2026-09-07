@@ -193,7 +193,6 @@
 
 ## Data Lineage
 
-9. How to Track Row-Level Data Provenance Without Exploding Storage Costs
 10. How to Connect Warehouse Lineage to Tableau, Looker, and Power BI Dashboards
 11. How to Reconstruct Data Lineage from Query Logs When Pipeline Code Is Missing
 12. How to Model Data Lineage in a Graph Database for Fast Upstream and Downstream Traversal
