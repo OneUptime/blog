@@ -190,7 +190,6 @@
 
 ## Colocation
 
-11. How to Build Out-of-Band Management for Colocated Servers with IPMI, Console, and Smart PDUs
 12. How to Secure IPMI and Remote Management in a Shared Colocation Network
 13. How to Write a Remote-Hands Runbook That Technicians Can Execute Without Guesswork
 14. How to Stock and Track Spare Parts at a Colocation Facility for Fast Repairs
