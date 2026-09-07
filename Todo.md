@@ -187,7 +187,6 @@
 
 ## Rightsizing
 
-20. How to Build a Rightsizing Policy with Minimum Samples, Confidence Scores, and Approval Gates
 
 ## Colocation
 
