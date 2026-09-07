@@ -187,7 +187,6 @@
 
 ## Rightsizing
 
-8. How to Roll Out Kubernetes Rightsizing Changes Safely with Canaries and Rollback Gates
 9. How to Rightsize Guaranteed QoS Pods Without Losing Their Kubernetes QoS Class
 10. How to Account for Init Containers, DaemonSets, and System Reservations in Node Rightsizing
 11. Why Lower Pod Requests Did Not Reduce Your Cloud Bill—and How to Fix Bin-Packing Waste
