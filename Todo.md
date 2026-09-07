@@ -190,7 +190,6 @@
 
 ## Colocation
 
-12. How to Secure IPMI and Remote Management in a Shared Colocation Network
 13. How to Write a Remote-Hands Runbook That Technicians Can Execute Without Guesswork
 14. How to Stock and Track Spare Parts at a Colocation Facility for Fast Repairs
 15. How to Label Rack Units, Power Feeds, Ports, and Cables Before a Colocation Move
