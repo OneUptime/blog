@@ -187,7 +187,6 @@
 
 ## Rightsizing
 
-11. Why Lower Pod Requests Did Not Reduce Your Cloud Bill—and How to Fix Bin-Packing Waste
 12. How to Measure Kubernetes Resource Fragmentation Before Changing Node Shapes
 13. How to Choose CPU-Optimized vs Memory-Optimized Nodes from Workload Request Ratios
 14. How to Rightsize JVM Containers Without Triggering Heap OOMs or CPU Throttling
