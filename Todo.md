@@ -190,7 +190,6 @@
 
 ## Colocation
 
-5. How to Estimate How Many Servers a Colocation Rack Can Actually Support
 6. How to Choose Between 95th-Percentile, Committed, and Unmetered Colocation Bandwidth
 7. How to Test a Colocation Provider’s Bandwidth, Latency, Peering, and Packet Loss
 8. How to Design Redundant Internet Connectivity for a Single Colocation Rack
