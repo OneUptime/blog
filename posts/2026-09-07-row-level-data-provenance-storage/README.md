@@ -48,6 +48,7 @@ CREATE TABLE provenance_run (
 );
 
 CREATE TABLE provenance_slice (
+  slice_id uuid PRIMARY KEY,
   run_id uuid NOT NULL,
   source_dataset text NOT NULL,
   source_version text,
@@ -56,12 +57,11 @@ CREATE TABLE provenance_slice (
   offset_end text,
   target_dataset text NOT NULL,
   target_partition text,
-  row_count bigint,
-  PRIMARY KEY (run_id, source_dataset, source_partition, target_dataset, target_partition)
+  row_count bigint
 );
 ```
 
-One slice record can cover millions of rows that all came from the same input range under the same transformation.
+Assign a stable `slice_id` to each input range and target slice, including on retries. This permits null partition names for unpartitioned datasets and multiple ranges for the same dataset pair. One slice record can cover millions of rows that all came from the same input range under the same transformation.
 
 ## Put a compact run reference on outputs
 
@@ -83,7 +83,7 @@ WHERE ingestion_batch_id = $2;
 
 The run table points to code and input slices. This adds one fixed-width value per output row instead of a variable-length array of ancestors.
 
-If modifying the business table is unacceptable, keep a side table partitioned exactly like the output:
+If modifying the business table is unacceptable, keep a side table partitioned like the output. This example assumes the output is partitioned by `output_version`:
 
 ```sql
 CREATE TABLE order_fact_provenance (
@@ -95,7 +95,7 @@ CREATE TABLE order_fact_provenance (
 ) PARTITION BY RANGE (output_version);
 ```
 
-Use the output's real primary key and version. Physical row addresses such as PostgreSQL `ctid` are not durable identities.
+Create matching child partitions before inserting into this partitioned table. Use the output's real primary key and version; a timestamp works only if it uniquely identifies each version of that key. Physical row addresses such as PostgreSQL `ctid` are not durable identities.
 
 ## Use key mappings only when they add information
 
@@ -121,7 +121,7 @@ CREATE TABLE provenance_key_map (
 );
 ```
 
-Hashing reduces accidental exposure but is not anonymization when the key space is guessable. Use a keyed HMAC with a managed, rotated key when equality lookup is required, and apply the same access and retention policy as the underlying sensitive data.
+Hash the complete source and target row identities, including their versions when keys can be updated within a run. Hashing reduces accidental exposure but is not anonymization when the key space is guessable. Use a keyed HMAC with a managed, rotated key when equality lookup is required, and apply the same access and retention policy as the underlying sensitive data. Record the HMAC key version and retain the required keys for the lookup retention period. A digest cannot be reversed to recover a source key; retain an authorized lookup or queryable source keys for matching.
 
 ## Represent aggregates as reproducible slices
 
@@ -129,7 +129,7 @@ An aggregate such as daily revenue may have millions of contributors. Storing al
 
 Store:
 
-- source dataset and immutable version or CDC range
+- source dataset and immutable version, or a base snapshot plus the complete retained CDC history needed to reconstruct that version
 - group key values or a protected digest
 - filter predicate or transformation version
 - window boundaries and timezone
@@ -144,9 +144,9 @@ Bloom filters can quickly say that a key is definitely absent or possibly presen
 
 ## Reuse CDC positions
 
-Change data capture already carries compact ordering evidence. Debezium's PostgreSQL connector includes database, schema, table, transaction ID, log sequence number, operation, and source timestamp in its source metadata. With transaction metadata enabled, it also emits transaction boundaries and per-event transaction ordering information.
+Change data capture already carries compact ordering evidence. Debezium's PostgreSQL connector includes database, schema, table, transaction ID, log sequence number, and source timestamp in its `source` metadata. The operation is in the event envelope's `op` field. With transaction metadata enabled, it also emits transaction boundaries and per-event transaction ordering information.
 
-Persist the consumed range with the run:
+Persist the consumed range with the run in application-defined metadata, for example:
 
 ```json
 {
@@ -159,7 +159,7 @@ Persist the consumed range with the run:
 }
 ```
 
-Avoid storing a large transaction ID list when a contiguous checkpoint range and archived change log can answer the same query. Confirm the connector's ordering and partitioning guarantees. For example, Debezium documents that truncate events have no message key, so ordering relative to keyed changes is guaranteed only with a single-partition topic.
+Avoid storing a large transaction ID list when a contiguous checkpoint range and archived change log can answer the same query. Record whether range boundaries are inclusive or exclusive and retain per-topic, per-partition consumer checkpoints when using Kafka. An LSN range alone is not an exact record of which Kafka events were processed. Confirm the connector's ordering and partitioning guarantees. For example, Debezium documents that truncate events have no message key, so ordering relative to keyed changes is guaranteed only with a single-partition topic.
 
 Before promising before-images for updates or deletes, check the database's replica identity and connector configuration. The PostgreSQL connector notes that available `before` values depend on `REPLICA IDENTITY`.
 
@@ -169,13 +169,20 @@ At-least-once processing can emit the same mapping twice. Derive an idempotency 
 
 ```python
 import hashlib
+import json
 
-def evidence_id(connector, partition, offset, target_key):
-    value = f"{connector}\0{partition}\0{offset}\0{target_key}"
-    return hashlib.sha256(value.encode()).hexdigest()
+def evidence_id(connector, topic, partition, offset, target_dataset,
+                target_key, target_version, transformation_version):
+    # Use stable strings for identities/versions and integers for partition/offset.
+    value = json.dumps(
+        [connector, topic, partition, offset, target_dataset,
+         target_key, target_version, transformation_version],
+        ensure_ascii=True, separators=(",", ":"), allow_nan=False,
+    )
+    return hashlib.sha256(value.encode("utf-8")).hexdigest()
 ```
 
-Use this ID in an upsert or uniqueness constraint. Keep the pipeline run ID separately because a replay can produce a new run while consuming the same source event.
+This example uses Kafka topic, partition, and offset to identify a consumed record; it does not deduplicate connector duplicates published at different Kafka offsets. To deduplicate those, use a connector-specific stable source event identity, including any required within-transaction ordering. Use this ID in an upsert or uniqueness constraint. Keep the pipeline run ID separately because a replay can produce a new run while consuming the same source event.
 
 For updates, provenance belongs to a row version, not only a business key. Otherwise the most recent mapping overwrites the origin of earlier values.
 
@@ -190,7 +197,7 @@ Create explicit retention classes:
 
 Deleting a subject's business record may also require deleting or rendering inaccessible key-level provenance. A hash is still linkable metadata. Consult the applicable privacy and records policy rather than assuming provenance is exempt.
 
-Track storage per output row, mapping cardinality per transformation, late event rate, and percentage of outputs resolvable at each granularity. Automatically demote verbose capture or alert before one unusual fan-out exhausts storage.
+Track storage per output row, mapping cardinality per transformation, late event rate, and percentage of outputs resolvable at each granularity. Automatically demote verbose capture only where the provenance contract permits it, or alert before one unusual fan-out exhausts storage.
 
 ## Test what an investigation can recover
 
@@ -206,7 +213,7 @@ A table full of provenance IDs is not useful if the referenced code artifact, so
 
 ## Conclusion
 
-Row-level provenance scales when repeated context is factored into runs and slices, while key mappings and exact contributor sets are used only where they add necessary evidence. Reuse CDC positions, version output rows, deduplicate retries, and publish the supported resolution honestly. Storage stays bounded because the common case does not copy an ancestry list onto every row.
+Row-level provenance scales when repeated context is factored into runs and slices, while key mappings and exact contributor sets are used only where they add necessary evidence. Reuse CDC positions, version output rows, deduplicate retries, and publish the supported resolution honestly. Storage grows with retained runs, rows, and mappings; avoiding ancestry lists reduces that growth, while retention and capture limits bound total storage.
 
 ## Official Documentation
 
