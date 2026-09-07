@@ -190,7 +190,6 @@
 
 ## Colocation
 
-13. How to Write a Remote-Hands Runbook That Technicians Can Execute Without Guesswork
 14. How to Stock and Track Spare Parts at a Colocation Facility for Fast Repairs
 15. How to Label Rack Units, Power Feeds, Ports, and Cables Before a Colocation Move
 16. How to Plan a Low-Downtime Migration from an On-Premises Server Room to Colocation
