@@ -89,19 +89,19 @@ Attach a version facet when the storage system has a meaningful dataset version,
 
 ## Capture DDL from the authoritative path
 
-Migration manifests are the best source because they express intent before deployment:
+Migration manifests express intent before deployment. For example, a custom manifest for a table rename might look like this:
 
 ```yaml
-change: rename_column
+change: rename_table
 dataset: warehouse.analytics.client_orders
 new_dataset: warehouse.analytics.customer_orders
 effective_at: 2026-09-07T01:30:00Z
 ticket: DATA-1842
 ```
 
-Database observation verifies what actually happened. PostgreSQL event triggers can inspect completed DDL with `pg_event_trigger_ddl_commands()` and dropped objects with `pg_event_trigger_dropped_objects()` in the appropriate events. A drop callback includes object type, schema, name, identity, and whether the object was temporary.
+Database observation verifies what actually happened. PostgreSQL event triggers can inspect completed DDL with `pg_event_trigger_ddl_commands()` and dropped objects with `pg_event_trigger_dropped_objects()` in `ddl_command_end` and `sql_drop` events, respectively. These callbacks run before transaction commit; persist evidence in the same transaction and publish it only after commit so a rollback does not become a false transition. A drop callback includes object type, schema, name, identity, and whether the object was temporary; schema and name can be NULL for some objects.
 
-Event triggers require elevated care and do not fire for every conceivable operation. Keep migration ingestion and periodic catalog snapshots as independent evidence sources. For MySQL, binary logs include DDL as statements even when row-based logging is selected, but retention and replication filters still affect what a consumer can reconstruct.
+Event triggers require elevated care and do not fire for every conceivable operation. Keep migration ingestion and periodic catalog snapshots as independent evidence sources. For MySQL, binary logs record logged DDL as statements even when row-based logging is selected, but temporary-table DDL is not logged in that mode. Logging settings, retention, and filters along the capture path affect what a consumer can reconstruct.
 
 Record producer, server, transaction or migration ID, and ingestion checkpoint. Deduplicate events by a stable source-event key so replay does not create a second history transition.
 
@@ -129,7 +129,7 @@ Changing `gross - discount` to `gross - discount - refund` opens a new edge set 
 
 ## Query the graph as it was
 
-Resolve every node and edge at the same effective timestamp:
+Resolve every node and edge at the same effective timestamp. Bind `$1` as a `timestamptz` parameter in a prepared query:
 
 ```sql
 SELECT field_id, dataset_id, field_name, field_type
@@ -138,12 +138,12 @@ WHERE valid_from <= $1
   AND (valid_to IS NULL OR $1 < valid_to);
 ```
 
-Use half-open intervals `[valid_from, valid_to)` to avoid ambiguity at a boundary. Traverse only edges valid at the incident time, then render field and dataset names valid at that time.
+Use half-open intervals `[valid_from, valid_to)` to avoid ambiguity at a boundary. Enforce non-overlapping intervals per stable ID in the ingestion transaction or with exclusion constraints; the primary keys above do not prevent overlaps. Traverse only edges valid at the incident time, then render field and dataset names valid at that time.
 
-For late corrections, keep the original `observed_at` record or audit log and insert corrected validity data with a new observation time. This provides two answers:
+The tables above hold the latest corrected effective-time history, not a complete history of catalog beliefs. Their primary keys cannot store multiple observations for the same ID and `valid_from`. For late corrections, retain every original observation and every change to the validity data in a separate append-only audit log, including the catalog recording time, before updating these tables transactionally. Replaying that log up to a chosen catalog time reconstructs the history believed then; `observed_at` alone is insufficient. This provides two answers:
 
 - What did the pipeline topology actually look like at 01:45?
-- What did the catalog believe it looked like at 01:45?
+- What did the catalog believe, as of a chosen observation cutoff, that the topology looked like at 01:45?
 
 That distinction matters during audits of delayed or lost metadata events.
 
@@ -170,7 +170,7 @@ Test rename, drop and recreate, rollback, out-of-order delivery, duplicate deliv
 
 ## Conclusion
 
-Historical lineage survives schema evolution when internal IDs stay stable only across proven continuity, while names, schemas, and edges are immutable versioned facts. Use lifecycle events to link external identities, keep tombstones, distinguish effective time from observation time, and reconcile DDL evidence with catalog snapshots.
+Historical lineage survives schema evolution when internal IDs stay stable only across proven continuity, while original observations remain immutable and names, schemas, and edges retain versioned history. Use lifecycle events to link external identities, keep tombstones, distinguish effective time from observation time, and reconcile DDL evidence with catalog snapshots.
 
 ## Official Documentation
 
