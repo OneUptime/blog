@@ -187,7 +187,6 @@
 
 ## Rightsizing
 
-4. How to Rightsize Bursty Workloads Without Optimizing Away Their Capacity to Spike
 5. How to Rightsize Batch Jobs When Every Run Has a Different CPU and Memory Profile
 6. How to Rightsize Kubernetes Pods Without Breaking HPA Scaling Behavior
 7. How to Compare Kubernetes Rightsizing Recommendations When VPA, Goldilocks, and Cloud Tools Disagree
