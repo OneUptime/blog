@@ -187,7 +187,6 @@
 
 ## Rightsizing
 
-6. How to Rightsize Kubernetes Pods Without Breaking HPA Scaling Behavior
 7. How to Compare Kubernetes Rightsizing Recommendations When VPA, Goldilocks, and Cloud Tools Disagree
 8. How to Roll Out Kubernetes Rightsizing Changes Safely with Canaries and Rollback Gates
 9. How to Rightsize Guaranteed QoS Pods Without Losing Their Kubernetes QoS Class
