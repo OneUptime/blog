@@ -193,7 +193,6 @@
 
 ## Data Lineage
 
-4. How to Catch Breaking Column Changes in CI with Lineage-Based Impact Analysis
 5. How to Instrument Airflow with OpenLineage Without Losing Operator Inputs and Outputs
 6. How to Capture PySpark DataFrame Lineage When SQL Parsers Cannot See the Transformations
 7. How to Build Cross-Database Column Lineage for Pipelines That Move Data Between MySQL and PostgreSQL
