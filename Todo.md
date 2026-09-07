@@ -190,7 +190,6 @@
 
 ## Colocation
 
-6. How to Choose Between 95th-Percentile, Committed, and Unmetered Colocation Bandwidth
 7. How to Test a Colocation Provider’s Bandwidth, Latency, Peering, and Packet Loss
 8. How to Design Redundant Internet Connectivity for a Single Colocation Rack
 9. How to Connect an Office to a Colocation Facility with VPN, Metro Ethernet, or SD-WAN
