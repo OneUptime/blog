@@ -187,7 +187,6 @@
 
 ## Rightsizing
 
-2. P95, P99, or Maximum? How to Turn Utilization History into Safe Rightsizing Recommendations
 3. How to Add Headroom to Rightsizing Recommendations Without Preserving Chronic Waste
 4. How to Rightsize Bursty Workloads Without Optimizing Away Their Capacity to Spike
 5. How to Rightsize Batch Jobs When Every Run Has a Different CPU and Memory Profile
