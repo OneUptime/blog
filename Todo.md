@@ -193,7 +193,6 @@
 
 ## Data Lineage
 
-2. How to Capture Runtime Data Lineage for Dynamic SQL That Static Parsers Miss
 3. How to Trace Data Lineage from dbt Models All the Way to Power BI Measures
 4. How to Catch Breaking Column Changes in CI with Lineage-Based Impact Analysis
 5. How to Instrument Airflow with OpenLineage Without Losing Operator Inputs and Outputs
