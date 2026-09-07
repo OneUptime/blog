@@ -45,16 +45,17 @@ At minimum, identify:
 - removed fields
 - renamed fields, represented as a remove plus add unless a migration declares the rename
 - type changes, including precision and scale
-- nullable-to-required changes
+- nullability changes in both directions
 - semantic changes declared by the author even when the SQL type stays the same
 
-An added nullable field is usually compatible. A widening numeric type may be compatible for one consumer but unsupported by another. Put engine-specific rules in policy data rather than hard-coding them into graph traversal.
+Required-to-nullable changes can break readers that assume non-null values. Nullable-to-required changes can reject existing data or writes and need producer and migration checks even when there are no downstream readers. An added nullable field is usually compatible. A widening numeric type may be compatible for one consumer but unsupported by another. Put engine-specific rules in policy data rather than hard-coding them into graph traversal.
 
 ```yaml
 policies:
   remove: breaking
   rename_without_alias: breaking
   nullable_to_required: breaking
+  required_to_nullable: breaking
   numeric_precision_decrease: breaking
   add_nullable: compatible
 ```
@@ -63,14 +64,14 @@ Require an explicit annotation for semantic changes such as changing currency fr
 
 ## Traverse at field granularity
 
-Represent edges from input field to output field. Starting from each changed field, compute the downstream closure:
+Represent edges from input field to output field. For removed or renamed fields, start from the production-baseline graph so candidate lineage cannot erase existing dependencies. Include indirect dependencies such as filters and join keys. Starting from each changed field, compute the downstream closure:
 
 ```python
 from collections import deque
 
 def downstream_closure(starts, adjacency):
     found = set(starts)
-    queue = deque(starts)
+    queue = deque(found)
     while queue:
         current = queue.popleft()
         for child in adjacency.get(current, []):
@@ -80,7 +81,7 @@ def downstream_closure(starts, adjacency):
     return found
 ```
 
-Preserve the path, not just the final set. Reviewers need an explanation such as:
+This helper returns only reachability. In the evaluator, also record predecessor edges to preserve the path, not just the final set. Reviewers need an explanation such as:
 
 ```text
 raw.orders.discount_amount
@@ -89,11 +90,11 @@ raw.orders.discount_amount
   -> Power BI measure Gross Margin
 ```
 
-If the graph has only table-level lineage for one hop, widen the result and label it `POSSIBLE_IMPACT`. Do not invent column edges. OpenLineage's current Lineage Dataset Facet can describe precise dataset and field relationships, while the older Column Lineage Dataset Facet remains useful for transformation classifications and compatibility with existing producers.
+If the graph has only table-level lineage for one hop, widen the result and label it `POSSIBLE_IMPACT`. Do not invent column edges. OpenLineage's current Lineage Dataset Facet can describe precise dataset and field relationships, including transformation classifications. It supersedes the older Column Lineage Dataset Facet for the relationships it describes; when both are present for the same dataset, consumers should prefer the Lineage Dataset Facet. Support the older facet for existing producers.
 
 ## Turn findings into a policy decision
 
-A practical decision table is:
+After producer and migration checks pass, a practical decision table for downstream impact is:
 
 | Change | Reachable production consumer | Result |
 | --- | --- | --- |
@@ -107,7 +108,7 @@ Coverage must be part of the decision. Record the percentage of production datas
 
 ## Add the CI job
 
-Keep the gate deterministic and make its artifacts reviewable:
+Keep the gate deterministic and make its artifacts reviewable. The scripts and evaluator below are project-specific components you must implement, including dependency setup and writing both `artifacts/impact.json` and `artifacts/impact.md` before returning the policy exit code:
 
 ```yaml
 name: lineage-impact
@@ -117,6 +118,8 @@ on:
     paths:
       - 'models/**'
       - 'migrations/**'
+      - 'ci/**'
+      - '.github/workflows/**'
 
 jobs:
   impact:
@@ -135,11 +138,20 @@ jobs:
           --baseline artifacts/baseline
           --candidate artifacts/candidate
           --report artifacts/impact.md
+      - name: Upload impact reports
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: lineage-impact
+          path: |
+            artifacts/impact.json
+            artifacts/impact.md
+          if-no-files-found: error
 ```
 
 Pin third-party actions to reviewed commit SHAs in a hardened repository. The example uses a major tag for readability, but a production policy should follow your supply-chain controls.
 
-The evaluator should exit nonzero only for the configured blocking conditions. Always upload the machine-readable result and a short Markdown path report so a reviewer can distinguish a real impact from a coverage problem.
+The evaluator should exit nonzero for configured blocking conditions and evaluation errors. Missing or unreadable inputs must not produce a passing result. Always upload the machine-readable result and a short Markdown path report so a reviewer can distinguish a real impact from a coverage problem.
 
 ## Use dbt state without confusing it with column impact
 
