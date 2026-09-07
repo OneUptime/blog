@@ -55,7 +55,7 @@ Those are not all the same kind of dependency. OpenLineage distinguishes direct 
 
 ## Parse the script as ordered statements
 
-Build one lineage environment for the entire session or transaction, not one isolated parser invocation per statement:
+Build one lineage environment for the entire session, tracking transaction boundaries and rollback, not one isolated parser invocation per statement. PostgreSQL temporary tables survive commits by default; apply their `ON COMMIT` behavior when updating the registry:
 
 ```text
 catalog schemas
@@ -77,7 +77,7 @@ namespace: inmemory://
 name: postgres/warehouse/session-7f3a/eligible_orders
 ```
 
-Do not assume every temporary table is literally in memory. When retaining the physical PostgreSQL relation instead, use the PostgreSQL datasource namespace and the observed session-specific `pg_temp_N` schema, then keep the session or run correlation as evidence. For an artificial temporary boundary, OpenLineage recommends dataset type `JOB_OUTPUT` with subtype `TEMPORARY`. In either representation, avoid reusing the identity in a later session.
+Do not assume every temporary table is literally in memory. When retaining the physical PostgreSQL relation instead, use the PostgreSQL datasource namespace and the observed session-specific `pg_temp_N` schema, then keep the session or run correlation as evidence. For an artificial temporary boundary, OpenLineage recommends dataset type `JOB_OUTPUT` with subtype `TEMPORARY`. A physical `pg_temp_N` name alone is not a permanent session identifier: keep distinct lifetimes in the lineage store using session and creation evidence, or use a unique synthetic identity when the consumer merges solely by namespace and name.
 
 If the graph is intended for long-term impact analysis, you can instead collapse the temporary node and retain the two physical edges. Keep the intermediate node in a debug view so an engineer can explain how the collapsed relationship was derived.
 
@@ -90,9 +90,9 @@ Every `SELECT` creates a scope. For each scope, create a symbol table containing
 3. Select-list aliases, which are visible only where the SQL dialect permits them.
 4. Correlated references inherited from an outer query.
 
-Resolve CTEs in dependency order. A CTE output is a logical field whose sources are the sources of its defining expression. When a later query reads that field, substitute the saved mapping rather than treating the CTE as a physical dataset.
+Resolve non-recursive CTEs in dependency order. Recursive CTEs require cycle-aware propagation of source sets until they stabilize, or an explicit unsupported result. A CTE output is a logical field whose sources are the sources of its defining expression. When a later query reads that field, substitute the saved mapping rather than treating the CTE as a physical dataset.
 
-Never expand `*` without a schema snapshot. The meaning of `o.*` is the ordered set of fields on `o` at the time of analysis. Save the catalog version or capture time with the lineage result; otherwise a later added column silently changes the reconstructed mapping.
+Never expand `*` without a schema snapshot. The meaning of `o.*` is the ordered set of fields on `o` when the query was resolved, including fields derived from a CTE or subquery. Save the catalog version or capture time with the lineage result; otherwise a later added column silently changes the reconstructed mapping.
 
 ## Walk expressions and preserve influence types
 
@@ -110,6 +110,7 @@ class SourceField:
     subtype: str        # IDENTITY, TRANSFORMATION, FILTER, WINDOW, etc.
 
 def combine(expression_sources, context_sources):
+    # Context sources must already carry an indirect subtype such as FILTER.
     return {
         *expression_sources,
         *(SourceField(s.namespace, s.dataset, s.field,
@@ -118,7 +119,7 @@ def combine(expression_sources, context_sources):
     }
 ```
 
-For a plain column reference, return `DIRECT/IDENTITY`. For arithmetic, casts, string operations, or scalar functions, preserve all leaf fields as `DIRECT/TRANSFORMATION`. For aggregates, mark their value inputs `DIRECT/AGGREGATION`. Add predicate fields as indirect influences:
+For a plain physical column reference, return `DIRECT/IDENTITY`; for a CTE or temporary field, preserve its resolved upstream transformations and indirect influences. For arithmetic, casts, string operations, or scalar functions, classify value inputs as `DIRECT/TRANSFORMATION`, retaining any upstream aggregation and indirect dependencies. For aggregates, mark their value inputs `DIRECT/AGGREGATION`. Conditional expressions can have both direct value inputs and indirect condition inputs; do not relabel every leaf as direct. Add predicate fields as indirect influences:
 
 | SQL location | Lineage classification |
 | --- | --- |
@@ -133,9 +134,9 @@ Window functions need both value and row-selection reasoning. For `sum(amount) O
 
 ## Map the target list by position
 
-An `INSERT` with an explicit target list is straightforward: map the first projected expression to the first named target field, and so on. Reject the lineage result if source and target arity differ. For an insert without a target list, obtain the destination's ordered schema from the catalog. Do not infer it alphabetically.
+An `INSERT` with an explicit target list is straightforward: map the first projected expression to the first named target field, and so on. Reject a source/target arity mismatch for that explicit list. For an insert without a target list, obtain the destination's ordered schema from the catalog. PostgreSQL permits a projection of only the first N target columns; remaining columns receive defaults or nulls, whose provenance must be handled separately. Do not infer the order alphabetically.
 
-For `CREATE TABLE AS`, the output names come from explicit aliases or the dialect's derived-name rules. Persist the exact names returned by the database when possible because duplicate and unnamed expressions are handled differently across engines.
+For `CREATE TABLE AS`, an explicit target column-name list overrides the query output names; otherwise, names come from select-list aliases or the dialect's derived-name rules. Persist the exact names returned by the database when possible because duplicate and unnamed expressions are handled differently across engines.
 
 ## Emit the current lineage facet
 
