@@ -35,10 +35,12 @@ Put transport credentials in the supported OpenLineage client configuration for 
 
 ## Use DataFrame operations normally
 
-This pipeline contains no SQL text for a standalone parser:
+This pipeline contains no SQL text for a standalone parser. It assumes the source tables and the `analytics` database already exist, with numeric amount fields and a Boolean `is_active` field:
 
 ```python
-from pyspark.sql import functions as F
+from pyspark.sql import SparkSession, functions as F
+
+spark = SparkSession.builder.appName("customer_value").getOrCreate()
 
 orders = spark.read.table("raw.orders")
 customers = spark.read.table("raw.customers")
@@ -79,11 +81,11 @@ The OpenLineage column lineage documentation recommends this Spark option for th
 
 Without it, dataset-wide indirect inputs can be repeated for every output field, producing a large near-Cartesian representation. Check support in the exact OpenLineage integration version you deploy.
 
-In current OpenLineage, the Lineage Dataset Facet is the preferred schema for relationships it describes and supersedes overlapping relationships in the older Column Lineage Dataset Facet. Consumers may still receive the older facet from integrations for compatibility. Configure the producer and backend as a tested version pair, and do not assume every backend interprets both shapes identically.
+In current OpenLineage, the Lineage Dataset Facet is the preferred schema for relationships it describes and supersedes overlapping relationships in the older Column Lineage Dataset Facet. The compact Spark option above controls the `dataset` field within `columnLineage`; it does not switch emission to the Lineage Dataset Facet. The latter describes structural relationships on DatasetEvents, while Spark runtime events can still carry `columnLineage`. Configure the producer and backend as a tested version pair, and do not assume every backend interprets both shapes identically.
 
 ## Give Spark recognizable dataset boundaries
 
-Logical expression lineage is only useful when leaf relations and sinks have stable identities. Prefer catalog tables or explicit storage paths:
+Logical expression lineage is only useful when leaf relations and sinks have stable identities. Prefer catalog tables or explicit storage paths. This example requires the PostgreSQL JDBC driver and compatible Hadoop S3A dependencies on the Spark classpath, configured S3 credentials, and `jdbc_user` and `jdbc_password` supplied by your environment:
 
 ```python
 source = (
@@ -96,11 +98,11 @@ source = (
 )
 
 source.write.format("parquet").mode("overwrite").save(
-    "s3://analytics-prod/orders/run_date=2026-09-07"
+    "s3a://analytics-prod/orders/run_date=2026-09-07"
 )
 ```
 
-Use the same endpoint, catalog, table, and path normalization across Spark, Airflow, and database integrations. `s3a://bucket/key` and `s3://bucket/key`, or a JDBC alias and its real host, can become duplicate nodes unless normalization is intentional.
+Use the same endpoint, catalog, table, and path normalization across Spark, Airflow, and database integrations. OpenLineage Spark normalizes `s3a://` and `s3n://` to `s3://` in dataset identities; verify that other producers follow the same convention. A JDBC alias and its real host can still become duplicate nodes unless normalization is intentional.
 
 Avoid secrets in Spark configuration captured by metadata facets. Review source-code, environment, and Spark-property facets against your security policy before enabling production emission.
 
@@ -132,11 +134,11 @@ Use it as diagnostic evidence, not as a production lineage API. Text plan format
 For a repeatable integration test, configure an OpenLineage file transport in a disposable environment, run a tiny job, and assert:
 
 1. One application parent and the expected child job events appear.
-2. The `raw.orders` and `raw.customers` inputs are present.
-3. `analytics.daily_customer_value` is an output only after the write.
+2. The datasets corresponding to `raw.orders` and `raw.customers` are present as inputs, using the namespace and name emitted by the configured catalog or storage connector.
+3. The dataset corresponding to `analytics.daily_customer_value` appears as an output of the write execution. It may already be present in a `START` event; output presence alone does not prove the write succeeded.
 4. `net_revenue` depends directly on gross and discount fields.
 5. customer activity, join keys, and grouping fields are represented as indirect influences where supported.
-6. A failed write emits failure state and does not claim a successful output version.
+6. A write that fails during an observed execution emits `FAIL` rather than `COMPLETE` for that run. An output dataset may still be listed; verify any version facet against connector commit semantics rather than treating it as proof of success.
 
 Run this test after Spark, Scala, connector, or OpenLineage upgrades. Package compatibility failures often show up as listener initialization errors or completely missing events, while unsupported relations show up as events with missing datasets.
 
