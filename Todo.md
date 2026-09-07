@@ -187,7 +187,6 @@
 
 ## Rightsizing
 
-10. How to Account for Init Containers, DaemonSets, and System Reservations in Node Rightsizing
 11. Why Lower Pod Requests Did Not Reduce Your Cloud Bill—and How to Fix Bin-Packing Waste
 12. How to Measure Kubernetes Resource Fragmentation Before Changing Node Shapes
 13. How to Choose CPU-Optimized vs Memory-Optimized Nodes from Workload Request Ratios
