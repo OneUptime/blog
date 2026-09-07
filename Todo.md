@@ -190,7 +190,6 @@
 
 ## Colocation
 
-15. How to Label Rack Units, Power Feeds, Ports, and Cables Before a Colocation Move
 16. How to Plan a Low-Downtime Migration from an On-Premises Server Room to Colocation
 17. How to Pack and Transport Servers for a Colocation Move Without Damaging Drives or Rails
 18. How to Verify Colocation Resilience: UPS, Generators, Cooling, Fire Suppression, and SLAs
