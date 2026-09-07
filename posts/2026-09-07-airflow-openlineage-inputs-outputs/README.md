@@ -10,13 +10,13 @@ Description: Configure Airflow's native OpenLineage provider and fill extraction
 
 Installing an OpenLineage package can make every Airflow task appear in a lineage backend while still leaving important tasks with empty input and output lists. Basic task metadata and dataset extraction are different levels of coverage. The integration can observe an unsupported operator's lifecycle without knowing what data it touched.
 
-For Airflow 2.7 and later, use the native `apache-airflow-providers-openlineage` provider. The older external `openlineage-airflow` integration is maintained mainly for older Airflow versions and bug fixes.
+For Airflow 2.7 and later, use the native `apache-airflow-providers-openlineage` provider. The older external `openlineage-airflow` integration is no longer maintained; version 1.41 was its last release supporting Airflow versions earlier than 2.7.
 
 The examples below are audited against provider 2.20.0, which requires Apache Airflow 2.11.0 or newer. Keep the provider in the audited 2.20 release series unless you have retested its configuration and extraction behavior.
 
 ## Install a version compatible with Airflow
 
-Use the same Airflow constraints strategy as the rest of the environment:
+Install Airflow with its release constraints, then install the newer provider separately while keeping Airflow pinned. The Airflow 2.11.0 constraints pin provider 2.3.0 and cannot be combined with the provider 2.20 requirement. Run these commands in a Python 3.12 environment:
 
 ```bash
 AIRFLOW_VERSION=2.11.0
@@ -24,9 +24,14 @@ PYTHON_VERSION=3.12
 
 python -m pip install \
   "apache-airflow==${AIRFLOW_VERSION}" \
-  "apache-airflow-providers-openlineage~=2.20.0" \
   --constraint \
   "https://raw.githubusercontent.com/apache/airflow/constraints-${AIRFLOW_VERSION}/constraints-${PYTHON_VERSION}.txt"
+
+python -m pip install \
+  "apache-airflow==${AIRFLOW_VERSION}" \
+  "apache-airflow-providers-openlineage~=2.20.0"
+
+python -m pip check
 ```
 
 Check the provider's requirements page before selecting a release. Current provider releases can raise the minimum supported Airflow version, so blindly installing the latest package into an older deployment can fail dependency resolution.
@@ -60,18 +65,18 @@ Airflow configuration also supports a config file or the entire `AIRFLOW__OPENLI
 
 The provider resolves operator metadata in this order:
 
-1. A registered custom extractor.
+1. A registered extractor, with user-defined custom extractors taking precedence over built-in extractors.
 2. OpenLineage methods implemented by the operator.
 3. Hook-level lineage when operator extraction has no datasets.
 4. Inlets and outlets as the final fallback.
 
 This matters because adding `inlets` and `outlets` does not necessarily supplement a partial extractor. A higher-priority source can win. Inspect the emitted event rather than assuming all mechanisms are merged.
 
-The supported-classes page distinguishes basic lifecycle events from operators with enhanced metadata. A supported SQL operator and hook may provide query text, query IDs, datasets, and sometimes column lineage. A Python or Bash task remains a black box unless you annotate or instrument the work it performs.
+The supported-classes page distinguishes basic lifecycle events from operators with enhanced metadata. A supported SQL operator and hook may provide query text, query IDs, datasets, and sometimes column lineage. Python and Bash extractors can report source code, but do not infer datasets from arbitrary code. Dataset coverage requires annotations or instrumented I/O; calling a supported hook from a Python task can provide it automatically.
 
 ## Implement lineage on operators you own
 
-If your operator resolves destinations at runtime, retain the resolved values as operator attributes and return them on completion:
+If your operator resolves destinations at runtime, retain the resolved values as operator attributes and return them on completion. In this skeleton, supply your own `export_objects` implementation or import; it must write to `analytics-exports` and return the confirmed S3 object keys, without the bucket prefix:
 
 ```python
 from airflow.models.baseoperator import BaseOperator
@@ -130,12 +135,12 @@ Register it explicitly:
 extractors = company_airflow.lineage.TenantTransferExtractor
 ```
 
-The fully qualified module must be importable on every worker. A class-name mismatch or cyclic import leaves the task event present but strips the dataset metadata, which can look like successful instrumentation at a glance.
+The fully qualified module must be importable on the scheduler and every worker. A class-name mismatch or cyclic import can prevent custom extraction. Events may still arrive with fallback metadata or empty datasets, which can look like successful instrumentation at a glance.
 
-Test the extractor without running a full DAG:
+Test the operator method above without running a full DAG; a custom extractor needs its own test calling `extract_on_complete`:
 
 ```python
-def test_complete_lineage(task_instance):
+def test_complete_lineage():
     operator = TenantExportOperator(
         task_id="export",
         source_table="warehouse.raw.orders",
@@ -143,7 +148,7 @@ def test_complete_lineage(task_instance):
     )
     operator.resolved_objects = ["orders/2026-09-07/part-000.parquet"]
 
-    lineage = operator.get_openlineage_facets_on_complete(task_instance)
+    lineage = operator.get_openlineage_facets_on_complete(None)
 
     assert [d.name for d in lineage.inputs] == ["warehouse.raw.orders"]
     assert [d.name for d in lineage.outputs] == [
@@ -157,11 +162,11 @@ Also perform a system test using the OpenLineage file transport and compare sele
 
 If many operators call the same custom hook, instrumentation belongs in the hook. Airflow's lineage collector allows hooks to add input and output assets around the real I/O call. This avoids duplicating dataset construction in every operator.
 
-Add outputs only after a successful write. A destination requested by an API call is not necessarily a destination created by it. On failure, return the known input and failure metadata without claiming that an output exists.
+Add outputs only after a successful write. A destination requested by an API call is not necessarily a destination created by it. On failure, report known inputs, failure metadata, and only outputs whose writes were confirmed. Operator methods and extractors should implement failure-specific extraction when needed; otherwise failure extraction falls back to completion extraction.
 
 ## Use inlets and outlets deliberately
 
-Inlets and outlets are useful for simple, manually known boundaries, but the provider treats them as a fallback after stronger extraction mechanisms. Airflow Assets are also included in the Airflow run facet, even when conversion into an OpenLineage dataset is not possible.
+Inlets and outlets are useful for simple, manually known boundaries, but the provider treats them as a fallback after stronger extraction mechanisms. Airflow Assets (called Datasets in Airflow 2.11) are also included in the Airflow run facet, even when conversion into an OpenLineage dataset is not possible.
 
 Manual annotation is a contract, not runtime observation. It can drift when templates or branches select different tables. Prefer an operator method or extractor when the operator already knows the resolved objects.
 
@@ -179,7 +184,7 @@ extractor errors and emission timeouts
 
 Sample emitted payloads after every Airflow or provider upgrade. The provider's supported-class coverage depends on both the operator and the database hook, and a version change can alter extraction behavior.
 
-If Spark is launched from Airflow, enable the documented parent job and transport injection settings for supported operators. That connects the Spark application run to the Airflow task instead of producing two unrelated lineage islands.
+If Spark is launched from Airflow, install and enable the separate OpenLineage Spark integration and listener, then enable the documented parent job and transport injection settings where supported by the operator. Transport injection supports HTTP transport, with optional API key authentication. That connects the Spark application run to the Airflow task instead of producing two unrelated lineage islands.
 
 ## Conclusion
 
