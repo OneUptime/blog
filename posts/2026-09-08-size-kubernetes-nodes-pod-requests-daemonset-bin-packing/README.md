@@ -97,7 +97,7 @@ Validate runtime headroom after scheduler fit. CPU use above requests can cause 
 
 ## Recheck after cluster changes
 
-Recompute density when kubelet reservations, Kubernetes versions, CNI or CSI agents, observability DaemonSets, Pod requests, topology rules, or node images change. A new 300-MiB security agent consumes that amount on every node and may make a previously valid packing plan impossible.
+Recompute density when kubelet reservations, Kubernetes versions, CNI or CSI agents, observability DaemonSets, Pod requests, topology rules, or node images change. A new security agent requesting 300 MiB of memory on every eligible node reduces scheduling capacity by that amount on each of those nodes and may make a previously valid packing plan impossible.
 
 Keep the sizing record reproducible:
 
