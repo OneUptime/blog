@@ -46,12 +46,16 @@ Rename the fully built artifact within the same filesystem, then atomically upda
 
 ## Transfer to a local replica path
 
-Have each replica download or copy the immutable version to a unique staging name, then verify size and checksum before renaming it locally:
+Have each replica download or copy the immutable version to a unique staging name, then verify size and checksum before renaming it locally. Set `expected_size` and `expected_sha256` from the published manifest:
 
 ```bash
-shasum -a 256 /var/lib/myapp/catalog-v42.duckdb.partial
-mv /var/lib/myapp/catalog-v42.duckdb.partial \
-   /var/lib/myapp/catalog-v42.duckdb
+: "${expected_size:?Set expected_size from the manifest}"
+: "${expected_sha256:?Set expected_sha256 from the manifest}"
+staged=/var/lib/myapp/catalog-v42.duckdb.partial
+
+test "$(wc -c < "$staged")" -eq "$expected_size" &&
+  printf '%s  %s\n' "$expected_sha256" "$staged" | shasum -a 256 -c - &&
+  mv "$staged" /var/lib/myapp/catalog-v42.duckdb
 ```
 
 Only use `mv` as the publication step when source and destination are on the same filesystem. Retain the old local version until all queries using it have completed.
