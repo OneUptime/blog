@@ -196,7 +196,6 @@
 
 ## Embedded Databases
 
-5. How to Version and Migrate an Embedded SQLite Schema Across App Upgrades
 6. How to Decide When SQLite Has Outgrown a Production Web Application
 7. How to Detect Unsafe NFS and SMB File Locking Before Hosting an Embedded Database
 8. How to Rotate SQLCipher Encryption Keys Without Exposing a Plaintext SQLite File
