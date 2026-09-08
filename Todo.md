@@ -199,7 +199,6 @@
 
 ## Capacity Planning
 
-6. How to Forecast Seasonal Traffic Without Sizing Everything to the Annual Maximum
 7. How to Size Kubernetes Nodes from Pod Requests, DaemonSet Overhead, and Bin-Packing Constraints
 8. How to Reserve Kubernetes Cluster Headroom Without Paying for Permanently Idle Nodes
 9. How to Keep HPA and Cluster Autoscaler from Reacting Too Late to Burst Traffic
