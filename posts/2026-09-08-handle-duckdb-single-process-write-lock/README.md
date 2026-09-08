@@ -37,10 +37,13 @@ Give every mutation an idempotency key and a versioned payload:
 }
 ```
 
-Inside one transaction, the owner first queries the key. If it exists, the owner ends the transaction and returns the stored outcome. Only a new key reaches the mutation and completion statements:
+Inside one transaction, the owner first queries the key. If it exists, the owner ends the transaction and returns the stored outcome. Only a new key reaches the mutation and completion statements. Execute these statements individually on the same connection, binding each `?` through the client API. Here, the stored outcome is a success acknowledgement represented by the key and `applied_at`; persist any additional response fields in the same transaction if callers need them:
 
 ```sql
 BEGIN;
+
+-- Query applied_command for the key here; if found, end the
+-- transaction and return its acknowledgement without inserting.
 
 INSERT INTO events
 SELECT * FROM read_parquet(?);
@@ -53,7 +56,7 @@ COMMIT;
 
 Return success only after commit. If the caller times out before receiving the response, it can resend the same key and receive the stored outcome instead of duplicating data. Keep command files immutable until acknowledgement and garbage-collect them later.
 
-Enforce a unique constraint on the key as a final guard. If that insert reports a duplicate, roll back the whole transaction and read the committed outcome in a new transaction. Do not continue to commit the preceding mutation after an idempotency conflict.
+Enforce a unique constraint on the key as a final guard. If the insert or commit reports an idempotency-key conflict, roll back the whole transaction if it is still active and query the key in a new transaction. Return the outcome only if a committed record exists; otherwise retry the complete transaction. Do not continue to commit the preceding mutation after an idempotency conflict.
 
 ## Bound and observe the queue
 
@@ -80,10 +83,10 @@ Often one ingestion thread with bulk `COPY`, Appender, or insert-select operatio
 
 Do not let independent processes read the live native file while the owner writes. For multi-process read serving, periodically produce a clean immutable artifact:
 
-1. finish the ingestion transaction;
-2. checkpoint and close the publishing connection cleanly;
-3. validate the file and calculate a checksum;
-4. publish it under a versioned name;
+1. pause admission and finish all active transactions in the owner;
+2. checkpoint successfully and close all connections to the database cleanly;
+3. copy the closed database to a separate versioned file before reopening the live database or resuming writes;
+4. validate the copy, calculate a checksum, and publish it without further modification;
 5. let replicas copy it locally and open with `access_mode='READ_ONLY'`;
 6. retire the old version after its readers close.
 
