@@ -14,13 +14,13 @@ Reliable operation therefore combines conservative SQLite settings with qualifie
 
 ## Keep the database on a local filesystem
 
-Place the database, journal or WAL, and temporary files on the same supported local filesystem. Do not put the file on NFS or SMB, remove or rename a hot journal, or let two SQLite builds use incompatible locking protocols.
+Place the database on a supported local filesystem and keep its journal or WAL in the same directory. Other temporary files may use a separate local temporary directory or memory; they do not need to share the database filesystem. Do not put the file on NFS or SMB, remove or rename a hot journal, or let two SQLite builds use incompatible locking protocols.
 
 Ensure the database directory is writable when required, has stable ownership, and is not manipulated by a cleanup agent. After a crash, leave the database and its sidecars under their original names and let SQLite open them normally to perform recovery.
 
 ## Select durability settings explicitly
 
-For WAL mode, configure and verify:
+For WAL mode, use SQLite 3.51.3 or later, or a release with the WAL-reset fix backported (such as 3.44.6 or 3.50.7). Earlier unpatched versions have a rare corruption bug involving concurrent writes and checkpoints from multiple connections. Configure and verify:
 
 ```sql
 PRAGMA journal_mode = WAL;
