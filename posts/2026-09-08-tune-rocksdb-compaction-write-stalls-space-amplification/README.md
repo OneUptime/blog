@@ -62,7 +62,7 @@ Track actual background-job utilization. A thread-count change that leaves compa
 
 Larger `write_buffer_size` values create fewer, larger flushes and may reduce write amplification. They also use more memory, enlarge flush bursts, can increase recovery work through retained WAL, and require matching level capacity.
 
-`max_write_buffer_number` supplies burst absorption while flush catches up. It should not become an unbounded reservoir. `min_write_buffer_number_to_merge` can merge memtables before flush to reduce files and amplification, at the cost of write latency and memory residence.
+`max_write_buffer_number` supplies burst absorption while flush catches up. It should not become an unbounded reservoir. `min_write_buffer_number_to_merge` can merge memtables before flush to reduce files and amplification, at the cost of potentially higher read latency from searching more immutable memtables and longer memory residence.
 
 Change write-buffer and base-level sizes together and recalculate the worst-case memory budget across every column family. Test a process restart with the resulting WAL and memtable configuration.
 
@@ -70,17 +70,17 @@ Change write-buffer and base-level sizes together and recalculate the worst-case
 
 Leveled compaction begins moving L0 files when `level0_file_num_compaction_trigger` is reached. Slowdown and stop thresholds provide later guardrails. Raising them increases the number of overlapping files that reads may examine and consumes disk headroom.
 
-Prefer making flush and L0-to-L1 compaction faster. If bursts are valid, add a modest buffer between the compaction, slowdown, and stop thresholds and prove that the system drains back to baseline. Alert on L0 file count and its slope, not only on the final stop event.
+Prefer making flush and L0-to-base-level compaction faster (the base level can be below L1 when dynamic level bytes is enabled). If bursts are valid, add a modest buffer between the compaction, slowdown, and stop thresholds and prove that the system drains back to baseline. Alert on L0 file count and its slope, not only on the final stop event.
 
 ## Budget space for live data and compaction
 
-Monitor total SST bytes, estimated live data size, pending compaction bytes, obsolete but not yet deleted files, WAL, logs, and filesystem free space. Snapshots and iterators can delay obsolete-file deletion. Tombstones remove logical keys, but disk space is reclaimed only after relevant compactions process them and old files can be deleted.
+Monitor total SST bytes, estimated live data size, pending compaction bytes, obsolete but not yet deleted files, WAL, logs, and filesystem free space. Snapshots preserve older key versions through compaction, while iterators can pin SST files and delay obsolete-file deletion. Tombstones remove logical keys, but disk space is reclaimed only after relevant compactions process them and old files can be deleted.
 
-Set an operational minimum-free-space threshold high enough for the largest plausible compaction output. An emergency manual compaction on a nearly full disk can make the incident worse.
+Set an operational minimum-free-space threshold high enough for concurrent compaction outputs plus ongoing flush and WAL growth. An emergency manual compaction on a nearly full disk can make the incident worse.
 
 ## Use manual compaction sparingly
 
-`CompactRange` and `CompactFiles` are advanced controls. A manual compaction consumes background resources and can wait to avoid causing write stalls. Use it for a defined goal such as draining data after bulk ingest or applying a compaction filter, not as a periodic cure for insufficient steady-state capacity.
+`CompactRange` and `CompactFiles` are advanced controls. `CompactRange` runs compaction on background threads and, with `allow_write_stall=false` (the default), can wait to avoid causing write stalls. `CompactFiles` performs the compaction job on the calling thread. Both compete for CPU and I/O with other work. Use it for a defined goal such as draining data after bulk ingest or applying a compaction filter, not as a periodic cure for insufficient steady-state capacity.
 
 Test cancellation, shutdown, and disk-space behavior before automating it.
 
