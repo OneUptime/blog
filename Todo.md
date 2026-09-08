@@ -199,7 +199,6 @@
 
 ## Capacity Planning
 
-10. How to Pre-Warm Autoscaled Instances Before a Marketing or Launch-Day Spike
 11. How to Calculate Database Connection-Pool Capacity Across Autoscaled Application Replicas
 12. How to Size Worker Pools and Queues from Arrival Rate, Service Time, and Latency SLOs
 13. How to Plan Capacity for Heavy and Light Request Types Instead of Using Average RPS
