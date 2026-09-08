@@ -30,7 +30,8 @@ Represent routines and triggers as executable nodes, not only annotations on a t
 ```text
 orchestrator job
   -> calls procedure reporting.refresh_daily_revenue
-  -> invokes trigger function audit.capture_revenue_change
+      -> writes analytics.daily_revenue
+          -> fires trigger invoking audit.capture_revenue_change
 
 procedure
   -> reads raw.orders
@@ -98,7 +99,7 @@ The strongest capture point is the database session that executes the resolved n
 
 PostgreSQL's `pg_stat_statements.track=all` includes nested statements executed inside functions, while the default `top` records only top-level statements. However, `pg_stat_statements` aggregates equivalent statement structures and retains a bounded number of entries. It is useful for coverage and discovery, not as a per-call execution ledger.
 
-For targeted diagnosis, `auto_explain.log_nested_statements=on` makes statements inside functions eligible for execution-plan logging. `auto_explain` adds overhead, especially with analysis or per-node timing, so use duration thresholds or sampling and test it before production rollout.
+For targeted diagnosis, `auto_explain.log_nested_statements=on` makes statements inside functions eligible for execution-plan logging. `auto_explain` must be loaded and `auto_explain.log_min_duration` set to a nonnegative value to log plans. It adds overhead, especially with analysis or per-node timing. Duration thresholds limit logging but do not avoid per-node timing overhead when analysis and timing are enabled; use sampling or disable timing where appropriate, and test it before production rollout.
 
 Other engines may provide query history, audit events, extended events, or access history that exposes nested work. For each source, record whether it proves submission, successful statement completion, or durable commit.
 
@@ -111,7 +112,7 @@ A trigger's dependency has two parts:
 
 PostgreSQL supports `BEFORE`, `AFTER`, and `INSTEAD OF` triggers, at row or statement granularity where applicable. A `BEFORE` or `INSTEAD OF` trigger can change or skip the original operation. Therefore, seeing an attempted insert on the base table is not enough to assert both the base write and every trigger output.
 
-Preserve trigger order, firing condition, enabled state, and transaction. Deferred constraint triggers can run later in the transaction. Publish durable write edges only after commit evidence when the source makes it available.
+Preserve trigger order, firing condition, enabled state, and transaction. Deferred constraint triggers can run later in the transaction. Publish durable write edges only after commit evidence when the source makes it available, excluding writes undone by savepoint rollback or an aborted subtransaction.
 
 Avoid a simple rule that every update to a triggered table writes every object mentioned in the function. `WHEN` predicates and function branches can make that false.
 
@@ -160,7 +161,7 @@ pipeline run ID
   -> trigger invocation
 ```
 
-Wall-clock proximity is not enough when a pooled connection serves concurrent work. Preserve parent statement IDs or a database audit sequence if the engine supplies them.
+Wall-clock proximity is not enough when pooled connections are reused across jobs. PostgreSQL executes client statements sequentially on a connection, even in pipeline mode. A procedure invoked by a top-level `CALL` can commit or roll back internally, so a single call can span multiple transactions; correlate each nested statement with its actual transaction rather than assuming one transaction per call. Preserve parent statement IDs or a database audit sequence if the engine supplies them.
 
 Build the execution tree first, then derive lineage edges. This prevents a trigger fired by one statement from being attached to a neighboring statement in the same log stream.
 
