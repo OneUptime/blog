@@ -27,7 +27,7 @@ Perfect linear scaling has `E_n = 1`. An efficiency above 1 can occur because a 
 
 ## Keep the comparison controlled
 
-Use identical nodes, application builds, resource limits, runtime flags, data sets, and request mixes. Keep dependency capacity fixed only when testing the whole system boundary. If the goal is application-tier scalability, ensure the database, message broker, load generator, and network have enough headroom.
+Use identical nodes, application builds, resource limits, runtime flags, data sets, and request mixes. When testing the whole system boundary, keep dependency capacity fixed to measure scale-out with those dependencies; if dependency capacity changes, record that as part of the tested topology. If the goal is application-tier scalability, ensure the database, message broker, load generator, and network have enough headroom.
 
 For every node count:
 
@@ -83,7 +83,7 @@ A fixed serial fraction creates diminishing speedup. Do not fit an ideal linear 
 A fixed-demand test asks whether adding nodes improves latency and resilience at the same production load. A scaled-demand test asks whether additional nodes increase maximum useful throughput. Run both:
 
 ```text
-fixed demand: 2,000 RPS at 2, 4, and 8 nodes
+fixed demand: 1,200 RPS at 2, 4, and 8 nodes
 scaled demand: find maximum SLO-safe RPS at each node count
 ```
 
@@ -91,7 +91,7 @@ The first exposes coordination overhead and per-request efficiency. The second c
 
 ## Test failure and placement
 
-Even scaling under ideal placement is insufficient. Repeat a representative point with one node unavailable and during a rolling update. Verify that remaining nodes receive balanced traffic and stay below their safe single-node limit.
+Even scaling under ideal placement is insufficient. Repeat a representative point with one node unavailable and during a rolling update. Verify that remaining nodes receive balanced traffic and that the remaining topology meets the latency and error objectives at the tested demand; the one-node limit alone does not account for shared bottlenecks or changed cache and shard placement.
 
 If nodes span failure zones, inspect cross-zone dependencies and quotas. Eight nominal nodes do not provide eight useful units if a partition, shard, or affinity rule prevents work from reaching them.
 
