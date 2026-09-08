@@ -193,7 +193,6 @@
 
 ## Data Lineage
 
-16. How to Validate SQL-Derived Lineage Against What Actually Ran in Production
 17. How to Trace Lineage Through Stored Procedures, Triggers, and Intermediate Tables
 18. How to Design Data Lineage for Batch and Streaming Pipelines in One Metadata Graph
 19. How to Use Data Lineage to Find the Root Cause of a Broken Dashboard
