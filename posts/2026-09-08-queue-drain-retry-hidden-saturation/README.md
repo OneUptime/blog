@@ -26,31 +26,31 @@ unfinished business change
 Retries do not create new business operations, but they do consume processing capacity. Account for attempt load separately:
 
 ```text
-attempt arrivals = first attempts + application retries + broker redeliveries
+processing attempts = first attempts + application retry attempts + broker redelivery attempts
 ```
 
-For a simple homogeneous attempt-work boundary with ongoing attempt arrival rate `lambda`, measured attempt departure capacity `mu`, and current attempt backlog `B`:
+For a simple homogeneous queue boundary, let `B` include ready and unacknowledged messages, `lambda` count new message enqueues (including newly published retries), and `mu` estimate terminal message departure capacity. Redelivery within this boundary adds processing load but is neither a new enqueue nor a terminal departure. Assuming sustained rates and no delayed work inside this boundary:
 
 ```text
 net drain rate = mu - lambda
 drain time     = B / (mu - lambda), only when mu > lambda
 ```
 
-If `mu <= lambda`, the queue cannot drain while arrivals continue. Report drain time as infinite or unavailable rather than producing a negative number.
+If `B > 0` and `mu <= lambda`, this constant-rate model predicts that the queue cannot drain while arrivals continue. Report drain time as infinite or unavailable rather than producing a negative number.
 
 Use acknowledgements or intentional discards that actually remove an attempt from this boundary for `mu`. If a failed attempt is acknowledged and a new retry is published, count the current departure and the future retry enqueue separately. If the broker requeues the same unacknowledged delivery, it has not departed. Report successful business outcomes separately, and separate ready, delayed, and unacknowledged messages according to broker semantics.
 
 ## Work an amplification example
 
-Suppose workers can terminally process 1,200 queued attempts per second under the current production mix. New business work arrives at 950 per second and scheduled retries enqueue 50 attempts per second. With 60,000 ready messages:
+Suppose workers can terminally process 1,200 queued attempts per second under the current production mix. New business work arrives at 950 per second and scheduled retries enqueue 50 attempts per second. With 60,000 outstanding messages (ready plus unacknowledged) and no delayed work inside the boundary:
 
 ```text
-total attempt arrivals = 950 + 50 = 1,000/second
+total message enqueues = 950 + 50 = 1,000/second
 net drain rate         = 1,200 - 1,000 = 200/second
 drain time             = 60,000 / 200 = 300 seconds
 ```
 
-If retries rise to 250 per second, total arrivals equal service capacity and drain time becomes unbounded. CPU may still average below 100 percent because workers wait on a failing downstream dependency.
+If retries rise to 250 per second, total enqueues equal terminal departure capacity and drain time becomes unbounded. CPU may still average below 100 percent because workers wait on a failing downstream dependency.
 
 Track retry amplification:
 
@@ -58,7 +58,7 @@ Track retry amplification:
 retry amplification = total attempts / original business operations
 ```
 
-An increase from 1.05 to 1.26 is a capacity change even if customer demand is flat. Break it down by cause, dependency, client version, and delivery count.
+Measure attempts and original operations for the same cohort, or use aligned rate windows as an approximation under steady traffic. Delayed retries can distort short-window ratios. An increase from 1.05 to 1.26 reduces capacity available for original work even if customer demand is flat. Break it down by cause, dependency, client version, and delivery count.
 
 ## Prefer age plus slope over depth alone
 
@@ -73,7 +73,7 @@ The same depth has different meaning at different rates. Ten thousand messages c
 - calculated drain time using a conservative service rate;
 - dead-letter, expiry, rejection, and shed rates.
 
-Oldest age directly indicates whether a latency objective is at risk. Backlog slope detects overload before depth crosses a static threshold. Drain time translates the state into an operational recovery estimate.
+For an end-to-end latency objective, measure age from original business acceptance and preserve that timestamp across retries; the age of the latest retry message alone can understate latency risk. Backlog slope detects overload before depth crosses a static threshold. Drain time translates the state into an operational recovery estimate.
 
 Use a service-rate estimate from recent healthy or explicitly reserved recovery capacity. If current `mu` is degraded, show both current drain time and expected drain time after the dependency recovers. Do not assume historical maximum throughput during an ongoing fault.
 
@@ -89,13 +89,13 @@ Google SRE guidance warns that retries can amplify overload and recommends expon
 - circuit breaking or admission control during dependency failure;
 - a dead-letter path for poison work.
 
-RabbitMQ automatically requeues unacknowledged deliveries when a channel or connection closes, so a consumer crash can cause a synchronized redelivery wave. Quorum queues expose a delivery-count header and support delivery limits. Consumers must handle redelivery idempotently.
+With manual acknowledgements, RabbitMQ automatically requeues unacknowledged deliveries when a channel or connection closes, so a consumer crash can cause a synchronized redelivery wave. Quorum queues expose a delivery-count header and support delivery limits. Delivery-count semantics depend on the RabbitMQ version: from 4.3, explicit returns via `basic.nack` do not increment `x-delivery-count` or count toward the delivery limit. Consumers must handle redelivery idempotently.
 
 Distinguish an application retry, a broker redelivery, and a user resubmission. Collapsing them into one counter makes ownership and amplification impossible to diagnose.
 
 ## Set actionable alerts
 
-Use multi-window conditions rather than one noisy sample:
+Use sustained or multi-window conditions rather than one noisy sample; these thresholds are illustrative. Evaluate rate-based saturation conditions only with outstanding work and a valid capacity estimate, since observed departures on an underloaded queue measure throughput rather than capacity:
 
 ```text
 warning:
@@ -106,7 +106,7 @@ warning:
 critical:
   conservative drain time > recovery objective
   OR oldest age > latency objective
-  OR mu <= lambda for 5m
+  OR (B > 0 AND mu <= lambda) for 5m
 ```
 
 Route alerts to the owner who can reduce arrivals, restore service rate, or add verified workers. Autoscaling workers is useful only if the bottleneck scales; adding consumers to a saturated database or rate-limited API can make recovery slower.
@@ -117,7 +117,7 @@ Inject a bounded dependency slowdown under representative arrival load. Confirm 
 
 Repeat with one worker group unavailable, poison work, and autoscaling at its maximum. Ensure interactive work retains capacity if bulk replay would otherwise monopolize workers.
 
-Record the policy:
+Record the policy as application-specific metadata (these are not RabbitMQ configuration keys):
 
 ```yaml
 latency_objective: 10m
@@ -130,7 +130,7 @@ overload_action: pause-low-priority-producers
 
 ## Conclusion
 
-Detect hidden saturation by comparing attempt arrivals with successful completions, calculating whether the queue can drain, and tracking oldest-work age. Measure retries as added load, bound them with backoff and budgets, and verify recovery through a fault-and-drain test. These signals expose overload long before a static queue-depth or CPU alert does.
+Detect hidden saturation by comparing new message enqueues with terminal message departures while tracking successful business outcomes separately, calculating whether the queue can drain, and tracking oldest-work age. Measure retries as added load, bound them with backoff and budgets, and verify recovery through a fault-and-drain test. These signals can expose overload before a static queue-depth or CPU alert does.
 
 ## Official Documentation
 
