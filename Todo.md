@@ -196,7 +196,6 @@
 
 ## Embedded Databases
 
-20. How to Migrate from an Embedded Database to PostgreSQL Without SQLite Type and Concurrency Surprises
 
 ## Capacity Planning
 
