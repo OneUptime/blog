@@ -196,7 +196,6 @@
 
 ## Embedded Databases
 
-13. How to Handle DuckDB’s Single-Process Write Lock in Multi-Worker Applications
 14. How to Stop DuckDB Queries from Exhausting Memory on Large Parquet Datasets
 15. How to Share Prebuilt DuckDB Files Across Read-Only Application Replicas
 16. How to Size an LMDB Map and Recover Cleanly from `MDB_MAP_FULL`
