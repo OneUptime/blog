@@ -196,7 +196,6 @@
 
 ## Embedded Databases
 
-18. How to Set Cache, Write Buffer, and File Descriptor Budgets for an Embedded RocksDB Instance
 19. How to Design a Single-Writer Queue for Multi-Process Embedded Database Access
 20. How to Migrate from an Embedded Database to PostgreSQL Without SQLite Type and Concurrency Surprises
 
