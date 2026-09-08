@@ -10,7 +10,7 @@ Description: Design stable asset and field identities, evidence-rich dependency 
 
 Lineage is naturally traversed as a graph: start at one asset, follow dependencies upstream to its sources, or downstream to its consumers. A graph database makes those paths convenient, but only if identity, direction, history, and traversal limits are designed before millions of edges arrive.
 
-This article uses Neo4j and Cypher for concrete examples. The logical model applies to other property-graph systems too.
+This article uses Neo4j 5.7 or later and Cypher for concrete examples; relationship property uniqueness constraints require Neo4j 5.7 or later. The logical model applies to other property-graph systems too.
 
 ## Pick one edge direction
 
@@ -46,7 +46,7 @@ job:airflow://prod/orders_dag/build_daily_orders
 dashboard:tableau://site-finance/workbook-18/dashboard-4
 ```
 
-Keep the readable name, owner, environment, and native IDs as properties. Do not put volatile descriptions or tags into the identity.
+These are custom catalog keys, not literal OpenLineage namespace/name pairs. Physical names and locations can change: preserve the assigned key across renames and moves, and map new locators to it, or use a catalog UUID with locators as properties. Include environment or deployment scope in the key when physical scope alone is not unique. Keep the readable name, owner, environment, and native IDs as properties. Do not put volatile descriptions or tags into the identity.
 
 A compact node model might use these labels:
 
@@ -72,7 +72,7 @@ CREATE CONSTRAINT depends_on_key_unique IF NOT EXISTS
 FOR ()-[r:DEPENDS_ON]-() REQUIRE r.key IS UNIQUE;
 ```
 
-Then ingest endpoints independently before merging the relationship:
+Then ingest endpoints independently before merging the relationship. Supply non-null keys, an ISO 8601 timestamp string for `$observedAt`, and a string evidence class for `$evidence`; nested evidence maps cannot be stored directly as relationship properties. This example assumes observations are applied in timestamp order for each asset and edge. For late observations, reconcile first/last-seen times with the minimum/maximum observation times and prevent stale events from overwriting newer summaries or reactivating closed edges:
 
 ```cypher
 MERGE (downstream:Asset {key: $downstreamKey})
@@ -112,7 +112,7 @@ edge key, evidence class, producer, parser version,
 first seen, last seen, active status, confidence, transformation digest
 ```
 
-When an edge disappears from a complete source snapshot, mark it inactive or close its validity interval. Do not delete it merely because one incremental crawl omitted it.
+When an edge disappears from a complete source snapshot, retire that producer's evidence within the snapshot's scope. Mark the current edge inactive or close its validity interval only when no supporting evidence remains under the merge policy. Do not delete it merely because one incremental crawl omitted it.
 
 If exact as-of traversal is a requirement, use versioned relationships or relationship-instance nodes with `validFrom` and `validTo`. Benchmark that design before applying it to the primary interactive graph.
 
@@ -158,7 +158,7 @@ ORDER BY hops, key;
 
 Neo4j still supports variable-length relationship syntax, while current Cypher also provides quantified path patterns. Bound the depth either way. An unrestricted traversal across a dense enterprise catalog can return an enormous number of paths, many of which reach the same node.
 
-When the question is reachability, return distinct nodes instead of every path. Return paths only when the user needs the chain of evidence. Add filters for environment, asset kind, domain, or edge validity as early as possible.
+When the question is reachability, return distinct nodes instead of every path. Return paths only when the user needs the chain of evidence. Add filters for environment, asset kind, domain, or edge validity as early as possible. These examples bound depth, not result count or execution time. Add a result cap and a transaction timeout for interactive use; `DISTINCT`, aggregation, sorting, and pagination do not by themselves bound traversal work.
 
 ## Plan explicitly for cycles
 
