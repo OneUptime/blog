@@ -199,7 +199,6 @@
 
 ## Capacity Planning
 
-5. How to Set Capacity Headroom for Traffic Growth, Maintenance, and One-Node Failure
 6. How to Forecast Seasonal Traffic Without Sizing Everything to the Annual Maximum
 7. How to Size Kubernetes Nodes from Pod Requests, DaemonSet Overhead, and Bin-Packing Constraints
 8. How to Reserve Kubernetes Cluster Headroom Without Paying for Permanently Idle Nodes
