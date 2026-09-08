@@ -193,7 +193,6 @@
 
 ## Data Lineage
 
-12. How to Model Data Lineage in a Graph Database for Fast Upstream and Downstream Traversal
 13. How to Add Transformation Expressions and Aggregations to OpenLineage Metadata
 14. How to Debug Missing OpenLineage Events from Spark Jobs
 15. How to Keep a Data Lineage Catalog Fresh When Teams Forget to Update Documentation
