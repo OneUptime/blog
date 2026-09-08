@@ -46,18 +46,19 @@ Materialize a DuckDB table only when repeated access, local compression, or a mo
 
 ## Batch ingestion instead of issuing row-sized queries
 
-For data loaded into DuckDB, use `COPY`, create-table-as-select, bulk inserts, or the client API's Appender. Avoid one prepared `INSERT` per network request. The ingestion owner should run in one process and commit bounded batches.
+For data loaded into DuckDB, use `COPY`, create-table-as-select, bulk inserts, or the client API's Appender. Avoid one prepared `INSERT` per network request. The ingestion owner should run in one process and commit bounded batches. The example assumes `event_fact` matches the Parquet column order and types, and `loaded_batch` has a batch identifier primary key followed by a timestamp column. Keep each batch identifier tied to immutable input and skip identifiers already recorded in `loaded_batch`.
 
 ```sql
 BEGIN;
 INSERT INTO event_fact
 SELECT *
 FROM read_parquet('/srv/incoming/batch-0042/*.parquet');
+-- Validate row counts and uniqueness here; roll back if validation fails.
 INSERT INTO loaded_batch VALUES ('batch-0042', current_timestamp);
 COMMIT;
 ```
 
-Validate row counts and uniqueness before marking the batch visible. If ingestion fails, roll back and retry the same batch identifier.
+Validate row counts and uniqueness before marking the batch visible. If ingestion fails, roll back any active transaction and retry the same batch identifier. If the commit outcome is uncertain, check `loaded_batch` before retrying; the primary key prevents a replay from committing duplicate data.
 
 ## Bound analytical resource use
 
@@ -76,7 +77,7 @@ Avoid returning an unbounded result into application memory. Aggregate in SQL, s
 
 ## Control concurrency at the service boundary
 
-Within one process, DuckDB supports multiple connections and optimistic concurrent writes. Updates to the same rows can conflict and should be retried only when the transaction is idempotent. For a native DuckDB file, multiple processes can read in read-only mode only when no process writes.
+Within one process, DuckDB supports multiple connections and optimistic concurrent writes. Updates to the same rows can conflict and should be retried only when the transaction is idempotent. When processes open a native DuckDB file directly, multiple processes can read in read-only mode only when no process holds it open in read-write mode.
 
 Put analytical requests through a bounded worker pool. Limit both query count and the sum of their memory expectations. Queue or reject excess work instead of allowing every web worker to start a full scan. Record queue wait, query duration, peak memory, spill bytes, input bytes, and output rows.
 
