@@ -48,7 +48,7 @@ load-balancer registration and propagation
 
 Do not add each stage's independent p99 to claim an end-to-end p99. Measure the end-to-end distribution directly. Add an explicit scheduling buffer for variance and operator response.
 
-If p99 cold-to-serving time is nine minutes and the operating buffer is three minutes, begin the scale action at least 12 minutes before expected arrivals. Start earlier when provider capacity allocation or quota changes have longer lead times.
+If p99 cold-to-serving time is nine minutes and the operating buffer is three minutes, begin the scale action at least 12 minutes before expected arrivals. Add any required healthy observation period before the launch-gate deadline: the 10-minute gate below requires at least 22 minutes of lead time before that deadline with these startup and buffer values. Start earlier when provider capacity allocation or quota changes have longer lead times.
 
 ## Choose the pre-warm mechanism
 
