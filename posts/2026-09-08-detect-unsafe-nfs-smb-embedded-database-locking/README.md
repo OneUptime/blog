@@ -25,7 +25,7 @@ Create a disposable share and database. Use the same:
 
 Run clients on separate hosts. Two processes on one client may exercise only the local kernel's lock table and miss cross-host faults. Never run destructive lock or crash tests against a production share.
 
-Record mount information before each test:
+Record mount information before each test (these commands assume Linux with GNU `stat`; other operating systems require their equivalent commands):
 
 ```bash
 mount | grep '/mnt/db-lock-test'
@@ -42,6 +42,7 @@ On host A, create a disposable database and hold an exclusive transaction:
 
 ```bash
 sqlite3 /mnt/db-lock-test/probe.db <<'SQL'
+.bail on
 PRAGMA journal_mode = DELETE;
 CREATE TABLE IF NOT EXISTS events(id INTEGER PRIMARY KEY, source TEXT NOT NULL);
 BEGIN EXCLUSIVE;
@@ -51,20 +52,20 @@ COMMIT;
 SQL
 ```
 
-While host A is sleeping, run this on host B:
+Confirm host A has successfully entered the transaction and is sleeping, then run this on host B with more than two seconds remaining before host A commits:
 
 ```bash
 sqlite3 /mnt/db-lock-test/probe.db \
   "PRAGMA busy_timeout=2000; INSERT INTO events(source) VALUES ('host-b');"
 ```
 
-The host B write must not succeed while host A holds the exclusive transaction. It should wait and then report a busy or locked result. After host A commits, the same write should succeed. Verify the two rows and run:
+The host B write must not succeed while host A holds the exclusive transaction. If host A retains the lock throughout the two-second busy timeout, host B should report `SQLITE_BUSY` (typically displayed as "database is locked"). If host A commits before the timeout expires, host B may legitimately succeed. After host A commits, the same write should succeed. Verify the two rows and run:
 
 ```bash
 sqlite3 /mnt/db-lock-test/probe.db "PRAGMA integrity_check;"
 ```
 
-Any simultaneous success, I/O error, inconsistent view, missing row, or integrity failure is a rejection. Ensure the test truly overlapped by saving monotonic start and finish timestamps from both hosts.
+Any simultaneous success, I/O error, inconsistent view, missing row, or integrity failure is a rejection. Record lock-acquisition and commit events as well as host B's attempt. Use synchronized wall-clock timestamps with known clock-error bounds to establish overlap; use monotonic timestamps only for elapsed time on each host, because their reference points cannot be compared across hosts.
 
 ## Stress lock transitions, not just one collision
 
@@ -77,7 +78,7 @@ Repeat thousands of short transactions from both hosts while a separate reader c
 - file growth and low-free-space conditions;
 - lock contention during backup and snapshot activity.
 
-Give every intended insert a globally unique identifier and maintain an external append-only record of acknowledged operations. After each phase, compare accepted identifiers with database rows and run `integrity_check` plus `foreign_key_check`.
+Give every intended insert a globally unique identifier and maintain an external append-only record of successfully acknowledged commits and their identifiers. An insert succeeding inside an open transaction is not a commit acknowledgment. After each phase, compare acknowledged commits with database rows under the selected durability guarantees; a commit interrupted before acknowledgment can have an uncertain outcome and must be reconciled separately. Run `integrity_check` plus `foreign_key_check`.
 
 If the storage cluster fails over, run the suite before, during, and after failover. A lock service that works on the primary path may behave differently after role change.
 
@@ -85,7 +86,7 @@ If the storage cluster fails over, run the suite before, during, and after failo
 
 SQLite's atomic commit depends on the VFS and filesystem honoring sync and write-order assumptions. Killing an application process tests journal recovery, but it does not test sudden storage power loss or a server falsely acknowledging durable writes.
 
-Use a vendor-supported fault-injection environment to interrupt clients, network links, and storage nodes after acknowledged commits. On recovery, classify each transaction as present or absent according to the selected synchronous mode, and require a structurally valid database. Do not pull power from shared production hardware.
+Use a vendor-supported fault-injection environment to interrupt clients, network links, and storage nodes after acknowledged commits. Record the journal and synchronous modes on every connection. In DELETE mode, use `synchronous=EXTRA` when acknowledged commits must survive power loss; FULL can lose the last commit on some filesystems, NORMAL can permit corruption, and OFF provides no power-loss consistency guarantee. On recovery, check transaction outcomes against those guarantees and require a structurally valid database for qualification. Corruption with an unsafe synchronous setting does not by itself demonstrate a filesystem defect. Do not pull power from shared production hardware.
 
 Capture packet loss, server logs, kernel messages, stale-file-handle errors, and lock-recovery events. A clean `integrity_check` after one test is only one observation.
 
@@ -107,7 +108,7 @@ Do not place a cross-host SQLite database in WAL mode. Do not mix locking protoc
 
 ## Conclusion
 
-Qualify network storage with cross-host exclusion, contention, recovery, failover, and durability tests on a disposable share. Treat any anomaly as a rejection, and retest after configuration changes. Passing tests reduces uncertainty but does not remove it; keeping the engine beside local storage and networking the API remains the robust design.
+Qualify network storage with cross-host exclusion, contention, recovery, failover, and durability tests on a disposable share. Treat unexpected exclusion, integrity, or durability failures as a rejection; expected busy, disk-full, and injected I/O errors alone do not establish unsafe locking, and and retest after configuration changes. Passing tests reduces uncertainty but does not remove it; keeping the engine beside local storage and networking the API remains the robust design.
 
 ## Official Documentation
 
