@@ -32,7 +32,7 @@ Do not train only on completed throughput during saturation. If the service capp
 
 ## Decompose the forecast
 
-Model components independently:
+Model trend, seasonality, and events as separate components. When seasonal and event effects scale proportionally with the baseline, a multiplicative formulation is useful; use additive effects when their magnitude is independent of the baseline:
 
 ```text
 forecast = baseline trend
@@ -71,11 +71,11 @@ required units_t = ceil(forecast demand quantile_t / tested safe demand per unit
 
 Then apply failure-domain and maintenance requirements. Do not infer resource capacity from average CPU alone.
 
-Suppose ordinary demand needs 12 instances, December weekends need 20, and a verified eight-hour sale forecast needs 42. Keeping 42 all year uses 367,920 instance-hours. A simplified plan with 12 all year, eight extra for eight weekends, and 22 extra for the eight-hour sale uses:
+Suppose ordinary demand needs 12 instances, the four full weekends in December 2026 need 20, and an eight-hour sale during one of those weekends needs 42 according to a validated forecast. Keeping 42 all year uses 367,920 instance-hours in this non-leap year. A simplified plan with 12 all year, eight extra for four 48-hour weekends, and 22 extra on top of the weekend capacity for the eight-hour sale uses:
 
 ```text
 baseline:        12 * 8,760 = 105,120 instance-hours
-weekend uplift:   8 *   384 =   3,072 instance-hours
+weekend uplift:   8 *   192 =   1,536 instance-hours
 sale uplift:     22 *     8 =     176 instance-hours
 ```
 
