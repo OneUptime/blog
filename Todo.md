@@ -193,7 +193,6 @@
 
 ## Data Lineage
 
-11. How to Reconstruct Data Lineage from Query Logs When Pipeline Code Is Missing
 12. How to Model Data Lineage in a Graph Database for Fast Upstream and Downstream Traversal
 13. How to Add Transformation Expressions and Aggregations to OpenLineage Metadata
 14. How to Debug Missing OpenLineage Events from Spark Jobs
