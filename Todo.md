@@ -193,7 +193,6 @@
 
 ## Data Lineage
 
-14. How to Debug Missing OpenLineage Events from Spark Jobs
 15. How to Keep a Data Lineage Catalog Fresh When Teams Forget to Update Documentation
 16. How to Validate SQL-Derived Lineage Against What Actually Ran in Production
 17. How to Trace Lineage Through Stored Procedures, Triggers, and Intermediate Tables
