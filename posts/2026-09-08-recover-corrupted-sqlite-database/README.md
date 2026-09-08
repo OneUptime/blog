@@ -33,7 +33,7 @@ done
 shasum -a 256 "$work_dir"/*
 ```
 
-The example tolerates absent sidecars without suppressing a real copy failure, but it must run only after access is quiesced. A WAL or hot rollback journal may contain committed data or information required for automatic recovery. Open the copied database normally once before separating any files so SQLite can apply valid recovery state.
+The example tolerates absent sidecars without suppressing a real copy failure, but it must run only after access is quiesced. A WAL or hot rollback journal may contain committed data or information required for automatic recovery. Open the copied database normally and close it cleanly so SQLite can apply valid recovery state. Let SQLite manage sidecar cleanup; if opening or recovery fails, keep the copied database and its sidecars together.
 
 Record the application version, SQLite version, storage errors, shutdown symptoms, and the exact commands used. Keep the original read-only for forensic or vendor analysis.
 
@@ -92,7 +92,7 @@ Then compare the recovered schema with a known-good migration definition. Check 
 Define application invariants before the incident. Examples include:
 
 - every invoice references an account;
-- sequence or identifier values exceed all existing keys;
+- the next generated identifier exceeds existing keys where the application requires monotonically increasing identifiers;
 - ledger debits and credits balance;
 - event timestamps fall within plausible ranges;
 - each tenant has exactly one settings row;
@@ -104,7 +104,7 @@ Quarantine rows that fail a rule. Reconcile critical data against logs, exports,
 
 Place the recovered database in an isolated staging environment and start the exact application version that owns its schema. Exercise startup migrations, representative reads, writes, uniqueness failures, foreign-key failures, and a clean restart. Take a fresh database-aware backup of the validated artifact before cutover.
 
-For production replacement, stop writers, archive the damaged files, install the new database with correct ownership and permissions, and use an atomic rename within the same filesystem where possible. Keep a rollback plan. Monitor SQLite result codes, row-level invariants, and storage errors after service resumes.
+For production replacement, stop all database access and close every connection, including readers. Archive the damaged database and its sidecars together, and ensure no old sidecars remain at the destination. Install a standalone database produced by the database-aware backup with correct ownership and permissions, and use an atomic rename within the same filesystem where possible. Keep a rollback plan. Monitor SQLite result codes, row-level invariants, and storage errors after service resumes.
 
 ## Fix the cause, not only the file
 
