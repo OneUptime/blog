@@ -193,7 +193,6 @@
 
 ## Data Lineage
 
-20. How to Choose Between OpenLineage, DataHub, and OpenMetadata for Column-Level Lineage
 
 ## Embedded Databases
 
