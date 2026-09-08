@@ -46,7 +46,7 @@ Each transformation can include a description and masking flag. This is the stro
 
 Current OpenLineage also defines a Lineage Dataset Facet for structural relationships on `DatasetEvent`, including field inputs when no natural run owns the relationship. That facet supersedes the older column facet for relationships it describes on the dataset event. A proof of concept should test the event forms and facet versions your chosen backend actually accepts.
 
-The standard does not make every integration complete. The official integration matrix documents different table and column coverage by system. Custom Spark logical-plan nodes, dynamic SQL, procedures, and unsupported streaming connectors can still create gaps.
+The standard does not make every integration complete. The official integration documentation describes differing capabilities and source compatibility; its matrices are incomplete, so confirm column coverage in the specific integration guide. Custom Spark logical-plan nodes, dynamic SQL, procedures, and unsupported streaming connectors can still create gaps.
 
 ### DataHub
 
@@ -163,7 +163,7 @@ Do not reward a system for inventing a column edge where the evidence is insuffi
 
 ## Test identity more aggressively than the UI
 
-Most failed lineage programs have disconnected nodes, not unattractive graph views. Test whether these producers agree on identity:
+Disconnected nodes can make lineage incomplete even when the graph view looks correct. Test whether these producers agree on identity:
 
 - Spark JDBC dataset and warehouse crawler table
 - object-store path and Iceberg catalog table
@@ -217,11 +217,11 @@ OpenLineage is a lineage contract, while DataHub and OpenMetadata are metadata p
 - [OpenLineage FAQ](https://openlineage.io/docs/faq/)
 - [OpenLineage Column Level Lineage Dataset Facet](https://openlineage.io/docs/spec/facets/dataset-facets/column_lineage_facet/)
 - [OpenLineage Lineage Dataset Facet](https://openlineage.io/docs/spec/facets/dataset-facets/lineage/)
-- [OpenLineage integration matrix](https://github.com/OpenLineage/OpenLineage#integration-matrix)
+- [OpenLineage integration matrix](https://openlineage.io/docs/integrations/)
 - [DataHub lineage feature guide](https://docs.datahub.com/docs/features/feature-guides/lineage)
 - [DataHub lineage SDK guide](https://docs.datahub.com/docs/api/tutorials/lineage)
 - [DataHub OpenLineage integration](https://github.com/datahub-project/datahub/blob/master/docs/lineage/openlineage.md)
 - [OpenMetadata column-level lineage](https://docs.open-metadata.org/latest/how-to-guides/data-lineage/column)
-- [OpenMetadata lineage API](https://docs.open-metadata.org/latest/api-reference/lineage/index)
+- [OpenMetadata lineage API implementation](https://github.com/open-metadata/OpenMetadata/blob/main/openmetadata-service/src/main/java/org/openmetadata/service/resources/lineage/LineageResource.java)
 - [OpenMetadata entity-lineage schema](https://github.com/open-metadata/OpenMetadata/blob/main/openmetadata-spec/src/main/resources/json/schema/type/entityLineage.json)
 - [OpenMetadata OpenLineage connector](https://docs.open-metadata.org/latest/connectors/pipeline/openlineage)
