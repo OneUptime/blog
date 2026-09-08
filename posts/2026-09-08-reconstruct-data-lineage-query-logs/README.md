@@ -78,7 +78,7 @@ WHERE creation_time >= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 1 DAY)
 
 The qualifier and the query execution location must match. Export every region separately. BigQuery also represents a multi-statement script with a parent job and child jobs; avoid treating the parent and its children as duplicate transformations.
 
-On PostgreSQL, statement logging can include session, process, database, user, application, and query identifiers through `log_line_prefix`. Configure and test those fields before relying on logs. `pg_stat_statements` is useful for aggregate workload analysis, but it normalizes structurally equivalent statements into one entry and has a bounded statement set. It cannot replace an execution ledger.
+On PostgreSQL, statement logging can include session, process, database, user, application, and query identifiers through `log_line_prefix`. Query identifiers require `compute_query_id` or a module that computes them; `%Q` is always zero on messages emitted by `log_statement`, which logs before the identifier is calculated. Configure and test those fields before relying on logs. `pg_stat_statements` is useful for aggregate workload analysis, but it normalizes structurally equivalent statements into one entry and has a bounded statement set. It cannot replace an execution ledger.
 
 ## Resolve names in their execution context
 
@@ -110,7 +110,7 @@ WHEN NOT MATCHED THEN
   INSERT (customer_id, balance) VALUES (source.customer_id, source.delta);
 ```
 
-This proves a read from `staging.customer_delta` and a successful write to `analytics.customer_balance`. It also reads the target during matching and calculation. Model that self-read explicitly if consumers need change-impact or column-level semantics, but do not create a meaningless self-edge in a table-only graph.
+This identifies a logical dependency from `staging.customer_delta` to `analytics.customer_balance`, plus a target read during matching and calculation. A successful, committed execution supports an observed write edge, but it may affect zero rows; the SQL text alone does not prove a successful write. Model that self-read explicitly if consumers need change-impact or column-level semantics, but do not create a meaningless self-edge in a table-only graph.
 
 Handle at least these families deliberately:
 
@@ -125,7 +125,7 @@ Use a parser for the actual SQL dialect. Regex is useful for classifying obvious
 
 ## Require outcome evidence for writes
 
-Parse failures as evidence that a statement was attempted, not that an output was produced. Publish a write edge only when the warehouse reports success according to its transaction semantics.
+Treat recorded execution failures as evidence that a statement was attempted, not that an output was produced. A lineage-parser failure leaves the dependency unresolved even when the database execution succeeded. Publish a write edge only when the warehouse reports success according to its transaction semantics.
 
 Buffer statements by transaction when commit information is available. A successful statement followed by a rollback must not become durable output lineage. Autocommit statements can close immediately. When commit status is unavailable, label the edge accordingly instead of guessing.
 
@@ -145,19 +145,19 @@ A procedure call such as `CALL refresh_finance()` does not expose internal state
 
 ## Deduplicate without erasing separate executions
 
-At-least-once log export will repeat rows. Use an engine query ID where it is stable, scoped by account and region. Otherwise derive an ingestion identity from immutable source coordinates, not normalized SQL alone.
+At-least-once log export will repeat rows. Use an engine execution ID where it is stable, scoped by account/project and region. PostgreSQL query identifiers identify normalized queries, not individual executions, so they are insufficient for this purpose. Otherwise derive an ingestion identity from immutable source coordinates, not normalized SQL alone.
 
 Keep repeated executions as separate observations. Ten runs of one query are ten pieces of freshness and frequency evidence even if they yield the same graph edge. Maintain a current edge projection with `firstObservedAt`, `lastObservedAt`, and `observationCount`, backed by immutable execution records.
 
 ## Measure reconstruction coverage
 
-Publish a coverage report beside the graph:
+Publish a coverage report beside the graph, using successful write statements as the denominator for each percentage:
 
 ```text
 successful write statements:       18,420
 statements parsed:                  18,101  (98.3%)
 writes with resolved destinations:  17,992  (97.7%)
-transactions with known outcome:    17,644  (95.8%)
+writes with known commit outcome:   17,644  (95.8%)
 executions correlated to a job:     14,803  (80.4%)
 ```
 
