@@ -55,6 +55,26 @@
 
 ## Kuzu
 
+1. How to Extract Kuzu Table Properties and Relationship Endpoints into a Schema Dictionary
+2. How to Convert Kuzu LIST Query Results into C++ std::vector Values
+3. How to Bind Nested List Properties Through the Kuzu C++ API
+4. How to Commit and Roll Back Manual Kuzu Transactions from C++
+5. How to Rewrite COUNT DISTINCT Subqueries as Grouped Kuzu Queries
+6. How to Preserve Sort Keys While Returning Distinct Nodes in Kuzu
+7. How to Convert a Kuzu Subgraph into a Sparse Adjacency Matrix
+8. How to Pass an External Node Selection into a Kuzu Query with UNWIND
+9. How to Run a File of Cypher Commands Through the Kuzu CLI
+10. How to Save Kuzu CLI Query Results as Machine-Readable Files
+11. How to Model and Query Type Hierarchies with Category Nodes in Kuzu
+12. How to Represent Multiple Classification Labels on a Kuzu Node with List Properties
+13. How to Handle Missing Relationship Endpoints When Loading DataFrames into Kuzu
+14. How to Import PostgreSQL Join Results as Kuzu Nodes and Relationships
+15. How to Join Kuzu Graph Matches with Attached PostgreSQL Tables
+16. How to Reject a Kuzu Relationship Insert That Would Create a Bill-of-Materials Cycle
+17. How to Find Cycles in a Kuzu Bill-of-Materials Graph After Bulk Loading
+18. How to Verify Which Iceberg Snapshot a Kuzu Import Reads
+19. How to Replace Neo4j Bolt Driver Calls with Embedded Kuzu Connections
+20. How to Diagnose Repeated Kuzu JSON Imports That Fail Across Connection Lifetimes
 
 ## Continuous Improvement
 
@@ -6028,6 +6048,27 @@
 19. How to Diagnose `SecretSyncedError` with Conditions, Events, Controller Logs, and Metrics
 20. How to Harden External Secrets Operator for Multi-Tenant Kubernetes Clusters
 
+21. How to Diagnose External Secrets Operator Webhook Certificate Authority Errors
+22. How to Recover an External Secrets Webhook Service with No Ready Endpoints
+23. How to Debug External Secrets Operator API Timeouts Under Default-Deny NetworkPolicies
+24. How to Fix GKE idbindtoken Errors in External Secrets Operator
+25. How to Diagnose MissingAuthenticationToken Errors in the External Secrets ECR Generator
+26. How to Refresh ECR Image Pull Credentials with an External Secrets Generator
+27. How to Generate Bootstrap Passwords Once with External Secrets and Immutable Targets
+28. How to Reuse a Password Generator Across Namespaces with External Secrets ClusterGenerator
+29. How to Generate Multiple Password Keys for One External Secrets Workflow
+30. How to Apply AWS Secrets Manager Resource Policies Through External Secrets PushSecret
+31. How to Diagnose Unexpected DeleteResourcePolicy Access Denials from External Secrets PushSecret
+32. How to Fix Double-Encoded Values Pushed to AWS Parameter Store by External Secrets
+33. How to Control ExternalSecret Refreshes with the OnChange Policy and Manual Triggers
+34. How to Investigate External Secrets Reconciliation Delays Despite a Healthy Vault Backend
+35. How to Test ExternalSecret Templates with the Fake Provider Before Connecting a Secret Store
+36. How to Connect External Secrets Operator to an Internal Secret API with the Webhook Provider
+37. How to Recover External Secrets Synchronization After a Vault KV v1-to-v2 Migration
+38. How to Pin an ExternalSecret to an AWS Secrets Manager Version During a Rollback
+39. How to Prevent External Secrets from Reverting Certificates Renewed by cert-manager
+40. How to Troubleshoot VaultDynamicSecret Service Account References Across Namespaces
+
 ## PostgreSQL
 
 1. How to Diagnose PostgreSQL Wait Events with `pg_stat_activity` and `pg_wait_events`
@@ -7614,3 +7655,187 @@
 18. How to Install AlmaLinux NVIDIA Open Kernel Modules That Still Work with Secure Boot
 19. How to Enroll the Microsoft 2023 UEFI Certificates on AlmaLinux with fwupd
 20. How to Scan and Remediate AlmaLinux 9 Against CIS, STIG, or PCI-DSS with OpenSCAP
+
+## Mutation Testing
+
+1. How to Turn Surviving Boundary Mutants into Focused JUnit Test Cases
+2. How to Test Observable Side Effects When PIT Removes a Method Call
+3. How to Recognize Equivalent Mutants Before Adding More Unit Tests
+4. How to Investigate Surviving Resource-Cleanup Mutations in Java try-with-resources
+5. How to Separate Uncovered Code from Weak Assertions in a Mutation Report
+6. How to Diagnose Stryker Runs That Execute Zero Jest Tests per Mutant
+7. How to Prevent Express Port Collisions from Inflating a Stryker Mutation Score
+8. How to Speed Up Mutation Testing with Coverage-Based Test Selection
+9. How to Reuse Stryker Results Across Incremental Runs and Know When to Force a Rerun
+10. How to Resume an Interrupted Stryker Run from Its Incremental Report
+11. How to Retest Static Mutants After Changing Tests in Stryker Incremental Mode
+12. How to Assess Type-Invalid TypeScript Mutations Before Excluding Them
+13. How to Diagnose a Stryker Dry-Run Timeout Separately from Mutant Timeouts
+14. How to Set a Mutation Score Threshold That Accounts for Equivalent Mutants
+15. How to Clean Up Test Databases When Mutation Tests Time Out or Skip Teardown
+16. How to Verify Suspicious Stryker.NET Survivors by Comparing Coverage Analysis Modes
+17. How to Improve Assertions from Mutation Results Without Coupling Tests to Implementation Details
+18. How to Limit Stryker Mutation Testing to One File or Line Range During Debugging
+19. How to Diagnose Stryker.NET Compile Errors That Distort Mutation Coverage
+20. How to Test Null and Exception Paths When PIT Negates a Guard Condition
+
+## KeyDB
+
+1. How to Verify KeyDB Uses Multiple Threads with Realistic Client Concurrency
+2. How to Build a Representative KeyDB Benchmark Dataset and Read-Write Mix
+3. How to Diagnose Flat KeyDB Cluster Throughput After Increasing server-threads
+4. How to Check Both Replication Directions When KeyDB Active Replicas Connect but Do Not Sync
+5. How to Investigate a KeyDB Active Replica That Hangs During Full Synchronization
+6. How to Size the KeyDB Replication Backlog for Expected Connection Outages
+7. How to Diagnose Memory and Network Spikes When a KeyDB Multi-Master Node Rejoins
+8. How to Check Whether KeyDB Replicas Honor maxmemory and Eviction Settings
+9. How to Reserve Memory for KeyDB Background Saves Under Container Limits
+10. How to Scan Keys Across Every KeyDB Cluster Shard
+11. How to Diagnose Slow KeyDB FLASH Startup After an Unclean Shutdown
+12. How to Trace Unexpected SIGTERM Restarts in a KeyDB StatefulSet
+13. How to Diagnose go-redis Failover When KeyDB Sentinel Chooses a New Master
+14. How to Route Kubernetes Clients During KeyDB Failover and Pod Replacement
+15. How to Validate RedisTimeSeries and Search Module Compatibility Before Moving to KeyDB
+16. How to Investigate KeyDB Connection Exhaustion After Repeated Application Restarts
+17. How to Connect to KeyDB from Another Kubernetes Pod Using Service DNS
+18. How to Call KeyDB EXPIREMEMBER from PHP When PHPRedis Has No Dedicated Method
+19. How to Validate KeyDB Persistence and Service Startup Before a Package Upgrade
+20. How to Isolate ioredis Connection Errors During a Redis-to-KeyDB Cutover
+
+## Dragonfly
+
+1. How to Configure containerd Registry Hosts When Image Pulls Bypass Dragonfly
+2. How to Diagnose Dragonfly Preheat Cache Misses Caused by URL Query Parameters
+3. How to Preheat Private Registry Images Through the Dragonfly Manager API
+4. How to Add a Private Registry CA to Dragonfly Preheat Configuration
+5. How to Investigate DeadlineExceeded Errors in Dragonfly Preheat Jobs
+6. How to Preserve Dragonfly Cached Layers Across Client Pod Restarts
+7. How to Diagnose Seed Peer Discovery Failures in Dragonfly
+8. How to Keep Dragonfly Seed Peers Connected to the Correct Scheduler Cluster
+9. How to Configure Dragonfly Proxy Rules for Container Images and Hugging Face Downloads
+10. How to Tune Dragonfly Bandwidth and Piece Concurrency for Parallel Image Pulls
+11. How to Troubleshoot Dragonfly Client Liveness Probes That Cannot Reach dfdaemon.sock
+12. How to Trace a Dragonfly Image Download Through Client Task Logs
+13. How to Benchmark Dragonfly Cold and Warm Image Pulls Against Direct Registry Downloads
+14. How to Resolve Dragonfly dfdaemon Proxy Port Conflicts on Kubernetes Nodes
+15. How to Investigate Incorrect Dragonfly Peer Counts in Grafana
+16. How to Interpret Dragonfly Cache Hit Metrics During Repeated Image Pulls
+17. How to Diagnose Disk and Transfer Failures When Dragonfly Preheats Large Images
+18. How to Troubleshoot OCI Manifest Requests Through a Dragonfly Registry Mirror
+19. How to Diagnose Nydus Range Requests That Miss Dragonfly Preheated Data
+20. How to Distribute Files with Dragonfly dfcache Replicas and Expiration Times
+
+## Tracee
+
+1. How to Diagnose Tracee BPF Load Failures Caused by an Unsupported Clang Toolchain
+2. How to Check Kernel and BTF Compatibility Before Running Tracee on a Custom Linux Kernel
+3. How to Fix Tracee Helm Values That Do Not Reach the Generated ConfigMap
+4. How to Limit Tracee Policies to Selected Kubernetes Workloads and Event Arguments
+5. How to Restore Tracee Visibility into Containers Started Before the Tracer
+6. How to Diagnose Missing Container Names and Images in Tracee Events
+7. How to Investigate Missing net_flow_tcp_begin Events in Tracee
+8. How to Trace DNS Requests and Responses from One Application with Tracee
+9. How to Investigate Gaps in Tracee file_modification Events on Container Filesystems
+10. How to Trace File Access Under a Specific Directory with Tracee Path Filters
+11. How to Follow Child Processes in Tracee Without Tracing Every Process on the Host
+12. How to Troubleshoot Tracee Events That Never Arrive at Fluent Bit
+13. How to Send Tracee Events to an HTTP Webhook and Verify Delivery
+14. How to Extract Process and Container Fields from Tracee JSON with jq
+15. How to Stream Tracee Events from a Running Instance with traceectl
+16. How to Monitor Tracee Lost Events with Prometheus Metrics
+17. How to Tune Tracee Perf Buffers When Event Consumers Fall Behind
+18. How to Preserve Event Ordering Across CPU Cores in Tracee
+19. How to Capture Tracee Debug and libbpf Logs for a Reproducible Support Report
+20. How to Migrate Tracee Metrics and gRPC Configuration to the Unified Server Flag
+
+## Finch
+
+1. How to Change Finch Virtual Machine CPU and Memory Limits on macOS
+2. How to Mount Directories Outside Your Home Folder in Finch on macOS
+3. How to Fix Finch Build Permissions When Your Username and Home Folder Differ
+4. How to Troubleshoot PostgreSQL Bind Mount Permissions in Finch Compose
+5. How to Reclaim macOS Disk Space After Pruning Finch Images
+6. How to Increase Finch Data Disk Capacity Without Losing Container Images
+7. How to Run VS Code Dev Containers with Finch on macOS
+8. How to Troubleshoot Unsupported Compose Flags in Finch Dev Containers
+9. How to Pass Environment Variables into Finch Compose Interpolation
+10. How to Pass Local Environment Variables as Finch Build Arguments
+11. How to Forward an SSH Agent into Finch Image Builds
+12. How to Copy Files Between Your Workstation and a Finch Container
+13. How to Reach Services on Your Mac from Finch Containers
+14. How to Troubleshoot Finch Published Ports After a Container Restart
+15. How to Use a Locally Built Base Image in a Finch Dockerfile
+16. How to Diagnose Slow npm ci Steps in Finch AMD64 Builds on Apple Silicon
+17. How to Configure Cosign Key Verification for Finch Compose Pulls
+18. How to Authenticate Finch to Google Artifact Registry with an Access Token
+19. How to Open a Shell in the Finch Virtual Machine for Troubleshooting
+20. How to Diagnose Clock Drift in the Finch Virtual Machine on macOS
+
+## Presto
+
+1. How to Parse AM and PM Date Strings in PrestoDB with date_parse
+2. How to Fix Malformed Fractional-Second Timestamps in PrestoDB
+3. How to Filter YYYYMM Partition Values by a Rolling Month Range in PrestoDB
+4. How to Extract JSON Arrays in PrestoDB When json_extract_scalar Returns NULL
+5. How to Read JSON Keys Containing Spaces and Punctuation in PrestoDB
+6. How to Aggregate Values Across Dynamically Named JSON Keys in PrestoDB
+7. How to Keep ROW Values Intact When Unnesting Arrays in PrestoDB
+8. How to Calculate Per-Row Array Averages in PrestoDB Without Losing Group Boundaries
+9. How to Preserve Array Element Order Through UNNEST and array_agg in PrestoDB
+10. How to Retain Rows with NULL or Empty Arrays When Unnesting in PrestoDB
+11. How to Flatten an ARRAY of ROW Values in PrestoDB Without Invalid Casts
+12. How to Trace PrestoDB Query Memory Usage from Operators to Cluster Totals
+13. How to Budget JVM Heap, Query Memory, and Headroom on PrestoDB Workers
+14. How to Limit Concurrent Dashboard Queries with PrestoDB Resource Groups
+15. How to Enable PrestoDB Join Spilling and Check Whether Disk Spill Helps
+16. How to Find Skewed and Blocked Query Stages with PrestoDB EXPLAIN ANALYZE
+17. How to Filter PrestoDB Rows by a Field Inside a JSON Column
+18. How to Set PrestoDB Query Time Limits for Interactive and Batch Workloads
+19. How to Benchmark CTE Materialization for Repeated Subqueries in PrestoDB
+20. How to Size a PrestoDB Cluster Using Representative Queries and Concurrency Targets
+
+## Distribution
+
+1. How to Reclaim CNCF Distribution Storage Left Behind by Overwritten Tags
+2. How to Protect Multi-Architecture Images During CNCF Distribution Garbage Collection
+3. How to Share the HTTP Secret Across Load-Balanced CNCF Distribution Replicas
+4. How to Diagnose CNCF Distribution Upload Failures Behind TLS-Terminating Proxies
+5. How to Fix HTTP 413 Errors When Pushing Large Images to CNCF Distribution
+6. How to Enumerate Every Repository and Tag Through the CNCF Distribution API
+7. How to Calculate Compressed Image Size from CNCF Distribution Manifests
+8. How to Compare a Local Docker Image with Its CNCF Distribution Manifest Digest
+9. How to Diagnose Blob Unknown Errors in CNCF Distribution with S3 Storage
+10. How to Investigate CNCF Distribution HTTP 503 Responses from Storage Health Checks
+11. How to Diagnose Untrusted Token Signing Keys After a CNCF Distribution Upgrade
+12. How to Configure CNCF Distribution Notification Endpoints in YAML
+13. How to Troubleshoot Unexpected EOF Errors in a CNCF Distribution Pull-Through Cache
+14. How to Configure CNCF Distribution Cache Expiration When Mirror Storage Keeps Growing
+15. How to Troubleshoot CNCF Distribution Multipart Uploads with Cloudflare R2
+16. How to Enforce a Minimum TLS Version on a CNCF Distribution Registry
+17. How to Configure Incomplete Upload Purging in CNCF Distribution
+18. How to Diagnose CNCF Distribution S3 Credentials on EKS with IRSA
+19. How to Stop Unwanted OTLP Trace Export Errors in CNCF Distribution 3
+20. How to Reuse Existing Layers with CNCF Distribution Cross-Repository Blob Mounts
+
+## CUDA
+
+1. How to Identify the CUDA Toolkit Actually Used When nvcc and nvidia-smi Show Different Versions
+2. How to Choose the Number of CUDA Streams by Measuring Copy and Compute Overlap
+3. How to Fix CUDA No Kernel Image Is Available Errors by Checking GPU Compute Capability
+4. How to Set CMAKE_CUDA_ARCHITECTURES for Local Builds and Portable GPU Binaries
+5. How to Fix CUDA Device-Link Errors When Kernels and Device Functions Live in Separate Libraries
+6. How to Diagnose CUDA Too Many Resources Requested for Launch Errors
+7. How to Locate the Operation Behind a CUDA Device-Side Assert in PyTorch
+8. How to Trace CUDA Illegal Memory Accesses to Source Lines with Compute Sanitizer
+9. How to Diagnose CUDA Out-of-Memory Errors When PyTorch Reserved Memory Exceeds Allocated Memory
+10. How to Measure CUDA Kernel Time Separately from Allocation and Data-Transfer Overhead
+11. How to Update CUDA Warp Reductions That Rely on Implicit Warp Synchronization
+12. How to Derive CUDA Thread and Block Indices for Two-Dimensional Matrix Tiles
+13. How to Restructure CUDA Array Accesses So Threads in a Warp Read Coalesced Memory
+14. How to Remove CUDA Shared-Memory Bank Conflicts with Padding and Warp-Level Access Analysis
+15. How to Make cudaMemcpyAsync Overlap with CUDA Kernels Using Pinned Host Memory
+16. How to Coordinate CUDA Streams Across CPU Threads Without Accidental Default-Stream Serialization
+17. How to Evaluate CUDA Graphs Before Fusing Many Small Kernels into One Large Kernel
+18. How to Lay Out Complex CUDA Data Structures in Host and Device Buffers Using Offsets
+19. How to Diagnose Slow CPU Reads of CUDA Unified Memory and Prefetch Data Back to the Host
+20. How to Choose CUDA Block Sizes When Higher Occupancy Makes a Kernel Slower
