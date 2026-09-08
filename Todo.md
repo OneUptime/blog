@@ -193,7 +193,6 @@
 
 ## Data Lineage
 
-18. How to Design Data Lineage for Batch and Streaming Pipelines in One Metadata Graph
 19. How to Use Data Lineage to Find the Root Cause of a Broken Dashboard
 20. How to Choose Between OpenLineage, DataHub, and OpenMetadata for Column-Level Lineage
 
