@@ -87,7 +87,7 @@ required capacity = 6.4 / 0.65 = 9.85 Gbps
 
 A nominal 10-Gbps instance is only a candidate. AWS documents that some instance types have baseline and burst bandwidth and that destination, packet-per-second, and tracked-connection allowances can reduce attainable throughput. Google Cloud documents per-instance, per-destination, and per-flow constraints. Azure documents VM-wide egress allocation across NICs and separate flow considerations.
 
-Use the sustained baseline for sustained traffic. Burst credits are appropriate only when the burst duration and recharge model are proven.
+Use the sustained baseline for sustained traffic. Burst credits are appropriate only when the burst duration and recharge model are proven; EC2 burst bandwidth is still best effort even when credits are available.
 
 ## Test bandwidth, packets, and flows
 
@@ -104,7 +104,7 @@ Replay the production payload and connection mix end to end. Measure:
 
 Large-stream benchmarks can reach line rate while a small-message workload fails on packets per second. One flow may also be capped below aggregate instance bandwidth. Use enough parallel flows to match production, not enough to manufacture an irrelevant maximum.
 
-Verify every hop: Pod or container, node NIC, overlay, load balancer, firewall, NAT, inter-zone link, gateway, and receiving service. The narrowest shared component controls throughput. Account for network appliances twice where each forwarded connection creates inbound and outbound work.
+Verify every hop: Pod or container, node NIC, overlay, load balancer, firewall, NAT, inter-zone link, gateway, and receiving service. The narrowest shared component controls throughput. Account for both ingress and egress work at network appliances using the applicable directional or aggregate limits. Azure NVAs that forward traffic consume twice the flows of typical client-server communication; this does not mean doubling each directional bandwidth estimate.
 
 ## Make the forecast actionable
 
