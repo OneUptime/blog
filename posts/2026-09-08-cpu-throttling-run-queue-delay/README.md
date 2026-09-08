@@ -97,7 +97,7 @@ High latency with low CPU pressure can point elsewhere:
 - memory PSI or reclaim suggests memory pressure;
 - I/O PSI and device latency suggest storage;
 - pool wait indicates bounded downstream concurrency;
-- lock wait can leave CPU idle despite runnable application demand being blocked;
+- sleeping on a lock can leave CPU idle while application work is blocked rather than runnable;
 - steal time indicates the guest was not scheduled by the hypervisor;
 - a single hot core indicates serialization or affinity.
 
