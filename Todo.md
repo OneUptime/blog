@@ -199,7 +199,6 @@
 
 ## Capacity Planning
 
-20. How to Revalidate Capacity After Code, Runtime, or Instance-Type Changes
 
 ## etcd
 
