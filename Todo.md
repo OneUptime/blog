@@ -196,7 +196,6 @@
 
 ## Embedded Databases
 
-3. Why Copying a WAL-Mode SQLite File Produces Incomplete Backups—and How to Fix It
 4. How to Recover a Corrupted SQLite Database with `integrity_check`, `.recover`, and Verified Restores
 5. How to Version and Migrate an Embedded SQLite Schema Across App Upgrades
 6. How to Decide When SQLite Has Outgrown a Production Web Application
