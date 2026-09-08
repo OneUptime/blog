@@ -31,7 +31,7 @@ t9  serving endpoints receive traffic
 
 The reaction time is `t9 - t0`. Break it down using HPA status and events, Pod conditions, scheduler events, Cluster Autoscaler logs and metrics, node conditions, container start timestamps, readiness probes, and load-balancer telemetry.
 
-Compare p99 reaction time with time-to-exhaustion:
+Compare p99 reaction time with time-to-exhaustion. For approximately constant positive demand growth and fixed serving capacity:
 
 ```text
 time to exhaustion = usable ready headroom / net rate of demand growth
@@ -51,7 +51,7 @@ desired replicas = ceil(current replicas * current metric / desired metric)
 
 HPA also adjusts behavior for missing metrics and not-yet-ready Pods. Set startup and readiness probes so traffic, metrics, and true serving readiness agree. For CPU-heavy initialization, configure the controller's CPU initialization period and initial readiness delay where you operate the control plane, or account for provider defaults.
 
-Use `autoscaling/v2` behavior to make scale-up intentional:
+Use `autoscaling/v2` behavior under the HPA's `spec` to make scale-up intentional:
 
 ```yaml
 behavior:
@@ -75,9 +75,9 @@ This example permits aggressive scale-up and slower scale-down; it is not a univ
 
 Cluster Autoscaler scales up for Pods that are unschedulable and would fit a node-group template. It does not create nodes merely because running Pods have high CPU. Correct Pod requests are therefore essential.
 
-Check pending reasons. Autoscaling will not fix an impossible selector, missing GPU node group, exhausted volume topology, host-port conflict, or Pod larger than every candidate node. Ensure node groups have matching labels, taints, resources, and zone support.
+Check pending reasons. Autoscaling will not fix an impossible selector, missing GPU node group, volume topology that no candidate node can satisfy, or Pod larger than every candidate node. A host-port conflict can be resolved by adding a node if the required port is free there and the other scheduling constraints are satisfied. Ensure node groups have matching labels, taints, resources, and zone support.
 
-Maintain a measured ready reserve for demand that arrives faster than nodes. Low-priority placeholder Pods can occupy that reserve, yield immediately through preemption, and then become unschedulable so Cluster Autoscaler replenishes the nodes. Alternatively raise node-group minimums around scheduled events.
+Maintain a measured ready reserve for demand that arrives faster than nodes. Low-priority placeholder Pods managed by a Deployment can reserve resources and yield through preemption; their replacements can become unschedulable so Cluster Autoscaler replenishes capacity. Keep their priority below application Pods but at or above Cluster Autoscaler's `--expendable-pods-priority-cutoff` (default `-10`), and use a short or zero termination grace period for disposable placeholders. Preemption still takes time, and spare node capacity still requires application Pods to start and become ready. Alternatively raise node-group minimums around scheduled events.
 
 Reduce cold-path time by pre-pulling large images, shrinking images, avoiding slow serial initialization, and making readiness test the ability to serve. Never mark a Pod Ready merely to improve scaling metrics.
 
@@ -98,16 +98,17 @@ Run at least four scenarios:
 
 Assert maximum pending duration, time to serving capacity, delivered throughput, queue bound, p99 latency, error budget impact, node provisioning success, and stable scale-down. A green HPA event is not success if users timed out before endpoints became Ready.
 
-Use a timeline in every review:
+Use a timeline in every review. These values are illustrative; measure `total_p99` from complete `t9 - t0` observations, including demand-to-metric delay, rather than adding stage p99 values:
 
 ```yaml
+demand_to_metric_p99: 20s
 metric_to_hpa_p99: 35s
 hpa_to_unschedulable_p99: 12s
 unschedulable_to_node_ready_p99: 260s
 node_ready_to_endpoint_p99: 55s
-total_p99: 362s
+total_p99: 380s
 burst_time_to_exhaustion: 210s
-gap: 152s
+gap: 170s
 ```
 
 Close the gap with more ready headroom, earlier metrics, scheduled scaling, faster startup, or admission control. Recheck after image, CNI, node, metric-pipeline, or application changes.
