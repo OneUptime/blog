@@ -84,7 +84,7 @@ The measured SLO boundary lies between 72 and 78 percent for this artifact, inst
 
 ## Set the operating target from reaction time
 
-Autoscaling starts after utilization rises. The operating target must leave enough service headroom through metric delay, autoscaler decision, instance or node provisioning, application startup, and load-balancer registration.
+Utilization-based autoscaling reacts after measured utilization rises. The operating target must leave enough service headroom through metric delay, autoscaler decision, instance or node provisioning, application startup, and load-balancer registration.
 
 If tested SLO-safe throughput at the knee is 1,000 RPS per instance, normal target load is 700 RPS, and p99 scale-out time is four minutes, the 300-RPS margin must cover the fastest credible per-instance demand increase for four minutes. If it does not, lower the target, keep ready capacity, scale on a leading metric, or pre-scale predictable events.
 
