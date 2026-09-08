@@ -14,18 +14,18 @@ Size the full process or container boundary, not only the managed heap.
 
 ## Account for every major component
 
-Construct a component model to explain observations:
+Use a component checklist to explain observations. These categories overlap: request and queue state can live in the heap or native buffers, and cgroup file-cache accounting includes tmpfs-backed volumes. Do not sum them as independent measurements:
 
 ```text
-container memory
-  = runtime heap and live objects
-  + stacks, code cache, and runtime metadata
-  + native libraries and allocators
-  + direct or off-heap buffers
-  + socket and kernel-accounted memory
-  + page cache charged to the cgroup
-  + memory-backed volumes
-  + in-flight request and queue state
+container memory components to inspect
+  - runtime heap and live objects
+  - stacks, code cache, and runtime metadata
+  - native libraries and allocators
+  - direct or off-heap buffers
+  - socket and kernel-accounted memory
+  - page cache charged to the cgroup
+  - memory-backed volumes
+  - in-flight request and queue state
 ```
 
 On cgroup v2, `memory.current` reports total memory charged to the cgroup and descendants. `memory.stat` provides categories, `memory.events` exposes pressure and OOM events, and `memory.peak` can retain a high-water value. Kubernetes notes that memory-backed `emptyDir` volumes count as container memory and can grow to dangerous levels without explicit bounds.
