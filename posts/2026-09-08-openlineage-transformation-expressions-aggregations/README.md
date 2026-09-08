@@ -36,7 +36,7 @@ The direct value mappings are:
 | `region` | `region` | `IDENTITY` |
 | `net_sales` | `net_amount` | `AGGREGATION` |
 
-`order_count` has no single field whose value is aggregated because `COUNT(*)` counts rows. The source dataset influences it, but fabricating a dependency on every input column would be misleading. Preserve a dataset-level dependency and put `COUNT(*)` in the expression description or another SQL facet.
+`order_count` has no single field whose value is aggregated because `COUNT(*)` counts rows. The source dataset influences it, but fabricating a dependency on every input column would be misleading. Preserve a dataset-level dependency through the run event's `inputs` and retain the query containing `COUNT(*)` in the standard SQL job facet when permitted; per-input transformation descriptions require an actual input field.
 
 The indirect influences are:
 
@@ -47,12 +47,12 @@ OpenLineage defines direct subtypes `IDENTITY`, `TRANSFORMATION`, and `AGGREGATI
 
 ## Put column lineage on the output dataset
 
-In a run state update, the `columnLineage` dataset facet belongs under the output dataset's `facets`. Its `fields` map is keyed by output field name:
+In a run state update, the `columnLineage` dataset facet belongs under the output dataset's `facets`. Its `fields` map is keyed by output field name. Assuming the SQL runs in the `warehouse` database, dataset names use `{database}.{schema}.{table}`:
 
 ```json
 {
-  "namespace": "postgresql://warehouse.example:5432",
-  "name": "analytics.public.daily_sales",
+  "namespace": "postgres://warehouse.example:5432",
+  "name": "warehouse.analytics.daily_sales",
   "facets": {
     "columnLineage": {
       "_producer": "https://pipelines.example/lineage/2.4.0",
@@ -61,8 +61,8 @@ In a run state update, the `columnLineage` dataset facet belongs under the outpu
         "sale_date": {
           "inputFields": [
             {
-              "namespace": "postgresql://warehouse.example:5432",
-              "name": "raw.public.orders",
+              "namespace": "postgres://warehouse.example:5432",
+              "name": "warehouse.raw.orders",
               "field": "order_ts",
               "transformations": [
                 {
@@ -78,8 +78,8 @@ In a run state update, the `columnLineage` dataset facet belongs under the outpu
         "region": {
           "inputFields": [
             {
-              "namespace": "postgresql://warehouse.example:5432",
-              "name": "raw.public.orders",
+              "namespace": "postgres://warehouse.example:5432",
+              "name": "warehouse.raw.orders",
               "field": "region",
               "transformations": [
                 {
@@ -95,8 +95,8 @@ In a run state update, the `columnLineage` dataset facet belongs under the outpu
         "net_sales": {
           "inputFields": [
             {
-              "namespace": "postgresql://warehouse.example:5432",
-              "name": "raw.public.orders",
+              "namespace": "postgres://warehouse.example:5432",
+              "name": "warehouse.raw.orders",
               "field": "net_amount",
               "transformations": [
                 {
@@ -112,8 +112,8 @@ In a run state update, the `columnLineage` dataset facet belongs under the outpu
       },
       "dataset": [
         {
-          "namespace": "postgresql://warehouse.example:5432",
-          "name": "raw.public.orders",
+          "namespace": "postgres://warehouse.example:5432",
+          "name": "warehouse.raw.orders",
           "field": "status",
           "transformations": [
             {
@@ -125,8 +125,8 @@ In a run state update, the `columnLineage` dataset facet belongs under the outpu
           ]
         },
         {
-          "namespace": "postgresql://warehouse.example:5432",
-          "name": "raw.public.orders",
+          "namespace": "postgres://warehouse.example:5432",
+          "name": "warehouse.raw.orders",
           "field": "order_ts",
           "transformations": [
             {
@@ -138,8 +138,8 @@ In a run state update, the `columnLineage` dataset facet belongs under the outpu
           ]
         },
         {
-          "namespace": "postgresql://warehouse.example:5432",
-          "name": "raw.public.orders",
+          "namespace": "postgres://warehouse.example:5432",
+          "name": "warehouse.raw.orders",
           "field": "region",
           "transformations": [
             {
@@ -156,7 +156,7 @@ In a run state update, the `columnLineage` dataset facet belongs under the outpu
 }
 ```
 
-The abbreviated object above is the output dataset portion of a `RunEvent`; a complete event also includes the event type and time, run, job, inputs, and producer required by the event schema.
+The abbreviated object above is the output dataset portion of a `RunEvent`; the event schema requires `eventTime`, `run`, `job`, `producer`, and `schemaURL`. Put this object in `outputs` and include `raw.orders` in `inputs` to preserve the source dataset dependency. Set `eventType` to the appropriate run state; `eventType`, `inputs`, and `outputs` are not required properties in the JSON Schema.
 
 The `dataset` array is the compact representation for indirect dependencies that affect the dataset as a whole. The Spark integration exposes `spark.openlineage.columnLineage.datasetLineageEnabled=true` for this representation and recommends enabling it. Without it, dataset-wide influences are copied into output-field mappings, which can approach a Cartesian product.
 
@@ -165,7 +165,7 @@ The `dataset` array is the compact representation for indirect dependencies that
 For an expression with several inputs, attach the direct transformation to each contributing input:
 
 ```sql
-gross_margin = (revenue - cost) / NULLIF(revenue, 0)
+(revenue - cost) / NULLIF(revenue, 0) AS gross_margin
 ```
 
 `gross_margin` directly depends on both `revenue` and `cost`. Do not store only the first identifier found by the parser. Conversely, numeric literals and deterministic functions are not dataset fields and need no fake node.
@@ -215,7 +215,7 @@ The transformation `description` is human-readable context, not a second schema 
 ```text
 SUM(net_amount)
 DATE_TRUNC('day', event_time)
-SHA256(LOWER(email))
+SHA256(CONVERT_TO(LOWER(email), 'UTF8'))
 ```
 
 Do not put the entire unredacted query into every field. It increases payload size and can copy literals or sensitive expressions into the metadata store. Keep a protected query reference or the standard SQL job facet when full SQL retention is permitted.
@@ -230,7 +230,7 @@ The Spark integration can generate expression descriptions with `spark.openlinea
 {
   "type": "DIRECT",
   "subtype": "TRANSFORMATION",
-  "description": "SHA256(LOWER(email))",
+  "description": "SHA256(CONVERT_TO(LOWER(email), 'UTF8'))",
   "masking": true
 }
 ```
@@ -260,7 +260,7 @@ For every SQL parser or framework adapter, test fixtures for:
 - `CASE`, `COALESCE`, casts, and masking functions
 - nested fields, quoted identifiers, and duplicate column names
 
-Validate the complete event against the referenced OpenLineage schema. Then assert semantics, because schema validation cannot tell whether a filter was mislabeled as direct derivation.
+Validate the complete event against the referenced OpenLineage schema, and validate each facet against its own `_schemaURL`; the event schema does not automatically load those facet schemas. Then assert semantics, because schema validation cannot tell whether a filter was mislabeled as direct derivation.
 
 Track coverage separately: output fields seen, output fields resolved, expressions parsed, unresolved functions, and indirect influences emitted. Missing lineage should be visible, not converted into empty confident mappings.
 
