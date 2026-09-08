@@ -31,7 +31,7 @@ Common mismatches produce plausible but wrong answers:
 - multiplying load-balancer RPS by database query latency;
 - counting retries as new arrivals in one metric but folding them into latency in another;
 - using accepted RPS while silently excluding timed-out work from completions;
-- combining cluster-wide RPS with per-instance latency;
+- combining cluster-wide RPS with one instance’s mean latency without checking that it represents the cluster’s request-weighted mean;
 - mixing a one-minute rate with a latency calculated over a different incident window.
 
 Use a window in which arrivals and departures are roughly balanced. If backlog grows throughout the interval, the system is not in steady state and the result describes neither a sustainable concurrency level nor a capacity target.
@@ -46,7 +46,7 @@ L = 2,400 requests/second * 0.180 seconds
 L = 432 concurrent requests on average
 ```
 
-The service therefore carried about 432 requests in flight on average. If traffic was evenly distributed over 12 replicas, the average was 36 in-flight requests per replica. That is an observation, not permission to configure every replica with exactly 36 worker or connection slots.
+The service therefore carried about 432 requests in flight on average. Across 12 replicas, that is 36 in-flight requests per replica on average; individual replicas can differ with traffic and latency. That is an observation, not permission to configure every replica with exactly 36 worker or connection slots.
 
 Measure the value directly as a cross-check:
 
@@ -56,7 +56,7 @@ in_flight(t) = in_flight(t0)
              - exits between t0 and t
 ```
 
-Include every way work exits the chosen boundary, including success, rejection after admission, timeout, and cancellation. The time average of that gauge should be close to the Little's Law estimate when the definitions and windows match. A large difference usually exposes a boundary, unit, or accounting error.
+Include every way work exits the chosen boundary, including success, rejection after admission, timeout, and cancellation. Count a timeout or cancellation as an exit only when work actually leaves that boundary; server-side work may continue after a client stops waiting. The time average of that gauge should be close to the Little's Law estimate when the definitions and windows match and work crossing the window edges has negligible impact. A large difference can expose a boundary, unit, or accounting error, or a window too short for the request durations.
 
 ## Do not substitute p99 latency into the identity
 
@@ -85,9 +85,9 @@ Inventory every finite resource that in-flight work consumes:
 - memory retained per request;
 - downstream concurrency quotas.
 
-The smallest safe limit is the controlling constraint. If each request retains 2 MiB until completion, the observed mean alone represents about 864 MiB cluster-wide. Retries or fan-out can multiply downstream concurrency even when frontend concurrency is unchanged.
+Convert each resource limit into a frontend request concurrency budget using its per-request usage and holding time; the smallest resulting safe budget is the controlling constraint. If each request retains 2 MiB until completion, the observed mean alone represents about 864 MiB cluster-wide. Retries or fan-out can multiply downstream concurrency even when frontend concurrency is unchanged.
 
-Use a production-shaped, open-arrival-rate load test. A closed test with a fixed number of virtual users slows its own arrival rate as responses slow, which can hide overload. Grafana k6 documents this coordinated-omission risk and provides constant and ramping arrival-rate executors. Preallocate enough virtual users and fail the test if `dropped_iterations` rises, because otherwise the generator did not deliver the configured demand.
+Use a production-shaped, open-arrival-rate load test. A closed test with a fixed number of virtual users slows its own arrival rate as responses slow, which can hide overload. Grafana k6 documents this coordinated-omission risk and provides constant and ramping arrival-rate executors. These executors schedule iterations, not individual requests; map the requests in each iteration to the intended RPS and verify the delivered request rate. Preallocate enough virtual users and fail the test if `dropped_iterations` rises, because otherwise the generator did not deliver the configured demand.
 
 Increase offered RPS while recording throughput, in-flight requests, queue depth, latency distribution, errors, CPU pressure, memory, and downstream saturation. Define safe concurrency at the highest stage that still satisfies the latency and error objectives, then apply explicit failure and growth headroom. Do not derive headroom by changing the Little's Law equation.
 
@@ -107,7 +107,7 @@ load_test_run: capacity-2026-09-08-17
 safe_tested_concurrency: 510
 ```
 
-Recalculate after code, dependency, instance-type, timeout, or traffic-mix changes. Latency changing at the same RPS changes concurrency immediately.
+Recalculate after code, dependency, instance-type, timeout, or traffic-mix changes. At the same mean throughput, a change in mean latency implies a proportional change in mean concurrency when measured over a stable window.
 
 ## Conclusion
 
@@ -116,7 +116,7 @@ Multiply matched mean throughput by matched mean time in the system to estimate 
 ## Official Documentation
 
 - [MIT OpenCourseWare: Queueing systems and Little's Law](https://ocw.mit.edu/courses/1-203j-logistical-and-transportation-planning-methods-fall-2006/resources/lec5/)
-- [MIT OpenCourseWare queueing models and Little's Law](https://web.mit.edu/1.041/www/lectures/L8-queuing-models-2026sp.pdf)
+- [MIT 1.041/1.200 queueing models and Little's Law](https://web.mit.edu/1.041/www/lectures/L8-queuing-models-2026sp.pdf)
 - [Grafana k6 open and closed workload models](https://grafana.com/docs/k6/latest/using-k6/scenarios/concepts/open-vs-closed/)
 - [Grafana k6 arrival-rate VU allocation](https://grafana.com/docs/k6/latest/using-k6/scenarios/concepts/arrival-rate-vu-allocation/)
 - [Prometheus histograms and summaries](https://prometheus.io/docs/practices/histograms/)
