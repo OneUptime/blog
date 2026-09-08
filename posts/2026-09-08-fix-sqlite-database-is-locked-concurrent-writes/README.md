@@ -50,7 +50,7 @@ def open_db(path: str) -> sqlite3.Connection:
     return connection
 ```
 
-A timeout absorbs short, expected collisions. It does not create more write capacity. Bound the total request deadline, retry only an idempotent transaction, add jitter, and surface a controlled overload error when the budget is exhausted.
+A timeout absorbs short, expected collisions, but SQLite may return `SQLITE_BUSY` immediately to avoid deadlock. It does not resolve `SQLITE_LOCKED` conflicts within a connection or shared cache, and a stale WAL snapshot (`SQLITE_BUSY_SNAPSHOT`) requires rolling back and restarting the transaction. It does not create more write capacity. Bound the total request deadline, retry only an idempotent transaction, add jitter, and surface a controlled overload error when the budget is exhausted.
 
 ## Acquire the write reservation before doing work
 
@@ -70,6 +70,8 @@ def rename_device(connection, device_id: int, new_name: str) -> None:
         raise
 ```
 
+This example expects an idle connection created by `open_db`, using Python's current default legacy transaction control. Do not call it inside an existing transaction; with `autocommit=False`, a transaction is always open, and with `autocommit=True`, the Python `commit()` and `rollback()` methods have no effect.
+
 Prepare and validate input before `BEGIN`. Do not hold the transaction open while calling another service. `BEGIN EXCLUSIVE` is rarely a concurrency improvement. In WAL mode it starts a write transaction like `BEGIN IMMEDIATE`; in other journal modes it also blocks readers.
 
 ## Use WAL for reader and writer overlap
@@ -86,6 +88,7 @@ Set and verify the durability policy on every connection:
 
 ```sql
 PRAGMA synchronous = FULL;
+PRAGMA synchronous; -- Verify that the returned value is 2 (FULL).
 ```
 
 `journal_mode=WAL` persists in the database, whereas `synchronous` is connection-local. Do not repeatedly switch journal modes under load. WAL requires all processes to be on the same host and is unsuitable for a database shared over a network filesystem.

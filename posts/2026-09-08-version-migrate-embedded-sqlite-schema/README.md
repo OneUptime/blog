@@ -50,7 +50,7 @@ COMMIT;
 
 Set `user_version` only after that migration's changes have succeeded, but inside the same transaction. On any error, roll back. Never catch a migration exception and continue startup with a partially understood schema.
 
-`BEGIN IMMEDIATE` fails before migration work begins if another process owns the writer. Coordinate application upgrades so only one designated process migrates. Other processes should wait for that process to finish, reopen the database, and re-check the version.
+`BEGIN IMMEDIATE` acquires the writer before migration work begins. If another connection owns the writer, it may wait under the configured busy timeout and returns `SQLITE_BUSY` if it cannot acquire the lock. Coordinate application upgrades so only one designated process migrates. Other processes should wait for that process to finish, reopen the database, and re-check the version.
 
 ## Design migrations for SQLite's ALTER TABLE behavior
 
@@ -62,9 +62,9 @@ Follow SQLite's documented generalized ALTER TABLE procedure exactly. When forei
 2. begin the write transaction and save the definitions of dependent indexes, triggers, and views;
 3. create a new table with the target definition;
 4. copy and explicitly transform named columns;
-5. drop the old table and rename the new table to the original name;
-6. recreate affected indexes, triggers, and views;
-7. run `PRAGMA foreign_key_check` before commit;
+5. drop dependent views that would become invalid when the old table is dropped, then drop the old table and rename the new table to the original name;
+6. recreate affected indexes and triggers, and recreate dropped views with any required changes; drop and recreate any remaining views affected by the schema change;
+7. run `PRAGMA foreign_key_check` before commit and roll back if it returns any violation rows;
 8. commit, then restore `PRAGMA foreign_keys=ON` outside the transaction.
 
 Changing `foreign_keys` inside a transaction is a no-op, which is why the first and last steps sit outside it. Avoid editing `sqlite_schema` directly. A rebuild script should list columns rather than relying on `SELECT *`, validate conversions before dropping the source table, and run `integrity_check` after the migration.
@@ -91,7 +91,7 @@ PRAGMA foreign_key_check;
 PRAGMA user_version;
 ```
 
-Also check application invariants and query plans for critical paths. `integrity_check` does not validate foreign keys, and neither pragma knows whether a unit conversion or timestamp transformation was logically correct.
+Require `integrity_check` to return a single `ok` row, `foreign_key_check` to return no rows, and `user_version` to match the expected version before continuing startup. Also check application invariants and query plans for critical paths. `integrity_check` does not validate foreign keys, and neither pragma knows whether a unit conversion or timestamp transformation was logically correct.
 
 ## Plan upgrade and downgrade policy
 

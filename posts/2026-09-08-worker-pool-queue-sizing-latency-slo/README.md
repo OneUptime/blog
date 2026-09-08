@@ -8,7 +8,7 @@ Description: Convert arrival rate and service-time distributions into worker con
 
 ---
 
-A worker pool must complete work faster than it arrives, but `workers = arrival rate * average service time` provides only mean busy concurrency. Running exactly that many workers targets 100 percent utilization, leaves no room for variance, and can make queueing delay grow without bound.
+A worker pool must have capacity to complete work faster than it arrives, but `workers = arrival rate * average service time` provides only mean busy concurrency. Running exactly that many workers targets 100 percent utilization, leaves no room for variance, and can make queueing delay grow without bound.
 
 Size workers from a utilization target, then size the queue from the latency and recovery policy.
 
@@ -25,15 +25,17 @@ B       ready backlog, jobs
 Wq      time waiting before service, seconds
 ```
 
-Use successful acknowledgements or committed outcomes for completions. If a job remains unacknowledged while processing, distinguish ready backlog from in-flight work. Retries and redeliveries are additional attempts and consume capacity even when they do not represent new business jobs.
+Use consumer acknowledgements sent after successful processing or committed outcomes for completions; automatic acknowledgements and publisher confirms do not prove processing completed. If a job remains unacknowledged while processing, distinguish ready backlog from in-flight work. Retries and redeliveries are additional attempts and consume capacity even when they do not represent new business jobs.
 
 ## Calculate a starting worker count
 
-By Little's Law, mean workers busy is approximately:
+By Little's Law, in a stable system, mean workers busy is approximately:
 
 ```text
 busy concurrency = lambda * S
 ```
+
+For this calculation, use the arrival rate of all processing attempts, including retries and redeliveries, and mean service time per attempt, including failed attempts.
 
 Choose a target worker utilization `rho_target` below 1:
 
@@ -66,7 +68,7 @@ Set queue admission and alerts using message age as well as depth. At 800 jobs/s
 
 ## Calculate drain time
 
-When measured completion capacity `mu` exceeds ongoing arrivals, an idealized drain estimate is:
+When measured completion capacity `mu` exceeds ongoing arrivals, an idealized drain estimate assumes constant rates and approximately constant in-flight work. Here, count `B` and `lambda` in logical jobs and `mu` in successful logical-job completions, with retry costs included in measured capacity. Do not also count those retries as new logical arrivals. Expiry and dead-lettering are separate removals, not successful completions:
 
 ```text
 net drain rate = mu - lambda
@@ -79,18 +81,20 @@ If 46 workers complete 1,000 jobs/second under the production mix, ongoing arriv
 drain time = 60,000 / (1,000 - 800) = 300 seconds
 ```
 
-At 980 arrivals per second, the same backlog takes 3,000 seconds. At or above 1,000 it never drains. This sensitivity is why capacity close to 100 percent utilization is fragile.
+At 980 arrivals per second, the same backlog takes 3,000 seconds. At or above 1,000 it does not drain in this constant-rate model. This sensitivity is why capacity close to 100 percent utilization is fragile.
 
-Use observed successful completion rate, not `c / mean service time`, when workers share constraints. Recalculate after autoscaling because new workers may reduce service rate per worker.
+Use observed successful completion rate under sustained backlog, not `c / mean service time`, when workers share constraints. Recalculate after autoscaling because new workers may reduce service rate per worker.
 
 ## Bound concurrency at downstream systems
 
-Worker count, prefetch, and per-job fan-out create downstream concurrency:
+Worker count, prefetch, and per-job fan-out create downstream concurrency. For RabbitMQ AMQP 0-9-1 push consumers using manual acknowledgements and the same fixed positive per-consumer prefetch:
 
 ```text
-maximum in-flight deliveries = consumers * prefetch per consumer
+in-flight deliveries <= consumers * prefetch per consumer
 maximum DB demand            = active jobs * DB operations held concurrently
 ```
+
+Prefetch of zero means no configured limit; additional broker or channel limits may lower this bound. Prefetched deliveries can wait in the client before a worker starts, so include that wait in enqueue-to-start latency.
 
 RabbitMQ documents prefetch as the limit on unacknowledged deliveries and notes that appropriate values require workload testing. A high prefetch can improve throughput but concentrate messages, increase memory, and create a large redelivery wave after consumer failure.
 

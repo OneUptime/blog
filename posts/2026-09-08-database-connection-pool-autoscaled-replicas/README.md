@@ -34,11 +34,11 @@ Reserve capacity explicitly for:
 - blue-green overlap, rolling deployments, and failover;
 - non-application clients and direct reporting access.
 
-Never consume PostgreSQL's final superuser reserve in the normal application budget.
+Never consume PostgreSQL's final superuser reserve in the normal application budget. WAL sender connections for replication and streaming backups use the separate `max_wal_senders` limit in PostgreSQL 12 and later; budget their resources separately rather than subtracting them from `max_connections`.
 
 ## Inventory every pool multiplier
 
-For each workload record the maximum number of replicas, pools per process, processes per Pod or host, maximum connections per pool, and any direct connections:
+For each workload record the maximum number of replicas, pools per process, processes per Pod or host, maximum connections per pool, and any direct connections. For pools connecting directly to PostgreSQL:
 
 ```text
 possible server connections
@@ -46,19 +46,21 @@ possible server connections
   + fixed clients
 ```
 
+With PgBouncer, this application-side sum counts proxy client connections; calculate PostgreSQL connections from the proxy server pools across all proxy instances, including each user/database pool and any reserve pools, plus direct clients.
+
 Use autoscaling maximums, not today's desired count. Include old and new replica sets that coexist during a rollout. If a worker and web process have separate pools in the same Pod, count both.
 
 ## Work a global budget example
 
-Assume PostgreSQL allows 500 connections. The plan protects 20 for privileged and incident access, 15 for replication and monitoring, and 15 for migrations, reporting, and other fixed clients:
+Assume PostgreSQL allows 500 connections. The plan protects 20 for privileged and incident access, 15 for monitoring and other operational SQL connections, and 15 for migrations, reporting, and other fixed clients:
 
 ```text
 hard application budget = 500 - 20 - 15 - 15 = 450
 ```
 
-Load testing shows the database meets its latency objective with at most 420 active application sessions. Use 420 as the tighter global budget.
+Load testing shows the database meets its latency objective with at most 420 active application sessions while the expected operational and fixed-client workload is also running. Use 420 as the tighter global budget.
 
-The web tier can scale to 30 replicas, and batch workers need up to 60 database connections:
+For this example, assume at most 30 web replicas can hold connections at once, including deployment and failover overlap, with one pool per replica. Batch workers need up to 60 database connections:
 
 ```text
 web pool max per replica = floor((420 - 60) / 30) = 12
@@ -68,19 +70,19 @@ total planned maximum    = 360 + 60 = 420
 
 At five ordinary web replicas, a pool of 12 may still provide enough throughput because connections are reused. At thirty replicas it stays within the same global database concurrency envelope.
 
-This arithmetic prevents hard exhaustion but does not prove 12 is optimal. Test pool sizes around the candidate. HikariCP's guidance emphasizes that smaller saturated pools often outperform very large pools and presents its CPU-and-storage formula only as a starting point for measurement.
+This arithmetic prevents hard exhaustion under those assumptions but does not prove 12 is optimal. If 30 is only the autoscaler maximum, include additional rollout and failover connection holders in the divisor before choosing the pool limit. Test pool sizes around the candidate. HikariCP's guidance emphasizes that smaller saturated pools often outperform very large pools and presents its CPU-and-storage formula only as a starting point for measurement.
 
 ## Estimate demand before testing
 
-Little's Law provides an initial active-connection estimate when one request holds one connection:
+Little's Law provides an initial mean checked-out connection estimate for a stable workload, using successful checkout rate and the matching checkout-to-return duration:
 
 ```text
-mean held connections = database operations/second * mean hold time seconds
+mean held connections = successful connection checkouts/second * mean hold time seconds
 ```
 
-At 4,000 database operations per second and 6 ms mean checkout-to-return time, mean occupancy is 24 connections. Tail queries, transactions that hold connections across application work, and multiple nested acquisitions require direct measurement. Instrument acquisition wait, hold time, active, idle, pending, timeout, and connection-creation latency.
+At 4,000 successful connection checkouts per second and 6 ms mean checkout-to-return time, mean occupancy is 24 connections. Tail queries, transactions that hold connections across application work, and multiple nested acquisitions require direct measurement. Instrument acquisition wait, hold time, active, idle, pending, timeout, and connection-creation latency.
 
-Do not multiply frontend RPS by database latency unless every request makes exactly one database operation and the measurement boundaries align. Split query classes and sum their concurrency contributions.
+Do not multiply frontend RPS by database latency unless the latency measures the total connection hold time per request and the measurement boundaries align. Multiple queries within one checkout count as one hold interval. Split query classes and sum their concurrency contributions.
 
 ## Handle scaling and deployment transients
 
@@ -95,7 +97,7 @@ planned rollout connection holders
   + terminating Pods that can still hold connections
 ```
 
-Resolve a percentage `maxSurge` to its integer value. Kubernetes documents that terminating Pods are not included in the Deployment availability calculation, so total resource consumers can temporarily exceed `replicas + maxSurge` until their termination grace period ends. Measure this overlap, and use `.status.terminatingReplicas` where the supported feature is enabled.
+Resolve a percentage `maxSurge` to its integer value by rounding up. Kubernetes documents that terminating Pods are not included in the Deployment availability calculation, so total resource consumers can temporarily exceed `replicas + maxSurge` until their termination grace period ends. Measure this overlap, and use `.status.terminatingReplicas` where the supported feature is enabled.
 
 During failover, clients may reconnect in a synchronized wave while old TCP sessions have not yet cleared. Test DNS or proxy convergence, connection lifetime, backoff with jitter, and acquisition timeouts. The database pool timeout should be shorter than the request deadline by enough time to return a controlled failure.
 

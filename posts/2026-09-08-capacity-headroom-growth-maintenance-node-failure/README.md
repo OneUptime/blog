@@ -53,7 +53,7 @@ required instances = N_demand + maintenance loss + node loss
 required nodes     = ceil(29 / 4) = 8 nodes
 ```
 
-Eight nodes provide 32 slots. After one maintenance node and one failed node, 24 slots remain, enough for the 21-instance demand.
+Eight nodes provide 32 slots. With all 32 slots running ready service instances before the event, one maintenance node and one failed node leave 24 ready instances, enough for the 21-instance demand. Empty slots require scheduling and startup time before they can serve traffic.
 
 If zone failure is the required scenario, calculate it separately instead of adding every possible event together. Adopt the largest approved coincident scenario, unless policy explicitly requires maintenance during a zone loss.
 
@@ -81,7 +81,7 @@ detection + metric window + autoscaler decision + provisioning
 
 If demand can grow faster than this delay, keep enough ready capacity for the burst or pre-scale before predictable events. Do not count a cloud quota as ready headroom. A quota only permits an allocation; it does not prove that instances, IPs, volumes, or nodes will become available in time.
 
-In Kubernetes, low-priority overprovisioning pods can reserve schedulable space while still allowing useful workloads to preempt it. The resulting pending placeholder pods can prompt Cluster Autoscaler to replenish the reserve. This is a scheduling technique, not free compute: running nodes are still billed.
+In Kubernetes, low-priority overprovisioning pods can reserve schedulable space while still allowing useful workloads to preempt it. The resulting pending replacement placeholder pods can prompt Cluster Autoscaler to replenish the reserve, provided their priority is at or above its configured expendable-pod priority cutoff (default `-10`) and below the service pods they reserve space for. This is a scheduling technique, not free compute: running nodes are still billed.
 
 ## Express headroom in operational views
 
@@ -89,7 +89,7 @@ Track both workload and failure-domain headroom:
 
 ```text
 service headroom RPS = surviving tested capacity - forecast peak
-node headroom count  = ready nodes - nodes needed after policy losses
+node headroom count  = ready nodes - policy loss nodes - ceil(N_demand / instances_per_node)
 time headroom        = time until forecast demand reaches safe capacity
 ```
 

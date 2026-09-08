@@ -26,8 +26,8 @@ import sqlite3
 def connect(path: str) -> sqlite3.Connection:
     db = sqlite3.connect(path)
     db.execute("PRAGMA foreign_keys = ON")
-    enabled = db.execute("PRAGMA foreign_keys").fetchone()[0]
-    if enabled != 1:
+    enabled = db.execute("PRAGMA foreign_keys").fetchone()
+    if enabled is None or enabled[0] != 1:
         db.close()
         raise RuntimeError("SQLite foreign-key enforcement is unavailable")
     return db
@@ -96,7 +96,7 @@ Add an integration test that enumerates each application connection path. For ev
 
 1. assert `PRAGMA foreign_keys` returns `1`;
 2. insert a valid parent and child;
-3. verify that an orphan insert fails;
+3. verify that an orphan insert fails for an immediate constraint, or that committing an unresolved orphan fails for a deferred constraint;
 4. verify the transaction can be rolled back and the connection reused;
 5. run the same check after a pool recycle.
 
