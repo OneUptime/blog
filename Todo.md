@@ -196,7 +196,6 @@
 
 ## Embedded Databases
 
-1. How to Fix SQLite “Database Is Locked” Errors Under Concurrent Writes
 2. How to Make SQLite Enforce Foreign Keys on Every Application Connection
 3. Why Copying a WAL-Mode SQLite File Produces Incomplete Backups—and How to Fix It
 4. How to Recover a Corrupted SQLite Database with `integrity_check`, `.recover`, and Verified Restores
