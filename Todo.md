@@ -199,7 +199,6 @@
 
 ## Capacity Planning
 
-16. How to Size Memory for P99 Peaks Without Hiding Leaks Behind Excess Headroom
 17. How to Forecast Storage Capacity from Ingest Rate, Retention, Replication, and Compaction Overhead
 18. How to Plan Network Bandwidth from Payload Size, Fan-Out, and Replication Traffic
 19. How to Turn a Latency SLO into a Maximum Safe Utilization Target
