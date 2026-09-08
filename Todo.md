@@ -199,7 +199,6 @@
 
 ## Capacity Planning
 
-3. How to Find the Saturation Point of a Single Service Instance Before Scaling Out
 4. How to Measure Whether Adding Nodes Actually Produces Linear Throughput
 5. How to Set Capacity Headroom for Traffic Growth, Maintenance, and One-Node Failure
 6. How to Forecast Seasonal Traffic Without Sizing Everything to the Annual Maximum
