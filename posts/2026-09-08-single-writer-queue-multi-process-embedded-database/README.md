@@ -54,24 +54,25 @@ Limit payload bytes and reject unknown versions. Use externally stable identifie
 
 ## Make idempotency atomic with the write
 
-Store the idempotency record in the same database transaction as the domain change. The owner first looks up the key and returns its stored outcome if present. In SQLite, only an absent key should reach these statements:
+Store the idempotency record in the same database transaction as the domain change. The owner first looks up the key and returns its stored outcome if present, rejecting reuse with a different operation or payload. Store and compare a canonical request representation or its fingerprint. In this SQLite example, the stored outcome is a fixed receipt (`recorded`); only an absent key should reach these statements. Execute each statement separately with bound parameters and roll back on failure:
 
 ```sql
 BEGIN IMMEDIATE;
 
-INSERT INTO applied_command(idempotency_key, operation, applied_at)
-VALUES (?, ?, CURRENT_TIMESTAMP);
+INSERT INTO applied_command(idempotency_key, operation, request_fingerprint, outcome, applied_at)
+VALUES (?, ?, ?, 'recorded', CURRENT_TIMESTAMP);
 
 UPDATE invoice
 SET paid_cents = paid_cents + ?
 WHERE id = ?;
 
+-- Application: require exactly one updated row; otherwise ROLLBACK.
 COMMIT;
 ```
 
-Use a unique constraint on `idempotency_key` as the final race guard. If the insert reports a duplicate, roll back the entire transaction, then read and return the committed outcome in a new transaction. Do not continue to the domain update after a duplicate-key result.
+The schema must make `invoice.id` unique, `paid_cents` non-null, and `applied_command.idempotency_key` non-null and unique; the latter is the final race guard. If the insert reports a duplicate, roll back the entire transaction, then read the committed record in a new transaction, verify the operation and request fingerprint, and return its outcome. Do not continue to the domain update after a duplicate-key result.
 
-Return success only after commit. If the caller loses the response, it retries the same key. Never acknowledge when an operation is merely in an in-memory queue unless the API explicitly promises only best-effort enqueue.
+Return success only after commit. For success that must survive power loss, configure durable commits, such as `PRAGMA synchronous=FULL` in SQLite WAL mode, and avoid LMDB flags that weaken commit syncing. If the caller loses the response, it retries the same key. Never acknowledge when an operation is merely in an in-memory queue unless the API explicitly promises only best-effort enqueue.
 
 ## Decide how submissions survive a crash
 
@@ -82,7 +83,7 @@ There are two clear contracts:
 
 For a file spool, write a complete command to a staging file, flush it, and sync the file according to the durability requirement. Rename it atomically into a ready directory on the same filesystem, then sync the affected directory entries where the platform supports directory syncing before acknowledging durable acceptance. If staging and ready are different directories, sync both. The writer moves committed items to a done or archive state. Secure permissions, checksums, bounded disk use, and poison-message quarantine are essential.
 
-Do not create a second ad hoc database as a queue without defining how its commit coordinates with the target database. Exactly-once delivery is usually achieved as at-least-once delivery plus atomic idempotency at the target.
+Do not create a second ad hoc database as a queue without defining how its commit coordinates with the target database. At-least-once delivery plus atomic idempotency at the target can provide exactly-once database effects, not exactly-once delivery. Retain idempotency records for the full retry and replay window.
 
 ## Batch without breaking semantics
 
@@ -108,7 +109,7 @@ SQLite readers see a snapshot for the lifetime of their read transaction. End an
 
 Measure enqueue rejections, queue count and bytes, oldest age, time to begin, transaction time, batch size, commit failures, retries, duplicate keys, poison commands, and writer restarts. Alert on backlog slope as well as absolute depth.
 
-At startup, let the engine perform journal or WAL recovery. Reconcile durable queued commands against committed idempotency records and replay only missing keys. Quarantine a deterministically failing command after a bounded number of attempts so it cannot block the entire queue.
+At startup, let SQLite or DuckDB perform journal or WAL recovery as applicable. LMDB uses copy-on-write rather than journal replay; check for stale reader slots after reader crashes using `mdb_reader_check`. Reconcile durable queued commands against committed idempotency records and replay only missing keys. Quarantine a deterministically failing command after a bounded number of attempts so it cannot block the entire queue.
 
 ## Conclusion
 
