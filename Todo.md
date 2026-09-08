@@ -199,7 +199,6 @@
 
 ## Capacity Planning
 
-12. How to Size Worker Pools and Queues from Arrival Rate, Service Time, and Latency SLOs
 13. How to Plan Capacity for Heavy and Light Request Types Instead of Using Average RPS
 14. How to Use Queue-Drain Time and Retry Growth to Detect Hidden Saturation
 15. How to Size CPU from Throttling and Run-Queue Delay Instead of Average Utilization
