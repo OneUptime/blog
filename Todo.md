@@ -196,7 +196,6 @@
 
 ## Embedded Databases
 
-4. How to Recover a Corrupted SQLite Database with `integrity_check`, `.recover`, and Verified Restores
 5. How to Version and Migrate an Embedded SQLite Schema Across App Upgrades
 6. How to Decide When SQLite Has Outgrown a Production Web Application
 7. How to Detect Unsafe NFS and SMB File Locking Before Hosting an Embedded Database
