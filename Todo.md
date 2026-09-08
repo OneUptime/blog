@@ -193,7 +193,6 @@
 
 ## Data Lineage
 
-13. How to Add Transformation Expressions and Aggregations to OpenLineage Metadata
 14. How to Debug Missing OpenLineage Events from Spark Jobs
 15. How to Keep a Data Lineage Catalog Fresh When Teams Forget to Update Documentation
 16. How to Validate SQL-Derived Lineage Against What Actually Ran in Production
