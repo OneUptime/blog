@@ -196,7 +196,6 @@
 
 ## Embedded Databases
 
-15. How to Share Prebuilt DuckDB Files Across Read-Only Application Replicas
 16. How to Size an LMDB Map and Recover Cleanly from `MDB_MAP_FULL`
 17. How to Tune RocksDB Compaction to Reduce Write Stalls and Space Amplification
 18. How to Set Cache, Write Buffer, and File Descriptor Budgets for an Embedded RocksDB Instance
