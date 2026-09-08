@@ -196,7 +196,6 @@
 
 ## Embedded Databases
 
-10. How to Reclaim SQLite Disk Space Safely with `VACUUM` and Incremental Auto-Vacuum
 11. How to Choose SQLite, DuckDB, RocksDB, or LMDB for an Embedded Workload
 12. How to Use DuckDB for Embedded Analytics Without Treating It Like an OLTP Database
 13. How to Handle DuckDB’s Single-Process Write Lock in Multi-Worker Applications
