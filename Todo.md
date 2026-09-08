@@ -196,7 +196,6 @@
 
 ## Embedded Databases
 
-2. How to Make SQLite Enforce Foreign Keys on Every Application Connection
 3. Why Copying a WAL-Mode SQLite File Produces Incomplete Backups—and How to Fix It
 4. How to Recover a Corrupted SQLite Database with `integrity_check`, `.recover`, and Verified Restores
 5. How to Version and Migrate an Embedded SQLite Schema Across App Upgrades
