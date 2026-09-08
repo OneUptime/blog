@@ -60,7 +60,7 @@ The best time to update declared lineage is when a change ships. Add catalog pub
 - Airflow, Dagster, or other orchestrator definitions
 - schema migrations and view definitions
 - BI semantic models and workbook metadata
-- OpenLineage events from jobs and processing engines
+- OpenLineage design-time `JobEvent` and `DatasetEvent` metadata where supported; emit runtime `RunEvent` events as jobs execute
 
 Make publication idempotent and bind it to the deploy's commit or artifact digest. If a deployment rolls back, republish the active version rather than leaving the catalog pointed at the rejected build.
 
@@ -84,7 +84,7 @@ frequent incremental crawl
 
 The overlap window protects against clock skew and late source metadata. Deduplication protects against reprocessing that overlap.
 
-Run a complete snapshot periodically even when change feeds exist. It detects missed events, configuration filters, and collectors that were offline longer than their retained cursor window.
+Run a complete snapshot periodically even when change feeds exist. It detects current-state drift from missed events and collectors that were offline longer than their retained cursor window. Audit extraction filters and permissions separately: a full snapshot using the same restricted scope cannot reveal excluded assets.
 
 ## Lease automated edges instead of deleting on one miss
 
