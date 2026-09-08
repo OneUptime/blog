@@ -199,7 +199,6 @@
 
 ## Capacity Planning
 
-8. How to Reserve Kubernetes Cluster Headroom Without Paying for Permanently Idle Nodes
 9. How to Keep HPA and Cluster Autoscaler from Reacting Too Late to Burst Traffic
 10. How to Pre-Warm Autoscaled Instances Before a Marketing or Launch-Day Spike
 11. How to Calculate Database Connection-Pool Capacity Across Autoscaled Application Replicas
