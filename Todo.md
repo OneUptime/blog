@@ -199,7 +199,6 @@
 
 ## Capacity Planning
 
-13. How to Plan Capacity for Heavy and Light Request Types Instead of Using Average RPS
 14. How to Use Queue-Drain Time and Retry Growth to Detect Hidden Saturation
 15. How to Size CPU from Throttling and Run-Queue Delay Instead of Average Utilization
 16. How to Size Memory for P99 Peaks Without Hiding Leaks Behind Excess Headroom
