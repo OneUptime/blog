@@ -196,7 +196,6 @@
 
 ## Embedded Databases
 
-16. How to Size an LMDB Map and Recover Cleanly from `MDB_MAP_FULL`
 17. How to Tune RocksDB Compaction to Reduce Write Stalls and Space Amplification
 18. How to Set Cache, Write Buffer, and File Descriptor Budgets for an Embedded RocksDB Instance
 19. How to Design a Single-Writer Queue for Multi-Process Embedded Database Access
