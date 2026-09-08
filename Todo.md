@@ -196,7 +196,6 @@
 
 ## Embedded Databases
 
-12. How to Use DuckDB for Embedded Analytics Without Treating It Like an OLTP Database
 13. How to Handle DuckDB’s Single-Process Write Lock in Multi-Worker Applications
 14. How to Stop DuckDB Queries from Exhausting Memory on Large Parquet Datasets
 15. How to Share Prebuilt DuckDB Files Across Read-Only Application Replicas
