@@ -8,7 +8,7 @@ Description: Size LMDB address space with growth headroom, abort safely on map e
 
 ---
 
-LMDB maps its database into virtual address space. The configured map size is also the maximum database size, but reserving a large map does not immediately consume the same amount of physical RAM or disk. On a 64-bit platform, choosing generous headroom at creation time is usually simpler than resizing during an incident.
+LMDB maps its database into virtual address space. The configured map size is also the maximum database size, but reserving a large map does not immediately consume the same amount of physical RAM or disk in the default mode shown below. With `MDB_WRITEMAP`, filesystems without sparse-file support can allocate the full map size on disk. On a 64-bit platform, choosing generous headroom at creation time is usually simpler than resizing during an incident.
 
 `MDB_MAP_FULL` means the environment reached its configured map size. It is a capacity error, not a signal to delete the lock file, remove database pages, or continue using a failed write transaction.
 
@@ -26,11 +26,11 @@ required map bytes = current used bytes
 
 LMDB uses copy-on-write pages, so a write needs free pages before the old snapshot can be released. Long-lived read transactions prevent pages freed by newer writers from being reused and can make the file grow quickly. Large delete-and-rewrite transactions can therefore need more headroom than the final live dataset size suggests.
 
-Use `mdb_env_info()` and `mdb_env_stat()` or the binding's equivalents to report map size, last page number, page size, entries, readers, and growth. Convert page counts to bytes before combining them with growth estimates; for example, the byte extent represented by a zero-based last page number is `(last_page_number + 1) * page_size`. Alert well before that extent approaches the map size. Also monitor actual filesystem free space; virtual address headroom cannot create disk capacity.
+Use `mdb_env_info()` and `mdb_env_stat()` or the binding's equivalents to report map size, last page number, page size, and main-database entries, and sample these over time to measure growth. Use `mdb_stat()` for entries in each named database. The `me_numreaders` field is a reader-slot high-water mark, not the current active-reader count; use `mdb_reader_list()` or `mdb_stat -r` to inspect the reader table. Convert page counts to bytes before combining them with growth estimates; for example, the byte extent represented by a zero-based last page number is `(last_page_number + 1) * page_size`. Alert well before that extent approaches the map size. Also monitor actual filesystem free space; virtual address headroom cannot create disk capacity.
 
 ## Set the map before opening
 
-The LMDB API recommends calling `mdb_env_set_mapsize()` after `mdb_env_create()` and before `mdb_env_open()`:
+The LMDB API recommends calling `mdb_env_set_mapsize()` after `mdb_env_create()` and before `mdb_env_open()`. This example assumes a 64-bit process, an existing writable directory, and an application-defined `fail()` that does not return:
 
 ```c
 MDB_env *env = NULL;
@@ -74,30 +74,30 @@ Treat `mdb_txn_commit()` differently: LMDB frees the transaction handle when tha
 
 LMDB allows `mdb_env_set_mapsize()` after open only when no transaction is active in that process. The library does not fully check that precondition for the caller. Build an application barrier:
 
-1. stop admitting writes;
+1. stop admitting new read and write transactions, including read-transaction renewals, in the resizing process;
 2. let the current writer finish or abort;
 3. close or reset read transactions in the resizing process;
 4. acquire the application's resize mutex or lease;
 5. calculate a larger page-aligned size with headroom;
 6. call `mdb_env_set_mapsize()`;
-7. commit a small write so the increase is persisted for other processes;
+7. successfully commit a small write that actually changes data so the increase is persisted for other processes; an empty write transaction does not persist it;
 8. release the barrier and retry the failed command once.
 
 Only increases are persisted. Do not attempt to shrink the production map during recovery. A requested size below consumed space is silently raised to the current used size, which does not reclaim capacity.
 
 ## Handle other processes noticing the resize
 
-If one process increases the map and data grows beyond another process's old view, `mdb_txn_begin()` can return `MDB_MAP_RESIZED`. With no active transactions in that process, call:
+If one process increases the map and data grows beyond another process's old view, `mdb_txn_begin()` or `mdb_txn_renew()` can return `MDB_MAP_RESIZED`. With no active transactions in that process, call:
 
 ```c
 rc = mdb_env_set_mapsize(env, 0);  /* Adopt the size stored by another process. */
 ```
 
-Then begin a fresh transaction. Centralize this behavior in the environment wrapper so every reader and writer handles it consistently. Keep application-level resize coordination even though LMDB serializes write transactions; the application must still prevent active local transactions during remapping.
+Check that the resize succeeded, then begin a fresh transaction or renew the reset read transaction. Centralize this behavior in the environment wrapper so every reader and writer handles it consistently. Keep application-level resize coordination even though LMDB serializes write transactions; the application must still prevent active local transactions during remapping.
 
 ## Reduce avoidable growth
 
-End read transactions promptly, including error and cancellation paths. Periodically use `mdb_reader_check()` or `mdb_stat` to identify stale reader slots after abnormal process exits. Stale or long readers can hold old pages and make writers allocate new ones.
+End read transactions promptly, including error and cancellation paths. Periodically use `mdb_reader_check()` or `mdb_stat -rr /var/lib/myapp/lmdb` to check for and clear stale reader slots after abnormal process exits. Stale or long readers can hold old pages and make writers allocate new ones.
 
 Keep write transactions bounded. Batch enough operations to reduce overhead, but avoid rewriting a huge portion of the database in one transaction. Validate retention and deletion logic rather than relying on an emergency map increase forever.
 
