@@ -199,7 +199,6 @@
 
 ## Capacity Planning
 
-1. How to Convert Peak RPS and Latency into Concurrency with Little’s Law
 2. How to Build a Production-Realistic Load-Test Model from Sessions, Think Time, and Traffic Mix
 3. How to Find the Saturation Point of a Single Service Instance Before Scaling Out
 4. How to Measure Whether Adding Nodes Actually Produces Linear Throughput
