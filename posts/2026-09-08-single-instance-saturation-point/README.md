@@ -10,7 +10,7 @@ Description: Measure the throughput and latency knee of one production-shaped in
 
 Autoscaling cannot compensate for an unknown unit of capacity. Before choosing replica counts or scaling thresholds, determine how much production-shaped work one instance can safely serve and how it fails beyond that point.
 
-The saturation point is not simply 100 percent CPU or the largest completed RPS. It is the load where an additional unit of offered work no longer produces a proportional useful result, or where a service objective is first violated.
+The saturation point is not simply 100 percent CPU or the largest completed RPS. It is the load where an additional unit of offered work no longer produces a proportional useful result. A service objective can be violated before that point, setting a lower capacity limit.
 
 ## Isolate one representative unit
 
@@ -20,7 +20,7 @@ Warm the application before recording results. Populate realistic caches, comple
 
 ## Define success before applying load
 
-Choose an SLO-shaped pass condition, for example:
+Choose an SLO-shaped pass condition, for example (illustrative YAML, not a load-generator configuration):
 
 ```yaml
 latency:
@@ -29,7 +29,7 @@ latency:
   p99: 350ms
 errors: less-than-or-equal-to 0.1-percent
 timeouts: 0
-queue_growth: non-monotonic
+queue_growth: no-sustained-upward-trend
 minimum_stage_duration: 15m
 ```
 
@@ -57,14 +57,14 @@ Plot useful throughput and latency against offered throughput. A typical sequenc
 
 ```text
 offered RPS   useful RPS   p99 latency   queue
-500           499          110 ms        0
-700           699          135 ms        1
-850           848          210 ms        4
+500           499.8        110 ms        0
+700           699.5        135 ms        1
+850           849.5        210 ms        4
 925           912          390 ms        38
 1000          918          1.4 s         410
 ```
 
-The service's maximum successful throughput is about 918 RPS, but that is not its safe capacity. If the p99 objective is 350 ms, the safe measured stage is 850 RPS. The nonlinear queue growth at 925 RPS marks the saturation knee.
+The highest observed successful throughput is about 918 RPS, but that is not its safe capacity. If the p99 objective is 350 ms and the other pass conditions also hold, the highest safe measured stage is 850 RPS. The sharp increase in queue depth at 925 RPS suggests the saturation knee; queue measurements over time are needed to confirm whether each stage is stable.
 
 Confirm it with a finer test around 850 to 925 RPS and repeat the run. Capacity is a distribution, so record variation across hosts and deployments rather than publishing one precise number from one test.
 
@@ -80,7 +80,7 @@ High utilization alone is not proof of a bottleneck. Look for resource pressure 
 
 Linux Pressure Stall Information quantifies time lost because tasks are waiting on CPU, memory, or I/O. It is often more useful than an average utilization percentage at the knee.
 
-Change one suspected constraint and rerun. Doubling a worker pool that merely shifts saturation to the database is diagnosis, not a capacity improvement.
+Change one suspected constraint and rerun. Doubling a worker pool that shifts saturation to the database is a capacity improvement only if it increases the sustainable SLO-safe rate.
 
 ## Establish a safe unit of capacity
 
