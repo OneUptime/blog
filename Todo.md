@@ -199,7 +199,6 @@
 
 ## Capacity Planning
 
-4. How to Measure Whether Adding Nodes Actually Produces Linear Throughput
 5. How to Set Capacity Headroom for Traffic Growth, Maintenance, and One-Node Failure
 6. How to Forecast Seasonal Traffic Without Sizing Everything to the Annual Maximum
 7. How to Size Kubernetes Nodes from Pod Requests, DaemonSet Overhead, and Bin-Packing Constraints
