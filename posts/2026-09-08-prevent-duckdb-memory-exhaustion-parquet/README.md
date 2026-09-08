@@ -109,7 +109,7 @@ This is a pattern to test, not a guarantee of lower memory. Compare plans, peak 
 
 ## Admit fewer queries
 
-Four queries each sized for a 6 GB budget can exceed a 12 GB container even if each succeeds alone. Put analytical work behind a semaphore or weighted queue. Assign heavier jobs a higher weight, impose deadlines, and cancel work whose result is no longer needed.
+The `memory_limit` setting applies to a DuckDB instance, not to each query: concurrent queries in the same instance share that budget. Four separate instances each configured for 6 GB can exceed a 12 GB container. Within one instance, concurrent queries still compete for memory, and allocations outside the buffer manager can exceed the configured limit. Put analytical work behind a semaphore or weighted queue. Assign heavier jobs a higher weight, impose deadlines, and cancel work whose result is no longer needed.
 
 Return aggregated or paginated results. Converting a large result into an in-memory dataframe can trigger an OOM after DuckDB has executed the query successfully.
 
