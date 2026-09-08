@@ -35,20 +35,20 @@ Normalize both sources into the same representation:
 }
 ```
 
-Canonical identity must include platform, account or host, database or project, schema or dataset, and object. Resolve unqualified names with the catalog and session context effective when the query ran. Preserve the original spelling and query ID for debugging.
+Canonical identity must include platform and the applicable account or host, database or project, schema or dataset, and object components for that engine. Resolve unqualified names with the catalog and session context effective when the query ran. Preserve the original spelling and query ID for debugging.
 
-Use set comparison per execution:
+Use set comparison per execution, with tuples ordered as upstream, downstream, operation, and grain:
 
 ```python
 parser_edges = {
-    ("acme.raw.orders", "acme.analytics.daily_orders"),
-    ("acme.raw.customers", "acme.analytics.daily_orders"),
+    ("acme.raw.orders", "acme.analytics.daily_orders", "WRITE", "TABLE"),
+    ("acme.raw.customers", "acme.analytics.daily_orders", "WRITE", "TABLE"),
 }
 
 observed_edges = {
-    ("acme.raw.orders", "acme.analytics.daily_orders"),
-    ("acme.raw.customers", "acme.analytics.daily_orders"),
-    ("acme.security.allowed_customers", "acme.analytics.daily_orders"),
+    ("acme.raw.orders", "acme.analytics.daily_orders", "WRITE", "TABLE"),
+    ("acme.raw.customers", "acme.analytics.daily_orders", "WRITE", "TABLE"),
+    ("acme.security.allowed_customers", "acme.analytics.daily_orders", "WRITE", "TABLE"),
 }
 
 missing_from_parser = observed_edges - parser_edges
@@ -67,6 +67,8 @@ BigQuery's `INFORMATION_SCHEMA.JOBS` view exposes fields including query text, q
 SELECT
   job_id,
   parent_job_id,
+  transaction_id,
+  cache_hit,
   creation_time,
   statement_type,
   state,
@@ -82,7 +84,7 @@ WHERE creation_time >= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 6 HOUR)
   AND error_result IS NULL;
 ```
 
-Run the query in the matching location and export each relevant region. `referenced_tables` is documented as populated only for non-cache-hit query jobs, so absence on a cache hit cannot invalidate a parsed read edge.
+Run the query in the matching location and export each relevant region. This extract identifies successful statements, not necessarily committed writes. For a non-null `transaction_id`, require a successful `COMMIT_TRANSACTION` job with the same transaction ID before confirming durable output; keep unresolved transactions pending across extraction windows. `referenced_tables` is documented as populated only for non-cache-hit query jobs, so absence on a cache hit cannot invalidate a parsed read edge.
 
 Multi-statement scripts have parent and child jobs. Validate statement-level child jobs and use `parent_job_id` to keep the execution together. Do not count the script parent as a duplicate transformation.
 
@@ -136,12 +138,12 @@ GROUP BY region;
 
 The parser sees the direct object `governed.active_customers`. The warehouse may report base tables such as `raw.customers` and `security.account_status`. Both graphs can be correct at different abstraction levels.
 
-Keep both relationships:
+If the view definition effective at execution time confirms these dependencies, keep both relationships, using upstream-to-downstream arrows. Direct and base access lists alone do not reconstruct intermediate view definitions:
 
 ```text
-active_customer_count -> governed.active_customers  DIRECT_REFERENCE
-governed.active_customers -> raw.customers          VIEW_DEFINITION
-governed.active_customers -> security.account_status VIEW_DEFINITION
+governed.active_customers -> analytics.active_customer_count DIRECT_REFERENCE
+raw.customers -> governed.active_customers                   VIEW_DEFINITION
+security.account_status -> governed.active_customers        VIEW_DEFINITION
 ```
 
 Do not flatten the view away unless the consumer explicitly asks for root sources. Preserving the boundary explains ownership and where a change should be made.
