@@ -199,7 +199,6 @@
 
 ## Capacity Planning
 
-19. How to Turn a Latency SLO into a Maximum Safe Utilization Target
 20. How to Revalidate Capacity After Code, Runtime, or Instance-Type Changes
 
 ## etcd
