@@ -196,7 +196,6 @@
 
 ## Embedded Databases
 
-14. How to Stop DuckDB Queries from Exhausting Memory on Large Parquet Datasets
 15. How to Share Prebuilt DuckDB Files Across Read-Only Application Replicas
 16. How to Size an LMDB Map and Recover Cleanly from `MDB_MAP_FULL`
 17. How to Tune RocksDB Compaction to Reduce Write Stalls and Space Amplification
