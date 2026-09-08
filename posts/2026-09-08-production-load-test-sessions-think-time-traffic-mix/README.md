@@ -14,7 +14,7 @@ A production-realistic model starts with journeys and arrival behavior. The load
 
 ## Choose an open or closed workload deliberately
 
-A closed model keeps a fixed population of virtual users. Each user completes an iteration, waits for think time, and begins another. For one homogeneous journey, the interactive response-time relationship is:
+A closed model controls the population of virtual users rather than the arrival rate; that population can be fixed or vary over time. Each user completes an iteration, waits for think time, and begins another. For one homogeneous journey with a fixed population, the interactive response-time relationship uses mean response and think times:
 
 ```text
 throughput X = users N / (response time R + think time Z)
@@ -51,7 +51,7 @@ steps:
     probability: 0.31
 ```
 
-Keep abandonment and conditional branches. Forcing every virtual user to finish checkout dramatically overstates writes. Conversely, replaying only individual endpoint percentages loses correlation, authentication state, cache behavior, and data dependencies.
+This YAML is an illustrative journey catalog, not a k6 configuration. Here, each request probability is conditional on reaching that step; not taking the request ends the journey, so an order requires a preceding cart request. Keep abandonment and conditional branches. Forcing every virtual user to finish checkout dramatically overstates writes. Conversely, replaying only individual endpoint percentages loses correlation, authentication state, cache behavior, and data dependencies.
 
 Segment when behavior matters: anonymous versus authenticated, mobile versus web, new versus returning, region, tenant size, and heavy versus ordinary accounts. Do not create a unique script for every tiny difference. Retain segments that change cost, state, or latency.
 
@@ -60,10 +60,10 @@ Segment when behavior matters: anonymous versus authenticated, mobile versus web
 For each request class `i`, calculate its target rate:
 
 ```text
-lambda_i = total arrival rate * request fraction_i
+lambda_i = total request arrival rate * request fraction_i
 ```
 
-Then validate both the count mix and the resource mix. Suppose 90 percent of requests are 20 ms cached reads and 10 percent are 500 ms report builds at 1,000 RPS:
+Then validate both the count mix and the resource mix. Suppose a stable workload at 1,000 RPS consists of 90 percent cached reads with a mean response time of 20 ms and 10 percent report builds with a mean response time of 500 ms. By Little's law:
 
 ```text
 cached-read concurrency = 900 * 0.020 = 18
@@ -74,7 +74,7 @@ Reports are only 10 percent of RPS but account for most mean concurrency. Also r
 
 ## Model think time as a distribution
 
-A constant `sleep(3)` synchronizes virtual users and erases real variation. Capture think-time histograms between meaningful steps, then sample them with bounds. Preserve zero-pause automation and long-tail human pauses without letting an accidental multi-hour session hold a test VU forever.
+A constant `sleep(3)` removes think-time variation and can preserve synchronized bursts when users start together and have similar request durations; it does not itself synchronize virtual users. Capture think-time histograms between meaningful steps, then sample them with bounds. Preserve zero-pause automation and long-tail human pauses without letting an accidental multi-hour session hold a test VU forever.
 
 Do not add think time inside a k6 arrival-rate iteration merely to control its start rate. Arrival-rate executors already pace iteration starts. Think time belongs inside a stateful user journey when that pause is part of the behavior being modeled.
 
@@ -100,7 +100,7 @@ Use an expected forecast and a documented stress scenario. Do not label an arbit
 
 Production realism does not mean using production unsafely. Generate representative synthetic accounts and data cardinalities. Isolate destructive operations, payment and email integrations, and rate-limited third parties. If a dependency is stubbed, reproduce its latency, error, connection, and payload behavior and clearly exclude its capacity from the result.
 
-Instrument the generator. In k6, insufficient VUs in an arrival-rate test cause `dropped_iterations`; that is generator saturation, not application success. Monitor generator CPU, network, and file descriptors, and distribute generators only after checking clock and data coordination.
+Instrument the generator. In k6, insufficient VUs in an arrival-rate test cause `dropped_iterations`; that means the scheduled load was not fully delivered. It can result from insufficient VU allocation or application slowdown holding VUs busy longer, and does not by itself prove generator hardware saturation or application success. Monitor generator CPU, network, and file descriptors, and distribute generators only after checking clock and data coordination.
 
 Define thresholds before execution:
 
