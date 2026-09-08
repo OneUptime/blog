@@ -51,7 +51,7 @@ Reduce it when demand is flat and increase it for known high-risk windows. Expre
 
 ## Use low-priority placeholder Pods carefully
 
-Cluster Autoscaler can support overprovisioning with low-priority placeholder Pods. These Pods request resources and keep nodes present. When important Pods arrive, Kubernetes preempts the placeholders; the displaced placeholders become unschedulable and prompt Cluster Autoscaler to restore the reserve.
+Cluster Autoscaler can support overprovisioning with low-priority placeholder Pods. These Pods request resources and keep nodes present. When important Pods cannot schedule and preempting lower-priority placeholders would make them fit, Kubernetes can preempt the placeholders; replacement placeholder Pods become unschedulable and prompt Cluster Autoscaler to restore the reserve.
 
 A minimal pattern is:
 
@@ -93,7 +93,7 @@ These nodes are not free while Ready. The cost benefit comes from keeping a meas
 
 ## Schedule predictable headroom
 
-For daily peaks, campaigns, and batch windows, raise the node-group minimum or placeholder replica count before the event and lower it afterward. Start by the measured p99 provisioning and warmup lead time. Retain reactive scaling for forecast error.
+For daily peaks, campaigns, and batch windows, raise the node-group minimum or placeholder replica count before the event and lower it afterward. Raising only Cluster Autoscaler's configured minimum does not force scale-up by default when no Pods are unschedulable; ensure the provider enforces the minimum or enable `--enforce-node-group-min-size=true` (available since Cluster Autoscaler 1.26). Start by the measured p99 provisioning and warmup lead time. Retain reactive scaling for forecast error.
 
 Where supported, use faster-starting node images, cached images, warm capacity, or provider-specific predictive scaling. Each option has a different cost and readiness guarantee. A service quota permits scale-out but does not reserve physical capacity.
 
@@ -104,7 +104,7 @@ Keep at least one viable node group for every protected Pod shape. Cluster Autos
 Autoscaler policies can fight the reserve. Protect against this by:
 
 - using a dedicated placeholder PriorityClass that respects the configured autoscaler cutoff, never the default priority;
-- giving real services higher priority and correct requests;
+- giving real services higher priority, `preemptionPolicy: PreemptLowerPriority` (the default), and correct requests;
 - setting scale-down delays long enough for burst recovery;
 - avoiding restrictive PodDisruptionBudgets on placeholders;
 - checking that placeholder preemption does not trigger application disruption;
@@ -124,7 +124,7 @@ important Pods become Ready within immediate budget
 placeholder Pods remain Pending
 Cluster Autoscaler adds matching nodes
 placeholder reserve becomes Running again
-surplus nodes eventually scale down
+after workload replicas or the temporary reserve decrease, surplus nodes can scale down
 ```
 
 Repeat with one node unavailable and with a cold image. If service latency fails before important Pods are Ready, increase ready reserve, reduce supply delay, or shed load earlier.
