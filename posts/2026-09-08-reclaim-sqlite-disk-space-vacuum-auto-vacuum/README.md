@@ -8,7 +8,7 @@ Description: Measure reclaimable SQLite pages, choose a full rebuild or incremen
 
 ---
 
-Deleting rows normally adds their pages to SQLite's freelist so later inserts can reuse them. The database file stays large, but that does not mean the space is wasted. Reclaim space back to the filesystem only when the operating benefit exceeds the locking, I/O, flash wear, and temporary-space cost.
+With auto-vacuum disabled, deleting rows adds any pages that become entirely unused to SQLite's freelist so later inserts can reuse them. Space freed within pages still in use remains available within those pages. The database file stays large, but that does not mean the space is wasted. Reclaim space back to the filesystem only when the operating benefit exceeds the locking, I/O, flash wear, and temporary-space cost.
 
 ## Measure before changing anything
 
@@ -21,7 +21,7 @@ PRAGMA freelist_count;
 PRAGMA auto_vacuum;
 ```
 
-Estimate immediately reclaimable whole pages as:
+Estimate unused whole-page capacity as:
 
 ```text
 freelist bytes = page_size * freelist_count
@@ -40,7 +40,7 @@ Take a database-aware backup and verify it before any full rebuild or auto-vacuu
 VACUUM;
 ```
 
-Plan it as a write operation. It fails if the same connection has an open transaction or unfinalized statement, and it needs a write lock that other connections can block. SQLite documents that the process can require up to twice the original database size in free disk space. Check capacity on the filesystem holding SQLite temporary and database files.
+Plan it as a write operation. It fails if the same connection has an open transaction. Unfinalized statements can keep a transaction open and cause it to fail, and it needs a write lock that other connections can block. SQLite documents that the process can require up to twice the original database size in free disk space. Check capacity on the filesystem holding SQLite temporary and database files.
 
 Run it during a maintenance window with stable power. A full rewrite can be expensive on large databases and increases flash writes. Tables without an explicit `INTEGER PRIMARY KEY` may receive different rowids, so applications must not treat undocumented rowids as durable external identifiers.
 
@@ -53,7 +53,7 @@ PRAGMA page_count;
 PRAGMA freelist_count;
 ```
 
-Then exercise application reads and writes and record the actual space saved and elapsed time.
+Then exercise application reads and writes and record the actual space saved and elapsed time. In WAL mode, changes reach the main database file through checkpointing, so filesystem shrinkage can be delayed. Include the WAL file when measuring disk usage; a checkpoint normally reuses it rather than truncating it.
 
 ## Use VACUUM INTO when a compact copy is safer
 
