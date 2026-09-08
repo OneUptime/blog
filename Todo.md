@@ -196,7 +196,6 @@
 
 ## Embedded Databases
 
-8. How to Rotate SQLCipher Encryption Keys Without Exposing a Plaintext SQLite File
 9. How to Survive Sudden Power Loss When SQLite Runs on SD Cards or Flash Storage
 10. How to Reclaim SQLite Disk Space Safely with `VACUUM` and Incremental Auto-Vacuum
 11. How to Choose SQLite, DuckDB, RocksDB, or LMDB for an Embedded Workload
