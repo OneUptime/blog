@@ -32,7 +32,7 @@ Record dashboard ID, workspace or site, report or workbook version, visual, sema
 
 Use a platform's stable IDs rather than display names. Tableau's Metadata API indexes workbooks, data sources, flows, fields, external tables, and other content and exposes upstream and downstream relationships through GraphQL. Power BI's lineage view shows relationships among workspace artifacts, external semantic models, dataflows, and data sources.
 
-Native tools retain platform-specific detail that a unified catalog may simplify. Begin there to identify:
+Native tools retain platform-specific detail that a unified catalog may simplify. Begin there to identify the path below; in Power BI, use report and semantic-model definitions for the visual-to-measure mapping, since lineage view shows artifact-level relationships:
 
 ```text
 visual or sheet
@@ -76,7 +76,7 @@ For the incident window, attach operational evidence:
 
 OpenLineage separates a recurring job from each run and supports run states plus dataset and data-quality facets. A catalog can use those events or equivalent platform telemetry to color the graph for a specific time instead of showing only today's topology.
 
-An active green edge with a failed producer run is not healthy. An old red edge may be irrelevant if it was replaced before the incident. Always use an as-of view when the catalog supports it, or reconstruct one from versioned observations.
+An active green edge does not establish data health when a producer run failed; check whether that run affected the consumed output or left a valid prior version intact. An old red edge may be irrelevant if it was replaced before the incident. Always use an as-of view when the catalog supports it, or reconstruct one from versioned observations.
 
 ## Compare last good with first bad
 
@@ -114,7 +114,7 @@ warehouse model writes daily table      output volume 93% low
 model reads raw orders                   source volume normal
 ```
 
-The first broken boundary is the warehouse transformation. Inspect its SQL, parameters, indirect filter fields, and code deployment before investigating the source application.
+The warehouse transformation is the leading candidate boundary. Normal source volume alone does not establish correct inputs; verify the relevant source values, join keys, and affected segment before confirming that boundary. Inspect its SQL, parameters, indirect filter fields, and code deployment before investigating the source application.
 
 This method prevents “upstream” from becoming an unlimited escalation chain. Stop when the upstream side is correct and the downstream side first becomes incorrect.
 
@@ -157,15 +157,15 @@ The data is correct, but the BI service identity lost access or a gateway points
 
 ## Query an incident-ready lineage projection
 
-Expose one service operation that returns bounded upstream paths and health summaries:
+Expose one custom service operation that returns bounded upstream paths and health summaries. This illustrative endpoint and field identifier require your own implementation:
 
 ```http
-GET /lineage/upstream?field=tableau://finance/workbook-18/net_revenue
-  &asOf=2026-09-08T01:13:00Z
-  &maxDepth=8
+GET /lineage/upstream?field=tableau://finance/workbook-18/net_revenue&asOf=2026-09-08T01:13:00Z&maxDepth=8 HTTP/1.1
+Host: lineage.example.com
+
 ```
 
-The response should include stable IDs, path length, edge evidence, last successful run, latest schema version, freshness, failed assertions, and unresolved boundaries. Page high-fan-out results and prefer the affected field path.
+The response should include stable IDs, path length, edge evidence, last successful run as of the requested time, schema version consumed by the relevant run, freshness, failed assertions, and unresolved boundaries. Page high-fan-out results and prefer the affected field path.
 
 Do not make responders open five tools merely to align timestamps. Deep links to the native job, warehouse query, dataset profile, and BI artifact can still provide detailed evidence.
 
@@ -200,7 +200,7 @@ After the incident, add the causal query, field mapping, or missing connector su
 
 ## Conclusion
 
-Lineage accelerates dashboard root-cause analysis when it is field-specific, time-aware, and joined to operations. Pin the exact symptom, use native BI metadata to reach the semantic field, traverse the unified graph upstream, and compare last good with first bad. The root cause is at the first boundary where healthy input became unhealthy output, confirmed by reproducible evidence.
+Lineage accelerates dashboard root-cause analysis when it is field-specific, time-aware, and joined to operations. Pin the exact symptom, use native BI metadata to reach the semantic field, traverse the unified graph upstream, and compare last good with first bad. The boundary where healthy input became unhealthy output localizes the failure; confirm the underlying cause with reproducible evidence.
 
 ## Official Documentation
 
