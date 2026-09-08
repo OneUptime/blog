@@ -78,7 +78,7 @@ spark.openlineage.transport.type=console
 
 The Java client transport documentation says that events are serialized as JSON and logged at INFO under the `ConsoleTransport` logger. Look in driver logs, not executor logs.
 
-Run a canary that performs an actual action and writes a supported sink:
+Run a canary that performs an actual action and writes a supported sink. Save this as `lineage_canary.py`. Replace the example bucket with a writable test bucket, and ensure the driver and executors have compatible Hadoop S3A dependencies, credentials, and network access:
 
 ```python
 from pyspark.sql import SparkSession
@@ -92,7 +92,7 @@ result = spark.sql("""
     SELECT id, amount * 2 AS doubled_amount
     FROM source_orders
 """)
-result.write.mode("overwrite").parquet("s3://lineage-canary/output/run-1")
+result.write.mode("overwrite").parquet("s3a://lineage-canary/output/run-1")
 spark.stop()
 ```
 
@@ -173,7 +173,7 @@ spark.openlineage.debug.smart=true
 spark.openlineage.debug.smartMode=any-missing
 ```
 
-Use `output-missing` if only absent outputs should trigger it. The debug facet can increase payload size and expose operational details, so do not leave it broadly enabled without reviewing retention and access.
+Smart debugging emits the debug facet only on `COMPLETE` events that meet the selected criteria. Use `output-missing` if only absent outputs should trigger it. The debug facet can increase payload size and expose operational details, so do not leave it broadly enabled without reviewing retention and access.
 
 ## Verify the receiver independently
 
