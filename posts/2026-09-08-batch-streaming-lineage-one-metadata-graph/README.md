@@ -92,7 +92,7 @@ Kafka orders topic
   -> finance dashboard
 ```
 
-OpenLineage namespaces and names together identify datasets. Apply a canonical naming policy across integrations or the Kafka sink emitted by one collector will not join the Kafka source emitted by another.
+These URIs are illustrative internal graph identifiers. OpenLineage represents dataset identity as separate namespace and name fields; its Kafka naming convention uses `kafka://{bootstrap server host}:{port}` as the namespace and the topic as the name. The `iceberg://` examples above are a custom catalog identity convention. Apply a canonical naming policy across integrations or the Kafka sink emitted by one collector will not join the Kafka source emitted by another.
 
 ## Keep progress evidence beside the stable edge
 
@@ -157,7 +157,7 @@ Users can answer impact questions quickly and drill into exact records only when
 
 ## Reconcile schema across the boundary
 
-A topic schema field and a table column may represent the same business field but are not the same physical field. Keep both identities and connect them through column lineage:
+A topic schema field and a table column may represent the same business field but are not the same physical field. Keep both identities and connect them through column lineage. Flink 2.x native lineage interfaces do not currently provide column lineage, so this mapping requires additional instrumentation or authoritative transformation metadata:
 
 ```text
 kafka orders.value.customer_id
