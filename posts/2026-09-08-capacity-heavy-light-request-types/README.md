@@ -20,8 +20,8 @@ For each class capture:
 
 ```text
 arrival rate and burst distribution
-successful service-time distribution
-CPU seconds per successful request
+service-time distribution by outcome
+CPU seconds per request attempt by outcome
 bytes read and written
 memory retained while in flight
 database and downstream operations
@@ -39,7 +39,7 @@ For resource `r`, total offered demand is:
 D_r = sum(lambda_i * d_i,r)
 ```
 
-Here `lambda_i` is arrivals per second for class `i`, and `d_i,r` is resource-seconds or resource units per successful request. For CPU, seconds of CPU per request multiplied by requests per second yields required busy cores before operating headroom.
+Here `lambda_i` is request attempts arriving per second for class `i`, including retries, and `d_i,r` is mean resource-seconds or resource units per attempt under the modeled conditions. Include the costs of failed, timed-out, and rejected attempts, using separate classes where their costs differ. The examples below assume all attempts succeed. For CPU, seconds of CPU per request multiplied by requests per second yields required busy cores before operating headroom.
 
 Suppose traffic is 950 light requests per second at 5 ms CPU each and 50 heavy requests per second at 120 ms CPU each:
 
@@ -61,7 +61,7 @@ Round at the scheduling and failure-domain layer, then add runtime and sidecar d
 
 ## Calculate concurrency by class
 
-Use Little's Law with mean time inside the same boundary:
+Use Little's Law for stable long-run averages, with `lambda_i` counting requests that enter the measured boundary and `W_i` their mean time inside it, including queue wait and all outcomes. Exclude requests rejected before that boundary:
 
 ```text
 L_total = sum(lambda_i * W_i)
