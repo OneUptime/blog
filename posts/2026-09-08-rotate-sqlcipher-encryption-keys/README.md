@@ -74,7 +74,7 @@ Only after these checks should deployment metadata select the new key identifier
 
 ## Use an encrypted-to-encrypted export when needed
 
-When changing cipher compatibility settings or producing a second artifact is operationally safer, attach a new database with a non-empty new key and use `sqlcipher_export()`:
+When changing cipher compatibility settings or producing a second artifact is operationally safer, attach a new database with a non-empty new key and use `sqlcipher_export()`. For this export path, open the verified existing source with `SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE` instead of the read-write-only flags above, then key and authenticate it before attaching the target. The connection must allow file creation for `ATTACH` to create `next.db`:
 
 ```sql
 -- The source has already been keyed and verified.
