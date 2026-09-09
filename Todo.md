@@ -202,7 +202,6 @@
 
 ## etcd
 
-16. How to Isolate Multiple Applications with etcd Users, Roles, and Prefix Permissions
 17. How to Choose Linearizable or Serializable Reads in etcd for the Right Consistency–Latency Tradeoff
 18. How to Verify an etcd Snapshot’s Integrity, Revision, and Version Compatibility Before a Restore
 19. How to Recover etcd from `wal: crc mismatch` Without Forcing a New Cluster Prematurely
