@@ -202,7 +202,6 @@
 
 ## etcd
 
-1. How to Recover an etcd Watch After `mvcc: required revision has been compacted` Without Missing Updates
 2. How to Diagnose `etcdserver: request timed out` by Separating Network, Disk, and Quorum Latency
 3. How to Rotate etcd Client and Peer Certificates One Member at a Time Without Losing Quorum
 4. How to Fix `tls: first record does not look like a TLS handshake` by Auditing etcd URLs and Certificate SANs
