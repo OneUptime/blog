@@ -202,7 +202,6 @@
 
 ## etcd
 
-13. How to Build a Fenced Distributed Lock with etcd Leases and Revisions
 14. How to Use etcd Transactions for Atomic Compare-and-Swap Across Multiple Keys
 15. How to Page Through a Large etcd Prefix with Range End, Limit, and Revision Consistency
 16. How to Isolate Multiple Applications with etcd Users, Roles, and Prefix Permissions
