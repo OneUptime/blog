@@ -55,7 +55,6 @@
 
 ## Kuzu
 
-13. How to Handle Missing Relationship Endpoints When Loading DataFrames into Kuzu
 14. How to Import PostgreSQL Join Results as Kuzu Nodes and Relationships
 15. How to Join Kuzu Graph Matches with Attached PostgreSQL Tables
 16. How to Reject a Kuzu Relationship Insert That Would Create a Bill-of-Materials Cycle
