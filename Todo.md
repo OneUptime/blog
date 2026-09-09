@@ -55,7 +55,6 @@
 
 ## Kuzu
 
-8. How to Pass an External Node Selection into a Kuzu Query with UNWIND
 9. How to Run a File of Cypher Commands Through the Kuzu CLI
 10. How to Save Kuzu CLI Query Results as Machine-Readable Files
 11. How to Model and Query Type Hierarchies with Category Nodes in Kuzu
