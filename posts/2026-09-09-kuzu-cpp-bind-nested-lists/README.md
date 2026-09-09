@@ -27,7 +27,7 @@ Decide whether a null list differs from an empty list in your model. For this fi
 
 ## Construct nested Value objects
 
-The following C++20 program creates a sample and verifies its stored representation. Compile it with the headers and library from the same Kuzu 0.11.3 release:
+The following C++20 program creates a sample and prints its stored representation for inspection. Compile it with the headers and library from the same Kuzu 0.11.3 release:
 
 ```cpp
 #include "kuzu.hpp"
