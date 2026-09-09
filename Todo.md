@@ -205,7 +205,6 @@
 
 ## Spot Instances
 
-1. How to Choose Between `capacity-optimized` and `price-capacity-optimized` for EC2 Spot Allocation
 2. How to Diversify a Spot Fleet Across Instance Families, Sizes, and Availability Zones Without Overprovisioning
 3. How to Troubleshoot `InsufficientInstanceCapacity` When an Auto Scaling Group Cannot Launch Spot Instances
 4. Why Doesn’t an AWS Mixed Instances Auto Scaling Group Fall Back to On-Demand When Spot Is Unavailable?
