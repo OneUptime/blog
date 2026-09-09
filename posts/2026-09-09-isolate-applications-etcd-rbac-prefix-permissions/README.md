@@ -78,7 +78,7 @@ etcdctl auth enable
 etcdctl --user root auth status
 ```
 
-The second command should authenticate successfully through the password prompt. Retain a tested administrator session while verifying application access. Future role and user management commands require a user with the root role.
+The second command should authenticate successfully through the password prompt. Retain a tested administrator session while verifying application access. Future changes to roles and users require a user with the root role.
 
 ## Test Allowed and Denied Operations
 
