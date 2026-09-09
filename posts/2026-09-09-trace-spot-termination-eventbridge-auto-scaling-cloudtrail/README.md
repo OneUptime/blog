@@ -28,7 +28,7 @@ Replace all sample values. A search in the wrong Region can return no evidence e
 
 ## Read the Captured EventBridge Signals
 
-Look for `EC2 Instance Rebalance Recommendation` and `EC2 Spot Instance Interruption Warning` in your configured event target or archive. EventBridge does not provide a retrospective search of every service event merely because the default event bus existed. Retention needs to have been configured.
+Look for `EC2 Instance Rebalance Recommendation` and `EC2 Spot Instance Interruption Warning` in your configured event target. If you retained them in an EventBridge archive, replay the incident window to the source event bus, selecting a rule that sends the events to a logging target for inspection. EventBridge does not provide a retrospective search of every service event merely because the default event bus existed. Retention needs to have been configured.
 
 For future investigations, a rule can match these signals:
 
@@ -42,17 +42,18 @@ For future investigations, a rule can match these signals:
 }
 ```
 
-Attach a durable target or archive with appropriate permissions and retention. Store the full event, including its ID, event time, account, Region, `detail-type`, and `detail.instance-id`.
+Attach a durable target to the rule, or create an archive on the event bus with this event pattern, appropriate permissions, and retention. Store the full event, including its ID, event time, account, Region, `detail-type`, and `detail.instance-id`.
 
 A recommendation is risk evidence. An interruption warning is evidence of a planned interruption action. The warning's `detail.instance-action` distinguishes stop, terminate, and hibernate behavior. The `resources` ARN has a special format for Spot warnings, so join using the instance ID instead of assuming a standard EC2 ARN parser will always work. [Spot interruption event format](https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/spot-instance-termination-notices.html).
 
 ## Inspect Auto Scaling's Decision
 
-Retrieve the group's activities and filter locally for the instance:
+Retrieve the group's activities and filter locally for the instance. Include deleted groups so the query also covers a group that has already been removed:
 
 ```bash
 aws autoscaling describe-scaling-activities \
   --auto-scaling-group-name "$ASG_NAME" \
+  --include-deleted-groups \
   --output json > scaling-activities.json
 
 jq --arg id "$INSTANCE_ID" '
