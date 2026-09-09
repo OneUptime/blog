@@ -202,7 +202,6 @@
 
 ## etcd
 
-12. How to Implement Lease KeepAlive and Automatic Key Cleanup Without Leaking Sessions in etcd
 13. How to Build a Fenced Distributed Lock with etcd Leases and Revisions
 14. How to Use etcd Transactions for Atomic Compare-and-Swap Across Multiple Keys
 15. How to Page Through a Large etcd Prefix with Range End, Limit, and Revision Consistency
