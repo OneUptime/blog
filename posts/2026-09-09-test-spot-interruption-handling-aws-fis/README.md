@@ -22,7 +22,7 @@ Create an existing CloudWatch alarm for an unacceptable test-service condition, 
 
 Create an IAM role trusted by `fis.amazonaws.com` using the documented FIS trust policy conditions for your account. Grant the action's required `ec2:SendSpotInstanceInterruptions` and `ec2:DescribeInstances` permissions, scoped where the API supports it. The operator creating the template also needs the appropriate FIS permissions and permission to pass the experiment role.
 
-Tag one running Spot Instance with `SpotInterruptionTest=canary`. Do not propagate this tag to every production worker. Preview the matching resources:
+Tag one running Spot Instance with `SpotInterruptionTest=canary`. Use an instance whose interruption behavior is `terminate` or `stop`; do not use `hibernate` for this test because hibernation begins immediately without a two-minute warning. Do not propagate this tag to every production worker. Preview the matching resources:
 
 ```bash
 aws ec2 describe-instances \
@@ -123,7 +123,7 @@ Capture the experiment start, rebalance recommendation, interruption warning, st
 
 The action emits a rebalance recommendation when initiated, followed by the interruption flow. A longer configured duration can provide separation between the recommendation and warning. The official [Spot interruption tutorial](https://docs.aws.amazon.com/fis/latest/userguide/fis-tutorial-spot-interruptions.html) describes the resulting stopped or terminated states and experiment-specific Spot request status codes.
 
-If the test breaches the chosen threshold, the alarm can stop the experiment. You can also call `aws fis stop-experiment --id "$EXPERIMENT_ID"`. Stopping an experiment is not a rollback of an already interrupted instance; continue verifying recovery and cleanup.
+If the test breaches the chosen threshold, the alarm can stop the experiment. You can also call `aws fis stop-experiment --region us-east-1 --id "$EXPERIMENT_ID"`. Stopping an experiment is not a rollback of an already interrupted instance; continue verifying recovery and cleanup.
 
 ## Review Results and Remove Test Resources
 
