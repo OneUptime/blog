@@ -202,7 +202,6 @@
 
 ## etcd
 
-19. How to Recover etcd from `wal: crc mismatch` Without Forcing a New Cluster Prematurely
 20. How to Drain and Replace an etcd Leader for Planned Maintenance with `move-leader`
 
 ## Spot Instances
