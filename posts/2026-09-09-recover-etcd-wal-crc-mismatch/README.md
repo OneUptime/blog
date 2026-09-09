@@ -56,7 +56,7 @@ etcdctl --endpoints="$SURVIVORS" member add etcd-1-replacement \
   --learner
 ```
 
-The placeholder must be replaced before execution. Retain the exact configuration printed by `member add`. Start the replacement on a new, empty data path, with its assigned name, the returned membership list, `initial-cluster-state=existing`, and valid peer/client TLS configuration. Do not start it against the preserved corrupt directory.
+The placeholder must be replaced before execution. Retain the exact configuration printed by `member add`. Start the replacement on a new, empty data path, with its assigned name, the returned membership list, `initial-cluster-state=existing`, and valid peer/client TLS configuration. If a separate `--wal-dir` is configured, point it to a new, empty WAL path as well. Do not start it against the preserved corrupt data or WAL directories.
 
 Adding as a learner avoids increasing voting requirements before the replacement catches up. Inspect its status and logs, then promote the verified new member ID once etcd accepts that it is synchronized:
 
