@@ -103,8 +103,10 @@ After fulfillment, inspect the fleet request and active instances:
 ```bash
 FLEET_ID=sfr-01234567-89ab-cdef-0123-456789abcdef
 aws ec2 describe-spot-fleet-requests \
+  --region us-east-1 \
   --spot-fleet-request-ids "$FLEET_ID"
 aws ec2 describe-spot-fleet-instances \
+  --region us-east-1 \
   --spot-fleet-request-id "$FLEET_ID"
 ```
 
