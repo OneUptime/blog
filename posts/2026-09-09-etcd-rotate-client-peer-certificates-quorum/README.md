@@ -70,7 +70,7 @@ Use a controlled rolling restart to load trust changes. Although etcd documents 
 
 ## Rotate one member and wait for recovery
 
-Before starting, verify all voting endpoints are healthy and save a snapshot through the approved backup workflow. Capture member IDs and a baseline status table using existing administrative credentials:
+Before starting, verify all voting endpoints are healthy and save a snapshot through the approved backup workflow. Capture member IDs and a baseline status table using existing administrative credentials. For the commands below, configure `ETCDCTL_ENDPOINTS` with all three HTTPS client endpoints and set `ETCDCTL_CACERT`, `ETCDCTL_CERT`, and `ETCDCTL_KEY` to the existing server trust bundle and administrative certificate/key paths; otherwise, etcdctl defaults to a local endpoint without these TLS credentials:
 
 ```bash
 etcdctl endpoint health
@@ -83,6 +83,8 @@ Choose a follower first. Stage the complete certificate/key set in a new protect
 ```bash
 sudo systemctl stop etcd
 # Install the previously verified matching files and configuration here.
+# If the systemd unit or a drop-in changed, reload the unit definitions:
+sudo systemctl daemon-reload
 sudo systemctl start etcd
 sudo journalctl -u etcd --since '5 minutes ago' --no-pager
 ```
@@ -99,6 +101,8 @@ openssl s_client -connect etcd1.example.com:2379 \
   -verify_return_error -CAfile client-server-trust.pem \
   -cert operator.crt -key operator.key </dev/null
 ```
+
+If the operator certificate requires intermediate certificates, add `-cert_chain operator-intermediates.pem` to send that chain.
 
 For peer TLS, test from an authorized peer environment using that peer's client certificate and validate the remote peer hostname. Then run authenticated etcd reads and endpoint health checks through the normal client path. TLS success alone does not confirm RBAC permissions or quorum-dependent operations.
 
