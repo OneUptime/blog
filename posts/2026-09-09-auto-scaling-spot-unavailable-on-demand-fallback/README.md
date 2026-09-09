@@ -26,7 +26,7 @@ At desired capacity 20, the first four instances belong to the On-Demand base. O
 
 If only six Spot instances can launch, the group can have eight On-Demand plus six Spot while still wanting twenty total. Increasing `MaxSize` alone does not change that mix. Increasing desired capacity changes the target, but it continues applying the same distribution and can simply increase the unfulfilled Spot requirement.
 
-This example uses whole-instance capacity and values without percentage rounding. Groups with weights require capacity-unit arithmetic and can temporarily exceed targets because instances are indivisible.
+This example uses whole-instance capacity and values without percentage rounding. Groups with weights require capacity-unit arithmetic and can exceed targets because instances are indivisible; this excess can persist while the desired capacity remains unchanged.
 
 ## Inspect the Policy and Actual Lifecycle
 
