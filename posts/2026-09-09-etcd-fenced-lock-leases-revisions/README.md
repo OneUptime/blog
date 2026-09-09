@@ -135,7 +135,7 @@ Never represent a fencing token as a floating-point number in JSON or another pr
 
 ## Plan for cluster restore and verify stale-owner rejection
 
-etcd revisions increase within a cluster history. Restoring an old snapshot or replacing the cluster can invalidate an assumption that future revisions exceed every token previously accepted by the external resource. Design a durable cluster-generation epoch or a reviewed revision-bump strategy that exceeds the downstream high-water mark. Keep the protected system fenced during recovery until that ordering is established.
+etcd revisions increase within a cluster history. Restoring an old snapshot or replacing the cluster can invalidate an assumption that future revisions exceed every token previously accepted by the external resource. Design a durable cluster-generation epoch enforced by the downstream resource, or a reviewed revision-bump strategy that exceeds every token issued by the old cluster, including tokens in delayed writes that have not reached the downstream high-water mark. Prevent the old cluster from issuing further tokens, and keep the protected system fenced during recovery until that ordering is established.
 
 Test with two workers and a real enforcing resource: delay A, let its lease expire, acquire B, successfully write B's higher token, then release A's delayed write. A must fail at the resource. Also test duplicate writes with the same token, cancellation before acquisition, loss of the ownership key, and cluster-recovery epoch handling.
 
