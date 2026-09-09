@@ -55,7 +55,6 @@
 
 ## Kuzu
 
-20. How to Diagnose Repeated Kuzu JSON Imports That Fail Across Connection Lifetimes
 
 ## Continuous Improvement
 
