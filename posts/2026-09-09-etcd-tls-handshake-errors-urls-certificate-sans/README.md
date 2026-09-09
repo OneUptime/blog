@@ -72,7 +72,7 @@ openssl s_client -connect etcd1.example.com:2379 \
 
 If the peer listener is the affected path, use port 2380 and the originating member's authorized peer certificate and key. Test from that member's actual network context because peer authentication may check the source IP against certificate identity.
 
-A protocol error before any certificate is presented points back to the wrong socket, scheme, or proxy behavior. An unknown-authority error points to the trust chain. A hostname error points to SANs. A client-certificate error points to mutual TLS or identity policy. Keep those observations distinct rather than repeatedly regenerating certificates.
+A first-record protocol error before any certificate is presented points back to the wrong socket, scheme, or proxy behavior. Other failures before certificate presentation can indicate TLS version or cipher incompatibility. An unknown-authority error points to the trust chain. A hostname error points to SANs. A client-certificate error points to mutual TLS or identity policy. Keep those observations distinct rather than repeatedly regenerating certificates.
 
 Do not use insecure certificate-verification flags as a fix. They do not correct a plaintext/TLS protocol mismatch, and they hide the identity problem once TLS starts working.
 
@@ -87,6 +87,8 @@ openssl x509 -in /etc/etcd/pki/server.crt \
   -noout -checkhost etcd1.example.com
 ```
 
+OpenSSL hostname checks can fall back to the certificate Common Name when no DNS SAN is present, while etcd's Go verifier ignores the legacy Common Name for server hostname validation. Confirm a matching DNS SAN in the extension output even if `-checkhost` succeeds.
+
 For an IP URL, verify that the certificate includes that address as an IP SAN. A DNS SAN containing the text of an IP address does not substitute for an IP SAN. Using a DNS name requires a matching DNS identity and correct name resolution.
 
 etcd also applies incoming peer certificate checks described in its [transport security model](https://etcd.io/docs/v3.7/op-guide/security/). Those checks can depend on peer IP SANs or DNS resolution. NAT, changed host addresses, or using a certificate issued for another member can fail even when the basic outgoing server-name check succeeds.
@@ -98,7 +100,11 @@ If only a client URL or health probe uses the wrong scheme, correct that client 
 For an advertised peer URL change, use the supported membership update before restarting the member with its matching local peer configuration:
 
 ```bash
-etcdctl member update MEMBER_ID \
+etcdctl --endpoints=https://etcd1.example.com:2379 \
+  --cacert=/etc/etcd/pki/ca.crt \
+  --cert=/etc/etcd/pki/operator.crt \
+  --key=/etc/etcd/pki/operator.key \
+  member update MEMBER_ID \
   --peer-urls=https://etcd2.example.com:2380
 ```
 
