@@ -202,7 +202,6 @@
 
 ## etcd
 
-4. How to Fix `tls: first record does not look like a TLS handshake` by Auditing etcd URLs and Certificate SANs
 5. How to Add an etcd Learner, Verify It Has Caught Up, and Promote It Safely
 6. Why Does an etcd Learner Pass `/readyz` but Reject gRPC Requests? Building an Accurate Health Check
 7. How to Recover an etcd Cluster Stuck at `RAFT NO LEADER` After a Failed Member Join
