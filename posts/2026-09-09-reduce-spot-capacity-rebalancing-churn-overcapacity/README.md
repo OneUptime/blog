@@ -66,7 +66,7 @@ Auto Scaling already considers replacement availability when responding to recom
 
 ## Bound Application Draining
 
-Inspect lifecycle hooks for unnecessarily long timeouts and missing `CompleteLifecycleAction` calls. Heartbeats can keep a hook alive during valid cleanup, but endlessly extending a broken drain keeps billable overlap around without improving recovery.
+Inspect lifecycle hooks for unnecessarily long timeouts and missing `CompleteLifecycleAction` calls. Heartbeats can keep a hook alive during valid cleanup, but repeatedly extending a broken drain keeps billable overlap around without improving recovery. The global timeout is 48 hours or 100 times the heartbeat timeout, whichever is smaller; heartbeats cannot extend the hook beyond that limit.
 
 Set a measured drain budget and report completion as soon as the application is ready to leave. Coordinate load-balancer deregistration and cleanup because those phases consume the same available interruption window. Lifecycle hooks do not stop EC2 from reclaiming a Spot Instance. [Lifecycle hook considerations](https://docs.aws.amazon.com/autoscaling/ec2/userguide/lifecycle-hooks.html).
 
