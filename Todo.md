@@ -55,7 +55,6 @@
 
 ## Kuzu
 
-6. How to Preserve Sort Keys While Returning Distinct Nodes in Kuzu
 7. How to Convert a Kuzu Subgraph into a Sparse Adjacency Matrix
 8. How to Pass an External Node Selection into a Kuzu Query with UNWIND
 9. How to Run a File of Cypher Commands Through the Kuzu CLI
