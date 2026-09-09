@@ -55,7 +55,6 @@
 
 ## Kuzu
 
-19. How to Replace Neo4j Bolt Driver Calls with Embedded Kuzu Connections
 20. How to Diagnose Repeated Kuzu JSON Imports That Fail Across Connection Lifetimes
 
 ## Continuous Improvement
