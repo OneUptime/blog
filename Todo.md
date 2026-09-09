@@ -205,7 +205,6 @@
 
 ## Spot Instances
 
-8. How to Prevent Capacity Rebalancing from Causing Excessive Instance Churn and Temporary Overcapacity
 9. How to Test Spot Interruption Handling Safely with AWS Fault Injection Service
 10. How to Trace a Spot Termination Through EventBridge, Auto Scaling Activity, and CloudTrail
 11. How to Finish In-Flight Kubernetes Requests Before a Spot Node Dies Using `preStop`, Readiness, and Load-Balancer Drain
