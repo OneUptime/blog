@@ -202,7 +202,6 @@
 
 ## etcd
 
-3. How to Rotate etcd Client and Peer Certificates One Member at a Time Without Losing Quorum
 4. How to Fix `tls: first record does not look like a TLS handshake` by Auditing etcd URLs and Certificate SANs
 5. How to Add an etcd Learner, Verify It Has Caught Up, and Promote It Safely
 6. Why Does an etcd Learner Pass `/readyz` but Reject gRPC Requests? Building an Accurate Health Check
