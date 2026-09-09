@@ -101,6 +101,7 @@ Read the group and its instances:
 
 ```bash
 aws autoscaling describe-auto-scaling-groups \
+  --region us-east-1 \
   --auto-scaling-group-names baseline-workers \
   --query 'AutoScalingGroups[0].{Desired:DesiredCapacity,Distribution:MixedInstancesPolicy.InstancesDistribution,Instances:Instances[].{Id:InstanceId,State:LifecycleState,Weight:WeightedCapacity}}' \
   --output json
@@ -110,6 +111,7 @@ The Auto Scaling response does not include the EC2 purchase lifecycle. Inspect E
 
 ```bash
 aws ec2 describe-instances \
+  --region us-east-1 \
   --filters Name=tag:aws:autoscaling:groupName,Values=baseline-workers \
             Name=instance-state-name,Values=pending,running \
   --query 'Reservations[].Instances[].{Id:InstanceId,Market:InstanceLifecycle,Type:InstanceType}' \

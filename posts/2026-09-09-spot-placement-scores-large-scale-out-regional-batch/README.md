@@ -58,7 +58,7 @@ aws ec2 get-spot-placement-scores \
   --output table
 ```
 
-Map the returned zone ID to your account's zone name and subnets:
+Map the returned zone ID to your account's zone name:
 
 ```bash
 aws ec2 describe-availability-zones \
@@ -75,7 +75,7 @@ AWS currently documents scores against the `capacity-optimized` strategy and a m
 
 Price-capacity optimization is useful for many production fleets, but do not treat a placement score as a calibrated forecast for that strategy. You can use the score as contextual information while explicitly acknowledging the mismatch, or use the documented strategy for a launch meant to align with the score.
 
-When manually listing types of different sizes, map vCPU units into launch weights. For these types the intended override excerpt for an Auto Scaling policy is:
+When manually listing types of different sizes, map vCPU units into launch weights. For these types the intended override excerpt under `MixedInstancesPolicy.LaunchTemplate` for an Auto Scaling group is:
 
 ```json
 {

@@ -111,7 +111,7 @@ The example rejects an empty prefix deliberately. An all-key export deserves an 
 
 Pagination bounds individual responses, not total memory in the example. For a larger export, write each page into a temporary file or private staging table, and publish that artifact only after the final page. Store the captured revision in its metadata. A partially written file should not appear to readers as a complete export.
 
-Choose a page size based on bytes and observed latency, not only the number of keys. One hundred large values may cost more than thousands of small ones. Keep request deadlines, an overall export deadline, and an upper bound on total bytes. The server's request limits and your client's receive-message settings also affect how large a response can be.
+Choose a page size based on bytes and observed latency, not only the number of keys. One hundred large values may cost more than thousands of small ones. Keep request deadlines, an overall export deadline, and an upper bound on total bytes. Your client's receive-message limit affects how large a response it can accept; the server's `--max-request-bytes` limit applies to requests, not Range responses.
 
 A historical read does not pin history in the server. If compaction removes the requested revision before the export finishes, the next request fails. Discard the partial export and restart from a fresh first page. Replacing only the failed page with a current read would mix snapshots. Repeated compaction failures mean the export duration and retention policy need attention.
 
@@ -121,7 +121,7 @@ Populate a test prefix with more keys than one page, including names where one i
 
 While the reader traverses pages, run a writer that adds a key in an earlier page's range, deletes a later key, and changes an existing value. The export should still represent its original revision. For a small test dataset, compare it with a single prefix read using that same revision before compaction removes it.
 
-Also test an empty prefix result and compaction during traversal. Confirm that callers receive an error without a partial result. If the result initializes a watch cache, begin the watch at the completed export revision plus one, and be prepared to relist if that watch revision has already been compacted.
+Also test a nonempty prefix with no matching keys and confirm that it succeeds with an empty result. Test compaction during traversal and confirm that callers receive an error without a partial result when the requested revision is no longer available. If the result initializes a watch cache, begin the watch at the completed export revision plus one, and be prepared to relist if that watch revision has already been compacted.
 
 ## Conclusion
 

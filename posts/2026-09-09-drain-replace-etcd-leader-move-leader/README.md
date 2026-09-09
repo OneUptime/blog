@@ -64,7 +64,7 @@ Applications should already tolerate transient unavailable responses with bounde
 
 Remove the maintenance endpoint from the service discovery, load balancer, or client endpoint configuration used by your applications. Keep the other healthy endpoints available. Understand that a long-lived gRPC connection can outlive a service-discovery change.
 
-Observe traffic and connection behavior, then allow a bounded drain interval consistent with the clients' deadlines. Do not wait forever for watch connections to finish naturally; watches are long-lived by design. Clients must reconnect and resume from their last fully processed revision, or rebuild their state if the revision has been compacted.
+Observe traffic and connection behavior, then allow a bounded drain interval consistent with the clients' deadlines. Do not wait forever for watch connections to finish naturally; watches are long-lived by design. Clients must reconnect and resume starting at the revision after their last fully processed revision, or rebuild their state if the required history has been compacted.
 
 Do not block peer traffic as a substitute for draining client traffic. Peers maintain consensus and replication while the old leader is still running as a follower. Client routing and peer membership have different lifecycles.
 
