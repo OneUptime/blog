@@ -202,7 +202,6 @@
 
 ## etcd
 
-17. How to Choose Linearizable or Serializable Reads in etcd for the Right Consistency–Latency Tradeoff
 18. How to Verify an etcd Snapshot’s Integrity, Revision, and Version Compatibility Before a Restore
 19. How to Recover etcd from `wal: crc mismatch` Without Forcing a New Cluster Prematurely
 20. How to Drain and Replace an etcd Leader for Planned Maintenance with `move-leader`
