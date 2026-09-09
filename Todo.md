@@ -202,7 +202,6 @@
 
 ## etcd
 
-5. How to Add an etcd Learner, Verify It Has Caught Up, and Promote It Safely
 6. Why Does an etcd Learner Pass `/readyz` but Reject gRPC Requests? Building an Accurate Health Check
 7. How to Recover an etcd Cluster Stuck at `RAFT NO LEADER` After a Failed Member Join
 8. How to Migrate an etcd Data Directory from a Slow Disk to SSD Without Rebuilding the Cluster
