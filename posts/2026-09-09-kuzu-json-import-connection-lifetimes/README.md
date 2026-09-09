@@ -81,7 +81,7 @@ with TemporaryDirectory() as directory:
                 assert collect(conn, f"MATCH (n:{table}) RETURN count(*)") == [[2]]
 ```
 
-Table names are generated from a controlled integer, not external input. File paths are escaped as Cypher string literals. The JSON file is a top-level array, so `format='array'` makes that contract explicit. A newline-delimited file needs the corresponding documented format instead.
+Table names are generated from a controlled integer, not external input. File paths are escaped as Cypher string literals. The JSON file is a top-level array, so `format='array'` makes that contract explicit. For a newline-delimited file, use `format='auto'` in Kuzu 0.11.3; its format option parser does not accept an explicit `newline_delimited` value.
 
 The 256 MiB buffer pool and two worker threads are fixture settings. They are not a production sizing rule. A small buffer pool combined with many default worker threads can fail even on a tiny JSON file because scan buffers also consume memory.
 
