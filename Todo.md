@@ -55,7 +55,6 @@
 
 ## Kuzu
 
-10. How to Save Kuzu CLI Query Results as Machine-Readable Files
 11. How to Model and Query Type Hierarchies with Category Nodes in Kuzu
 12. How to Represent Multiple Classification Labels on a Kuzu Node with List Properties
 13. How to Handle Missing Relationship Endpoints When Loading DataFrames into Kuzu
