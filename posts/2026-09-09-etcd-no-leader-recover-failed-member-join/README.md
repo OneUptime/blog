@@ -18,7 +18,7 @@ Pause further member additions, removals, restarts, and automated replacement at
 
 Preserve all existing data directories and any separate WAL directories. Do not delete files, edit WAL records, or initialize a new cluster over the old paths to clear the error. Those actions can remove the information needed to recover the original cluster.
 
-Use direct client endpoints with the deployment's existing TLS and administrative identity:
+Use direct client endpoints with the deployment's existing TLS and administrative identity. The commands below assume `ETCDCTL_CACERT`, `ETCDCTL_CERT`, and `ETCDCTL_KEY` are exported with the deployment's certificate paths; supply `--user` if password authentication is required:
 
 ```bash
 etcdctl --endpoints=https://etcd1.example.com:2379 \
@@ -62,17 +62,17 @@ An `initial-cluster` edit on an established member does not rewrite committed me
 
 ## Remove a failed join only when consensus works
 
-Once the existing cluster has a stable leader and a healthy majority, retrieve a fresh member list:
+Once the existing cluster has a stable leader and a healthy majority, retrieve a fresh member list through a healthy voter (etcd1 in this example):
 
 ```bash
-etcdctl member list --write-out=table
-etcdctl endpoint health
+etcdctl --endpoints=https://etcd1.example.com:2379 member list --write-out=table
+etcdctl --endpoints=https://etcd1.example.com:2379 endpoint health
 ```
 
 If the new member is an abandoned join attempt, remove its exact hexadecimal ID through a healthy authenticated voter:
 
 ```bash
-etcdctl member remove FAILED_JOIN_MEMBER_ID
+etcdctl --endpoints=https://etcd1.example.com:2379 member remove FAILED_JOIN_MEMBER_ID
 ```
 
 Stop the removed process and retain its files for diagnosis. A new attempt must receive a fresh identity and an empty data directory. Verify health again before adding a replacement learner.
@@ -81,7 +81,7 @@ Removing a member is itself a consensus operation. It cannot be used as a comman
 
 ## Choose disaster recovery only for permanent majority loss
 
-If enough original voters cannot be recovered, switch to a deliberate disaster-recovery plan. Fence or stop the old members so they cannot later reappear alongside a separately restored cluster. Select the best verified snapshot and explicitly account for writes after that snapshot, which may be lost.
+If a majority of the committed voting set cannot be recovered, including by correctly starting the registered new voter, switch to a deliberate disaster-recovery plan. Fence or stop the old members so they cannot later reappear alongside a separately restored cluster. Select the best verified snapshot and explicitly account for writes after that snapshot, which may be lost.
 
 Use `etcdutl snapshot restore` with the appropriate release to create new data directories and a new logical cluster. Restore every member from the same snapshot and use a reviewed new membership mapping. For Kubernetes and other watch-cache consumers, plan revision bumping and marking the bumped history compacted so caches are forced to refresh. The [disaster recovery guide](https://etcd.io/docs/v3.7/op-guide/recovery/) documents this path.
 
