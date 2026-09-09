@@ -55,7 +55,6 @@
 
 ## Kuzu
 
-3. How to Bind Nested List Properties Through the Kuzu C++ API
 4. How to Commit and Roll Back Manual Kuzu Transactions from C++
 5. How to Rewrite COUNT DISTINCT Subqueries as Grouped Kuzu Queries
 6. How to Preserve Sort Keys While Returning Distinct Nodes in Kuzu
