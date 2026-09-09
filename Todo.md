@@ -202,7 +202,6 @@
 
 ## etcd
 
-7. How to Recover an etcd Cluster Stuck at `RAFT NO LEADER` After a Failed Member Join
 8. How to Migrate an etcd Data Directory from a Slow Disk to SSD Without Rebuilding the Cluster
 9. How to Tune etcd Heartbeat and Election Timeouts for High-Latency Networks Without Masking Slow Disks
 10. How to Diagnose Frequent etcd Leader Elections Using WAL fsync, Backend Commit, and Peer RTT Metrics
