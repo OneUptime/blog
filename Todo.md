@@ -55,7 +55,6 @@
 
 ## Kuzu
 
-12. How to Represent Multiple Classification Labels on a Kuzu Node with List Properties
 13. How to Handle Missing Relationship Endpoints When Loading DataFrames into Kuzu
 14. How to Import PostgreSQL Join Results as Kuzu Nodes and Relationships
 15. How to Join Kuzu Graph Matches with Attached PostgreSQL Tables
