@@ -205,7 +205,6 @@
 
 ## Spot Instances
 
-7. How to Interpret EC2 Rebalance Recommendations Versus Two-Minute Interruption Notices
 8. How to Prevent Capacity Rebalancing from Causing Excessive Instance Churn and Temporary Overcapacity
 9. How to Test Spot Interruption Handling Safely with AWS Fault Injection Service
 10. How to Trace a Spot Termination Through EventBridge, Auto Scaling Activity, and CloudTrail
