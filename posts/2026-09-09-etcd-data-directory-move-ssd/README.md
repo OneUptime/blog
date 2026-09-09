@@ -31,17 +31,19 @@ Confirm that `/mnt/etcd-ssd` is actually the intended mounted filesystem. Otherw
 
 ## Prepare a recoverable maintenance window
 
-Record current member IDs, URLs, and versions. Verify every voting endpoint is healthy and take a snapshot through the established backup workflow before changing storage:
+Record current member IDs, cluster ID, URLs, and versions. Verify every voting endpoint is healthy and take a snapshot through the established backup workflow before changing storage:
 
 ```bash
+export ETCDCTL_ENDPOINTS=https://etcd1.example.com:2379,https://etcd2.example.com:2379,https://etcd3.example.com:2379
 etcdctl endpoint health
 etcdctl endpoint status --write-out=table
+etcdctl endpoint status --write-out=json
 etcdctl member list --write-out=table
 etcdctl --endpoints=https://etcd1.example.com:2379 \
   snapshot save /secure-backups/before-ssd-move.db
 ```
 
-Use existing TLS and administrative credentials, and choose a real secure backup directory on independent storage. A snapshot is a disaster-recovery artifact; it is not what this procedure uses to move the member. Restoring a snapshot creates a new logical identity, whereas copying this stopped member's complete data preserves its identity.
+Replace the example endpoints with all three voting endpoints and use existing TLS and administrative credentials for every command. Save the JSON status output to record the cluster ID and member IDs; the table does not show the cluster ID. Choose a real secure backup directory on independent storage. A snapshot is a disaster-recovery artifact; it is not what this procedure uses to move the member. Restoring a snapshot creates a new logical identity, whereas copying this stopped member's complete data preserves its identity.
 
 Choose a follower first. Confirm that the other two voters will remain available and avoid overlapping upgrades, defragmentation, backups that saturate disks, or additional restarts. If the selected member is leader, transfer leadership to an eligible healthy voter as part of the maintenance plan.
 
@@ -56,7 +58,7 @@ sudo systemctl is-active etcd
 
 The expected service state is inactive. Check for a separate supervisor or container restart policy if the process unexpectedly reappears. Do not copy a changing live directory and assume the backend, WAL, and snapshots will form a consistent member state.
 
-Create a new destination with the actual service account, then copy the entire directory. This example assumes the account and group are both named `etcd` and uses GNU rsync options:
+Create a new destination with the actual service account, then copy the entire directory. This example assumes the account and group are both named `etcd` and uses rsync with ACL and extended-attribute support:
 
 ```bash
 sudo install -d -o etcd -g etcd -m 0700 /mnt/etcd-ssd/member-data
