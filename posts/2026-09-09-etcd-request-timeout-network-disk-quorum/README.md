@@ -8,7 +8,7 @@ Description: Separate client connectivity, storage stalls, and consensus delays 
 
 ---
 
-`etcdserver: request timed out` describes an operation that exceeded its time budget. It does not identify the component that consumed that budget. The slow path might be the client connection, a leader waiting for peer acknowledgements, a saturated disk, or a member applying committed work.
+`etcdserver: request timed out` describes a server-side operation that exceeded its time budget. It does not identify the component that consumed that budget. The slow path might be a leader waiting for peer acknowledgements, a saturated disk, or a member applying committed work. Client connection delays can instead cause a client-side deadline or connection error.
 
 Start by locating the delay before changing timeouts. This workflow uses etcd 3.6 and 3.7 v3 commands and Prometheus metrics. It assumes three voting members with mutual TLS. Replace the example hostnames and certificate paths with your deployment's values, and collect evidence during a representative incident window.
 
