@@ -202,7 +202,6 @@
 
 ## etcd
 
-20. How to Drain and Replace an etcd Leader for Planned Maintenance with `move-leader`
 
 ## Spot Instances
 
