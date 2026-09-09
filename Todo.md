@@ -55,7 +55,6 @@
 
 ## Kuzu
 
-1. How to Extract Kuzu Table Properties and Relationship Endpoints into a Schema Dictionary
 2. How to Convert Kuzu LIST Query Results into C++ std::vector Values
 3. How to Bind Nested List Properties Through the Kuzu C++ API
 4. How to Commit and Roll Back Manual Kuzu Transactions from C++
