@@ -25,13 +25,13 @@ aws autoscaling describe-auto-scaling-groups \
 aws autoscaling describe-scaling-activities \
   --auto-scaling-group-name "$ASG_NAME" \
   --max-items 30 \
-  --query 'Activities[].{Time:StartTime,Status:StatusCode,Message:StatusMessage,Cause:Cause,Details:Details}' \
+  --query '{Activities:Activities[].{Time:StartTime,Status:StatusCode,Message:StatusMessage,Cause:Cause,Details:Details},NextToken:NextToken}' \
   --output json > scaling-activities.json
 ```
 
 Read the activity's `StatusMessage`, `Cause`, and `Details` together. Repeated insufficient-capacity messages across eligible types and zones point toward a supply constraint. Authentication errors, missing AMIs, invalid security groups, or quota messages lead to different remedies. AWS documents these failure classes in its [launch failure troubleshooting guide](https://docs.aws.amazon.com/autoscaling/ec2/userguide/ts-as-instancelaunchfailure.html).
 
-The command deliberately limits the first review to 30 activities. If the incident began earlier, retrieve additional pages or remove the client-side maximum. A busy group can generate many retries in a short interval.
+The command deliberately limits the first review to 30 activities. If the incident began earlier, retrieve additional pages by passing the returned `NextToken` to `--starting-token`, or remove the client-side maximum. A busy group can generate many retries in a short interval.
 
 ## Check Whether Launching Is Actually the Missing Step
 
