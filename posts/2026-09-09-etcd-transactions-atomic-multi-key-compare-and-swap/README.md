@@ -23,7 +23,7 @@ Imagine two keys:
 
 First read both in one read-only transaction. Two separate linearizable reads would each be consistent, but another writer could update the pair between them. The read-only transaction gives the application a coherent pair to use when deciding its replacement values.
 
-For each key, preserve its `ModRevision`. Comparing only its value permits an ABA sequence: another writer can change `v1` to `v2` and back to `v1` without your value comparison detecting the intervening updates. A modification revision comparison detects that history. For a missing key, a comparison against modification revision zero checks absence.
+For each key, preserve its `ModRevision`. Comparing only its value permits an ABA sequence: another writer can change `v1` to `v2` and back to `v1` without your value comparison detecting the intervening updates. A modification revision comparison detects that history. For a missing key, a comparison against modification revision zero checks absence at commit time, but cannot detect an intervening create-and-delete cycle.
 
 ## Implement the conditional update
 
@@ -117,7 +117,7 @@ On a comparison conflict, retry only after rereading and deciding whether the pr
 
 A deadline or connection error is different: the server may have committed the transaction before the response was lost. Treating that error as proof of failure can duplicate an operation. Setting a release to fixed strings is easier to reconcile than incrementing a counter or transferring a balance, but the application still needs a stated outcome policy.
 
-For operations that must be deduplicated, include an application-generated operation ID in the same transaction. Compare that operation marker's version with zero and write the marker alongside the data changes. On an uncertain outcome, read the marker linearly before deciding whether to retry. Retain markers long enough to cover every supported retry window, and bind each marker to the original request contents so that ID reuse cannot accept a different operation.
+For operations that must be deduplicated, include an application-generated operation ID in the same transaction. Compare that operation marker's version with zero and write the marker alongside the data changes. On an uncertain outcome, read the marker with a linearizable read before deciding whether to retry. An absent marker does not prove that an outstanding request cannot still commit; any retry must reuse the same operation ID and retain the marker-absence comparison. Retain markers long enough to cover every supported retry window, and bind each marker to the original request contents so that ID reuse cannot accept a different operation.
 
 ## Stay within the transaction's boundary
 
@@ -125,7 +125,7 @@ An etcd transaction only makes etcd operations atomic. It does not atomically up
 
 Avoid writing the same key twice inside one transaction branch. Validate request sizes and operation counts against your server's configured limits before turning this pattern into a bulk update facility. Prefix permissions must cover every comparison and requested operation; a narrowly authorized application should not need the root role for this workflow.
 
-For a rollback, read the current pair and use another conditional transaction to publish the previous pair. A blind rollback could overwrite a later valid release. Preserve the release's original values and observed revisions in your deployment record so the rollback can detect concurrent work.
+For a rollback, read the current pair and verify that both modification revisions still equal the successful publish transaction's revision. Use that saved revision in another conditional transaction to restore the previous pair, and stop on a conflict. Comparing only revisions from a fresh read could overwrite a later valid release that completed before that read. Preserve the release's original values (including whether each key existed) and its successful publish revision in your deployment record; delete keys that were originally absent when restoring the previous state.
 
 ## Verify contention deliberately
 
