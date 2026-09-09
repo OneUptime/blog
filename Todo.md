@@ -205,7 +205,6 @@
 
 ## Spot Instances
 
-10. How to Trace a Spot Termination Through EventBridge, Auto Scaling Activity, and CloudTrail
 11. How to Finish In-Flight Kubernetes Requests Before a Spot Node Dies Using `preStop`, Readiness, and Load-Balancer Drain
 12. How to Keep Kubernetes Replicas Out of the Same Spot Capacity Pool with Topology Spread and Multi-AZ Scheduling
 13. How to Keep StatefulSets and Persistent Volumes off Spot Nodes with Taints, Affinity, and Admission Policy
