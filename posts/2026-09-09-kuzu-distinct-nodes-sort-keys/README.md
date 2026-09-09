@@ -73,7 +73,7 @@ ORDER BY best_score DESC, person.id ASC;
 
 Ben precedes Cara because the representative scores are nine and seven. No extra `DISTINCT` is needed: grouping already produces one row per node. Change `max` to another aggregate only when the definition of ranking changes.
 
-By comparison, `WITH DISTINCT person, recommendation.score` keeps Ben's scores four and nine as separate rows. Adding the score to the distinct projection preserves it but does not solve node deduplication. Dropping the score without choosing a representative makes the intended order ambiguous.
+By comparison, `WITH DISTINCT person, recommendation.score AS score` keeps Ben's scores four and nine as separate rows. Adding the score to the distinct projection preserves it but does not solve node deduplication. Dropping the score without choosing a representative makes the intended order ambiguous.
 
 ## Apply pagination after ranking
 
