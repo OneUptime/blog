@@ -205,7 +205,6 @@
 
 ## Spot Instances
 
-4. Why Doesn’t an AWS Mixed Instances Auto Scaling Group Fall Back to On-Demand When Spot Is Unavailable?
 5. How to Configure On-Demand Base Capacity and Spot Percentage for a Reliable EC2 Auto Scaling Baseline
 6. How to Use Spot Placement Scores Before a Large Scale-Out or Regional Batch Run
 7. How to Interpret EC2 Rebalance Recommendations Versus Two-Minute Interruption Notices
