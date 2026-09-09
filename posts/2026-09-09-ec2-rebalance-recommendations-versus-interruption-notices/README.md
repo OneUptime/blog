@@ -98,7 +98,7 @@ A queue worker should stop requesting messages, complete short in-flight work wh
 
 An HTTP server should stop receiving new requests through its traffic-management path and finish requests within a measured drain budget. Coordinate deregistration, connection handling, and application shutdown rather than assigning the full two minutes independently to each phase.
 
-A lifecycle hook can coordinate Auto Scaling termination but cannot postpone EC2 reclaiming Spot capacity indefinitely. Plan for a late signal and for complete machine loss without a graceful exit.
+A lifecycle hook can coordinate Auto Scaling termination but cannot delay EC2 reclaiming Spot capacity. Plan for a late signal and for complete machine loss without a graceful exit.
 
 ## Validate Both Paths
 
