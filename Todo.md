@@ -40,6 +40,27 @@
 
 ## Cloud Controller
 
+1. How to Fix OpenStack Cloud Controller Manager x509 Errors with a Custom CA Bundle
+2. How to Fix OpenStack CCM Cannot Patch services/status Errors
+3. How to Diagnose NodePort Already Allocated After Cloud Controller Load Balancer Cleanup
+4. How to Diagnose Octavia API Timeouts During Kubernetes Load Balancer Creation
+5. How to Attach an Existing OpenStack Floating IP to a Kubernetes LoadBalancer Service
+6. How to Select OpenStack Floating IP Pools with Cloud Controller Load Balancer Classes
+7. How to Share an Octavia Load Balancer Across Kubernetes Services
+8. How to Prevent OpenStack Load Balancer Name Collisions Between Kubernetes Clusters
+9. How to Diagnose OpenStack CCM Registering the Wrong Interface as a Load Balancer Backend
+10. How to Refresh OpenStack Load Balancer Membership After Changing Node Selector Labels
+11. How to Adopt an Existing DigitalOcean Load Balancer into a Kubernetes Service
+12. How to Transfer a DigitalOcean Load Balancer Between Clusters Without Changing Its IP
+13. How to Fix DigitalOcean CCM Load Balancer Creation in a Non-Default VPC
+14. How to Diagnose In-Cluster Requests Failing Through a DigitalOcean Proxy Protocol Load Balancer
+15. How to Fix cert-manager Self-Checks with the DigitalOcean Load Balancer Hostname Annotation
+16. How to Rotate Hetzner Cloud Controller Credentials and Verify They Took Effect
+17. How to Diagnose Hetzner Managed Certificate Name Collisions After Changing Domains
+18. How to Set the Hetzner CCM Load Balancer Type Instead of Relying on Its Default
+19. How to Fix Hetzner Load Balancer IPVS Routing Loops with Private Ingress Settings
+20. How to Include Control-Plane Nodes in Cloud Controller Load Balancer Backends
+
 
 ## Entra ID
 
@@ -2565,6 +2586,27 @@
 38. How to Publish a Discoverable Image in Amazon ECR Public with Catalog Metadata and Multi-Architecture Tags
 39. How to Diagnose Amazon ECR Manifest Media-Type Mismatches When Pulling by Digest
 40. How to Bulk-Migrate Images from an Unsupported Third-Party Registry into Amazon ECR Without Rebuilding Them
+41. How to Use Amazon ECR Credential Helper with AWS IAM Identity Center and Named SSO Profiles
+42. How to Fix Amazon ECR Pulls That Work Interactively but Fail in Cron Jobs
+43. How to Fix Amazon ECR Public Login Endpoint Errors by Selecting the Correct API Region
+44. How to Resolve Amazon ECR Public Pull Rate Limits on Shared CI Runners
+45. How to Reconcile Amazon ECR Compressed Image Sizes with Docker Local Disk Usage
+46. How to Compare Amazon ECR Manifest Digests with Docker Image IDs and Kubernetes imageID Values
+47. How to Select the Most Recently Pushed Amazon ECR Image in Terraform Without Assuming a latest Tag
+48. How to Inventory Amazon ECR Image Sizes Across Repositories Without Counting Every Tag as Another Image
+49. How to Reconcile Deleted Amazon ECR Tags Across Regions When Replication Leaves Them Behind
+50. How to Configure CloudFormation to Delete Disposable Nonempty ECR Repositories with EmptyOnDelete
+51. How to Refactor Terraform ECR Resources from Separate Blocks to for_each Without Recreating Repositories
+52. How to Import a Retained Amazon ECR Repository into CDK After a Stack Rollback
+53. How to Fix Amazon ECR Pull-Through Cache Failures Caused by Missing Docker Hub library Namespaces
+54. How to Correct Secrets Manager Credential Fields for Amazon ECR Pull-Through Cache Rules
+55. How to Route CI Docker Hub Image References Through ECR When Docker Registry Mirrors Cannot Add a Path
+56. How to Filter Amazon Inspector Findings to ECR Images Still Running in ECS or EKS
+57. How to Add Architecture-Specific Tags to an Amazon ECR Multi-Platform Image and Verify Their Manifests
+58. How to Diagnose Stale Application Code After Amazon ECR Push Reports Layer Already Exists
+59. How to Pass Amazon ECR Registry Credentials to Docker Swarm Workers During Service Updates
+60. How to Fix Docker Error Saving Credentials with the Amazon ECR Helper and Existing credHelpers Entries
+
 
 ## Container Networking
 
@@ -2611,6 +2653,27 @@
 18. How to Exclude `managedFields` from Kubernetes Audit Logs Without Disabling Server-Side Apply
 19. How to Verify Server-Side Apply Support and Field Validation Behavior on a Kubernetes Cluster
 20. How to Prevent `managedFields` Bloat by Keeping Server-Side Apply Manager Names Stable
+21. How to Apply Large Prometheus Operator CRDs Without Hitting the Annotation Size Limit
+22. How to Manage Kubernetes Secret Data with Server-Side Apply When stringData Causes Drift
+23. How to Fix Duplicate Service Port Names After Switching to Server-Side Apply
+24. How to Change topologySpreadConstraints with Server-Side Apply Without Retaining the Old Rule
+25. How to Remove Duplicate Container Environment Variables Before Enabling Server-Side Apply
+26. How to Diagnose Reconcile Loops Caused by Empty Maps in Server-Side Apply Manifests
+27. How to Investigate StatefulSet resourceVersion Churn After an Unchanged Server-Side Apply
+28. How to Preserve managedFields When a CRD Status Writer Uses a Different API Version
+29. How to Investigate Lost Field Ownership After a CRD Conversion Webhook Outage
+30. How to Test Server-Side Apply Controllers with the controller-runtime Fake Client
+31. How to Generate Typed Apply Configurations for a Custom Kubernetes API
+32. How to Preserve Previously Owned Fields with client-go ExtractDeployment
+33. How to Migrate controller-runtime Code to the Native Client.Apply API
+34. How to Diagnose Field Ownership Differences Between Fake Client Tests and envtest
+35. How to Fix Helm 4 Server-Side Apply Conflicts on Aggregated ClusterRole Rules
+36. How to Fix Argo CD Field Not Declared in Schema Errors After Enabling Server-Side Apply
+37. How to Detect Hidden WorkflowTemplate Drift Caused by Opaque CRD Fields in Server-Side Diff
+38. How to Audit Field Ownership Before Changing a CRD Map from Granular to Atomic
+39. How to Grant Server-Side Apply Permissions to a Kubernetes CI Service Account
+40. How to Separate Apply Conflict Errors from Kubernetes resourceVersion Conflicts
+
 
 ## Litmus
 
@@ -7789,3 +7852,164 @@
 18. How to Lay Out Complex CUDA Data Structures in Host and Device Buffers Using Offsets
 19. How to Diagnose Slow CPU Reads of CUDA Unified Memory and Prefetch Data Back to the Host
 20. How to Choose CUDA Block Sizes When Higher Occupancy Makes a Kernel Slower
+
+## Agile
+
+1. How to Handle Production Incidents Mid-Sprint While Preserving the Sprint Goal
+2. How to Track Unplanned Support Work Without Retrospectively Inflating Story Points
+3. How to Split a Full-Stack User Story into Independently Testable Vertical Slices
+4. How to Coordinate Frontend and Backend Tasks Within One User Story
+5. How to Return Unfinished Stories to the Product Backlog and Replan the Remaining Work
+6. How to Plan Sprint Capacity When Carryover Work Is Almost Done
+7. How to Timebox an Agile Research Spike with a Specific Decision to Make
+8. How to Close an Inconclusive Architecture Spike and Update the Related Story Estimate
+9. How to Write a Definition of Done That Includes Testing and Release Readiness
+10. How to Finish Testing Within the Sprint When QA Receives Work Too Late
+11. How to Surface Cross-Team Dependencies Before Committing to Sprint Work
+12. How to Reduce Cross-Team Dependencies When Several Teams Change the Same Services
+13. How to Set One Sprint Goal When Stakeholders Bring Unrelated Priorities
+14. How to Assess Sprint Outcomes When the Goal Is Met but Some Stories Remain Unfinished
+15. How to Turn the Daily Scrum into a Plan for the Next Day
+16. How to Forecast an Agile Release Date Using Historical Throughput and a Confidence Range
+17. How to Plan an Agile Release Around a Fixed Deadline by Negotiating Scope
+18. How to Set Kanban WIP Limits for a Team Working Across Multiple Projects
+19. How to Clear a Code Review Bottleneck When the Kanban Board Reaches Its WIP Limit
+20. How to Adjust Kanban WIP Limits Using Observed Flow Rather Than Developer Headcount
+
+## ReplicaSets
+
+1. How to Diagnose ReplicaSet FailedCreate When Kubernetes Events Have Already Expired
+2. How to Fix ReplicaSet Pod Creation Failures Caused by a Missing ServiceAccount
+3. How to Fix ReplicaSet matchExpressions That Do Not Match the Pod Template Labels
+4. How to Stop a ReplicaSet from Adopting and Deleting a Manually Created Pod
+5. How to Trace a Pod to Its ReplicaSet and Deployment Using Owner Reference UIDs
+6. How to Replace a Standalone ReplicaSet While Preserving Its Running Pods
+7. How to Diagnose Overlapping ReplicaSet Selectors Without Confusing Labels and Ownership
+8. How to Move a Standalone ReplicaSet Workload to a Deployment for Rolling Image Updates
+9. How to Stop a Deployment from Recreating a Deleted ReplicaSet
+10. How to Quarantine a ReplicaSet Pod for Debugging While Its Replacement Starts
+11. How to Prefer Idle ReplicaSet Pods During Scale-Down with pod-deletion-cost
+12. How to Diagnose ReplicaSet Scale-Down That Ignores Your Pod Deletion Cost Preference
+13. How to Account for Terminating ReplicaSet Pods That Still Consume Cluster Capacity
+14. How to Interpret ReplicaSet readyReplicas and availableReplicas When minReadySeconds Is Set
+15. How to Choose Between a ReplicaSet and Its Deployment as an HPA Target
+16. How to Measure the Control-Plane Cost of Retaining Zero-Replica ReplicaSets
+17. How to Clean Up Old ReplicaSets Without Removing the Revisions You Need for Rollback
+18. How to Compare Image Digests Across ReplicaSets When Mutable Tags Produce Mixed Versions
+19. How to Predict Whether a Deployment Edit Will Create a New ReplicaSet
+20. How to Give ReplicaSet Pods Unique Application IDs Without Assuming Stable Ordinals
+
+## LogQL
+
+1. How to Count Unique Active Users Across the Selected Grafana Time Range with LogQL
+2. How to Get One Total Log Count for an Exact Time Window with an Instant LogQL Query
+3. How to Fix a LogQL Top-K Panel That Displays More Than K Series
+4. How to Rank Error Reasons from JSON Logs by Summing Streams Before LogQL topk
+5. How to Fill Missing LogQL Counts with Zero While Preserving Namespace Labels
+6. How to Keep LogQL Subtraction Working When One Side Has No Matching Logs
+7. How to Add Labels to Formatted Loki Logs While Preserving the Original Line
+8. How to Filter Loki Logs by Comparing Two JSON Fields with LogQL label_format
+9. How to Extract Serilog @l and Other JSON Keys with Special Characters in LogQL
+10. How to Extract a Specific JSON Array Element into a LogQL Label
+11. How to Match and Exclude Multiline Stack Traces in LogQL JSON Fields
+12. How to Make a LogQL Exclusion Filter Optional When a Grafana Textbox Is Empty
+13. How to Group Loki HTTP Requests by URL Path After Removing Query Parameters
+14. How to Group Repeated Loki Errors by Message Template Instead of Variable IDs
+15. How to Calculate Elapsed Time from Two Logged Timestamps Before LogQL Aggregation
+16. How to Plot Per-Endpoint P99 Latency from Loki Logs with quantile_over_time
+17. How to Format Selected Nested JSON Fields in Loki with fromJson Templates
+18. How to Exclude Loki Error Messages That Contain Changing Numeric IDs
+19. How to Translate Combined AND and OR Text Searches into LogQL Filters
+20. How to Measure Log Bytes per Service with LogQL bytes_over_time
+
+## Row Storage
+
+1. How to Measure PostgreSQL Row Storage Beyond pg_column_size
+2. How to Reduce PostgreSQL Row Padding by Reordering Columns in a New Table
+3. How to Calculate PostgreSQL NULL Bitmap Overhead for Wide Tables
+4. How to Map a PostgreSQL ctid to Its Heap Page and Inspect the Stored Tuple
+5. How to Decode PostgreSQL Tuple Visibility Flags with heap_tuple_infomask_flags
+6. How to Trace Large PostgreSQL TOAST Tables Back to Their Owning Tables
+7. How to Distinguish Inline, Compressed, and Out-of-Line PostgreSQL Column Storage
+8. How to Reconcile PostgreSQL Table Size with Heap, Index, TOAST, and Relation Fork Usage
+9. How to Reclaim PostgreSQL Storage After Dropping a Large Column with a Planned Table Rewrite
+10. How to Avoid Rewriting Unchanged TOAST Values in PostgreSQL UPDATE Statements
+11. How to Recompress Existing PostgreSQL TOAST Values After Switching to LZ4
+12. How to Measure InnoDB Row Density for VARCHAR Columns with Large Declared Limits
+13. How to Verify Whether InnoDB Stores a BLOB Inline or on Overflow Pages
+14. How to Migrate Existing InnoDB Tables from COMPACT to DYNAMIC Row Format
+15. How to Account for Primary-Key Copies in InnoDB Secondary-Index Storage
+16. How to Distinguish Forwarded Records from Forwarded Fetches in a SQL Server Heap
+17. How to Remove SQL Server Heap Forwarded Records and Budget the Rebuild Cost
+18. How to Reclaim Empty SQL Server Heap Pages After Large Deletes
+19. How to Compare SQL Server ROW and PAGE Compression Savings Before Rebuilding a Table
+20. How to Verify Actual SQL Server Page Compression When Metadata Already Says PAGE
+
+## LocalStack
+
+1. How to Restore LocalStack Docker Compose Startup After the 2026 Auth Token Requirement
+2. How to Configure LocalStack CI Auth Tokens in GitHub Actions Integration Tests
+3. How to Diagnose LocalStack License Activation Failures After a Trial or Token Rotation
+4. How to Preserve LocalStack S3 Buckets and DynamoDB Tables Across Docker Restarts
+5. How to Reuse a Known LocalStack Test Dataset Across CI Jobs with State Snapshots
+6. How to Bootstrap LocalStack Buckets and Tables with Idempotent ready.d Initialization Hooks
+7. How to Fix LocalStack Initialization Scripts That Are Mounted but Never Execute
+8. How to Wait for LocalStack Resource Initialization Before Starting Testcontainers Tests
+9. How to Fix LocalStack Connection Refused Errors from an Application in Another Docker Container
+10. How to Connect LocalStack Lambda Containers to Local S3, SQS, and DynamoDB Endpoints
+11. How to Generate LocalStack S3 Presigned URLs That Work in Both Docker and the Browser
+12. How to Configure LocalStack S3 Virtual-Hosted and Path-Style Addressing for AWS SDK Clients
+13. How to Fix LocalStack SQS Queue URLs That Ignore a Randomly Mapped Container Port
+14. How to Diagnose LocalStack NonExistentQueue Errors Caused by Region and Account Mismatches
+15. How to Connect LocalStack SNS Topics to SQS Queues Using Queue ARNs
+16. How to Keep Terraform Provider Requests on LocalStack When STS Returns InvalidClientTokenId
+17. How to Configure a Terraform S3 Backend for LocalStack Separately from AWS Provider Endpoints
+18. How to Wait for LocalStack Lambda Functions to Become Active Before Invoking Them
+19. How to Reproduce S3 Object-Created Notifications and Lambda Processing in LocalStack
+20. How to Pin LocalStack Calendar-Version Docker Images for Reproducible Integration Tests
+
+## EKS
+
+1. How to Recover kubectl Access to EKS When an IAM Administrator Still Receives Unauthorized
+2. How to Fix Missing Kubernetes Resources in the EKS Console When kubectl Already Works
+3. How to Resolve EKS PodEvictionFailure by Finding Blocking PDBs and Overly Broad Tolerations
+4. How to Convert EKS AL2 Bootstrap User Data to AL2023 nodeadm NodeConfig
+5. How to Diagnose EKS AL2023 Nodes That Never Join by Tracing nodeadm Services and EC2 API Calls
+6. How to Detect Custom EKS AL2023 User Data Skipped by a cloud-init Systemd Ordering Cycle
+7. How to Find the Per-Node ENI and IP Limit Behind EKS Failed to Assign an IP Address Errors
+8. How to Tune EKS VPC CNI Warm IP Targets When Prefix Delegation Stops Allocating Capacity
+9. How to Fix EKS InsufficientCidrBlocks Errors with Contiguous Subnet CIDR Reservations
+10. How to Update EKS Managed Add-ons Without Losing Custom CoreDNS and VPC CNI Configuration
+11. How to Fix EKS Pod Identity Agent CrashLoopBackOff After Enabling Unsupported Helm Metrics Arguments
+12. How to Restore EKS Pod Identity Credentials for Pods Using Security Groups for Pods
+13. How to Configure NO_PROXY for EKS Pod Identity Link-Local Credential Requests
+14. How to Disable the EKS Pod Identity Agent IPv6 Listener on IPv4-Only Nodes
+15. How to Resolve EKS Add-on Pod Identity Association Already Exists Errors in Terraform
+16. How to Schedule Pending EKS CoreDNS Pods onto Fargate by Checking Profiles and Compute Annotations
+17. How to Fix EKS Fargate LOGGING_CONFIGMAP_NOT_FOUND and Verify Log Router Activation
+18. How to Fix EKS Load Balancer Webhook Timeouts by Testing Control-Plane Access to Port 9443
+19. How to Repair EKS Load Balancer Webhook x509 Errors by Checking Certificates and CA Bundles
+20. How to Enable EKS Pod Identity in Private Clusters with the eks-auth VPC Endpoint
+
+## Edge Operations
+
+1. How to Detect Silent Edge Devices When the Last Reported Health Check Still Looks Healthy
+2. How to Preserve Azure IoT Edge Telemetry Queues When edgeHub Containers Are Recreated
+3. How to Size an Edge Gateway's Offline Buffer from Message Rate, Outage Duration, and Expiry
+4. How to Deduplicate Replayed Edge Telemetry After a Device Reconnects to the Cloud
+5. How to Resume Interrupted Edge Update Downloads over Cellular Links and Verify the Completed Payload
+6. How to Halt an Edge Fleet Rollout When a Hardware Revision Starts Failing Boot Checks
+7. How to Mark a RAUC Edge Update Successful Only After Critical Application Services Recover
+8. How to Recover an Edge Device When Its Management Agent Update Breaks the Control Connection
+9. How to Roll Back Edge Application Updates When Shared Configuration Has Changed Format
+10. How to Diagnose Thermal Throttling Behind Slow Inference on Remote Raspberry Pi Edge Devices
+11. How to Move an Edge Video Ring Buffer off the SD Card While Keeping the Root Filesystem Read-Only
+12. How to Fix Azure IoT Edge Disk Exhaustion Without Deleting Unsent Telemetry
+13. How to Plan Edge Certificate Renewal for Devices That May Be Offline Beyond the Renewal Window
+14. How to Test Whether Azure IoT Edge Can Cold-Start Without Internet After Initial Provisioning
+15. How to Collect Edge Device Diagnostic Bundles on Networks That Permit Only Outbound HTTPS
+16. How to Diagnose Tailscale Relay Fallback When Accessing Edge Gateways Behind Cellular CGNAT
+17. How to Test Edge OTA Recovery by Cutting Power During Download, Installation, and First Boot
+18. How to Recover Edge Device Connectivity When a Power Failure Resets the System Clock
+19. How to Run Edge OS Release Tests on Physical Raspberry Pi Devices in CI
+20. How to Limit Edge Fleet Reconnect Storms After a Regional Cellular Outage
