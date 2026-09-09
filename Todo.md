@@ -202,7 +202,6 @@
 
 ## etcd
 
-6. Why Does an etcd Learner Pass `/readyz` but Reject gRPC Requests? Building an Accurate Health Check
 7. How to Recover an etcd Cluster Stuck at `RAFT NO LEADER` After a Failed Member Join
 8. How to Migrate an etcd Data Directory from a Slow Disk to SSD Without Rebuilding the Cluster
 9. How to Tune etcd Heartbeat and Election Timeouts for High-Latency Networks Without Masking Slow Disks
