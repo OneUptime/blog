@@ -202,7 +202,6 @@
 
 ## etcd
 
-9. How to Tune etcd Heartbeat and Election Timeouts for High-Latency Networks Without Masking Slow Disks
 10. How to Diagnose Frequent etcd Leader Elections Using WAL fsync, Backend Commit, and Peer RTT Metrics
 11. How to Stream etcd v3 Watch Events Through the gRPC Gateway Without Buffering or Silent Hangs
 12. How to Implement Lease KeepAlive and Automatic Key Cleanup Without Leaking Sessions in etcd
