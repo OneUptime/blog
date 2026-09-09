@@ -105,7 +105,7 @@ Fetch remote data and perform slow application computation before starting a wri
 
 A read-only transaction is appropriate when several queries must observe a consistent database state. It cannot be upgraded into a write workflow by casually issuing an insert. Choose the correct transaction type at the beginning and keep the same ownership discipline.
 
-Do not use `CHECKPOINT` as a substitute for commit. Commit determines whether the transaction's changes become durable; checkpoint concerns moving WAL contents into the database files. Requesting checkpoints inside an active transaction is not a way to strengthen the transaction boundary.
+Do not use `CHECKPOINT` as a substitute for commit. For an on-disk database, commit makes the transaction's changes durable; checkpoint concerns moving WAL contents into the database files. The `:memory:` database in this example does not persist data after the process exits. Requesting checkpoints inside an active transaction is not a way to strengthen the transaction boundary.
 
 ## Handle retries at the operation level
 
