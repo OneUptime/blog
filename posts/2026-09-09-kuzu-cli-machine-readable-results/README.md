@@ -49,7 +49,7 @@ For an automated export, use a controlled working directory with no startup file
 
 Two queries in JSON mode produce two result arrays, not one merged JSON document. DDL statements can produce their own result objects. A JSON parser should reject this concatenated output instead of the consumer silently reading only the first array.
 
-Error handling also needs care. A query error can be reported without a failing process exit status. Inspect the error log and parse the output. Parsing alone is insufficient if a script executes another successful query after a failed query, which is another reason to export exactly one statement.
+Error handling also needs care. A query error can be reported without a failing process exit status. In 0.11.3, query errors are printed to stdout, so they appear in the redirected data file rather than `people.errors`; some startup failures and warnings go to stderr. Inspect the error log and parse the entire output without filtering out diagnostic lines. A successful parse still does not establish that the intended query ran or returned the expected contents, which is another reason to export exactly one statement and check its columns and counts.
 
 ## Use NDJSON for record-oriented processing
 
@@ -70,7 +70,8 @@ with open("people.ndjson", encoding="utf-8") as stream:
     for line in stream:
         if line.strip():
             record = json.loads(line)
-            assert set(record) == {"id", "name"}
+            if not isinstance(record, dict) or set(record) != {"id", "name"}:
+                raise ValueError("Expected an object with id and name fields")
             count += 1
 print(f"Read {count} people")
 ```
@@ -93,7 +94,7 @@ COPY (
 
 Run that statement through the CLI and retain its status output separately. The file contains query data; banners and timing information stay in the shell output. Use a new destination path and verify the resulting file rather than assuming an existing file was replaced as intended.
 
-Kuzu also supports documented JSON and Parquet export paths. JSON export requires the JSON extension to be loaded; it is bundled with 0.11.3. Parquet is often a better choice when downstream code needs to preserve typed columns. Choose a format based on the consumer's requirements, not the terminal display you prefer.
+Kuzu also supports documented JSON and Parquet export paths. JSON export uses the JSON extension, which is bundled and pre-loaded in the official 0.11.3 release; no manual `INSTALL` or `LOAD` is needed. Parquet is often a better choice when downstream code needs to preserve typed columns. Choose a format based on the consumer's requirements, not the terminal display you prefer.
 
 ## Validate contents and publish atomically
 
