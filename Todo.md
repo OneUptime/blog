@@ -202,7 +202,6 @@
 
 ## etcd
 
-15. How to Page Through a Large etcd Prefix with Range End, Limit, and Revision Consistency
 16. How to Isolate Multiple Applications with etcd Users, Roles, and Prefix Permissions
 17. How to Choose Linearizable or Serializable Reads in etcd for the Right Consistency–Latency Tradeoff
 18. How to Verify an etcd Snapshot’s Integrity, Revision, and Version Compatibility Before a Restore
