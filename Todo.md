@@ -55,7 +55,6 @@
 
 ## Kuzu
 
-15. How to Join Kuzu Graph Matches with Attached PostgreSQL Tables
 16. How to Reject a Kuzu Relationship Insert That Would Create a Bill-of-Materials Cycle
 17. How to Find Cycles in a Kuzu Bill-of-Materials Graph After Bulk Loading
 18. How to Verify Which Iceberg Snapshot a Kuzu Import Reads
