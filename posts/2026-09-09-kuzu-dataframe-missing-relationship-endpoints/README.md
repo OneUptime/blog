@@ -31,7 +31,11 @@ The following complete example loads two nodes, quarantines an unknown source an
 import kuzu
 import pandas as pd
 
-people = pd.DataFrame({"id": [1, 2], "name": ["Ada", "Ben"]})
+# Kuzu 0.11.3 needs object strings instead of pandas 3's inferred str dtype.
+people = pd.DataFrame({
+    "id": [1, 2],
+    "name": pd.Series(["Ada", "Ben"], dtype="object"),
+})
 links = pd.DataFrame({
     "source": pd.Series([1, 9, None], dtype="Int64"),
     "destination": pd.Series([2, 2, 1], dtype="Int64"),
