@@ -40,7 +40,6 @@
 
 ## Cloud Controller
 
-18. How to Set the Hetzner CCM Load Balancer Type Instead of Relying on Its Default
 19. How to Fix Hetzner Load Balancer IPVS Routing Loops with Private Ingress Settings
 20. How to Include Control-Plane Nodes in Cloud Controller Load Balancer Backends
 
