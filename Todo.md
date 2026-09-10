@@ -209,7 +209,6 @@
 
 ## OTTL
 
-6. How to Migrate Pre-0.120 Transform Processor Configuration to the Current OTTL Statement Syntax
 7. How to Copy Regex-Matched Resource Attributes into a Nested Map with OTTL Cache
 8. Why Do OTTL Resource Changes Leak Across Log Records? Using `flatten_data` Safely
 9. How to Drop Kubernetes Liveness and Readiness Probe Spans with an OTTL Filter
