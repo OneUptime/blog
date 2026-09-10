@@ -206,7 +206,6 @@
 
 ## Spot Instances
 
-14. How to Checkpoint and Resume Kubernetes Jobs After Spot Eviction Instead of Restarting from Zero
 15. How to Stop Karpenter Consolidation from Repeatedly Disrupting Long-Running Batch Jobs
 16. How to Size `terminationGracePeriodSeconds` for Spot Nodes with Only Two Minutes to Drain
 17. How to Preserve EBS Data and Reattach Volumes After a Spot Instance Is Terminated
