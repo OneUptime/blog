@@ -40,7 +40,6 @@
 
 ## Cloud Controller
 
-2. How to Fix OpenStack CCM Cannot Patch services/status Errors
 3. How to Diagnose NodePort Already Allocated After Cloud Controller Load Balancer Cleanup
 4. How to Diagnose Octavia API Timeouts During Kubernetes Load Balancer Creation
 5. How to Attach an Existing OpenStack Floating IP to a Kubernetes LoadBalancer Service
