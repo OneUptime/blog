@@ -12,7 +12,7 @@ OpenTelemetry Collector Contrib **0.160.0** includes the `Coalesce` converter. I
 
 ## Write the Compatibility Rule
 
-For HTTP request methods, use the current attribute first:
+For HTTP request methods whose legacy values already satisfy the current method convention, use the current attribute first:
 
 ```yaml
 processors:
@@ -29,7 +29,7 @@ processors:
 
 The guard avoids passing an all-missing result to `set`, making the rule independent of nil-setting feature-gate behavior. The list order says the new key wins if both exist.
 
-The [Coalesce source](https://github.com/open-telemetry/opentelemetry-collector-contrib/blob/v0.160.0/pkg/ottl/ottlfuncs/func_coalesce.go) and [function reference](https://github.com/open-telemetry/opentelemetry-collector-contrib/blob/v0.160.0/pkg/ottl/ottlfuncs/README.md#coalesce) define the first-non-nil behavior. The [HTTP migration guide](https://opentelemetry.io/docs/specs/semconv/non-normative/http-migration/) supplies the semantic key mapping.
+The [Coalesce source](https://github.com/open-telemetry/opentelemetry-collector-contrib/blob/v0.160.0/pkg/ottl/ottlfuncs/func_coalesce.go) and [function reference](https://github.com/open-telemetry/opentelemetry-collector-contrib/blob/v0.160.0/pkg/ottl/ottlfuncs/README.md#coalesce) define the first-non-nil behavior. The [HTTP migration guide](https://opentelemetry.io/docs/specs/semconv/non-normative/http-migration/) supplies the key mapping, but also changes method normalization. Methods unknown to the instrumentation must map to `_OTHER`; canonicalizing a method's case can also require `http.request.method_original`. Handle those rules upstream according to the [HTTP method convention](https://opentelemetry.io/docs/specs/semconv/registry/attributes/http/). Copying an arbitrary legacy value is not a complete semantic migration.
 
 If your deployed distribution does not contain `Coalesce`, validate before rollout. A fallback for this particular mapping is a conditional copy from the old field only when the new one is absent.
 

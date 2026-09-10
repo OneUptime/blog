@@ -79,7 +79,7 @@ processors:
           - set(log.attributes["customer.id"], log.body["customer"]["id"]) where IsMap(log.body) and IsMap(log.body["customer"]) and IsString(log.body["customer"]["id"])
 ```
 
-This permits a map body with a map-valued customer and a string identifier. A string body, absent customer, or integer identifier fails a guard. The [OTTL language](https://github.com/open-telemetry/opentelemetry-collector-contrib/blob/v0.160.0/pkg/ottl/LANGUAGE.md) defines short-circuit boolean evaluation, so place the protective tests before dependent accesses.
+This permits a map body with a map-valued customer and a string identifier. A string body, absent customer, or integer identifier fails a guard. The [OTTL boolean evaluator](https://github.com/open-telemetry/opentelemetry-collector-contrib/blob/v0.160.0/pkg/ottl/boolean_value.go) implements short-circuit evaluation, so place the protective tests before dependent accesses.
 
 If your contract permits integer identifiers, add a separate conversion branch and document the resulting string format. Do not assume every converter performs the same automatic coercions as `IsMatch`.
 

@@ -28,13 +28,14 @@ Also distinguish the Kubernetes API connection from the OpenStack API connection
 
 ## Verify the CA bundle before deploying it
 
-Obtain the organization's trusted CA certificates through your normal infrastructure distribution channel. A bundle should contain PEM certificates, not a server private key. Check the endpoint using its real DNS name so that both trust and hostname verification run:
+Obtain the organization's trusted CA certificates through your normal infrastructure distribution channel. A bundle should contain PEM certificates, not a server private key. With OpenSSL 3, check the endpoint using its real DNS name and disable the default CA directory and store so that trust is checked against the supplied bundle:
 
 ```bash
 openssl s_client \
   -connect identity.cloud.example:443 \
   -servername identity.cloud.example \
   -CAfile ./openstack-ca-bundle.pem \
+  -no-CApath -no-CAstore \
   -verify_hostname identity.cloud.example \
   -verify_return_error </dev/null
 ```

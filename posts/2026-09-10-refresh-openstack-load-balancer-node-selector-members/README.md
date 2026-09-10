@@ -88,7 +88,7 @@ If the provider selector itself is changing, apply the new selector annotation d
 
 ## Treat the exclusion-label workaround as version-sensitive
 
-OCCM's documentation also describes using `node.kubernetes.io/exclude-from-external-load-balancers=false` to stimulate node reconciliation. The meaning of the false value changed in Kubernetes v1.34: older service-controller implementations can exclude a node based on the label's presence, even when its value is `false`.
+OCCM's documentation also describes using `node.kubernetes.io/exclude-from-external-load-balancers=false` to stimulate node reconciliation. The meaning of the false value changed in Kubernetes v1.34: older service-controller implementations can exclude a node based on the label's presence, even when its value is `false`. In v1.34, adding `false` to a previously unlabeled node leaves its exclusion eligibility unchanged, so that label change alone does not guarantee a synchronization either.
 
 For that reason, the Service annotation refresh is easier to scope to one load balancer. Do not add a false exclusion label across an older cluster without checking the Kubernetes cloud-provider library bundled into your CCM image. The API server version alone does not establish the behavior of an independently versioned controller binary.
 

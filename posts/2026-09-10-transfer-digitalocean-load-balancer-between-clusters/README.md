@@ -36,7 +36,7 @@ Create the target Service manifest before applying it. Carry over the required S
 
 Do not blindly apply exported YAML containing old `uid`, `resourceVersion`, `managedFields`, `status`, `clusterIP`, or allocated NodePorts. The new cluster owns its own Service allocation. The load balancer controller will configure the new cluster's backend ports during reconciliation.
 
-A minimal target manifest looks like this:
+For an existing load balancer of type `REGIONAL`, a minimal target manifest looks like this:
 
 ```yaml
 apiVersion: v1
@@ -46,6 +46,7 @@ metadata:
   namespace: production
   annotations:
     kubernetes.digitalocean.com/load-balancer-id: "PRESERVED_LOAD_BALANCER_UUID"
+    service.beta.kubernetes.io/do-loadbalancer-type: "REGIONAL"
     service.beta.kubernetes.io/do-loadbalancer-protocol: "tcp"
 spec:
   type: LoadBalancer
@@ -58,7 +59,7 @@ spec:
       targetPort: 8080
 ```
 
-Expand it to match the actual frontend. The target Service should not carry `service.kubernetes.io/do-loadbalancer-disown: "true"`, because it must become the active owner.
+Expand it to match the actual frontend and preserve the existing cloud load balancer type explicitly. DOKS 1.33.1-do.0 and later default to `REGIONAL_NETWORK`; a migration must retain the actual type and its supported port configuration. The example selects `REGIONAL` for its port 80 to target port 8080 forwarding. The target Service should not carry `service.kubernetes.io/do-loadbalancer-disown: "true"`, because it must become the active owner.
 
 Verify target pods and their application endpoint before the cutover. For `externalTrafficPolicy: Local`, check that ready pods are placed on the nodes expected to pass the load balancer's local health checks.
 
@@ -104,7 +105,7 @@ Use a client outside both clusters. Tests from a pod can take a different Kubern
 
 After traffic and application state are confirmed, delete the old disowned Service or change it to the intended non-load-balancer type. Keep the disown annotation effective until the old ownership relationship is gone.
 
-For rollback, reverse ownership in the same order: disown the new Service, verify it stops managing the load balancer, then remove the disown annotation from the original Service to let it reconcile targets back. Do not simply enable both owners and hope they converge on the same configuration.
+For rollback, reverse ownership in the same order: disown the new Service, verify it stops managing the load balancer, then remove the disown annotation from the original Service to let it reconcile targets back. If the original Service was already deleted, recreate its prepared manifest with the preserved load balancer UUID only after the new owner has relinquished control. Do not simply enable both owners and hope they converge on the same configuration.
 
 Rollback also depends on application data compatibility. Moving network traffic back does not reverse writes or schema migrations performed in the new cluster. Establish that recovery plan before the network cutover.
 

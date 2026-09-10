@@ -45,7 +45,7 @@ Translate the existing frontend settings into supported DigitalOcean Service ann
 
 ## Create a Service referencing the UUID
 
-For a simple TCP-forwarded HTTP application, use:
+For a simple TCP-forwarded HTTP application adopting an existing `REGIONAL` load balancer, use:
 
 ```yaml
 apiVersion: v1
@@ -55,6 +55,7 @@ metadata:
   namespace: production
   annotations:
     kubernetes.digitalocean.com/load-balancer-id: "EXISTING_LOAD_BALANCER_UUID"
+    service.beta.kubernetes.io/do-loadbalancer-type: "REGIONAL"
     service.beta.kubernetes.io/do-loadbalancer-protocol: "tcp"
 spec:
   type: LoadBalancer
@@ -67,7 +68,7 @@ spec:
       targetPort: 8080
 ```
 
-Replace the UUID. This example intentionally describes only an HTTP frontend on port 80. Add every required listener and provider setting before using it to adopt a production load balancer with a richer configuration.
+Replace the UUID and confirm that the existing resource is type `REGIONAL`. This example intentionally describes only an HTTP frontend on port 80. DOKS 1.33.1-do.0 and later default to `REGIONAL_NETWORK`, so explicitly retain the existing type; for a network load balancer, use its matching type and supported port configuration instead. Add every required listener and provider setting before using it to adopt a production load balancer with a richer configuration.
 
 The adoption annotation is `kubernetes.digitalocean.com/load-balancer-id`. A custom load balancer name is not the same as an existing resource ID. Likewise, `spec.loadBalancerIP` is not the documented mechanism for claiming a specific DigitalOcean load balancer.
 
@@ -79,7 +80,7 @@ kubectl -n production describe service web-public
 kubectl -n production get service web-public --watch
 ```
 
-The [DigitalOcean CCM implementation](https://github.com/digitalocean/digitalocean-cloud-controller-manager/blob/v0.1.69/cloud-controller-manager/do/loadbalancers.go) uses the saved ID to locate the cloud resource. A nonexistent or inaccessible UUID is an error to investigate; it should not be replaced by an arbitrary different UUID just to make reconciliation continue.
+The [DigitalOcean CCM implementation](https://github.com/digitalocean/digitalocean-cloud-controller-manager/blob/v0.1.69/cloud-controller-manager/do/loadbalancers.go) uses the saved ID to locate the cloud resource. An HTTP 404 when looking up that UUID is treated as a missing load balancer and can trigger creation of a replacement with a new IP. Other API failures can stop reconciliation. Verify the UUID is accessible before applying the Service and compare the resulting identity immediately afterward; the annotation is not an adopt-only safeguard.
 
 ## Verify identity, targets, and traffic
 

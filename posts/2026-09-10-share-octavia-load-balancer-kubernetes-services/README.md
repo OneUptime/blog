@@ -106,7 +106,7 @@ An error about a listener conflict calls for checking the existing listener inve
 
 ## Test removal without deleting the shared resource manually
 
-The documented lifecycle retains a controller-created shared load balancer while other attached Services remain. After the final attached Service is deleted, the controller can delete that load balancer. A load balancer created outside Kubernetes has different ownership: OCCM does not simply claim responsibility for deleting that external resource when the final Service disappears.
+The documented lifecycle retains a controller-created shared load balancer while other attached Services remain. After the final attached Service is deleted, the controller can delete that load balancer. In v1.36.0, deletion ownership is inferred from the `kube_service_` name prefix and Service attachment tags. An externally created load balancer without that prefix is retained; one manually given that prefix can be treated as controller-owned. Check the actual name and tags before relying on external creation as a retention guarantee.
 
 Test the lifecycle in a nonproduction environment: remove one attached Service, confirm its listener disappears, and verify traffic to the remaining Service. Then test final removal and any separate floating IP retention policy. Do not manually delete the shared load balancer to clean up one application.
 
