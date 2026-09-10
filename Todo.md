@@ -209,7 +209,6 @@
 
 ## OTTL
 
-2. How to Split OTTL Statement Groups When Context Inference Cannot Mix Metric and Datapoint Functions
 3. How to Choose `ignore`, `silent`, or `propagate` Error Mode Without Dropping Telemetry
 4. How to Debug an OTTL Rule That Parses Successfully but Never Matches
 5. How to Guard OTTL Converters Against `nil`, Wrong Types, and Mixed Log Bodies
