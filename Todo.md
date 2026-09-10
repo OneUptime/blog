@@ -40,7 +40,6 @@
 
 ## Cloud Controller
 
-13. How to Fix DigitalOcean CCM Load Balancer Creation in a Non-Default VPC
 14. How to Diagnose In-Cluster Requests Failing Through a DigitalOcean Proxy Protocol Load Balancer
 15. How to Fix cert-manager Self-Checks with the DigitalOcean Load Balancer Hostname Annotation
 16. How to Rotate Hetzner Cloud Controller Credentials and Verify They Took Effect
