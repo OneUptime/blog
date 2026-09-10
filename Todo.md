@@ -206,7 +206,6 @@
 
 ## Spot Instances
 
-20. When Should You Use Stop, Hibernate, or Terminate as the EC2 Spot Interruption Behavior?
 
 ## OTTL
 
