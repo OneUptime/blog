@@ -206,7 +206,6 @@
 
 ## Spot Instances
 
-12. How to Keep Kubernetes Replicas Out of the Same Spot Capacity Pool with Topology Spread and Multi-AZ Scheduling
 13. How to Keep StatefulSets and Persistent Volumes off Spot Nodes with Taints, Affinity, and Admission Policy
 14. How to Checkpoint and Resume Kubernetes Jobs After Spot Eviction Instead of Restarting from Zero
 15. How to Stop Karpenter Consolidation from Repeatedly Disrupting Long-Running Batch Jobs
