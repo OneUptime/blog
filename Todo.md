@@ -40,7 +40,6 @@
 
 ## Cloud Controller
 
-15. How to Fix cert-manager Self-Checks with the DigitalOcean Load Balancer Hostname Annotation
 16. How to Rotate Hetzner Cloud Controller Credentials and Verify They Took Effect
 17. How to Diagnose Hetzner Managed Certificate Name Collisions After Changing Domains
 18. How to Set the Hetzner CCM Load Balancer Type Instead of Relying on Its Default
