@@ -209,7 +209,6 @@
 
 ## OTTL
 
-16. How to Convert Gauge Metrics to Sums in OTTL Without Producing Invalid Temporality
 17. Why Does `IsMatch` Return False for an Existing Attribute? Debugging OTTL Types and Regex Escaping
 18. How to Parse and Normalize Nonstandard Log Timestamps with OTTL `Time` and `FormatTime`
 19. How to Access Array Elements and Nested Maps Safely in OTTL Conditions
