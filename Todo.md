@@ -40,7 +40,6 @@
 
 ## Cloud Controller
 
-20. How to Include Control-Plane Nodes in Cloud Controller Load Balancer Backends
 
 
 ## Entra ID
