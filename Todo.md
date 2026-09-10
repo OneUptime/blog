@@ -209,7 +209,6 @@
 
 ## OTTL
 
-3. How to Choose `ignore`, `silent`, or `propagate` Error Mode Without Dropping Telemetry
 4. How to Debug an OTTL Rule That Parses Successfully but Never Matches
 5. How to Guard OTTL Converters Against `nil`, Wrong Types, and Mixed Log Bodies
 6. How to Migrate Pre-0.120 Transform Processor Configuration to the Current OTTL Statement Syntax
