@@ -209,7 +209,6 @@
 
 ## OTTL
 
-13. How to Coalesce Old and New OpenTelemetry Semantic Convention Keys in One OTTL Rule
 14. How to Convert Exponential Histograms for a Backend That Only Accepts Explicit Buckets
 15. How to Aggregate Metric Data Points by Selected Attributes Without Creating Identity Conflicts
 16. How to Convert Gauge Metrics to Sums in OTTL Without Producing Invalid Temporality
