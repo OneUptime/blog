@@ -40,7 +40,6 @@
 
 ## Cloud Controller
 
-5. How to Attach an Existing OpenStack Floating IP to a Kubernetes LoadBalancer Service
 6. How to Select OpenStack Floating IP Pools with Cloud Controller Load Balancer Classes
 7. How to Share an Octavia Load Balancer Across Kubernetes Services
 8. How to Prevent OpenStack Load Balancer Name Collisions Between Kubernetes Clusters
