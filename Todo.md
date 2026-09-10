@@ -209,7 +209,6 @@
 
 ## OTTL
 
-20. When Should You Use the Attributes Processor Instead of OTTL for Simple Enrichment?
 
 ## Correlation IDs
 
