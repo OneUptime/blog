@@ -206,7 +206,6 @@
 
 ## Spot Instances
 
-19. How to Calculate the Real Savings of Spot Instances After Interruption, Restart, and Data-Transfer Costs
 20. When Should You Use Stop, Hibernate, or Terminate as the EC2 Spot Interruption Behavior?
 
 ## OTTL
