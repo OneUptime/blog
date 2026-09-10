@@ -206,7 +206,6 @@
 
 ## Spot Instances
 
-13. How to Keep StatefulSets and Persistent Volumes off Spot Nodes with Taints, Affinity, and Admission Policy
 14. How to Checkpoint and Resume Kubernetes Jobs After Spot Eviction Instead of Restarting from Zero
 15. How to Stop Karpenter Consolidation from Repeatedly Disrupting Long-Running Batch Jobs
 16. How to Size `terminationGracePeriodSeconds` for Spot Nodes with Only Two Minutes to Drain
