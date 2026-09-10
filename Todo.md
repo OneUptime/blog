@@ -209,7 +209,6 @@
 
 ## OTTL
 
-7. How to Copy Regex-Matched Resource Attributes into a Nested Map with OTTL Cache
 8. Why Do OTTL Resource Changes Leak Across Log Records? Using `flatten_data` Safely
 9. How to Drop Kubernetes Liveness and Readiness Probe Spans with an OTTL Filter
 10. How to Collapse Escaped Whitespace in SQL Span Attributes with OTTL Without Changing Query Meaning
