@@ -206,7 +206,6 @@
 
 ## Spot Instances
 
-11. How to Finish In-Flight Kubernetes Requests Before a Spot Node Dies Using `preStop`, Readiness, and Load-Balancer Drain
 12. How to Keep Kubernetes Replicas Out of the Same Spot Capacity Pool with Topology Spread and Multi-AZ Scheduling
 13. How to Keep StatefulSets and Persistent Volumes off Spot Nodes with Taints, Affinity, and Admission Policy
 14. How to Checkpoint and Resume Kubernetes Jobs After Spot Eviction Instead of Restarting from Zero
