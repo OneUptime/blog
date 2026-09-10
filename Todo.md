@@ -40,7 +40,6 @@
 
 ## Cloud Controller
 
-4. How to Diagnose Octavia API Timeouts During Kubernetes Load Balancer Creation
 5. How to Attach an Existing OpenStack Floating IP to a Kubernetes LoadBalancer Service
 6. How to Select OpenStack Floating IP Pools with Cloud Controller Load Balancer Classes
 7. How to Share an Octavia Load Balancer Across Kubernetes Services
