@@ -40,7 +40,6 @@
 
 ## Cloud Controller
 
-9. How to Diagnose OpenStack CCM Registering the Wrong Interface as a Load Balancer Backend
 10. How to Refresh OpenStack Load Balancer Membership After Changing Node Selector Labels
 11. How to Adopt an Existing DigitalOcean Load Balancer into a Kubernetes Service
 12. How to Transfer a DigitalOcean Load Balancer Between Clusters Without Changing Its IP
