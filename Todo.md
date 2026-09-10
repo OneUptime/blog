@@ -40,7 +40,6 @@
 
 ## Cloud Controller
 
-19. How to Fix Hetzner Load Balancer IPVS Routing Loops with Private Ingress Settings
 20. How to Include Control-Plane Nodes in Cloud Controller Load Balancer Backends
 
 
