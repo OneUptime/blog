@@ -6146,6 +6146,26 @@
 18. How to Alert on Timeout Regressions Using Error Budgets, Phase Labels, and Exemplars
 19. How to Make Graceful Shutdown Honor In-Flight Request Deadlines Instead of Extending Them
 20. How to Audit Timeout Defaults Across SDKs, Service Meshes, Ingresses, and Cloud Load Balancers
+21. How to Enforce a Total Download Deadline When Python Requests Only Times Out Between Reads
+22. How to Apply Different Timeouts to Concurrent Requests Sharing One HttpClient
+23. How to Diagnose asyncio.wait_for Calls That Run Past Their Timeout During Cancellation Cleanup
+24. How to Resume an Async Generator After a Polling Timeout with asyncio.shield
+25. How to Catch asyncio TimeoutError at the Correct Scope While Preserving CancelledError
+26. How to Handle Blocking Threads That Keep Running After an asyncio.to_thread Timeout
+27. How to Diagnose ThreadPoolExecutor Context Managers That Wait After a Future Times Out
+28. How to Cancel Network Work That Continues After CompletableFuture.orTimeout
+29. How to Collect Successful CompletableFuture Results When a Batch Deadline Expires
+30. How to Add Operation Details to CompletableFuture Timeout Exceptions
+31. How to Clear Losing Promise.race Timers That Keep a Node.js Process Alive
+32. How to Combine Manual Cancellation and Request Timeouts with AbortSignal.any
+33. How to Time Out CPU-Bound JavaScript Work Using Worker Threads and Termination
+34. How to Add Response Body Timeouts When HttpClient Uses ResponseHeadersRead
+35. How to Cancel the Underlying Operation When a .NET Task.WaitAsync Deadline Expires
+36. How to Terminate a Python Subprocess Tree on Timeout When Descendants Keep Pipes Open
+37. How to Preserve Partial Subprocess Output When a Python Command Times Out
+38. How to Escalate GNU timeout from SIGTERM to SIGKILL When a Command Ignores Termination
+39. How to Abort Stalled curl Transfers with Low-Speed Timeouts While Allowing Long Downloads
+40. How to Bound curl Retry Runtime When retry-max-time Allows the Final Attempt to Overrun
 
 ## Log Parsing
 
@@ -7963,3 +7983,210 @@
 18. How to Recover Edge Device Connectivity When a Power Failure Resets the System Clock
 19. How to Run Edge OS Release Tests on Physical Raspberry Pi Devices in CI
 20. How to Limit Edge Fleet Reconnect Storms After a Regional Cellular Outage
+
+## Production Readiness
+
+1. How to Adapt a Production Readiness Checklist When Your Stack Differs from the Template
+2. How to Review Production Readiness for an Existing Service with No Reliable Documentation
+3. How to Agree on SRE Staffing and Developer Escalations Before a Service Handover
+4. How to Verify Recovery Permissions for Every On-Call Engineer Before Launch
+5. How to Run a Service Handover Drill Without Help from the Original Developer
+6. How to Document the Full Business Transaction Path for a Production Readiness Review
+7. How to Estimate Backend Fan-Out from Launch Traffic Before Approving Capacity
+8. How to Test Launch Capacity with One Availability Zone Already Unavailable
+9. How to Find Circular Startup Dependencies During a Full Service Restart Rehearsal
+10. How to Review Customer Impact Separately for Hard and Soft Dependency Failures
+11. How to Prove a Restored Service Works When DNS, Secrets, and External Integrations Must Be Rebuilt
+12. How to Rehearse Deployment Recovery When Only Some Database Migrations Succeed
+13. How to Validate the Entire Paging and Escalation Path in a Pre-Launch Game Day
+14. How to Separate Synthetic Test Failures from Customer Error Metrics Before Launch
+15. How to Test Production Readiness for One Large Tenant and Many Small Tenants
+16. How to Compare Launch-Spike Traffic with Steady-State Traffic in a Capacity Review
+17. How to Identify Manual Maintenance Tasks That Could Become a Launch Support Bottleneck
+18. How to Review a Third-Party API Quota Against Your Planned Product Launch Traffic
+19. How to Validate Readiness Evidence in Production Before Enabling Customer Traffic
+20. How to Record Why a Production Readiness Check Does Not Apply to a Service
+
+## Juju
+
+1. How to Diagnose Juju Bootstrap Failures at the Machine Configuration Script
+2. How to Fix Juju Controller API Connections Blocked by Proxy Settings
+3. How to Prepare Local Images and Agent Metadata for Offline Juju Bootstrap
+4. How to Inspect Juju Relation Data When an Application Remains Waiting
+5. How to Diagnose Stale Juju Relations That No Longer Appear in Status
+6. How to Remove a Juju Subordinate Charm When Its Hooks Are Failing
+7. How to Step Through a Failing Juju Charm Hook with debug-code
+8. How to Handle Departed Units When Reading Juju Peer Relation Data
+9. How to Bind Juju Application Endpoints to Separate Network Spaces
+10. How to Restrict Juju Agent Communication to a Management Network Space
+11. How to Update Juju Cloud Credentials When Model Validation Fails
+12. How to Preserve External Secret Backend Access During a Juju Model Migration
+13. How to Move Juju Secret Storage to a HashiCorp Vault Backend
+14. How to Grant a Juju Application Access to User Secrets
+15. How to Reattach Preserved Storage When Redeploying a Juju Database Charm
+16. How to Add Persistent Storage to an Existing Juju Unit
+17. How to Restore a Machine-Based Juju Controller from a Backup
+18. How to Isolate Juju Teams with Model Permissions and Shared Application Offers
+19. How to Refresh a Juju Kubernetes Charm When Its Ubuntu Base Changes
+20. How to Diagnose Juju Charm Deployments That Fail with revision-not-found
+
+## SecurityContext
+
+1. How to Fix runAsNonRoot Rejecting an Image That Uses a Named USER
+2. How to Fix Missing Home Directories and Unknown UIDs After Setting runAsUser
+3. How to Diagnose hostPath Permission Denied When fsGroup Does Not Change Ownership
+4. How to Repair Nested Volume Permissions Skipped by fsGroupChangePolicy OnRootMismatch
+5. How to Trace fsGroup Permission Handling to a CSI Driver with VOLUME_MOUNT_GROUP
+6. How to Detect Root Group Membership in Pods That Already Pass runAsNonRoot
+7. How to Move NGINX PID and Cache Files Off a Read-Only Container Root Filesystem
+8. How to Keep dbt Logs Writable Under a Kubernetes Read-Only Root Filesystem
+9. How to Bind Port 80 as a Non-Root Kubernetes Container with ip_unprivileged_port_start
+10. How to Verify NoNewPrivs Inside a Kubernetes Container After Disabling Privilege Escalation
+11. How to Diagnose allowPrivilegeEscalation Conflicts with Privileged Containers and SYS_ADMIN
+12. How to Fix a Volume-Permission Init Container Rejected by Restricted Pod Security
+13. How to Identify Pods with Conflicting SELinux Labels Before Enabling SELinux Volume Mounting
+14. How to Diagnose Pod Admission Failures After Explicitly Enabling AppArmor RuntimeDefault
+15. How to Fix a Localhost Seccomp Profile That Exists in the Image but Is Missing on the Node
+16. How to Identify the Seccomp-Blocked Syscall Behind a Container Operation Not Permitted Error
+17. How to Roll Out a SecurityContext Change When Kubernetes Rejects an In-Place Pod Update
+18. How to Fix an Unknown readOnlyRootFilesystem Field in Pod-Level SecurityContext
+19. How to Load Additional CA Certificates in a .NET Pod with a Read-Only Root Filesystem
+20. How to Fix Root-Owned subPath Directories in a Pod That Runs as a Non-Root User
+
+## HTAP
+
+1. How to Choose Between HTAP and a CDC Pipeline for Fresh Operational Analytics
+2. How to Benchmark OLTP Tail Latency and Analytical Throughput Together in an HTAP Database
+3. How to Decide Which HTAP Reports Still Need Materialized Aggregates and Historical Storage
+4. How to Isolate HTAP Reporting Users with TiDB Resource Groups
+5. How to Calibrate Resource Units Before Setting HTAP Workload Quotas in TiDB
+6. How to Add TiFlash Capacity Without Scaling TiKV Transaction Storage
+7. How to Select Tables for TiFlash Replication in a Large HTAP Schema
+8. How to Confirm All Join Tables Have Ready TiFlash Replicas Before Enabling HTAP MPP Queries
+9. How to Force Specific HTAP Table Reads to TiFlash and Verify That Storage Hints Took Effect
+10. How to Diagnose HTAP Query Plans That Still Use TiKV After TiFlash Is Enabled
+11. How to Troubleshoot TiFlash Port 3930 Connection Refusals Despite Available HTAP Replicas
+12. How to Diagnose TiFlash ReadIndex and Wait-Index Delays in Fresh HTAP Queries
+13. How to Verify Read-After-Write Consistency Across TiKV and TiFlash in an HTAP Application
+14. How to Reduce HTAP Hash Join Memory Pressure with TiFlash Spill to Disk
+15. How to Diagnose HTAP Aggregations That Still Exceed TiFlash Memory Limits After Spilling
+16. How to Identify SQL Functions That Prevent an HTAP Query from Using TiFlash MPP
+17. How to Route HTAP Reads Back to TiKV During a TiFlash Outage
+18. How to Control the Load of Creating TiFlash Replicas for an Entire HTAP Database
+19. How to Diagnose Slow First HTAP Queries When TiFlash Downloads Data from S3
+20. How to Rebuild Lost TiFlash Replicas from TiKV Data in an HTAP Cluster
+
+## Apache HTTPD
+
+1. How to Fix WebSocket Upgrade Failures Through Apache HTTPD Reverse Proxy
+2. How to Rewrite Backend Cookie Domains and Paths in Apache HTTPD
+3. How to Stop Apache HTTPD Backend Redirects from Exposing Internal Hostnames
+4. How to Diagnose Apache HTTPD Redirect Loops After TLS Termination
+5. How to Remove Duplicate CORS Headers from Apache HTTPD Proxy Responses
+6. How to Diagnose Apache HTTPD Scoreboard Exhaustion After Graceful Reloads
+7. How to Fix Apache HTTPD AH01079 Errors After a PHP-FPM Upgrade
+8. How to Scope Apache HTTPD DirectoryIndex Rules to One Directory
+9. How to Serve ACME Challenge Files Outside an Apache HTTPD Catch-All Proxy
+10. How to Configure Apache HTTPD SPA Routing While Preserving Asset 404 Responses
+11. How to Forward Encoded Slashes Through Apache HTTPD Without Double Decoding
+12. How to Fix Trailing-Slash Path Mismatches in Apache HTTPD ProxyPass Rules
+13. How to Fix Invalid ProxyHCExpr Errors When Enabling Apache HTTPD Health Checks
+14. How to Drain an Apache HTTPD Backend Before Taking It Out of Service
+15. How to Diagnose Missing Route Cookies in Apache HTTPD Sticky Sessions
+16. How to Fix Apache HTTPD Upstream TLS Hostname Mismatches with Certificate Verification Enabled
+17. How to Exclude Health Check Requests from Apache HTTPD Access Logs
+18. How to Trace Apache HTTPD Rewrite Decisions with Per-Module Log Levels
+19. How to Diagnose Stale Apache HTTPD Proxy Cache Responses Using Cache-Control
+20. How to Find Which Apache HTTPD Request Limit Is Causing HTTP 413
+
+## Uptrace
+
+1. How to Fix Unknown users Fields When Migrating an Uptrace Configuration to Version 2
+2. How to Pass Database Credentials into Uptrace Docker Configuration with Environment Variables
+3. How to Configure Uptrace 2 Behind a Reverse Proxy and Verify Base-Path Support
+4. How to Repair Disconnected Uptrace Traces Caused by Invalid Parent Span IDs
+5. How to Find Uptrace Traces by Attributes on Their Child Spans
+6. How to Show Only Root Operations in Uptrace Trace Queries
+7. How to Diagnose ClickHouse Authentication Failures in an Existing Uptrace Deployment
+8. How to Send OTLP Telemetry to Uptrace over HTTPS with the Correct Endpoint and TLS Settings
+9. How to Diagnose Metrics Missing from the Uptrace Monitor Selector
+10. How to Tune Uptrace Error Monitor Notification Repeat Intervals
+11. How to Create Uptrace Error Monitors from Structured Application Logs
+12. How to Make JSON Log Fields Sent by Vector Searchable in Uptrace
+13. How to Query and Group Uptrace Logs by Custom Structured Fields
+14. How to Diagnose Unexpected SQL Statement Display Names in Uptrace Spans
+15. How to Validate Uptrace Tempo API Compatibility Before Reusing Grafana Trace Queries
+16. How to Buffer Telemetry for Uptrace with Kafka Between OpenTelemetry Collectors
+17. How to Plan ClickHouse Sharding for Uptrace Around Edition and Replication Requirements
+18. How to Investigate Missing Historical Uptrace Metrics Within the Retention Window
+19. How to Restore Missing Uptrace Service Graph Edges by Checking Span Kinds and Peer Attributes
+20. How to Diagnose Uptrace Dashboard YAML Imports That Fail Schema Validation
+
+## Apache Kudu
+
+1. How to Design Apache Kudu Primary Keys for Queries That Need Secondary Indexes
+2. How to Reduce Apache Kudu Write Hotspots with Hash and Range Partitioning
+3. How to Validate Decimal Range Partition Bounds When Creating Apache Kudu Tables
+4. How to Add Future Time Ranges to an Apache Kudu Table Before Ingestion Fails
+5. How to Change Apache Kudu Range Boundaries While Preserving Existing Data
+6. How to Reclaim Apache Kudu Storage by Dropping Expired Range Partitions
+7. How to Run Incremental Apache Kudu Table Backups with Spark
+8. How to Restore Apache Kudu Backups Under New Table Names for Validation
+9. How to Diagnose Uneven Apache Kudu Tablet Server Memory Usage
+10. How to Rebalance Apache Kudu Tablet Replicas After Adding Servers
+11. How to Investigate Slow Apache Kudu Inserts with High RPC Queue Times
+12. How to Cast Spark DataFrame Columns to Match an Apache Kudu Schema
+13. How to Diagnose Spark Connections to Apache Kudu Masters and Tables
+14. How to Detect Duplicate Primary-Key Inserts into Apache Kudu Through Impala Warnings
+15. How to Handle Out-of-Order Updates When Ingesting Events into Apache Kudu
+16. How to Delete Apache Kudu Rows by a Predicate Through Impala
+17. How to Page Through Apache Kudu Results with a Stable Primary-Key Cursor
+18. How to Inspect Apache Kudu Tablet Sizes Behind Impala Range Partitions
+19. How to Fix Apache Kudu Startup Failures Caused by Unsynchronized Clocks
+20. How to Write Spark Structured Streaming Micro-Batches to Apache Kudu
+
+## Container Lifecycle
+
+1. How to Prevent a Kubernetes postStart Database Query from Racing with Database Startup
+2. How to Make Kubernetes Lifecycle Hooks Idempotent When an Event Is Delivered More Than Once
+3. How to Capture postStart and preStop Command Output When kubectl logs Shows Nothing
+4. How to Debug a postStart Hook That Fails with curl Exit Code 7
+5. How to Unblock Sibling Containers When a Long-Running postStart Hook Holds Up Pod Startup
+6. How to Test preStop Execution Separately from Force Deletion and Zero-Grace Cleanup
+7. How to Run Cleanup After a Kubernetes Job Completes When preStop Never Fires
+8. How to Capture JVM Failure Diagnostics When OOMKilled Bypasses the preStop Hook
+9. How to Save a JVM Heap Dump Before a Liveness Probe Restarts Its Container
+10. How to Fix a Shell Entrypoint That Swallows SIGTERM During Kubernetes Pod Shutdown
+11. How to Add a preStop Delay to a Distroless Container with the Kubernetes Sleep Action
+12. How to Override an Image Stop Signal with lifecycle.stopSignal and the Required Feature Gate
+13. How to Diagnose a preStop HTTP Hook That Calls the Wrong Host or Port
+14. How to Pass Environment Variables to an Authenticated preStop Command Without Broken Shell Expansion
+15. How to Budget preStop Runtime and Application Shutdown Within One Kubernetes Grace Period
+16. How to Debug FailedPreStopHook When the Container Has Already Stopped
+17. How to Run Multiple postStart Commands Without Duplicate YAML Keys Overwriting Earlier Steps
+18. How to Stop a Kubernetes Worker from Accepting New Jobs Before Its preStop Hook Waits for Active Work
+19. How to Use a Shorter Liveness-Probe Termination Grace Period Than the Pod Deletion Grace Period
+20. How to Interpret FailedPostStartHook and FailedPreStopHook Events in Kubernetes
+
+## Hubble
+
+1. How to Diagnose Hubble Relay Connection Refused Errors from the Peer Service
+2. How to Debug Hubble Relay Discovery in a Cluster with a Non-Default DNS Domain
+3. How to Diagnose Hubble Certificate Renewal Failures After an AKS RBAC Migration
+4. How to Find Which Kubernetes Nodes Are Missing from a Hubble Relay Flow Search
+5. How to Enable HTTP Visibility When Hubble Shows TCP Flows but No Request Details
+6. How to Investigate Hubble HTTP Requests That Produce No httpV2 Response Metrics
+7. How to Distinguish Hubble Observation Loss from Actual Network Packet Drops
+8. How to Estimate Hubble Flow Retention and Diagnose an Empty Historical Time Window
+9. How to Preserve Hubble Flow Logs for SIEM Analysis After the Ring Buffer Rolls Over
+10. How to Summarize Hubble JSON Flows by Pod Pair and Destination Port with jq
+11. How to Combine Namespace Filters and Excluded Identities Correctly in hubble observe
+12. How to Export Hubble Flows for a Precise Incident Window with since and until Filters
+13. How to Redact Authorization Headers and URL Parameters from Hubble L7 Flows While Keeping Trace Headers
+14. How to Fix Missing Hubble Prometheus Targets When Cilium Metrics Scrape Successfully
+15. How to Connect Hubble HTTP Metric Exemplars to Trace IDs with OpenMetrics
+16. How to Investigate DNS Requests Marked FORWARDED When Hubble Reports an Error on the Response
+17. How to Diagnose Hubble Relay Operation Not Permitted Errors After a Cilium 1.19 Upgrade
+18. How to Diagnose Hubble UI Asset and Route Errors Behind a Gateway API Path Prefix
+19. How to Reduce Hubble Metric Cardinality with Workload Contexts Instead of Pod IP Labels
+20. How to Update Hubble Metric Filters Without Restarting Cilium Agents
