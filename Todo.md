@@ -209,7 +209,6 @@
 
 ## OTTL
 
-19. How to Access Array Elements and Nested Maps Safely in OTTL Conditions
 20. When Should You Use the Attributes Processor Instead of OTTL for Simple Enrichment?
 
 ## Correlation IDs
