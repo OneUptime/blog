@@ -209,7 +209,6 @@
 
 ## OTTL
 
-8. Why Do OTTL Resource Changes Leak Across Log Records? Using `flatten_data` Safely
 9. How to Drop Kubernetes Liveness and Readiness Probe Spans with an OTTL Filter
 10. How to Collapse Escaped Whitespace in SQL Span Attributes with OTTL Without Changing Query Meaning
 11. How to Redact Passwords, Tokens, and URL Query Secrets with OTTL Pattern Replacements
