@@ -40,7 +40,6 @@
 
 ## Cloud Controller
 
-16. How to Rotate Hetzner Cloud Controller Credentials and Verify They Took Effect
 17. How to Diagnose Hetzner Managed Certificate Name Collisions After Changing Domains
 18. How to Set the Hetzner CCM Load Balancer Type Instead of Relying on Its Default
 19. How to Fix Hetzner Load Balancer IPVS Routing Loops with Private Ingress Settings
