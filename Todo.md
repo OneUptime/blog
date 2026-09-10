@@ -209,7 +209,6 @@
 
 ## OTTL
 
-10. How to Collapse Escaped Whitespace in SQL Span Attributes with OTTL Without Changing Query Meaning
 11. How to Redact Passwords, Tokens, and URL Query Secrets with OTTL Pattern Replacements
 12. How to Hash Sensitive Attribute Values with OTTL Before Export
 13. How to Coalesce Old and New OpenTelemetry Semantic Convention Keys in One OTTL Rule
