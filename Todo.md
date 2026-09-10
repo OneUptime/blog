@@ -40,7 +40,6 @@
 
 ## Cloud Controller
 
-14. How to Diagnose In-Cluster Requests Failing Through a DigitalOcean Proxy Protocol Load Balancer
 15. How to Fix cert-manager Self-Checks with the DigitalOcean Load Balancer Hostname Annotation
 16. How to Rotate Hetzner Cloud Controller Credentials and Verify They Took Effect
 17. How to Diagnose Hetzner Managed Certificate Name Collisions After Changing Domains
