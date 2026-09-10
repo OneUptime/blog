@@ -40,7 +40,6 @@
 
 ## Cloud Controller
 
-11. How to Adopt an Existing DigitalOcean Load Balancer into a Kubernetes Service
 12. How to Transfer a DigitalOcean Load Balancer Between Clusters Without Changing Its IP
 13. How to Fix DigitalOcean CCM Load Balancer Creation in a Non-Default VPC
 14. How to Diagnose In-Cluster Requests Failing Through a DigitalOcean Proxy Protocol Load Balancer
