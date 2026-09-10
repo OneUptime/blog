@@ -206,7 +206,6 @@
 
 ## Spot Instances
 
-16. How to Size `terminationGracePeriodSeconds` for Spot Nodes with Only Two Minutes to Drain
 17. How to Preserve EBS Data and Reattach Volumes After a Spot Instance Is Terminated
 18. How to Protect CI Runners on Spot Instances from Losing Artifacts, Caches, and Test Results
 19. How to Calculate the Real Savings of Spot Instances After Interruption, Restart, and Data-Transfer Costs
