@@ -40,7 +40,6 @@
 
 ## Cloud Controller
 
-8. How to Prevent OpenStack Load Balancer Name Collisions Between Kubernetes Clusters
 9. How to Diagnose OpenStack CCM Registering the Wrong Interface as a Load Balancer Backend
 10. How to Refresh OpenStack Load Balancer Membership After Changing Node Selector Labels
 11. How to Adopt an Existing DigitalOcean Load Balancer into a Kubernetes Service
