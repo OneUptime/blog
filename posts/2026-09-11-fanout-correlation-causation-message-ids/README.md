@@ -118,7 +118,7 @@ Use durable workflow state to determine whether both required branches completed
 
 ## Align traces without replacing domain lineage
 
-OpenTelemetry span links can connect a new processing operation to several inputs. A span has one parent, so links are useful for fan-in and for delayed work that starts a new trace.
+OpenTelemetry span links can connect a new processing operation to several inputs. A span has zero or one parent, so links are useful for fan-in and for delayed work that starts a new trace.
 
 Keep message lineage in durable event metadata even when traces are sampled or expire. A trace ID is an execution identifier, not a replacement for the workflow record or event identity. Record the event's `source`, `id`, correlation value, and current trace context together in logs for navigation.
 
