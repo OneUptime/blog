@@ -18,7 +18,9 @@ Suppose a client submits an order and times out before receiving the response. I
 
 ```http
 POST /orders HTTP/1.1
+Host: api.example.com
 Content-Type: application/json
+Content-Length: 51
 Idempotency-Key: 8e28bd74-6cc4-40ed-97af-7b551a5965d0
 X-Correlation-ID: client-workflow-73
 
