@@ -212,7 +212,6 @@
 
 ## Correlation IDs
 
-17. How to Propagate Correlation IDs from API Gateway and Lambda into SQS, SNS, and EventBridge
 18. How to Expose Response Correlation IDs to Browser Clients with CORS Without Leaking Internal Trace Context
 19. How to Prevent Correlation ID Log Injection, Unbounded Cardinality, and Oversized Headers
 20. How to Query Correlated Logs in Loki or Elasticsearch When Traces Are Unsampled
