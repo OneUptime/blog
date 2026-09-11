@@ -22,7 +22,7 @@ For a current Microsoft.Data.SqlClient application using a user-assigned identit
 Server=tcp:orders-prod.database.windows.net,1433;Database=orders;Authentication=Active Directory Managed Identity;User ID=<managed-identity-client-id>;Encrypt=True;TrustServerCertificate=False;Connection Timeout=30;
 ```
 
-The `User ID` identifies the user-assigned identity by its **client ID** in Microsoft.Data.SqlClient 3.0 and later. It is not the identity's display name or object ID. For a system-assigned identity, omit that field. Check the [driver authentication reference](https://learn.microsoft.com/en-us/sql/connect/ado-net/sql/azure-active-directory-authentication?view=sql-server-ver17) if maintaining an older application.
+The `User ID` identifies the user-assigned identity by its **client ID** in Microsoft.Data.SqlClient 3.0 and later. It is not the identity's display name or object ID. For a system-assigned identity, omit that field. Starting with Microsoft.Data.SqlClient 7.0, include the `Microsoft.Data.SqlClient.Extensions.Azure` NuGet package to use this authentication mode. Check the [driver authentication reference](https://learn.microsoft.com/en-us/sql/connect/ado-net/sql/azure-active-directory-authentication?view=sql-server-ver17) if maintaining an older application.
 
 Specify `Database=orders` explicitly. A contained user created in `orders` does not automatically become a user in `master`. A tool that first opens `master` can therefore fail while an application connecting directly to `orders` succeeds.
 
@@ -43,13 +43,13 @@ Compare the client ID with the connection string and the principal ID with the s
 For a VM-based reproduction, run the following on a VM to which the identity is assigned:
 
 ```bash
-az login --identity --client-id '<managed-identity-client-id>'
+az login --identity --client-id '<managed-identity-client-id>' --allow-no-subscriptions
 az account get-access-token \
   --resource https://database.windows.net/ \
   --query '{tenant:tenant,expiresOn:expiresOn}' --output json
 ```
 
-This verifies token acquisition without printing the token. Running an ordinary developer `az login` tests the developer's identity instead. Likewise, `DefaultAzureCredential` can select a developer or environment credential, so a successful local run is not proof of production identity selection.
+The `--allow-no-subscriptions` flag supports identities that have SQL permissions without access to an Azure subscription. This verifies token acquisition without printing the token. Running an ordinary developer `az login` tests the developer's identity instead. Likewise, `DefaultAzureCredential` can select a developer or environment credential, so a successful local run is not proof of production identity selection.
 
 If a token must be inspected during an incident, decode it only in a controlled local tool, never a public token viewer. Compare its tenant, audience, and object identity with the intended configuration; decoding alone does not validate its signature.
 
