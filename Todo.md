@@ -212,7 +212,6 @@
 
 ## Correlation IDs
 
-5. How to Propagate Correlation Context from ASP.NET Core into `BackgroundService` and Queued Work Items
 6. How to Keep Correlation IDs Across Express Promises and Callbacks with Node.js `AsyncLocalStorage`
 7. How to Preserve Correlation IDs Across FastAPI Requests and Celery Tasks with Python `contextvars`
 8. How to Attach Correlation IDs to Go `context.Context` and Enrich HTTP and gRPC Logs
