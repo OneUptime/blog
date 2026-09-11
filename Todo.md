@@ -218,7 +218,6 @@
 
 ## Azure SQL
 
-5. Why You Cannot Ping an Azure SQL Private Endpoint—and How to Test Port 1433 Correctly
 6. Connection Timeout or Command Timeout? How to Diagnose the Difference in Azure SQL Clients
 7. How to Fix Azure SQL Connection Pool Blocking Periods After a Failed Login
 8. Azure SQL Serverless Cold Starts: How to Retry Error 40613 and Resume Paused Databases Reliably
