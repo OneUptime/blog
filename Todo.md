@@ -4455,6 +4455,27 @@
 19. How to Stop a Trino LIMIT Query from Scanning Every Partition Before Returning Rows
 20. How to Disable Trino Data and Metadata Caches for Repeatable Source-of-Truth Tests
 
+21. How to Turn JSON Objects with Dynamic Keys into Typed Rows in Trino
+22. How to Convert Trino JSON Objects to VARCHAR with json_format
+23. How to Extract Optional Nested JSON Fields with Trino JSON_TABLE
+24. How to Filter Arrays of ROW Values in Trino Without Expanding Rows
+25. How to Sum Fields Inside Trino Arrays of ROW Values with reduce
+26. How to Preserve Parent Rows When Trino UNNEST Encounters Empty or NULL Arrays
+27. How to Expand Parallel Arrays in Trino Without Creating a Cartesian Product
+28. How to Keep Array Element Positions When Flattening Data in Trino
+29. How to Parse UTC Timestamps in Trino Without Losing Fractional Seconds
+30. How to Diagnose Trino Time-Zone Results That Look Wrong in DBeaver
+31. How to Generate Minute Intervals in Trino with Exact Start and End Boundaries
+32. How to Count Weekdays Between Timestamps in Trino Without UNNEST
+33. How to Number Consecutive Status Periods per User in Trino
+34. How to Calculate Rolling Calendar-Day Totals in Trino When Dates Have Gaps
+35. How to Forward-Fill Conditional Rolling Aggregates in Trino with Two Window Stages
+36. How to Rebuild the Latest CDC Record in Trino While Preserving Explicit NULL Updates
+37. How to Return the Top N Values per Group in Trino with max_by
+38. How to Generate a Trino PIVOT Query When Category Names Change
+39. How to Count Literal Delimiters in Trino Strings with regexp_count
+40. How to Query Employee Hierarchies in Trino Within Recursive CTE Limits
+
 ## GraphScope
 
 1. How to Install GraphScope Locally Without Kubernetes and Verify the First Analytical Job
@@ -5825,6 +5846,27 @@
 18. How to Sample a Subset of Kubernetes Replicas for Continuous Profiling
 19. How to Correlate Kubernetes OOMKilled Events with Pyroscope Memory Profiles
 20. How to Scale Grafana Pyroscope v2 in Microservices Mode for High Availability
+
+21. How to Choose On-CPU and GIL-Only Sampling for Python in Grafana Pyroscope
+22. How to Toggle Pyroscope Profiling Types from a .NET Application
+23. How to Fix Pyroscope .NET Profiler Loading Failures in Alpine Containers
+24. How to Diagnose Missing Custom Labels in Pyroscope .NET Profiles
+25. How to Diagnose PKIX Certificate Errors from the Pyroscope Java Agent
+26. How to Recover Missing Java CPU Profiles in Pyroscope Containers
+27. How to Use Regex Matchers with Grafana Dashboard Variables in Pyroscope Queries
+28. How to Diagnose Invalid Label Names When Importing pprof Profiles into Pyroscope
+29. How to Convert Custom Native Profiler Output for Pyroscope Ingestion
+30. How to Scrape Grafana Pyroscope Server Metrics with Prometheus
+31. How to Collect Python Memory Allocation Profiles with Grafana Pyroscope
+32. How to Fix Pyroscope eBPF Symbol-Cache Permission Errors in Grafana Alloy
+33. How to Query Pyroscope Through Grafana's Data Source Proxy with profilecli
+34. How to Diagnose Pyroscope Self-Profiling Upload Errors After Enabling HTTPS
+35. How to Collect On-Demand Go CPU Profiles While Pyroscope Is Running
+36. How to Validate Go Mutex and Block Profiles in Pyroscope After Runtime Upgrades
+37. How to Move Pyroscope Metrics and Admin Endpoints to a Separate HTTP Port
+38. How to Export Pyroscope Profiles as pprof Files for Offline Analysis
+39. How to Diagnose Missing Pyroscope Source Links with profilecli Mapping Coverage
+40. How to Distinguish Self and Total CPU Time in Pyroscope Flame Graphs
 
 ## youki
 
@@ -8140,3 +8182,187 @@
 18. How to Diagnose Hubble UI Asset and Route Errors Behind a Gateway API Path Prefix
 19. How to Reduce Hubble Metric Cardinality with Workload Contexts Instead of Pod IP Labels
 20. How to Update Hubble Metric Filters Without Restarting Cilium Agents
+
+## BorgBackup
+
+1. How to Restore a Single File with BorgBackup When the Include Pattern Never Matches
+2. How to Preview BorgBackup Retention Rules Before Pruning Archives
+3. How to Reclaim Disk Space After BorgBackup Pruning with borg compact
+4. How to Keep a BorgBackup Archive Indefinitely Outside Scheduled Pruning
+5. How to Apply Different BorgBackup Retention Policies to Large and Small Files
+6. How to Test BorgBackup Exclusion Patterns Before Creating an Archive
+7. How to Export BorgBackup Encryption Keys and Restore Access on a New Computer
+8. How to Diagnose BorgBackup Lock Timeouts Before Using break-lock
+9. How to Resume an Interrupted BorgBackup Job Using Checkpointed Data
+10. How to Extract Only Changed Files Between Two BorgBackup Archives
+11. How to Split BorgBackup Source Data Across Separate Backup Disks
+12. How to Copy a BorgBackup Repository Consistently with borg with-lock and rsync
+13. How to Diagnose BorgBackup Cache Rebuilds That Make Unchanged Backups Slow
+14. How to Move the BorgBackup Cache Off a Full Root Partition
+15. How to Remove Mistakenly Backed-Up Files from Existing BorgBackup Archives
+16. How to Investigate BorgBackup Integrity Errors Before Attempting Repository Repair
+17. How to Compare File Content and Permission Changes Between BorgBackup Archives
+18. How to Back Up a Linux Root Filesystem with BorgBackup Exclusions and Mount Boundaries
+19. How to Supply BorgBackup Passphrases to Automated Jobs with BORG_PASSCOMMAND
+20. How to Protect BorgBackup Repositories from Compromised Clients with Append-Only Access
+
+## FireHydrant
+
+1. How to Require the Right Incident Details When Declaring FireHydrant Incidents in Slack
+2. How to Assign an Incident Commander Automatically with FireHydrant Runbooks
+3. How to Page Service Owners Automatically When a FireHydrant Incident Impacts Their Service
+4. How to Attach FireHydrant Runbooks Based on Incident Severity and Impact
+5. How to Make FireHydrant Runbook Steps Wait for Earlier Steps to Finish
+6. How to Schedule Repeating Incident Update Reminders in FireHydrant
+7. How to Share FireHydrant Incident Progress with Internal Stakeholders
+8. How to Publish FireHydrant Incident Updates to Atlassian Statuspage
+9. How to Turn Important Slack Messages into a FireHydrant Incident Timeline
+10. How to Measure Time to First Acknowledgement with FireHydrant Custom Milestones
+11. How to Build FireHydrant Retrospective Templates for Different Incident Types
+12. How to Track FireHydrant Incident Follow-Ups in Jira
+13. How to Configure a FireHydrant Severity Matrix from Customer Impact
+14. How to Build a Monthly Incident Report from FireHydrant Analytics Exports
+15. How to Verify FireHydrant API Writes Before Continuing an Automation
+16. How to Handle Shared API Rate Limits and Retry-After in FireHydrant Integrations
+17. How to Deduplicate FireHydrant Signals with Stable Idempotency Keys
+18. How to Route FireHydrant Signals to the Correct Team with Alert Rules
+19. How to Evaluate FireHydrant with an Incident Response Fire Drill
+20. How to Restrict FireHydrant Runbook Editing to an Owning Team
+
+## sysctl
+
+1. How to Resolve Conflicting sysctl Values Across systemd-sysctl and procps Reloads
+2. How to Trace a sysctl Value That Changes Again After Boot
+3. How to Exclude One Network Interface from a sysctl.d Wildcard Rule
+4. How to Set sysctl Values for VLAN Interfaces Whose Names Contain Dots
+5. How to Apply Module-Provided sysctl Keys When the Module Loads After Boot
+6. How to Find the Right Configuration Interface When a Kernel Parameter Is Missing from sysctl
+7. How to Initialize and Verify sysctl Settings in a Newly Created Network Namespace
+8. How to Allow Low-Port Binding in a Specific Linux Network Namespace with sysctl
+9. How to Grant ICMP Echo Socket Access to a Linux Group with ping_group_range
+10. How to Calculate the Effective rp_filter Value from all, default, and Interface Settings
+11. How to Keep Strict Reverse-Path Filtering Working with fwmark-Based Policy Routing
+12. How to Capture Selected sysctl Values and Roll Back a Tuning Experiment
+13. How to Filter sysctl Read Output Without Accidentally Reloading Kernel Settings
+14. How to Make an Optional sysctl Key Nonfatal in a Shared sysctl.d Configuration
+15. How to Diagnose Permission Denied When systemd-sysctl Reads a Configuration File
+16. How to Fix Invalid Argument Errors from Quoted Multi-Value sysctl Settings
+17. How to Raise fs.nr_open When Root Cannot Increase the Open-File Limit
+18. How to Estimate inotify Watch Memory Before Increasing sysctl Limits
+19. How to Make systemd-sysctl Fail When Required Kernel Settings Cannot Be Applied
+20. How to Add Reserved Ephemeral Ports with sysctl While Preserving Existing Reservations
+
+## Cloud Networking
+
+1. How to Replace an Azure Private Endpoint Without Losing Its DNS Record
+2. How to Find Who Deleted an Azure Private Endpoint or Its DNS Record
+3. How to Resolve Public Vendor Endpoints Shadowed by an Azure Private DNS Zone
+4. How to Test Azure Storage Failover When Each Region Uses a Private Endpoint
+5. How to Route Azure Private Endpoint Requests Through a Firewall with UDR Policies
+6. How to Verify That Azure NSG Rules Actually Apply to Private Endpoints
+7. How to Fix Asymmetric Azure Private Endpoint Traffic Through Firewall Network Rules
+8. How to Advertise Post-NAT Prefixes over BGP with Azure VPN Gateway
+9. How to Choose BGP Peer Addresses for Azure VPN Connections That Require NAT
+10. How to Fix Conflicting Private DNS Domains When Adding AWS Endpoint Subnets
+11. How to Choose Regional or Zonal DNS Names for an AWS Interface Endpoint
+12. How to Match AWS PrivateLink Consumer and Provider Zones with AZ IDs
+13. How to Reach an AWS PrivateLink Service from an Availability Zone It Does Not Offer
+14. How to Route On-Premises S3 API Calls Through PrivateLink While Keeping VPC Calls on Gateway Endpoints
+15. How to Diagnose S3 Signature Errors After Proxying a Private Endpoint Behind a Custom Hostname
+16. How to Share Private Cloud SQL Access Across Separate VPCs with Consumer PSC Endpoints
+17. How to Fix Cross-Region Access to a Google Cloud PSC Endpoint with Global Access
+18. How to Validate Cloud Interconnect Access to a PSC Endpoint in Another Region
+19. How to Compare Allocated and Used Cloud NAT Ports Before Increasing Capacity
+20. How to Restrict Google Cloud NAT Egress to Approved Destination IPs with Firewall Rules
+
+## Repair Automation
+
+1. How to Choose Between Local Service Supervision and Alert-Triggered Repair Automation
+2. How to Pause Automated Service Repairs During Deployments and Planned Maintenance
+3. How to Track Repeated Successful Repairs That Hide a Recurring Production Failure
+4. How to Verify Application Recovery Before Suppressing an Alert After an Automated Restart
+5. How to Configure systemd Failure Notifications for normal and direct Restart Modes
+6. How to Recover a systemd Service from start-limit-hit While Keeping Restart Rate Limits
+7. How to Authenticate an Alertmanager Repair Webhook and Restrict Its Allowed Commands
+8. How to Route Grouped Alertmanager Webhook Alerts to the Correct Repair Targets
+9. How to Exclude Resolved Alerts from an Alertmanager Automated Repair Workflow
+10. How to Diagnose AWS Config Remediation Failures When No SSM Execution Appears
+11. How to Recheck Resource State Before an AWS Config Remediation Acts on Stale Compliance Data
+12. How to Keep Terraform from Reverting a Resource Change Made by Repair Automation
+13. How to Make an SSM Repair Runbook Wait for an EC2 Instance State with a Timeout
+14. How to Bound Fleet Repairs with SSM Automation Runbook Concurrency and Error Thresholds
+15. How to Stop Automated Node Restarts When a Shared Dependency Is the Real Failure
+16. How to Cap Automated Disk Expansion Before It Exhausts a Shared Thin-Provisioned Pool
+17. How to Escalate Low-Disk Alerts When Automated Cleanup Succeeds but Reclaims No Space
+18. How to Serialize StackStorm Repair Actions by Hostname with Concurrency Policies
+19. How to Replace Fixed Post-Reboot Delays with Bounded Health Polling in StackStorm
+20. How to Test Repair Automation When the Alerting Pipeline or Remote Runner Is Unavailable
+
+## HCL
+
+1. How to Edit HCL Attributes with hclwrite While Preserving Nearby Comments
+2. How to Decode tfvars Lists of Objects in Go with the Correct cty Struct Tags
+3. How to Generate Terraform Type Constraints from cty Types with hclwrite
+4. How to Generate Lists of Terraform Resource References with hclwrite
+5. How to Read Mixed HCL Block Types in Their Original Source Order
+6. How to Parse an HCL Configuration String in Go Without a Temporary File
+7. How to Extract Variable References from HCL Expressions for Dependency Analysis
+8. How to Rename Variable References Across HCL Expressions with hclwrite
+9. How to Update Nested tfvars Object Members with Targeted HCL Source Edits
+10. How to Decode Native HCL and HCL JSON with the Same Go Schema
+11. How to Merge Nested Terraform Maps Without Discarding Default Child Attributes
+12. How to Resolve Duplicate Object Keys in Terraform by Grouping Related Records
+13. How to Combine Overlapping Terraform Map Values into Lists
+14. How to Use a Variable Value as an HCL Object Key
+15. How to Read and Write HCL Map Keys That Contain Dots
+16. How to Decode Arbitrary tfvars Attributes into cty Values Without Fixed Go Structs
+17. How to Partially Decode Terraform Variable Blocks While Preserving Type Expressions
+18. How to Generate HCL String Interpolation Without Escaping It into Literal Text
+19. How to Generate HCL Objects That Mix Literal Values and Resource References
+20. How to Reorder HCL Blocks Using hclwrite Block Operations
+
+## Event Logs
+
+1. How to Filter Windows Event Logs by Named EventData Fields in PowerShell
+2. How to Search Windows Event Messages When XPath contains() Is Unsupported
+3. How to Query Multiple Windows Event IDs with Get-WinEvent FilterHashtable
+4. How to Export Windows Event Logs to CSV Without Breaking Multiline Messages
+5. How to Search a Folder of Archived EVTX Files for Specific Events
+6. How to Export Filtered Windows Events as a Valid EVTX File with wevtutil
+7. How to Fix Access Denied When Reading Remote Windows Event Logs
+8. How to Diagnose Computers Missing from an AD-Group-Based WEF Subscription
+9. How to Diagnose WEF Subscriptions That Become Inactive After Working
+10. How to Configure Certificate Authentication for WEF Between Workgroup Machines
+11. How to Restore Missing Message Text in Forwarded Windows Events
+12. How to Give Windows Event Forwarding Access to the Security Log
+13. How to Size Windows Event Logs to Survive Event Collector Outages
+14. How to Backfill Existing Windows Events When Creating a WEF Subscription
+15. How to Reduce Windows Event Forwarding Delivery Delay with Custom Batching
+16. How to Resume a Windows Event Log Reader from a Saved Bookmark
+17. How to Reconstruct Windows Service Starts, Stops, and Startup-Type Changes from Event Logs
+18. How to Register a Windows Event Source Before Running a Service Without Administrator Rights
+19. How to Read Windows Analytical Event Channels with Get-WinEvent -Oldest
+20. How to Build a Windows Restart Timeline from Planned and Unexpected Shutdown Events
+
+## Postgres Tuning
+
+1. How to Tune PostgreSQL Cursor Plans for Full-Result Fetches with cursor_tuple_fraction
+2. How to Reduce PostgreSQL GIN Write Latency Spikes from Pending-List Cleanup
+3. How to Tune PostgreSQL Statistics Targets for Skewed Columns
+4. How to Reduce PostgreSQL Hash Spills with work_mem and hash_mem_multiplier
+5. How to Apply PostgreSQL work_mem Overrides to One Transaction with SET LOCAL
+6. How to Diagnose Lossy PostgreSQL Bitmap Scans and Excessive Rechecks
+7. How to Measure When PostgreSQL JIT Compilation Costs More Than It Saves
+8. How to Diagnose PostgreSQL Plans with Workers Planned but Workers Launched Zero
+9. How to Diagnose PostgreSQL Memoize Slowdowns with Cache Hits, Misses, and Evictions
+10. How to Smooth PostgreSQL Checkpoint Latency Spikes with Measured WAL Settings
+11. How to Evaluate PostgreSQL WAL Compression Against CPU and Write Volume
+12. How to Test PostgreSQL commit_delay for WAL Sync Contention
+13. How to Benchmark PgBouncer with pgbench Without Hiding Connection Setup Costs
+14. How to Calibrate pgbench Clients and Threads Before Comparing PostgreSQL Tuning Changes
+15. How to Isolate PostgreSQL Incremental Sort Regressions After an Upgrade
+16. How to Fix PostgreSQL ORDER BY LIMIT Plans That Scan Too Many Filtered Rows
+17. How to Stabilize PostgreSQL Query Plans After Bulk Loads with Targeted ANALYZE
+18. How to Tune postgres_fdw fetch_size for Bulk Reads Across Slow Networks
+19. How to Balance PostgreSQL Join Planning Time with join_collapse_limit
+20. How to Capture Slow Queries Inside PL/pgSQL Functions with auto_explain
