@@ -212,7 +212,6 @@
 
 ## Correlation IDs
 
-14. Idempotency Key vs Correlation ID: How to Use Both for Safe API Retries and Debugging
 15. How to Preserve Original Correlation and Causation IDs When Messages Move to a Dead-Letter Queue
 16. How to Correlate Scheduled Jobs and Batch Runs When There Is No Incoming HTTP Request
 17. How to Propagate Correlation IDs from API Gateway and Lambda into SQS, SNS, and EventBridge
