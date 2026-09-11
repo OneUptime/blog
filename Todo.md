@@ -212,7 +212,6 @@
 
 ## Correlation IDs
 
-19. How to Prevent Correlation ID Log Injection, Unbounded Cardinality, and Oversized Headers
 20. How to Query Correlated Logs in Loki or Elasticsearch When Traces Are Unsampled
 
 ## Buildkite
