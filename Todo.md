@@ -215,7 +215,6 @@
 
 ## Buildkite
 
-8. How to Trigger a Downstream Buildkite Pipeline Dynamically and Pass Commit, Branch, and Metadata
 9. How to Share Buildkite Artifacts Across Steps, Builds, and Pipelines Without Ambiguous Matches
 10. Why Missing Buildkite Artifact Globs Do Not Fail a Step—and How to Enforce Required Outputs
 11. How to Structure Multiple Buildkite Pipeline YAML Files in One Repository
