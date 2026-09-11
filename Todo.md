@@ -215,7 +215,6 @@
 
 ## Buildkite
 
-11. How to Structure Multiple Buildkite Pipeline YAML Files in One Repository
 12. How to Centralize Shared Buildkite Pipeline Configuration Across Repositories
 13. How to Run Setup and Teardown Exactly Once in Buildkite When Hooks Execute Per Job
 14. `BUILDKITE_GIT_CLONE_FLAGS` Is Ignored: How Agent-Level Git Configuration Actually Works
