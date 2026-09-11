@@ -212,7 +212,6 @@
 
 ## Correlation IDs
 
-13. Should a Retry Reuse the Same Correlation ID? Adding Attempt IDs Without Breaking the Trace
 14. Idempotency Key vs Correlation ID: How to Use Both for Safe API Retries and Debugging
 15. How to Preserve Original Correlation and Causation IDs When Messages Move to a Dead-Letter Queue
 16. How to Correlate Scheduled Jobs and Batch Runs When There Is No Incoming HTTP Request
