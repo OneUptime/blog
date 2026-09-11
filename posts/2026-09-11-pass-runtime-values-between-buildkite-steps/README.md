@@ -20,7 +20,10 @@ Assume a repository has `package.json` and its agents provide Node.js and Bash. 
 #!/usr/bin/env bash
 set -euo pipefail
 
-version=$(node -p 'require("./package.json").version')
+version=$(node -p '
+  const version = require("./package.json").version;
+  typeof version === "string" ? version : ""
+')
 [[ -n "$version" ]] || { echo 'Missing package version' >&2; exit 1; }
 buildkite-agent meta-data set release-version "$version"
 ```
