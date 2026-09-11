@@ -218,7 +218,6 @@
 
 ## Azure SQL
 
-1. Azure SQL “Login Failed for User `<token-identified principal>`”: A Managed Identity Troubleshooting Checklist
 2. How to Use a User-Assigned Managed Identity with Azure SQL from an Azure DevOps Pipeline
 3. How to Use `DefaultAzureCredential` for Azure SQL Locally and Managed Identity in Production
 4. Azure SQL Private Endpoint Resolves to a Public IP: How to Fix Private DNS and VPN Forwarding
