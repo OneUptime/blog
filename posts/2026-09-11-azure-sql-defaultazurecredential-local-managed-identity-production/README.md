@@ -18,11 +18,11 @@ For a small application, the connection string can contain `Authentication=Activ
 
 For production, Microsoft's [Azure Identity guidance](https://learn.microsoft.com/en-us/dotnet/azure/sdk/authentication/best-practices) recommends a deterministic credential. An unexpected environment credential or developer CLI login should not silently become the production service's identity.
 
-The implementation below chooses a credential once when the process starts. It uses `DefaultAzureCredential` only when `APP_ENVIRONMENT=Development`, and a specific `ManagedIdentityCredential` otherwise. This variable is an example application setting, not a built-in Azure convention.
+The implementation below chooses a credential once when the connection factory initializes. It uses `DefaultAzureCredential` only when `APP_ENVIRONMENT=Development`, and a specific `ManagedIdentityCredential` otherwise. This variable is an example application setting, not a built-in Azure convention.
 
 ## Provision both database principals
 
-Configure the logical server's Entra administrator and connect directly to the application database as an authorized administrator. Create a development group and the production managed identity as distinct users:
+Configure the logical server's Entra administrator and connect directly to the application database using Microsoft Entra authentication as an authorized administrator. Create database users for an existing development group and production managed identity:
 
 ```sql
 CREATE USER [orders-developers] FROM EXTERNAL PROVIDER;
