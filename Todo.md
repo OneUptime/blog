@@ -215,7 +215,6 @@
 
 ## Buildkite
 
-20. Buildkite Parallelism vs Concurrency Groups: How to Cap Load Without Serializing the Whole Pipeline
 
 ## Azure SQL
 
