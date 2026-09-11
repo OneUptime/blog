@@ -37,12 +37,14 @@ Use the resource group that owns the zone; it can differ from the database and e
 
 ## Compare the actual DNS paths
 
-From the failing laptop, query the SQL hostname through its normal resolver and then through the intended corporate resolver:
+From the failing laptop, query the SQL hostname through the default DNS server selected by `nslookup` and then through the intended corporate resolver:
 
 ```bash
 nslookup orders-prod.database.windows.net
 nslookup orders-prod.database.windows.net 10.20.0.10
 ```
+
+These queries test DNS server responses, but may not follow the application's resolver path: `nslookup` bypasses Windows name-resolution policies (NRPT) and macOS native DNS routing. Use the Windows `Resolve-DnsName` check below and verify resolution in the SQL application as well.
 
 Here `10.20.0.10` represents your corporate DNS server. Record the server that answered, the alias chain, and the final address. Repeat from a VM in the Azure network that is known to resolve the endpoint correctly.
 
