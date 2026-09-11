@@ -215,7 +215,6 @@
 
 ## Buildkite
 
-5. Buildkite Jobs Stuck on “Waiting for Agent”: How to Debug Queues, Tags, and Targeting Rules
 6. How to Autoscale Self-Hosted Buildkite Agents Without Creating Long Queue Waits
 7. How to Generate a Buildkite Test Matrix with Dynamic Pipelines and Stable Step Keys
 8. How to Trigger a Downstream Buildkite Pipeline Dynamically and Pass Commit, Branch, and Metadata
