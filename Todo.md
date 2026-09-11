@@ -218,7 +218,6 @@
 
 ## Azure SQL
 
-2. How to Use a User-Assigned Managed Identity with Azure SQL from an Azure DevOps Pipeline
 3. How to Use `DefaultAzureCredential` for Azure SQL Locally and Managed Identity in Production
 4. Azure SQL Private Endpoint Resolves to a Public IP: How to Fix Private DNS and VPN Forwarding
 5. Why You Cannot Ping an Azure SQL Private Endpoint—and How to Test Port 1433 Correctly
