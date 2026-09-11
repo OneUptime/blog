@@ -69,7 +69,7 @@ Patterns use Buildkite's documented glob syntax, not regular expressions or a sh
 
 ## Make the comparison base intentional
 
-By default, the agent looks for a valid base in this order: an explicit setting, the pull request's base branch, the pipeline's default branch, then `origin/main`. This is useful for pull requests, but not automatically the right policy for every main-branch or scheduled build.
+The agent selects the first nonempty base setting in this order: an explicit setting, `origin/` plus the pull request's base branch, `origin/` plus the pipeline's default branch, then `origin/main`. It does not try the next setting if the selected Git ref cannot be resolved. This is useful for pull requests, but not automatically the right policy for every main-branch or scheduled build.
 
 Set a base on the upload job when your workflow requires it:
 
@@ -85,7 +85,7 @@ steps:
 
 `--fetch-diff-base` requires agent v3.117.0 or later. Fetching reduces the chance that a stale local branch ref causes extra work after merging the default branch into a feature branch. It still requires network access and enough Git history to resolve the relationship.
 
-For a push to `main`, comparing the checked-out commit with an up-to-date `origin/main` may produce no changes. Decide whether that workflow should compare against an earlier main commit, the last successfully tested commit, or run the full suite. Do not reuse a pull request baseline blindly.
+For a push to `main`, agent v4.0.3 detects when the comparison base resolves to `HEAD` and uses the latest commit's changes relative to its first parent. This can miss changes from earlier commits in a multi-commit push. Decide whether that workflow should compare against an earlier main commit, the last successfully tested commit, or run the full suite. Do not reuse a pull request baseline blindly.
 
 ## Test selection with a supplied file list
 
