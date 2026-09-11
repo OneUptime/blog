@@ -212,7 +212,6 @@
 
 ## Correlation IDs
 
-11. How to Correlate WebSocket Connections, Messages, and Reconnects Without Reusing One ID Forever
 12. How to Model Correlation, Causation, and Message IDs in Fan-Out Event Workflows
 13. Should a Retry Reuse the Same Correlation ID? Adding Attempt IDs Without Breaking the Trace
 14. Idempotency Key vs Correlation ID: How to Use Both for Safe API Retries and Debugging
