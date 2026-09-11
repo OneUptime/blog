@@ -215,7 +215,6 @@
 
 ## Buildkite
 
-9. How to Share Buildkite Artifacts Across Steps, Builds, and Pipelines Without Ambiguous Matches
 10. Why Missing Buildkite Artifact Globs Do Not Fail a Step—and How to Enforce Required Outputs
 11. How to Structure Multiple Buildkite Pipeline YAML Files in One Repository
 12. How to Centralize Shared Buildkite Pipeline Configuration Across Repositories
