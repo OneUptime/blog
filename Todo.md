@@ -215,7 +215,6 @@
 
 ## Buildkite
 
-18. How to Retrieve Buildkite Job Logs and Structured Test Results Through the REST API
 19. Buildkite YAML Pipes and Multiline Commands Not Running: How to Fix Shell and YAML Quoting
 20. Buildkite Parallelism vs Concurrency Groups: How to Cap Load Without Serializing the Whole Pipeline
 
