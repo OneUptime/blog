@@ -10,7 +10,7 @@ Description: Understand Buildkite agent checkout policy, supported Git flag over
 
 Setting `BUILDKITE_GIT_CLONE_FLAGS` in pipeline YAML does not necessarily change the Git command the agent runs. The agent owns checkout policy, and current releases deliberately restrict pipeline overrides of flag-based settings.
 
-There is a second common explanation: a reused checkout runs `git fetch`, not `git clone`. A clone flag cannot affect a command that never executes. Diagnose policy, timing, and the actual checkout operation separately before changing the flags again.
+There is a second common explanation: a reused checkout normally runs `git fetch`, not `git clone` (fetching can be skipped when the agent is configured to skip fetching commits already present locally). A clone flag cannot affect a command that never executes. Diagnose policy, timing, and the actual checkout operation separately before changing the flags again.
 
 ## Inspect the installed agent and checkout log
 
@@ -58,7 +58,7 @@ Setting both clone and fetch behavior is important for a reusable workspace. Oth
 
 ## Use a supported hook for a scoped change
 
-If a trusted job needs a different clone configuration, the environment-variable reference allows modifying `BUILDKITE_GIT_CLONE_FLAGS` in an `environment` or `pre-checkout` hook:
+If a trusted job needs a different clone configuration, the environment-variable reference allows modifying `BUILDKITE_GIT_CLONE_FLAGS` in an `environment` or `pre-checkout` hook when the agent uses `from-job` or `none` mode. In `strict` mode, the agent also blocks these hook overrides:
 
 ```bash
 #!/usr/bin/env bash
@@ -70,7 +70,7 @@ Place the hook where it exists before checkout, such as the agent's configured h
 
 Keep the hook's decision tied to an explicit, reviewed policy, and use `return` rather than `exit` for an early return from a shell job hook. Hook exports must be captured by the agent's wrapper to reach the next phase.
 
-A `pre-command` hook is too late to alter an already completed checkout. Similarly, exporting flags in the test script affects only future Git commands that the script itself chooses to run.
+A `pre-command` hook is too late to alter an already completed checkout. Similarly, exporting these variables in the test script cannot change checkout; Git itself does not read `BUILDKITE_GIT_*_FLAGS`, so future Git commands must explicitly receive the desired flags.
 
 ## Allow pipeline-controlled flags only intentionally
 
@@ -101,7 +101,7 @@ Run a test build on a fresh worker, then another build that reuses the checkout.
 ```bash
 git rev-parse --is-shallow-repository
 git log --oneline -5
-git show-ref --heads --tags
+git show-ref --branches --tags
 ```
 
 For workflows using change detection, verify the required base ref and merge base exist. For release tooling, verify tag discovery and version calculation. Faster checkout is useful only when it preserves the history operations the job needs.
