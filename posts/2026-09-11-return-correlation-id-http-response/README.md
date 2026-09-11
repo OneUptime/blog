@@ -10,7 +10,7 @@ Description: Add a public support ID before HTTP handling begins, preserve it th
 
 A user reporting “the checkout failed” often cannot provide enough information to find the request. Returning an opaque correlation ID gives the browser, mobile application, or support form a precise value to capture alongside the time and error message.
 
-The practical contract is to include the ID on every HTTP response your application can produce, including validation errors, authentication failures, missing routes, and unexpected exceptions. Failures before HTTP exists, such as TLS negotiation errors, cannot carry an HTTP response header. Cover those with edge connection diagnostics instead of promising an impossible guarantee.
+The practical contract is to include the ID on every HTTP response your application can produce, including validation errors, authentication failures, missing routes, and unexpected exceptions. Failures before HTTP exists, such as TLS negotiation errors, cannot carry an HTTP response header. Cover those with edge connection diagnostics instead of promising an impossible guarantee. Node can also generate HTTP errors before Express runs, such as parser rejections and request timeouts; those need server-level handling or edge coverage because application middleware cannot attach their IDs.
 
 ## Assign the ID before middleware can reject a request
 
@@ -55,14 +55,18 @@ app.use((req, res) => {
 
 app.use((err, req, res, next) => {
   if (res.headersSent) return next(err);
-  const status = err.type === 'entity.parse.failed' ? 400 : 500;
+  const candidateStatus = err.status ?? err.statusCode;
+  const status = Number.isInteger(candidateStatus)
+    && candidateStatus >= 400 && candidateStatus <= 599
+    ? candidateStatus : 500;
   console.error(JSON.stringify({
     event: 'http.failed',
     correlation_id: res.locals.correlationId,
     error_type: err.name,
   }));
   res.status(status).json({
-    error: status === 400 ? 'invalid_json' : 'internal_error',
+    error: err.type === 'entity.parse.failed' ? 'invalid_json'
+      : status < 500 ? 'request_error' : 'internal_error',
     correlation_id: res.locals.correlationId,
   });
 });
@@ -103,7 +107,7 @@ The body and header should match on errors. Keep sensitive details, exception me
 
 ## Account for caching and streaming
 
-A cache can replay a response header containing the ID of the request that originally populated the cache. Decide whether the public ID refers to the cached representation or to the current delivery. For per-delivery support IDs, generate or replace the header at the serving edge and log cache hit status with it.
+A cache can replay a response header containing the ID of the request that originally populated the cache. Decide whether the public ID refers to the cached representation or to the current delivery. For per-delivery support IDs, generate or replace the header at the serving edge and log cache hit status with it. If a cached body includes `correlation_id`, replacing only the header leaves the two values inconsistent; update the body field as well or avoid caching those error responses.
 
 Do not add the correlation ID to the cache key just to obtain uniqueness; that can eliminate cache reuse. For personalized error responses, use the application's normal cache-control policy.
 
