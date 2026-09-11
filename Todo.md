@@ -215,7 +215,6 @@
 
 ## Buildkite
 
-16. How to Make a Buildkite Cleanup Step Run After Failures and Cancellations
 17. How to Use Buildkite Input Steps in Both Manual and Scheduled Pipelines
 18. How to Retrieve Buildkite Job Logs and Structured Test Results Through the REST API
 19. Buildkite YAML Pipes and Multiline Commands Not Running: How to Fix Shell and YAML Quoting
