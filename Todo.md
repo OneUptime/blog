@@ -215,7 +215,6 @@
 
 ## Buildkite
 
-13. How to Run Setup and Teardown Exactly Once in Buildkite When Hooks Execute Per Job
 14. `BUILDKITE_GIT_CLONE_FLAGS` Is Ignored: How Agent-Level Git Configuration Actually Works
 15. How to Skip Buildkite Builds for README-Only and Documentation-Only Changes
 16. How to Make a Buildkite Cleanup Step Run After Failures and Cancellations
