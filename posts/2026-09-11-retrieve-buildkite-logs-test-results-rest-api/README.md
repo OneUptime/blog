@@ -38,7 +38,7 @@ Fetch the build and list its command jobs:
 ```bash
 curl --fail --silent --show-error \
   -H "Authorization: Bearer $BK_API_TOKEN" \
-  "$build_api" > build.json
+  "$build_api?include_retried_jobs=true" > build.json
 
 jq -r '.jobs[] | select(.type == "script") |
   [.id, .step_key, .state, .name] | @tsv' build.json
@@ -50,7 +50,7 @@ Choose the actual job UUID from that output:
 export BK_JOB_ID='REPLACE_WITH_JOB_UUID'
 ```
 
-A parallel step can have several jobs with the same `step_key`, and retries can create additional attempts. Select the specific job you intend to inspect or iterate over all relevant jobs while preserving their IDs in output filenames.
+A parallel step can have several jobs with the same `step_key`, and retries can create additional attempts. The `include_retried_jobs=true` parameter includes earlier attempts that the build response otherwise omits. Select the specific job you intend to inspect or iterate over all relevant jobs while preserving their IDs in output filenames.
 
 Build details provide context for interpreting logs: a skipped job, a queued job, and an executed failing job do not all have the same available output.
 
@@ -107,7 +107,7 @@ Require one intended match before using its download URL:
 download_url=$(jq -er '
   if length == 1 then .[0].download_url
   else error("Expected exactly one report artifact") end
-' artifacts.json)
+' artifacts.json) || exit 1
 
 curl --fail --silent --show-error --location \
   -H "Authorization: Bearer $BK_API_TOKEN" \
@@ -124,7 +124,7 @@ If your pipeline uploads results to Test Engine, find runs associated with the b
 
 ```bash
 export BK_SUITE='your-suite'
-build_uuid=$(jq -er '.id' build.json)
+build_uuid=$(jq -er '.id' build.json) || exit 1
 suite_api="https://api.buildkite.com/v2/analytics/organizations/${BK_ORG}/suites/${BK_SUITE}"
 
 curl --fail --silent --show-error --get \
