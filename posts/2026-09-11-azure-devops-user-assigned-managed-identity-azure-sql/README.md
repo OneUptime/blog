@@ -8,7 +8,7 @@ Description: Connect an Azure DevOps pipeline to Azure SQL using a user-assigned
 
 ---
 
-An Azure DevOps pipeline can authenticate as a user-assigned managed identity without storing a client secret. The useful distinction is how the pipeline obtains that identity: workload identity federation lets Azure DevOps exchange a job token for an Entra token, while an agent-assigned identity depends on the machine hosting the agent.
+An Azure DevOps pipeline can authenticate as a user-assigned managed identity without storing a client secret. The useful distinction is how the pipeline obtains that identity: workload identity federation lets the pipeline exchange an OpenID Connect (OIDC) ID token for a Microsoft Entra access token, while an agent-assigned identity depends on the machine hosting the agent.
 
 This example uses an Azure Resource Manager service connection backed by a user-assigned identity and workload identity federation. It requests a token for Azure SQL inside an `AzureCLI@2` task and passes that token directly to PowerShell's `Invoke-Sqlcmd`.
 
@@ -39,7 +39,7 @@ The account configuring federation needs permission to update the identity's fed
 
 ## Grant access inside the database
 
-Configure a Microsoft Entra administrator on the Azure SQL logical server. Connect as an authorized administrator directly to the target database and create the identity's contained user:
+Configure a Microsoft Entra administrator on the Azure SQL logical server. Connect using Microsoft Entra authentication as an authorized administrator directly to the target database and create the identity's contained user:
 
 ```sql
 CREATE USER [sql-release-identity] FROM EXTERNAL PROVIDER;
