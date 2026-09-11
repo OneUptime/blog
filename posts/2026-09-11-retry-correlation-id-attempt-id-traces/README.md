@@ -77,7 +77,7 @@ export async function readWithRetries(url) {
 
 The example deliberately lets transport failures and aborts propagate. If you also retry connection failures, classify them explicitly and log the failed attempt before continuing; do not catch every programming error and treat it as a transient network problem.
 
-The ten-second deadline bounds request setup and waits in this function. The returned response body is consumed by its caller, so apply a body-size and consumption policy there as well. Returning a final error response is intentional: the caller can inspect the status and body.
+The ten-second budget limits request timeouts and retry waits in this function; event-loop delays can postpone timeout handling. The returned response body is consumed by its caller, but the final attempt's abort signal remains attached and can still abort body consumption after the function returns. Apply a body-size and consumption policy there as well. Returning a final error response is intentional: the caller can inspect the status and body.
 
 [HTTP semantics](https://www.rfc-editor.org/rfc/rfc9110.html#name-retry-after) allows `Retry-After` as either delay seconds or an HTTP date. If the server's requested delay exceeds your budget, stop rather than shortening it and immediately retrying.
 

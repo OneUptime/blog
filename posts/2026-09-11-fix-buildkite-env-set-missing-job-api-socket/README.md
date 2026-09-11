@@ -108,7 +108,7 @@ Do not copy a socket or token from another job. Its lifetime and authorization b
 
 ## Verify the corrected scope
 
-For shell exports, run a child process and confirm it sees the variable. For a hook or `env set`, inspect the value from a subsequent job phase. For cross-step metadata, schedule the consumer on another available agent so a shared process cannot hide a mistake.
+For shell exports, run a child process and confirm it sees the variable. For a hook or `env set`, inspect the value from a subsequent job phase. For cross-step metadata, confirm the dependent consumer retrieves the value; build metadata is available across agents and does not rely on a shared process.
 
 If the socket exists but communication fails, inspect the executor's logs and the container's user and mounts. If the socket is absent outside a job, use the scope-appropriate alternative instead of trying to manufacture a job API environment.
 

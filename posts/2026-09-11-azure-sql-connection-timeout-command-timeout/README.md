@@ -92,7 +92,7 @@ Read whether the message mentions pre-login, login, or obtaining a connection fr
 
 From the application host, resolve the SQL hostname and test TCP 1433. For a private endpoint, compare the result with its actual private IP and inspect Redirect requirements. A token provider can add authentication latency, so record credential acquisition failures separately from SQL command execution.
 
-Pool acquisition is another possible `Open` delay. If all connections are in use, another request waits for one to become available. Inspect connection disposal, unclosed readers, long transactions, and concurrency before increasing `Max Pool Size`. Scaling the pool can transfer the overload to the database without correcting its source.
+Pool acquisition is another possible `Open` delay. If the pool has reached its maximum size and no usable connection is available, another request waits for one to become available. Inspect connection disposal, unclosed readers, long transactions, and concurrency before increasing `Max Pool Size`. Scaling the pool can transfer the overload to the database without correcting its source.
 
 A serverless database resuming from pause introduces another availability transition. Correlate with database status and activity logs rather than treating every first request after an idle period as a network outage.
 

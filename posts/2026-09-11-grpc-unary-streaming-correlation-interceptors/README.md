@@ -136,7 +136,7 @@ The registration snippet is in your application's main package. Register generat
 
 ## Distinguish stream identity from message identity
 
-Keep the RPC ID stable for the stream's lifetime. If messages represent independent commands, add application message IDs and operation correlation IDs to the protobuf envelope. Headers are sent at RPC setup and are not a per-message carrier.
+Keep the RPC ID stable for the stream's lifetime. If messages represent independent commands, add application message IDs and operation correlation IDs to the protobuf envelope. Headers are RPC-level metadata and are not a per-message carrier. With `SetHeader`, response headers are sent when the server explicitly calls `SendHeader`, sends its first response, or returns an RPC status.
 
 Create a new RPC ID on reconnect. An application workflow can keep a separate durable ID across reconnects, but a single permanent connection ID makes individual failures hard to isolate.
 
