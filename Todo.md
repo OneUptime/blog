@@ -215,7 +215,6 @@
 
 ## Buildkite
 
-2. Why `buildkite-agent env set` Fails with `BUILDKITE_AGENT_JOB_API_SOCKET` Missing—and What to Use Instead
 3. How to Escape `$` Variables Correctly in Dynamically Uploaded Buildkite Pipelines
 4. How to Run Buildkite Steps Only When Files Change in a Monorepo
 5. Buildkite Jobs Stuck on “Waiting for Agent”: How to Debug Queues, Tags, and Targeting Rules
