@@ -215,7 +215,6 @@
 
 ## Buildkite
 
-10. Why Missing Buildkite Artifact Globs Do Not Fail a Step—and How to Enforce Required Outputs
 11. How to Structure Multiple Buildkite Pipeline YAML Files in One Repository
 12. How to Centralize Shared Buildkite Pipeline Configuration Across Repositories
 13. How to Run Setup and Teardown Exactly Once in Buildkite When Hooks Execute Per Job
