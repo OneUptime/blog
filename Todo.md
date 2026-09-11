@@ -212,7 +212,6 @@
 
 ## Correlation IDs
 
-7. How to Preserve Correlation IDs Across FastAPI Requests and Celery Tasks with Python `contextvars`
 8. How to Attach Correlation IDs to Go `context.Context` and Enrich HTTP and gRPC Logs
 9. How to Propagate Correlation IDs Through Reactor and `CompletableFuture` Without Losing Java MDC
 10. How to Add and Clear Correlation IDs Correctly in gRPC Unary and Streaming Interceptors
