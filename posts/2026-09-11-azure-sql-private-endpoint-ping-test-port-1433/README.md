@@ -34,7 +34,7 @@ Or on Linux and macOS:
 nslookup orders-prod.database.windows.net
 ```
 
-The final address should match the private endpoint network interface. A CNAME containing `privatelink` alone is insufficient: inspect the final A record. The same name can ultimately resolve publicly when the client does not reach the private DNS zone.
+The final address should match the private endpoint network interface. A CNAME containing `privatelink` alone is insufficient: inspect the final A record (or AAAA record when using IPv6). The same name can ultimately resolve publicly when the client does not reach the private DNS zone.
 
 If the answer is public, investigate resolver configuration, private zone links, and conditional forwarding. A TCP connection to a public address might succeed and still fail to test the private network path you intended.
 
@@ -79,7 +79,7 @@ except OSError as error:
     raise SystemExit(1)
 ```
 
-This opens and closes one TCP socket. It does not send TDS login data. A successful result proves that the TCP handshake completed from that source at that moment, with the destination shown in the output.
+This establishes and closes one TCP connection on success, potentially trying multiple resolved addresses first. The elapsed time includes DNS resolution and any earlier connection attempts. It does not send TDS login data. A successful result proves that the TCP handshake completed from that source at that moment, with the destination shown in the output.
 
 ## Interpret a failure at the correct layer
 
@@ -87,7 +87,7 @@ A DNS error means no usable address was obtained. A TCP timeout commonly means p
 
 When DNS resolves privately but TCP fails, inspect VPN or ExpressRoute routes, VNet peering, effective client routes, source outbound restrictions, and any network virtual appliance. Check endpoint subnet network policies before assuming that an NSG attached to the subnet is filtering private endpoint traffic in the way you expect.
 
-Make one routing or filtering change at a time and rerun from the same client. Broadly opening public SQL access changes the path being tested and can hide the actual private-network fault.
+Make one routing or filtering change at a time and rerun from the same client. Broadly opening public SQL access can hide the actual private-network fault if the client resolves the hostname publicly; enabling public access alone does not change a client's DNS resolution or route.
 
 ## Account for Redirect connections
 
