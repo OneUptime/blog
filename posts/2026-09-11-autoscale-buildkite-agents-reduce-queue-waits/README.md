@@ -53,7 +53,7 @@ A minimum and an idle buffer express different goals. The minimum prevents the f
 
 Suppose a normal arrival burst contains six jobs and your boot-to-ready time is three minutes. With two idle agents, two jobs can start immediately while the other four wait for existing work or new capacity. A large `MaxSize` does not remove that first three-minute delay.
 
-If the queue-delay target is shorter than the startup time, pre-existing capacity is necessary for at least the expected initial burst. For larger bursts, accept a defined amount of queueing or pre-scale before a predictable event.
+If the queue-delay target is shorter than the startup time, pre-existing capacity must be sufficient to start the expected initial burst within that target, allowing for agents that finish jobs and become available again. For larger bursts, accept a defined amount of queueing or pre-scale before a predictable event.
 
 Do not multiply instance count by `AgentsPerInstance` and assume that is useful throughput. Four CPU-heavy jobs on a small host may take much longer than one. Benchmark your actual mix, including memory peaks and container disk usage, before packing several agents onto a machine.
 
