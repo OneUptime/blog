@@ -36,6 +36,9 @@ The packaging script should create the archive and checksum, and fail if require
 For a Linux agent with GNU checksum tools, the relevant producer commands might be:
 
 ```bash
+#!/usr/bin/env bash
+set -euo pipefail
+
 mkdir -p dist
 tar -czf dist/app.tar.gz -C package .
 (
