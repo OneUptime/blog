@@ -28,7 +28,7 @@ Do not use the machine hostname as the run identity. Workers are reused, and a r
 
 ## Use Kubernetes Job identity for practical correlation
 
-For Kubernetes CronJobs, the created Job is a useful run boundary. Its Pods share the Job name, while each Pod has its own UID. Inject both using the downward API:
+For Kubernetes CronJobs, the created Job is a useful run boundary for retries within that Job. Separate Jobs can represent the same scheduled occurrence; to correlate those as one logical run, supply the same durable `RUN_ID` explicitly. Its Pods share the Job name, while each Pod has its own UID. Inject both using the downward API:
 
 ```yaml
 apiVersion: batch/v1
