@@ -66,14 +66,14 @@ set -euo pipefail
 namespace="ci-${BUILDKITE_BUILD_ID}"
 
 kubectl create namespace "$namespace" --dry-run=client -o yaml |
+  kubectl label --local -f - \
+    ci.example.com/managed-by=buildkite \
+    "ci.example.com/build-id=${BUILDKITE_BUILD_ID}" -o yaml |
   kubectl apply -f -
-kubectl label namespace "$namespace" \
-  ci.example.com/managed-by=buildkite \
-  "ci.example.com/build-id=${BUILDKITE_BUILD_ID}" --overwrite
 buildkite-agent meta-data set tests/namespace "$namespace"
 ```
 
-The build UUID gives retries the same logical namespace rather than creating a new one each time. `kubectl create --dry-run=client -o yaml` generates the object, and `kubectl apply` reconciles it. Add your application installation and readiness checks after namespace creation.
+The build UUID gives retries the same logical namespace rather than creating a new one each time. `kubectl create --dry-run=client -o yaml` generates the object, `kubectl label --local` adds ownership labels before creation, and `kubectl apply` reconciles it. This avoids leaving an unlabeled namespace if setup is interrupted before a separate labeling request. Add your application installation and readiness checks after namespace creation.
 
 The setup job should publish usable state only after the relevant readiness checks succeed. If you record the namespace before installing workloads, consumers still remain protected by the setup dependency, but metadata alone does not indicate readiness.
 
