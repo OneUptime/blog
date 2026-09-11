@@ -23,7 +23,7 @@ Use separate identifiers for the connection, the individual message, and any lon
 
 Treat client references as untrusted input. Validate them and never let knowledge of an ID authorize a resume, subscription, or command.
 
-Browser WebSocket construction accepts a URL and optional subprotocols, not an arbitrary request-header object. Use the application's message envelope for per-command metadata. Avoid putting identifiers or credentials into URLs simply to imitate HTTP headers; URLs can appear in proxy logs and history.
+Browser WebSocket construction accepts a URL and optional subprotocols, not an arbitrary request-header object. Use the application's message envelope for per-command metadata. Avoid putting identifiers or credentials into URLs simply to imitate HTTP headers; WebSocket URLs can appear in proxy logs.
 
 ## Establish context for each message
 
@@ -110,7 +110,7 @@ Never use a correlation ID as an idempotency key by accident. A client retry aft
 
 ## Handle reconnects as new transports
 
-After a disconnect, the browser creates a new WebSocket and receives a new `connection_id`. Log a relationship to the previous connection only when the application has validated a resume session or another trustworthy association.
+After a disconnect, application reconnect logic must create a new WebSocket; the browser does not reconnect automatically. The new connection receives a new `connection_id`. Log a relationship to the previous connection only when the application has validated a resume session or another trustworthy association.
 
 Do not let a caller submit someone else's connection ID and thereby access their subscriptions. Resume tokens and authorization state belong to the security protocol; diagnostic identifiers merely describe the outcome.
 
@@ -120,7 +120,7 @@ A continuing import, collaboration session, or order workflow may preserve a dur
 
 Open two clients and send several commands concurrently. Confirm every reply points to the right client message, all messages on one socket share its connection ID, and each independent command has its own correlation ID.
 
-Disconnect while a command is processing and reconnect. Verify the new hello contains a different connection ID and the old operation's failure records remain searchable. Send invalid JSON and an oversized message to confirm the diagnostic path does not log uncontrolled payload content.
+To test a disconnect during processing, temporarily replace `await Promise.resolve()` with a delay such as `await new Promise(resolve => setTimeout(resolve, 1000))`; an already-resolved promise does not wait for socket close events. Disconnect after `command.started` is logged and reconnect. Verify the new hello contains a different connection ID and the old operation's `command.reply_unavailable` record retains its original IDs. A disconnect after a successful write need not produce an operation failure record. Send invalid JSON and an oversized message to confirm the diagnostic path does not log uncontrolled payload content.
 
 The [ws API reference](https://github.com/websockets/ws/blob/master/doc/ws.md) documents message events, payload limits, sends, and lifecycle events. Inspect the version you deploy when selecting limits and delivery handling.
 
