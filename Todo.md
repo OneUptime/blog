@@ -218,7 +218,6 @@
 
 ## Azure SQL
 
-7. How to Fix Azure SQL Connection Pool Blocking Periods After a Failed Login
 8. Azure SQL Serverless Cold Starts: How to Retry Error 40613 and Resume Paused Databases Reliably
 9. Why Azure SQL Serverless Never Auto-Pauses: Finding Health Checks and Pools That Keep It Awake
 10. How to Audit Azure SQL Serverless Pause and Resume History to Verify Cost Savings
