@@ -16,7 +16,7 @@ Start with one waiting job and compare its effective targeting rules with the co
 
 A dependency waiting on tests, an unsubmitted input step, and a job limited by a concurrency group are different from an eligible command job without an agent. Open the job details and inspect its state, dependencies, queue, and requested agent tags.
 
-If the job is `limited`, inspect the concurrency group and older jobs holding its capacity. If the build is blocked on input, investigate the input dependency. Agent counts do not resolve either condition.
+If the job is `limited`, inspect the concurrency group and older jobs holding its capacity. If the job explicitly depends on an unsubmitted input step, investigate that dependency. Input steps prevent build completion but do not automatically block other steps from running. Agent counts do not resolve either condition.
 
 Write down the failing job's build URL and step key before changing the pipeline. A recreated job may have a different effective configuration, making an apparent improvement hard to explain.
 
@@ -76,7 +76,7 @@ steps:
       queue: "linux-release"
 ```
 
-If this job starts but the original job does not, compare the additional tags on the original. Restore rules one at a time until the mismatch is identified. Use a harmless command so the probe cannot exercise deployment privileges accidentally.
+If this job starts but the original job does not, compare the additional tags on the original. Restore rules one at a time until the mismatch is identified. Use a harmless command, and check the agent and repository hooks too: hooks still run for the probe and can exercise deployment privileges or override its command.
 
 Check generated values too. A misspelled architecture, empty environment substitution, or string with trailing whitespace can narrow the eligible set to zero. Display the generated YAML with a dry run before uploading it.
 
