@@ -215,7 +215,6 @@
 
 ## Buildkite
 
-6. How to Autoscale Self-Hosted Buildkite Agents Without Creating Long Queue Waits
 7. How to Generate a Buildkite Test Matrix with Dynamic Pipelines and Stable Step Keys
 8. How to Trigger a Downstream Buildkite Pipeline Dynamically and Pass Commit, Branch, and Metadata
 9. How to Share Buildkite Artifacts Across Steps, Builds, and Pipelines Without Ambiguous Matches
