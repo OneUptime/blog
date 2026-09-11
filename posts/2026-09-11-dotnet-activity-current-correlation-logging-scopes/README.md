@@ -14,7 +14,7 @@ Use these facilities for diagnostic context. Keep domain inputs, authorization d
 
 ## Separate the two sources of context
 
-`Activity.Current` identifies the current trace operation. Its `TraceId` stays constant across child activities, while `SpanId` changes. A logging scope adds properties to log events emitted inside its lifetime, including logs from injected `ILogger<T>` instances.
+`Activity.Current` identifies the current trace operation. With the default W3C ID format, its `TraceId` stays constant across child activities, while `SpanId` changes. A logging scope adds properties to log events emitted inside its lifetime, including logs from injected `ILogger<T>` instances.
 
 Microsoft documents that activities flow through ordinary synchronous and asynchronous calls. Logging providers must support scopes and be configured to display them. Do not assume a scope exists merely because code calls `BeginScope`; inspect the selected provider's output.
 
@@ -22,7 +22,7 @@ The [distributed tracing concepts](https://learn.microsoft.com/en-us/dotnet/core
 
 ## Create the scope at the request boundary
 
-This complete minimal web application generates a fresh public support ID. A downstream method logs without receiving that ID as a parameter:
+This complete minimal web application generates a fresh public support ID. Use a .NET 8 or later ASP.NET Core project with implicit usings enabled; the service uses C# 12 primary constructor syntax. Create a project with `dotnet new web` in an empty directory and replace its `Program.cs` with the following code. A downstream method logs without receiving that ID as a parameter:
 
 ```csharp
 using System.Diagnostics;
@@ -69,7 +69,7 @@ sealed class InventoryService(ILogger<InventoryService> logger)
 }
 ```
 
-Run this with `dotnet run` and request two different SKUs concurrently. The logs for each request should contain its scope value before and after the `await`. The example leaves business arguments and cancellation visible while keeping diagnostic metadata at the boundary.
+Run this with `dotnet run` and request two different SKUs concurrently. The `InventoryService` logs for each request should contain its scope value before and after the `await`. Framework logs emitted before this middleware starts or after its scope is disposed will not include this custom scope. The example leaves business arguments and cancellation visible while keeping diagnostic metadata at the boundary.
 
 For an internal service behind an authenticated gateway, replace generation with validated extraction according to your gateway contract. Do not trust a public caller merely because the header has a UUID-like shape.
 
