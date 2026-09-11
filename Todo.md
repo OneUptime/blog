@@ -212,7 +212,6 @@
 
 ## Correlation IDs
 
-2. How to Return a Correlation ID in Every HTTP Response So Users Can Report a Failing Request
 3. How to Run W3C `traceparent` and Legacy `X-Correlation-ID` Side by Side During an OpenTelemetry Migration
 4. How to Avoid Passing Correlation IDs Through Every .NET Method with `Activity.Current` and Logging Scopes
 5. How to Propagate Correlation Context from ASP.NET Core into `BackgroundService` and Queued Work Items
