@@ -221,7 +221,6 @@
 
 ## LLM Observability
 
-6. Streaming LLM Observability: How to Measure Time to First Token, Tokens per Second, and Total Latency
 7. How to Count Tokens in Streaming LangGraph Runs Without Breaking Existing Callbacks
 8. Why Provider Token Counts and Local Estimates Disagree—and Which Value to Record
 9. How to Debug LLM Failures Without Storing Raw Prompts: Hashes, Templates, and Selective Capture
