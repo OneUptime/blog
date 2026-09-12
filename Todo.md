@@ -224,7 +224,6 @@
 
 ## Confidential Containers
 
-11. Attestation Passed Yesterday but Fails After an Upgrade: Updating Reference Values for Kernel, Firmware, and Guest Images
 12. How to Test a Trustee OPA Attestation Policy Without Accidentally Releasing Production Secrets
 13. How to Bind KBS Secret Release to a Specific Confidential Workload Identity and Image Digest
 14. How to Prove an Encrypted Container Image Was Pulled and Decrypted Inside the Guest, Not on the Host
