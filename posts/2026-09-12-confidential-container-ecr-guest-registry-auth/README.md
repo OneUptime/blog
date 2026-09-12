@@ -50,9 +50,12 @@ password = subprocess.check_output(
 ).strip()
 auth = base64.b64encode(f'AWS:{password}'.encode()).decode()
 os.umask(0o077)
-Path('containers-auth.json').write_text(
-    json.dumps({'auths': {registry: {'auth': auth}}}) + '\n'
-)
+output = Path('containers-auth.json')
+fd = os.open(output, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+os.fchmod(fd, 0o600)
+with os.fdopen(fd, 'w') as file:
+    json.dump({'auths': {registry: {'auth': auth}}}, file)
+    file.write('\n')
 ```
 
 Replace the registry and region together. Validate the file's structure without printing its values:

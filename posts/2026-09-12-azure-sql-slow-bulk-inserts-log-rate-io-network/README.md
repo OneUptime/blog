@@ -46,7 +46,6 @@ WHERE wait_type IN (
     N'ASYNC_NETWORK_IO'
 )
 OR wait_type LIKE N'HADR_THROTTLE_LOG_RATE%'
-OR wait_type LIKE N'RBIO_RG_%'
 OR wait_type LIKE N'LCK_M_%'
 ORDER BY wait_type;
 ```
@@ -57,7 +56,7 @@ Subtract the first snapshot from the second by wait type, treating an absent row
 
 `LOG_RATE_GOVERNOR` indicates database log-rate shaping; `POOL_LOG_RATE_GOVERNOR` indicates pool shaping. These waits occur while log records are generated. They are not simply a count of slow physical writes to the transaction-log file.
 
-`WRITELOG` describes waiting for a log flush. It can point toward commit frequency or log I/O behavior, but it is different from exceeding a log-generation allowance. Replication feedback can also reduce the allowed rate. Hyperscale exposes additional `RBIO_RG_*` waits and diagnostic functions because its log service, replicas, and page servers introduce distinct consumers.
+`WRITELOG` describes waiting for a log flush. It can point toward commit frequency or log I/O behavior, but it is different from exceeding a log-generation allowance. Replication feedback can also reduce the allowed rate. Hyperscale exposes additional `RBIO_RG_*` waits in `sys.dm_os_wait_stats` and the `sys.dm_hs_database_log_rate()` diagnostic function because its log service, replicas, and page servers introduce distinct consumers.
 
 When governance dominates and committed throughput plateaus, adding writers cannot manufacture a larger allowance. Compare the next service objective's documented log-rate limit and test it with the same load. More vCores do not imply unlimited linear improvement across every hardware family and tier.
 
@@ -67,7 +66,7 @@ A database with low CPU, I/O, log utilization, and little work to do may be wait
 
 `ASYNC_NETWORK_IO` means SQL is waiting while sending results to a client. It does not directly prove that an inbound bulk-upload link is saturated. For ingestion, inspect client throughput and the actual operation instead of treating any network-named wait as a bandwidth diagnosis.
 
-If using `SqlBulkCopy` with a streaming reader, `EnableStreaming` can reduce materialization pressure for supported reader inputs. It does not eliminate database logging or make an already materialized `DataTable` a streaming source.
+If using `SqlBulkCopy` with an `IDataReader`, `EnableStreaming` can reduce memory use by streaming supported `MAX` and XML values. It does not eliminate database logging or make an already materialized `DataTable` a streaming source.
 
 ## Tune batch and transaction boundaries separately
 
@@ -93,7 +92,7 @@ Diagnose bulk ingestion with synchronized client timings, resource samples, and 
 
 - [Transaction log rate governance](https://learn.microsoft.com/en-us/azure/azure-sql/database/resource-limits-logical-server?view=azuresql)
 - [Hyperscale performance diagnostics](https://learn.microsoft.com/en-us/azure/azure-sql/database/hyperscale-performance-diagnostics?view=azuresql)
-- [Database wait statistics](https://learn.microsoft.com/en-us/sql/relational-databases/system-dynamic-management-views/sys-dm-db-wait-stats-azure-sql-database)
-- [Database resource statistics](https://learn.microsoft.com/en-us/sql/relational-databases/system-dynamic-management-views/sys-dm-db-resource-stats-azure-sql-database)
+- [Database wait statistics](https://learn.microsoft.com/en-us/sql/relational-databases/system-dynamic-management-objects/sys-dm-db-wait-stats-azure-sql-database)
+- [Database resource statistics](https://learn.microsoft.com/en-us/sql/relational-databases/system-dynamic-management-objects/sys-dm-db-resource-stats-azure-sql-database)
 - [SqlBulkCopy transaction and bulk-copy operations](https://learn.microsoft.com/en-us/sql/connect/ado-net/sql/transaction-bulk-copy-operations?view=sql-server-ver17)
 - [SqlBulkCopy.EnableStreaming](https://learn.microsoft.com/en-us/dotnet/api/microsoft.data.sqlclient.sqlbulkcopy.enablestreaming?view=sqlclient-dotnet-core-6.1)

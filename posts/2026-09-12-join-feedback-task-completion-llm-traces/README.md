@@ -12,7 +12,7 @@ Create a durable identity for each displayed response and retain its relationshi
 
 ## Persist the Response-to-Trace Mapping
 
-Before returning an answer, store an application response ID, conversation ID, tenant ownership, generating trace ID, relevant run or span ID, creation time, and configuration version. The response ID should remain stable when the same answer is reloaded in the UI.
+Before returning an answer, store an application response ID, conversation ID, tenant ownership, generating trace ID, relevant run or span ID, any destination lookup identifier such as the LangSmith project UUID, creation time, and configuration version. The response ID should remain stable when the same answer is reloaded in the UI.
 
 A regenerated answer receives a new response ID. Preserve the relationship to the earlier answer if the product needs comparison, but never overwrite the original generation mapping.
 
@@ -29,7 +29,7 @@ A minimal event envelope might look like this:
   "event_id": "feedback-event-271",
   "response_id": "response-846",
   "kind": "helpfulness",
-  "value": 0,
+  "score": 0,
   "source": "user",
   "rubric_version": "thumbs-v1"
 }
@@ -43,13 +43,19 @@ For LangSmith, a server-side delivery function can translate the stored mapping 
 from langsmith import Client
 
 
-def send_helpfulness(client: Client, response_record, feedback_record):
-    return client.create_feedback(
+# Reuse this dedicated client in the outbox worker.
+outbox_client = Client(auto_batch_tracing=False, tracing_sampling_rate=1.0)
+
+
+def send_helpfulness(response_record, feedback_record):
+    return outbox_client.create_feedback(
         run_id=response_record["langsmith_run_id"],
+        trace_id=response_record["langsmith_trace_id"],
+        session_id=response_record["langsmith_project_id"],
         key="helpfulness",
         score=feedback_record["score"],
         feedback_id=feedback_record["feedback_uuid"],
-        source_info={"rubric_version": "thumbs-v1"},
+        source_info={"rubric_version": feedback_record["rubric_version"]},
     )
 ```
 
@@ -57,7 +63,9 @@ The record's feedback UUID should be persisted before delivery. Keep credentials
 
 ## Use an Outbox for Reliable Delivery
 
-Write the feedback event and an outbox row in the same application transaction. A background worker sends the annotation and marks the outbox row delivered. This prevents a temporary telemetry outage from losing a user's rating or blocking the product interaction.
+Write the feedback event and an outbox row in the same application transaction. A background worker sends the annotation and marks the outbox row delivered only after the synchronous request succeeds or an existing feedback ID is reconciled. Keep the row pending on failure. This prevents a temporary telemetry outage from losing a user's rating or blocking the product interaction.
+
+With the default Python client, passing `trace_id` can queue feedback in memory and return before delivery. The dedicated client above disables background batching and sampling so a successful return represents an acknowledged request rather than a queued or sampled-out event. [LangSmith Python client source](https://github.com/langchain-ai/langsmith-sdk/blob/4083bc191d12e79ae05a9da8efde91bcee60ab28/python/langsmith/client.py#L7901-L7951).
 
 Make retry handling explicit. If the destination reports an existing feedback ID, reconcile that result with the persisted event rather than generating a new ID and duplicating the rating. Keep delivery failure metrics and a bounded retry policy.
 

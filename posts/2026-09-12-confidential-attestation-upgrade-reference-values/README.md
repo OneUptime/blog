@@ -49,12 +49,12 @@ This comparison is the useful approval boundary: a known build explains the new 
 
 ## Stage Reference Values Carefully
 
-The current KBS client supports inspecting an individual reference value through its authenticated administration interface:
+The current KBS client supports inspecting the registered reference values through its authenticated administration interface:
 
 ```bash
 kbs-client --url https://kbs-staging.example.com \
   config --admin-token-file ./staging-admin.token \
-  get-reference-value --id snp_launch_measurement > reference-value-before.json
+  get-reference-values > reference-values-before.json
 ```
 
 For a simple list-valued measurement, the documented provisioning form is:
@@ -67,7 +67,7 @@ kbs-client --url https://kbs-staging.example.com \
 
 Use an already reviewed value for `APPROVED_MEASUREMENT`. Configure the client's TLS trust for your deployment. Older clients have different administration options, so use documentation matching the installed binary.
 
-The [reference-values guide](https://confidentialcontainers.org/docs/attestation/reference-values/) distinguishes list, scalar, integer, and boolean values. A string `"false"` and boolean `false` are different policy inputs. Do not assume a single-value update appends an old/new allowlist; use the RVPS manifest workflow for complex values and verify the resulting set.
+The [reference-values guide](https://confidentialcontainers.org/docs/attestation/reference-values/) distinguishes list, scalar, integer, and boolean values. A string `"false"` and boolean `false` are different policy inputs. Do not assume a single-value update appends an old/new allowlist; use the RVPS Tool workflow for complex values and verify the resulting set.
 
 ## Roll Out and Retire Old Trust
 

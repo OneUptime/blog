@@ -106,7 +106,7 @@ If a script revokes CONNECT explicitly, correct its intended behavior in source.
 
 Publish to a representative staging database and open a new connection using the application's actual identity. Existing pooled sessions are insufficient evidence because they may survive a change that blocks new connections.
 
-Test a permitted application operation and an intentionally forbidden operation. Re-run the generated plan against the resulting target to detect recurring security drift. Record the DACPAC and SqlPackage versions alongside the result.
+Test a permitted application operation and an intentionally forbidden operation. Run the Script action again against the resulting target to detect recurring security drift. Record the DACPAC and SqlPackage versions alongside the result.
 
 For a live outage, an authorized administrator can restore the intended grant after inspecting the effective permission state. Make the matching source or provisioning correction immediately; otherwise the next deployment can repeat the outage.
 

@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Azure SQL, Managed Identity, Infrastructure as Code, Microsoft Entra ID, Security
 
-Description: Provision Azure SQL contained users from verified managed identity object IDs, avoiding per-server Directory Readers assignments and detecting identity drift.
+Description: Provision Azure SQL contained users from verified managed identity client IDs, avoiding per-server Directory Readers assignments and detecting identity drift.
 
 ---
 
@@ -22,9 +22,9 @@ Azure resource permissions allow provisioning or reading resources. Database per
 
 Keep an existing authorized bootstrap path, typically the configured Microsoft Entra administrator, for database-user provisioning. The SID syntax does not let an unauthenticated deployment create its first administrator or bypass SQL permissions.
 
-## Obtain the application's principal ID from IaC
+## Obtain the application's client ID from IaC
 
-A user-assigned identity exposes both a principal ID and a client ID. For this Azure SQL contained-user mapping, use the identity's object/principal ID, as specified in Azure SQL's managed-identity documentation. The client ID is used by many drivers to select a user-assigned identity and is a different value.
+A user-assigned identity exposes both a principal ID and a client ID. For this Azure SQL contained-user mapping, use the identity's application/client ID, as specified for service principals in the current `CREATE USER` documentation. The principal ID is the object ID of the identity's service principal and is a different value.
 
 For a Bicep deployment that creates the application identity:
 
@@ -54,16 +54,16 @@ az identity show \
   --output json
 ```
 
-Check the expected tenant and resource ID. Do not accept a principal ID supplied by an untrusted application caller. Skipping server-side lookup transfers validation responsibility to the provisioning process.
+Check the expected tenant and resource ID. Do not accept a client ID supplied by an untrusted application caller. Skipping server-side lookup transfers validation responsibility to the provisioning process.
 
 ## Create the contained user with drift detection
 
-Connect directly to the target user database using the authorized provisioning identity. Replace the example GUID with the verified `principalId` from the deployment output:
+Connect directly to the target user database using the authorized provisioning identity. Replace the example GUID with the verified `clientId` from the deployment output:
 
 ```sql
 DECLARE @user_name sysname = N'orders-api';
-DECLARE @object_id uniqueidentifier = '11111111-2222-3333-4444-555555555555';
-DECLARE @sid varbinary(16) = CONVERT(varbinary(16), @object_id);
+DECLARE @client_id uniqueidentifier = '11111111-2222-3333-4444-555555555555';
+DECLARE @sid varbinary(16) = CONVERT(varbinary(16), @client_id);
 
 IF NOT EXISTS (
     SELECT 1 FROM sys.database_principals WHERE name = @user_name
@@ -92,7 +92,7 @@ The example assumes `dbo.OrderStatus` already exists and that reading it is the 
 
 `TYPE = E` identifies an external user or service principal. `TYPE = X` is for a group and is not appropriate for the managed identity in this example. Converting a `uniqueidentifier` to binary in SQL preserves the SQL representation; do not invent a hexadecimal byte order by stripping hyphens from the GUID.
 
-The mismatch check is deliberate. If an identity is deleted and recreated, its principal ID changes even if its display name stays the same. Silently accepting the existing database user can leave the new application unable to authenticate or mask an unintended identity change.
+The mismatch check is deliberate. If an identity is deleted and recreated, its client ID changes even if its display name stays the same. Silently accepting the existing database user can leave the new application unable to authenticate or mask an unintended identity change.
 
 ## Verify the mapping and actual login
 
@@ -100,7 +100,7 @@ Inspect the result:
 
 ```sql
 SELECT name, type_desc, authentication_type_desc,
-       CONVERT(uniqueidentifier, sid) AS object_id
+       CONVERT(uniqueidentifier, sid) AS client_id
 FROM sys.database_principals
 WHERE name = N'orders-api'
   AND type = 'E'
@@ -121,7 +121,7 @@ Keep database-user provisioning idempotent, preserve evidence of identity output
 
 ## Conclusion
 
-Azure SQL's SID-based contained-user creation can make managed-identity provisioning repeatable without manual Directory Readers setup. Use authoritative principal IDs, retain SQL authorization, reject mismatched existing users, and verify a real application login afterward.
+Azure SQL's SID-based contained-user creation can make managed-identity provisioning repeatable without manual Directory Readers setup. Use authoritative client IDs, retain SQL authorization, reject mismatched existing users, and verify a real application login afterward.
 
 ## Official Documentation
 

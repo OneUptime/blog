@@ -18,7 +18,7 @@ Elastic query can fit a reporting or lookup query that needs a controlled read-o
 
 Define which database runs the query and which database holds the source data. The examples below use `reporting` as the query database and `catalog` as the remote source. Their placement in one elastic pool is optional and does not eliminate the remote connection.
 
-Microsoft currently documents SQL authentication for elastic query and no Private Link support for databases targeted by external data sources. If the source must be accessible only through a private endpoint, choose a different integration architecture instead of adding an external table that cannot reach it.
+Microsoft currently documents SQL authentication for elastic query, including the application connection to the query database, and no Private Link support for databases targeted by external data sources. If the source must be accessible only through a private endpoint, choose a different integration architecture instead of adding an external table that cannot reach it.
 
 ## Create a restricted remote reader
 
@@ -67,6 +67,8 @@ WITH
 ```
 
 Use the real logical-server FQDN. Creating the external data source stores configuration; it does not prove that the destination accepts connections. The first actual query is where reachability and authentication failures become visible.
+
+On the logical server that hosts `catalog`, enable **Allow Azure services and resources to access this server** so the elastic query endpoint can reach the remote database. This public-endpoint firewall rule permits connection attempts from Azure resources outside your subscription too, so the dedicated user's narrow permissions remain essential. Private Link and virtual network rules are not substitutes for this elastic-query requirement.
 
 Only trusted administrators should have `ALTER ANY EXTERNAL DATA SOURCE`. Elastic query sends credentials, query text, parameters, and transferred data to the configured destination. Review `sys.external_data_sources` and enforce approved outbound destinations where applicable.
 

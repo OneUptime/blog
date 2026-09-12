@@ -49,15 +49,15 @@ Avoid hand-repacking archives with ad hoc ownership or timestamp changes unless 
 For an initrd-based guest, the documented builder accepts a prepared rootfs and an output path:
 
 ```bash
-sudo ./tools/osbuilder/initrd-builder/initrd_builder.sh \
+sudo -E ./tools/osbuilder/initrd-builder/initrd_builder.sh \
   -o ./out/guest-initrd.img ./rootfs
 ```
 
 Prepare `out` first and retain the release's `AGENT_INIT` setting and other build environment. The command packages an already correct confidential rootfs; it does not construct that rootfs for you.
 
-For disk-backed guests, the [image builder](https://github.com/kata-containers/kata-containers/blob/0e9bff34d71dbaa14e3f57eef49ebc61c920b8ae/tools/osbuilder/image-builder/image_builder.sh) manages filesystem creation and, in current source, verity metadata. Rebuild using the release's filesystem type, layout, and wrapper settings. Preserve the emitted root-hash parameters with the guest artifact bundle.
+For disk-backed guests, the [image builder](https://github.com/kata-containers/kata-containers/blob/0e9bff34d71dbaa14e3f57eef49ebc61c920b8ae/tools/osbuilder/image-builder/image_builder.sh) manages filesystem creation and, when `MEASURED_ROOTFS=yes`, verity metadata. Rebuild using the release's filesystem type, layout, and wrapper settings. Preserve the emitted root-hash parameters with the guest artifact bundle.
 
-When the root filesystem changes, regenerate its verity tree and root hash, then place the new root hash where the boot flow authenticates it. A measured kernel that mounts an unauthenticated mutable disk does not establish the integrity of that disk. CoCo's [OS image trust explanation](https://github.com/confidential-containers/confidentialcontainers.org/blob/main/content/en/blog/2024/building-trust-into-os-images-for-coco.md) describes this transitive chain.
+When a boot flow uses dm-verity and the root filesystem changes, regenerate its verity tree and root hash, then place the new root hash where the boot flow authenticates it. A measured kernel that mounts an unauthenticated mutable disk does not establish the integrity of that disk. CoCo's [OS image trust explanation](https://github.com/confidential-containers/confidentialcontainers.org/blob/main/content/en/blog/2024/building-trust-into-os-images-for-coco.md) describes this transitive chain.
 
 ## Calculate SNP Measurements from Exact Inputs
 

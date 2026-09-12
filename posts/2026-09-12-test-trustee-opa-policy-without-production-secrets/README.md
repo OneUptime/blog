@@ -41,7 +41,7 @@ allow if {
 
 The resource path is `data`, while token claims are `input`. Matching the complete array avoids accidentally authorizing every resource in a repository. Current KBS source queries `allow`; naming a rule `allowed` will not implement this contract.
 
-For production, replace the fixture hash with the approved measured Init-Data and include whatever platform and device requirements your application needs. The example demonstrates testing structure rather than a complete security policy.
+For production, replace the fixture identifier with the approved measured Init-Data digest and include whatever platform and device requirements your application needs. The example demonstrates testing structure rather than a complete security policy.
 
 ## Exercise Positive and Negative Inputs
 

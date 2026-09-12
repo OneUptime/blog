@@ -27,8 +27,9 @@ kubectl get pod "$POD" -n "$NS" -o json | jq '{
   phase: .status.phase
 }'
 kubectl describe pod "$POD" -n "$NS"
+POD_UID=$(kubectl get pod "$POD" -n "$NS" -o jsonpath='{.metadata.uid}')
 kubectl get events -n "$NS" \
-  --field-selector "involvedObject.name=$POD" \
+  --field-selector "involvedObject.uid=$POD_UID" \
   --sort-by=.metadata.creationTimestamp
 ```
 
@@ -69,7 +70,7 @@ For an executable or configuration error, verify the precise paths referenced by
 # Replace these with paths from the active runtime configuration.
 KATA_CONFIG=/opt/kata/share/defaults/kata-containers/configuration-qemu-snp.toml
 sudo test -r "$KATA_CONFIG"
-sudo rg '^(path|kernel|image|initrd|firmware|firmware_volume)\s*=' "$KATA_CONFIG"
+sudo rg '^\s*(path|kernel|image|initrd|firmware|firmware_volume)\s*=' "$KATA_CONFIG"
 ```
 
 Check that the specified hypervisor, kernel, firmware, and guest image exist, have appropriate permissions, and belong to a coherent release bundle. A file being present is insufficient if it is an incompatible build or wrong architecture. Compare installed file hashes with your deployment artifacts when one node differs from otherwise working peers.
@@ -90,6 +91,8 @@ Run a controlled progression on the same worker and runtime:
 4. An encrypted variant adds attestation, resource authorization, and decryption.
 
 Pin image digests during these tests. Otherwise a changing tag can invalidate the comparison. If the public image succeeds and the encrypted image fails, return to the guest's first registry or attestation error rather than reinstalling the operator.
+
+Set `imagePullPolicy: Always` on the confidential test pods so containerd delegates image handling to the guest instead of reusing an image from the kubelet's host-side cache.
 
 ## Collect Debug Data Carefully
 

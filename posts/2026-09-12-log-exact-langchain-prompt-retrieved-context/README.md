@@ -30,7 +30,7 @@ class CaptureModelInput(BaseCallbackHandler):
 
     def on_chat_model_start(
         self, serialized, messages, *, run_id,
-        parent_run_id=None, **kwargs
+        parent_run_id=None, metadata=None, **kwargs
     ):
         for batch_index, conversation in enumerate(messages):
             self.capture({
@@ -39,6 +39,9 @@ class CaptureModelInput(BaseCallbackHandler):
                     str(parent_run_id) if parent_run_id else None
                 ),
                 "batch_index": batch_index,
+                "context_capture_id": (
+                    (metadata or {}).get("context_capture_id")
+                ),
                 "messages": messages_to_dict(conversation),
             })
 ```
@@ -46,11 +49,16 @@ class CaptureModelInput(BaseCallbackHandler):
 Pass the callback through invocation configuration alongside your existing callbacks. In application code, `chain` is the runnable you already constructed:
 
 ```python
-def invoke_with_capture(chain, inputs, capture, callbacks=()):
+def invoke_with_capture(
+    chain, inputs, capture, context_capture_id, callbacks=()
+):
     handler = CaptureModelInput(capture)
     return chain.invoke(
         inputs,
-        config={"callbacks": [*callbacks, handler]},
+        config={
+            "callbacks": [*callbacks, handler],
+            "metadata": {"context_capture_id": context_capture_id},
+        },
     )
 ```
 

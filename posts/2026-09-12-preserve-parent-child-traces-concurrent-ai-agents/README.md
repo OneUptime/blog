@@ -62,7 +62,10 @@ A nested graph needs both tracing context and the framework configuration that c
 Inside a LangGraph node that calls another runnable, accept the incoming config and pass it into the nested invocation:
 
 ```python
-async def nested_node(state, config, *, nested_agent):
+from langchain_core.runnables import RunnableConfig
+
+
+async def nested_node(state, config: RunnableConfig, *, nested_agent):
     result = await nested_agent.ainvoke(
         {"messages": state["messages"]},
         config=config,
