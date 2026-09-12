@@ -224,7 +224,6 @@
 
 ## Confidential Containers
 
-17. How to Enable Confidential Guest Debug Logs Without Leaking Secrets to an Untrusted Host
 18. How to Customize and Repack a Kata Confidential Guest Image—and Recalculate Its Measurements
 19. `emptyDir` and Persistent Volumes in SEV-SNP Pods: Which Data Is Actually Confidential?
 20. GPU Passthrough to an SEV-SNP Confidential Container: Debugging IOMMU, VFIO, and vsock Timeouts
