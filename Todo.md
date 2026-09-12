@@ -221,7 +221,6 @@
 
 ## LLM Observability
 
-14. LangChain Spans Never Close: How to Find Callback and OpenTelemetry Lifecycle Bugs
 15. Why MLflow Autologging Misses Custom LangGraph `StateGraph` Runs—and How to Restore Traces
 16. How to Trace Every Retry and Provider Fallback Without Double-Counting LLM Cost or Latency
 17. How to Classify LLM Failures by Provider, Parser, Retriever, Guardrail, and Tool
