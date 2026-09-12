@@ -224,7 +224,6 @@
 
 ## Confidential Containers
 
-20. GPU Passthrough to an SEV-SNP Confidential Container: Debugging IOMMU, VFIO, and vsock Timeouts
 
 ## sysfs
 
