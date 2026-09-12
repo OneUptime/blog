@@ -218,7 +218,6 @@
 
 ## Azure SQL
 
-19. How to Schedule Maintenance in Azure SQL Database Without SQL Server Agent
 20. How to Grant Managed Identities Azure SQL Access from IaC Without Manual Directory Readers Setup
 
 ## LLM Observability
