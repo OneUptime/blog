@@ -224,7 +224,6 @@
 
 ## Confidential Containers
 
-9. Intel TDX Attestation Fails with `tee_qv_get_collateral 0xe019`: Check PCCS, PCS, Certificates, and Egress
 10. Trustee Rejects Its Own Self-Signed Certificate: How to Fix KBS Client Trust Without Disabling TLS
 11. Attestation Passed Yesterday but Fails After an Upgrade: Updating Reference Values for Kernel, Firmware, and Guest Images
 12. How to Test a Trustee OPA Attestation Policy Without Accidentally Releasing Production Secrets
