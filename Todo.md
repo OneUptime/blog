@@ -218,7 +218,6 @@
 
 ## Azure SQL
 
-16. Why Three-Part Cross-Database Names Fail in an Azure SQL Elastic Pool—and How External Tables Work
 17. How to Fix Azure SQL TLS Certificate Errors After `Microsoft.Data.SqlClient` Enables Encryption by Default
 18. Why SQLPackage Adds `REVOKE CONNECT` in Azure SQL—and How to Stop Disabling Users
 19. How to Schedule Maintenance in Azure SQL Database Without SQL Server Agent
