@@ -221,7 +221,6 @@
 
 ## LLM Observability
 
-12. How to Attach Prompt, Model, and Embedding Versions to Traces for Fast Regression Root Cause Analysis
 13. How to Propagate LLM Trace Context Across Queues, Threads, and Background Agent Workers
 14. LangChain Spans Never Close: How to Find Callback and OpenTelemetry Lifecycle Bugs
 15. Why MLflow Autologging Misses Custom LangGraph `StateGraph` Runs—and How to Restore Traces
