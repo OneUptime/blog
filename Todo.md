@@ -218,7 +218,6 @@
 
 ## Azure SQL
 
-18. Why SQLPackage Adds `REVOKE CONNECT` in Azure SQL—and How to Stop Disabling Users
 19. How to Schedule Maintenance in Azure SQL Database Without SQL Server Agent
 20. How to Grant Managed Identities Azure SQL Access from IaC Without Manual Directory Readers Setup
 
