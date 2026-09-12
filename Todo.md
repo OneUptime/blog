@@ -218,7 +218,6 @@
 
 ## Azure SQL
 
-20. How to Grant Managed Identities Azure SQL Access from IaC Without Manual Directory Readers Setup
 
 ## LLM Observability
 
