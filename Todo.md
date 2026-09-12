@@ -224,7 +224,6 @@
 
 ## Confidential Containers
 
-8. `RCAR Handshake Failed` or “Get TEE Evidence Failed”: A CoCo Attestation Troubleshooting Runbook
 9. Intel TDX Attestation Fails with `tee_qv_get_collateral 0xe019`: Check PCCS, PCS, Certificates, and Egress
 10. Trustee Rejects Its Own Self-Signed Certificate: How to Fix KBS Client Trust Without Disabling TLS
 11. Attestation Passed Yesterday but Fails After an Upgrade: Updating Reference Values for Kernel, Firmware, and Guest Images
