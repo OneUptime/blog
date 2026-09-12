@@ -224,7 +224,6 @@
 
 ## Confidential Containers
 
-5. How to Pass an Enterprise Registry CA Bundle into Confidential Guest Image Pulls
 6. Encrypted Image Fails with “Media Type Not Supported”: Fixing OCI Layer Formats for CoCo CDH
 7. Confidential Container Cannot Decrypt Its Image: Tracing Key Annotations, KBS Resource Paths, and Guest Pull
 8. `RCAR Handshake Failed` or “Get TEE Evidence Failed”: A CoCo Attestation Troubleshooting Runbook
