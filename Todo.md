@@ -224,7 +224,6 @@
 
 ## Confidential Containers
 
-14. How to Prove an Encrypted Container Image Was Pulled and Decrypted Inside the Guest, Not on the Host
 15. Large Confidential Images Time Out or Fill Trusted Ephemeral Storage: Sizing and Cache Diagnostics
 16. Pod Starts but `kubectl logs` Is Empty: Collecting CoCo Shim, Guest, Trustee, and Attestation Logs
 17. How to Enable Confidential Guest Debug Logs Without Leaking Secrets to an Untrusted Host
