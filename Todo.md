@@ -224,7 +224,6 @@
 
 ## Confidential Containers
 
-13. How to Bind KBS Secret Release to a Specific Confidential Workload Identity and Image Digest
 14. How to Prove an Encrypted Container Image Was Pulled and Decrypted Inside the Guest, Not on the Host
 15. Large Confidential Images Time Out or Fill Trusted Ephemeral Storage: Sizing and Cache Diagnostics
 16. Pod Starts but `kubectl logs` Is Empty: Collecting CoCo Shim, Guest, Trustee, and Attestation Logs
