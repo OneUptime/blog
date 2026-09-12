@@ -221,7 +221,6 @@
 
 ## LLM Observability
 
-9. How to Debug LLM Failures Without Storing Raw Prompts: Hashes, Templates, and Selective Capture
 10. How to Design Access Controls, Encryption, and Retention for Production LLM Traces
 11. How to Sample High-Volume LLM Traces Without Hiding Rare Hallucinations and Tool Failures
 12. How to Attach Prompt, Model, and Embedding Versions to Traces for Fast Regression Root Cause Analysis
