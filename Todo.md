@@ -218,7 +218,6 @@
 
 ## Azure SQL
 
-12. Azure SQL Error 10928 “Request Limit Reached”: How to Diagnose Worker Exhaustion and MAXDOP
 13. How to Keep Managed Identity Tokens from Fragmenting Azure SQL Connection Pools
 14. Slow Bulk Inserts in Azure SQL: How to Identify `LOG_RATE_GOVERNOR`, I/O, and Network Bottlenecks
 15. How to Secure Azure SQL Elastic Jobs Without Enabling “Allow Azure Services and Resources”
