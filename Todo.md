@@ -218,7 +218,6 @@
 
 ## Azure SQL
 
-14. Slow Bulk Inserts in Azure SQL: How to Identify `LOG_RATE_GOVERNOR`, I/O, and Network Bottlenecks
 15. How to Secure Azure SQL Elastic Jobs Without Enabling “Allow Azure Services and Resources”
 16. Why Three-Part Cross-Database Names Fail in an Azure SQL Elastic Pool—and How External Tables Work
 17. How to Fix Azure SQL TLS Certificate Errors After `Microsoft.Data.SqlClient` Enables Encryption by Default
