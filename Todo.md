@@ -224,7 +224,6 @@
 
 ## Confidential Containers
 
-16. Pod Starts but `kubectl logs` Is Empty: Collecting CoCo Shim, Guest, Trustee, and Attestation Logs
 17. How to Enable Confidential Guest Debug Logs Without Leaking Secrets to an Untrusted Host
 18. How to Customize and Repack a Kata Confidential Guest Image—and Recalculate Its Measurements
 19. `emptyDir` and Persistent Volumes in SEV-SNP Pods: Which Data Is Actually Confidential?
