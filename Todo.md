@@ -224,7 +224,6 @@
 
 ## Confidential Containers
 
-10. Trustee Rejects Its Own Self-Signed Certificate: How to Fix KBS Client Trust Without Disabling TLS
 11. Attestation Passed Yesterday but Fails After an Upgrade: Updating Reference Values for Kernel, Firmware, and Guest Images
 12. How to Test a Trustee OPA Attestation Policy Without Accidentally Releasing Production Secrets
 13. How to Bind KBS Secret Release to a Specific Confidential Workload Identity and Image Digest
