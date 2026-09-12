@@ -221,7 +221,6 @@
 
 ## LLM Observability
 
-10. How to Design Access Controls, Encryption, and Retention for Production LLM Traces
 11. How to Sample High-Volume LLM Traces Without Hiding Rare Hallucinations and Tool Failures
 12. How to Attach Prompt, Model, and Embedding Versions to Traces for Fast Regression Root Cause Analysis
 13. How to Propagate LLM Trace Context Across Queues, Threads, and Background Agent Workers
