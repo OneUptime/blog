@@ -221,7 +221,6 @@
 
 ## LLM Observability
 
-4. How to Detect Tool-Call Loops, Dead Ends, and Repeated Actions in Production AI Agents
 5. How to Correlate LLM Spans with HTTP, Database, Queue, and Vector Search Traces
 6. Streaming LLM Observability: How to Measure Time to First Token, Tokens per Second, and Total Latency
 7. How to Count Tokens in Streaming LangGraph Runs Without Breaking Existing Callbacks
