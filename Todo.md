@@ -221,7 +221,6 @@
 
 ## LLM Observability
 
-8. Why Provider Token Counts and Local Estimates Disagree—and Which Value to Record
 9. How to Debug LLM Failures Without Storing Raw Prompts: Hashes, Templates, and Selective Capture
 10. How to Design Access Controls, Encryption, and Retention for Production LLM Traces
 11. How to Sample High-Volume LLM Traces Without Hiding Rare Hallucinations and Tool Failures
