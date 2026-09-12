@@ -224,7 +224,6 @@
 
 ## Confidential Containers
 
-3. How to Verify AMD SEV-SNP or Intel TDX Host Prerequisites Before Installing Confidential Containers
 4. Confidential Pod Pulls a Public Image but Fails on ECR: Debugging Guest-Side Registry Authentication
 5. How to Pass an Enterprise Registry CA Bundle into Confidential Guest Image Pulls
 6. Encrypted Image Fails with “Media Type Not Supported”: Fixing OCI Layer Formats for CoCo CDH
