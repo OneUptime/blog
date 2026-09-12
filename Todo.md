@@ -221,7 +221,6 @@
 
 ## LLM Observability
 
-20. Langfuse, LangSmith, Phoenix, or OpenTelemetry: How to Choose an LLM Observability Stack
 
 ## Confidential Containers
 
