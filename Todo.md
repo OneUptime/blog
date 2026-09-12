@@ -218,7 +218,6 @@
 
 ## Azure SQL
 
-13. How to Keep Managed Identity Tokens from Fragmenting Azure SQL Connection Pools
 14. Slow Bulk Inserts in Azure SQL: How to Identify `LOG_RATE_GOVERNOR`, I/O, and Network Bottlenecks
 15. How to Secure Azure SQL Elastic Jobs Without Enabling “Allow Azure Services and Resources”
 16. Why Three-Part Cross-Database Names Fail in an Azure SQL Elastic Pool—and How External Tables Work
