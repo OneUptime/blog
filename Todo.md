@@ -224,7 +224,6 @@
 
 ## Confidential Containers
 
-19. `emptyDir` and Persistent Volumes in SEV-SNP Pods: Which Data Is Actually Confidential?
 20. GPU Passthrough to an SEV-SNP Confidential Container: Debugging IOMMU, VFIO, and vsock Timeouts
 
 ## sysfs
