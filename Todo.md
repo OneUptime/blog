@@ -221,7 +221,6 @@
 
 ## LLM Observability
 
-19. How to Set SLOs and Alerts for LLM Latency, Error Rate, Cost, and Answer Quality
 20. Langfuse, LangSmith, Phoenix, or OpenTelemetry: How to Choose an LLM Observability Stack
 
 ## Confidential Containers
