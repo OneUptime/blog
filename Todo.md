@@ -221,7 +221,6 @@
 
 ## LLM Observability
 
-2. How to Log the Exact Prompt and Retrieved Context That LangChain Sent to the Model
 3. How to Preserve Parent-Child Traces Across Concurrent Tool Calls and Nested AI Agents
 4. How to Detect Tool-Call Loops, Dead Ends, and Repeated Actions in Production AI Agents
 5. How to Correlate LLM Spans with HTTP, Database, Queue, and Vector Search Traces
