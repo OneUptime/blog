@@ -221,7 +221,6 @@
 
 ## LLM Observability
 
-5. How to Correlate LLM Spans with HTTP, Database, Queue, and Vector Search Traces
 6. Streaming LLM Observability: How to Measure Time to First Token, Tokens per Second, and Total Latency
 7. How to Count Tokens in Streaming LangGraph Runs Without Breaking Existing Callbacks
 8. Why Provider Token Counts and Local Estimates Disagree—and Which Value to Record
