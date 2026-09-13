@@ -227,7 +227,6 @@
 
 ## sysfs
 
-14. Why Partial Writes Do Not Work in sysfs—and How to Parse Newlines and Complete Buffers in `store()`
 15. `sysfs_notify()` or a uevent? Choosing How a Driver Signals User Space About Attribute Changes
 16. Which Driver Created This sysfs File? Resolving Class Symlinks and Mapping Attributes Back to Kernel Source
 17. Why a sysfs Attribute Exists on One Kernel but Not Another: Checking Kconfig, Driver Binding, and Hardware Support
