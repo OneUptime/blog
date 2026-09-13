@@ -6010,6 +6010,27 @@
 19. How to Reconstruct a PostgreSQL Deadlock from Server Logs and Application Names
 20. How to Fix PostgreSQL Row-Estimate Errors with Extended Statistics Before Adding Another Index
 
+21. How to Use PostgreSQL Temporary Tables Safely with PgBouncer Transaction Pooling
+22. How to Repair PostgreSQL Collation Version Mismatches After an Operating System Upgrade
+23. How to Fix pg_dump Server Version Mismatches When Backing Up PostgreSQL
+24. How to Make PostgreSQL Default Privileges Apply to Tables Created by a Migration Role
+25. How to Fix Permission Denied for Schema Public in PostgreSQL 15 and Later
+26. How to Secure PostgreSQL SECURITY DEFINER Functions Against search_path Shadowing
+27. How to Make PostgreSQL Views Enforce the Caller's Row-Level Security Policies
+28. How to Rewrite PostgreSQL NOT IN Queries That Return No Rows Because of NULL
+29. How to Deduplicate PostgreSQL UPSERT Input to Fix Cannot Affect Row a Second Time
+30. How to Return an Existing PostgreSQL Row ID After ON CONFLICT DO NOTHING Under Concurrency
+31. How to Make PostgreSQL UPDATE FROM Deterministic When Several Source Rows Match
+32. How to Pass Newly Inserted PostgreSQL Rows Between Data-Modifying CTEs with RETURNING
+33. How to Stop PostgreSQL LIMIT and OFFSET Pages from Repeating Rows with Tied Sort Values
+34. How to Split PostgreSQL Enum Migrations to Avoid Unsafe Use of New Value Errors
+35. How to Preserve Empty Strings and NULL Separately When Importing PostgreSQL CSV Files
+36. How to Distinguish Missing Keys, JSON null, and SQL NULL in PostgreSQL JSONB
+37. How to Replace Unsupported COUNT DISTINCT Window Aggregates in PostgreSQL
+38. How to Make PostgreSQL psql Scripts Stop and Return a Failure Status on SQL Errors
+39. How to Restore a PostgreSQL Custom Archive Under a Different Owner with pg_restore
+40. How to Clear Referenced PostgreSQL Tables When TRUNCATE Does Not Apply ON DELETE SET NULL
+
 ## Rclone
 
 1. How to Turn Rclone Sync into Versioned Backups with `--backup-dir` and a Retention Policy
@@ -8490,3 +8511,210 @@
 18. How to Fix Rego http.send Errors Caused by Import Name Collisions
 19. How to Aggregate Rego Change Counts Without Producing Conflicting Object Keys
 20. How to Fix Rego Regex Word-Boundary Matches with Correct String Escaping
+
+## Storage Tiering
+
+1. How to Diagnose Small S3 Intelligent-Tiering Objects That Stay in Frequent Access
+2. How to Fix S3 Lifecycle Rules That Stop Transitioning Objects Smaller Than 128 KB
+3. How to Calculate Whether Archiving Millions of Small S3 Objects Actually Saves Money
+4. How to Compare Glacier Instant Retrieval and Intelligent-Tiering for CloudFront Image Origins
+5. How to Keep S3 Intelligent-Tiering Data Immediately Readable by Excluding Offline Archive Tiers
+6. How to Tier Older S3 Object Versions While Retaining the Newest Noncurrent Versions
+7. How to Diagnose S3 Objects That Remain Untiered After Their Lifecycle Transition Date
+8. How to Calculate S3 Lifecycle Transition Dates from Object Age Across Multiple Storage Classes
+9. How to Keep Restored S3 Glacier Objects in a Warm Storage Class Permanently
+10. How to Identify Frequently Read S3 Objects Before Applying Age-Based Archive Rules
+11. How to Stop Azure Lifecycle Policies from Immediately Rearchiving Rehydrated Blobs
+12. How to Detect Azure Blob Rehydration Completion with BlobTierChanged Events
+13. How to Update Azure Archived Blob Metadata When Set Metadata Returns HTTP 409
+14. How to Scope Azure Archive Tiering Rules to the Same Folder Prefix Across Containers
+15. How to Use Azure Blob Last Access Tracking for Tiering Instead of Last Modified Time
+16. How to Replace Google Cloud Storage SetStorageClass Rules Before Enabling Autoclass
+17. How to Retier Existing Google Cloud Storage Objects After Changing the Bucket Default
+18. How to Compare Early Deletion Charges for Google Cloud Storage Rewrites and Lifecycle Transitions
+19. How to Diagnose FSx for ONTAP Tiering That Stops When SSD Capacity Is Nearly Full
+20. How to Evaluate FSx for ONTAP Cold-Tier Reads for Large Media Files
+
+## Graceful Degradation
+
+1. How to Design GraphQL Nullable Fields So One Failed Resolver Preserves Useful Data
+2. How to Describe Missing Fields in a Degraded API Response Without Pretending They Are Empty
+3. How to Choose HTTP Status Codes for API Responses with Failed Optional Dependencies
+4. How to Handle Failed HTTP Calls in Promise.allSettled When Building Partial API Responses
+5. How to Give Optional API Dependencies Shorter Deadlines Than the Main User Request
+6. How to Bound Resilience4j Fallback Execution When the Fallback Can Also Time Out
+7. How to Keep Validation Errors Out of Resilience4j Bulkhead Fallback Responses
+8. How to Order Resilience4j Retry and Fallback Logic So Degraded Responses Do Not Hide Retries
+9. How to Cap Database Fallback Traffic During a Shared Cache Outage
+10. How to Limit the Age of Stale HTTP Responses Served During an Origin Outage
+11. How to Test CloudFront Stale Content Fallback Before Invalidating Cached Objects
+12. How to Choose Feature Flag Defaults That Keep Essential Features Working During SDK Disconnections
+13. How to Build a Read-Only Website Mode with Clear Limits on Writes and Account Actions
+14. How to Reduce Search Work During Overload While Making Result Quality Loss Visible
+15. How to Test Graceful Degradation with an Empty Cache and an Unavailable Dependency
+16. How to Measure Degraded GraphQL Responses That Still Return HTTP 200
+17. How to Keep Checkout Available When Product Recommendations Fail
+18. How to Keep Server-Rendered Forms Usable When JavaScript Fails to Load
+19. How to Restore Traffic Gradually After a Service Leaves Degraded Mode
+20. How to Set a Terminal Fallback When Every Remote Alternative Is Unavailable
+
+## Least Privilege
+
+1. How to Preserve Quarterly Recovery Access When Pruning AWS Permissions from Recent Usage
+2. How to Attribute Shared AWS Role Activity to Teams Before Splitting Least-Privilege Roles
+3. How to Track Unused-Access Findings When Infrastructure Code Recreates IAM Roles
+4. How to Review S3 Data Permissions That CloudTrail Event History Does Not Show
+5. How to Limit iam:PassRole to Approved Role Paths and Destination AWS Services
+6. How to Require Permissions Boundaries on Developer-Created IAM Roles and Block Their Removal
+7. How to Audit Direct Role-Session Grants That Escape Implicit IAM Boundary Denies
+8. How to Replace NotPrincipal Denies with aws:PrincipalArn Conditions for Roles with Permissions Boundaries
+9. How to Include Rollback and Cleanup Operations in Least-Privilege AWS Deployment Policies
+10. How to Reject IAM Policy Changes That Grant New Access with CheckNoNewAccess in CI
+11. How to Separate AWS Console Discovery Permissions from Access to Application Data
+12. How to Replace Domain Admin Deployment Accounts with Access Scoped to Managed Windows Hosts
+13. How to Let Help Desk Staff Restart Only Approved Windows Services with JEA
+14. How to Audit Effective JEA Permissions When a User Belongs to Multiple Role Groups
+15. How to Protect JEA Role Capability Files from Modification by Delegated Operators
+16. How to Map File, Share, and Service Dependencies Before Removing Admin Rights from Scheduled Tasks
+17. How to Stop Human Use of Automation Service Accounts While Preserving Scheduled Workloads
+18. How to Verify That Temporary AWS Access Exceptions End for Existing Role Sessions
+19. How to Constrain AWS Actions That Require Resource Wildcards with Supported Condition Keys
+20. How to Build Allowed-and-Denied Workflow Checks Before Removing Broad AWS Admin Access
+
+## Apache Ignite
+
+1. How to Restore Access to Apache Ignite 2 Persistent Caches After Partition Owners Rejoin
+2. How to Find Zero-Backup Caches Behind Recurring Apache Ignite 2 Partition-Loss Errors
+3. How to Recover Newly Created Apache Ignite 2 Caches That Immediately Report Lost Partitions
+4. How to Verify Apache Ignite 2 Backup Placement Across Hosts Before a Rolling Restart
+5. How to Budget Apache Ignite 2 Pod Memory Across Heap, Off-Heap Regions, and WAL Buffers
+6. How to Diagnose Apache Ignite 2 Native Memory Growth During Persistent Data Streaming
+7. How to Bound Apache Ignite 2 DataStreamer Buffers and Parallel Requests Before Scaling Loaders
+8. How to Investigate Apache Ignite 2 Cache Configuration Mismatches After an OOM Reconnect
+9. How to Diagnose Apache Ignite 2 LEFT JOIN Regressions by Comparing H2 and Calcite Plans
+10. How to Choose Affinity Keys That Keep Apache Ignite 2 SQL Joins Local
+11. How to Benchmark Apache Ignite 2 Index Inlining Against Query Latency and Memory Use
+12. How to Troubleshoot Apache Ignite 2 .NET Thin Client TLS Handshake Failures
+13. How to Set Apache Ignite 2 Thin Client Timeouts for Spark Jobs That Wait Indefinitely
+14. How to Prevent Duplicate Side Effects in Apache Ignite 2 DataStreamer Receivers
+15. How to Export Apache Ignite 2 Cache Definitions as SQL DDL for an Ignite 3 Migration
+16. How to Translate Apache Ignite 2 XML Settings into Ignite 3 Node, Cluster, and Zone Configuration
+17. How to Migrate Stopped Apache Ignite 2 Persistent Cache Files into a Running Ignite 3 Cluster
+18. How to Choose Field-Mismatch Handling When Migrating Apache Ignite 2 Values to Ignite 3 Tables
+19. How to Rewrite Apache Ignite 2 Cache Client Code for Ignite 3 Table APIs
+20. How to Rebuild Schemas and Validate Row Counts During an Apache Ignite 3.0 to 3.1 Migration
+
+## Infrastructure Monitoring
+
+1. How to Turn an On-Premises Server Inventory into a Prioritized Infrastructure Monitoring Rollout
+2. How to Compare Server Inventory with Scrape Targets to Find Unmonitored Hosts
+3. How to Detect a Remote Site Disappearing When All Its Remote Write Metrics Stop
+4. How to Distinguish a Branch Internet Outage from Local DNS Failure with Layered Probes
+5. How to Keep Infrastructure Alert Delivery Working When Corporate Email and the WAN Are Down
+6. How to Distinguish Planned Server Reboots from Unexpected Restart Patterns in Monitoring
+7. How to Combine Disk Time-to-Full Forecasts with Minimum Free-Space Alert Thresholds
+8. How to Detect Windows Volume Mount Points That Drive-Letter Disk Checks Miss
+9. How to Interpret Windows Available Memory in Infrastructure Dashboards That Show Low Free RAM
+10. How to Calculate Server Network Transfer Totals Across Reboots and Counter Resets
+11. How to Preserve Network Port Identity in Monitoring When SNMP ifIndex Values Change
+12. How to Correlate iDRAC RAID Degradation with Operating System Disk Symptoms
+13. How to Detect a UPS Running on Battery While Servers Still Report Healthy
+14. How to Detect Unresponsive NFS Mounts When Servers Still Pass Ping Checks
+15. How to Detect Missing Required Mounts Before Disk Checks Report the Underlying Local Directory as Healthy
+16. How to Detect Stale Hardware Metrics When a Textfile Collector Script Stops Running
+17. How to Design Infrastructure Dashboards That Distinguish Planned Shutdowns from Missing Telemetry
+18. How to Route Infrastructure Alerts by Site and Owner When Hostnames Are Reused
+19. How to Validate Infrastructure Alert Delays with Controlled WAN Flapping Tests
+20. How to Reduce Infrastructure Polling Load by Separating Health Checks from Inventory Collection
+
+## LanceDB
+
+1. How to Reopen an Existing Local LanceDB Table in LangChain Without Reingesting Documents
+2. How to Create an Empty LanceDB Table with an Explicit Arrow Schema Before the First Embedding Batch
+3. How to Stream Arrow Record Batches into LanceDB Without Loading the Entire Dataset into Memory
+4. How to Handle Wrong-Dimension and NaN Embeddings in LanceDB Without Silently Losing Row IDs
+5. How to Refresh a Long-Lived LanceDB Reader After Another Process Updates the Table
+6. How to Serialize LanceDB Upserts by Merge Key to Prevent Duplicate Rows from Concurrent Writers
+7. How to Diagnose Slow LanceDB merge_insert Operations on S3 with Large Incoming Batches
+8. How to Reproduce a LanceDB Retrieval Result by Pinning the Table Version and Query Inputs
+9. How to Reclaim LanceDB Storage While Preserving the Table Versions Needed for Rollback
+10. How to Measure LanceDB ANN Recall Against Exact Search Before Changing Index Parameters
+11. How to Tune LanceDB nprobes and refine_factor for Selective Search Workloads
+12. How to Compare Cosine and L2 Distances in LanceDB Without Reusing the Wrong Similarity Threshold
+13. How to Diagnose Missing LanceDB Full-Text Matches by Comparing Prefilter and Postfilter Plans
+14. How to Write Date Predicates for LanceDB Hybrid Search Using the Actual Arrow Column Type
+15. How to Run LanceDB Hybrid Search with Separate Text and Vector Inputs When No Embedding Function Is Registered
+16. How to Use Native LanceDB Full-Text Indexes on S3 and Diagnose Legacy Tantivy Index Paths
+17. How to Validate LanceDB Hybrid Search Pagination When offset Returns Repeated Results
+18. How to Filter Nested LanceDB Metadata and Verify Whether the Nested Field Is Actually Indexed
+19. How to Find Which Half of a LanceDB Hybrid Query Dominates Latency with analyze_plan
+20. How to Coordinate LanceDB Index Rebuilds and Check Coverage While Writers Keep Appending Data
+
+## Data Pipelines
+
+1. How to Commit a Data Pipeline Checkpoint Only After Its Destination Load Succeeds
+2. How to Load Rows That Share the Same Incremental Timestamp Without Skipping Cursor-Boundary Records
+3. How to Choose a Lookback Window for Late API Updates and Merge Reprocessed Rows Safely
+4. How to Detect Hard Deletes in an API Data Pipeline When the Source Exposes No Change Feed
+5. How to Backfill a Newly Added dbt Column When on_schema_change Leaves Historical Rows Empty
+6. How to Replay Immutable API Payloads After a Data Pipeline Parser Breaks
+7. How to Allow Schema Drift in Raw Ingestion While Freezing Curated Data Pipeline Columns
+8. How to Choose Between Rejecting a Row and Failing a Load When a Data Pipeline Schema Contract Breaks
+9. How to Resume a Paginated API Extraction After a Crash Without Skipping Uncommitted Pages
+10. How to Diagnose a Data Pipeline That Repeats API Pages or Stops Before the Last Page
+11. How to Run a Historical Data Backfill Without Advancing the Live Incremental Cursor
+12. How to Limit Concurrent API Extraction Tasks Across Live Airflow Runs and Backfills
+13. How to Reprocess Only Failed Airflow Data Intervals Without Recreating Successful Backfill Runs
+14. How to Recalculate Historical Data After a Transformation Rule Changes in an Incremental Pipeline
+15. How to Reconcile an Incremental Data Pipeline Against a Full Source Snapshot Before Trusting Its Output
+16. How to Keep the Newest Row per Primary Key in a dlt Staging Load with dedup_sort
+17. How to Test Data Pipeline Reruns with Identical Raw Inputs and a Fixed Transformation Version
+18. How to Distinguish a Legitimate Zero-Row Data Load from a Broken Extractor
+19. How to Recover a dlt Data Pipeline from a Partially Loaded Package Without Reextracting the Source
+20. How to Select Append, Merge, or Replace for a Data Pipeline Based on Source Mutation Behavior
+
+## Telemetry Correlation
+
+1. How to Fix Tempo Trace-to-Log Links That Miss Logs Written Just Outside Span Boundaries
+2. How to Map Custom Dotted Span Tags to Loki Labels in Grafana Correlation Queries
+3. How to Keep Trace-to-Log Queries Working After Moving Pod IDs to Loki Structured Metadata
+4. How to View Logs for an Entire Tempo Trace When Span-ID Filtering Hides Child-Span Messages
+5. How to Debug Tempo Correlation Settings That Work in the Grafana UI but Disappear After Provisioning
+6. How to Connect Tempo Trace Navigation to Google Cloud Logging Without Copying Logs into Loki
+7. How to Correlate Tempo Spans with Elasticsearch Logs Using the Correct Trace-ID Field
+8. How to Query Trace IDs Stored as Loki Detected Fields Instead of Indexed Labels
+9. How to Detect Trace-ID Corruption Caused by Generic Protobuf-to-JSON Conversion
+10. How to Preserve Leading Zeros When Converting OpenTelemetry Trace IDs into Log Fields
+11. How to Promote Legacy Log Trace IDs into OTLP TraceId and SpanId Fields with OTTL
+12. How to Align Buffered Logs with Traces Using Timestamp and ObservedTimestamp
+13. How to Verify Span-Link Preservation Across OpenTelemetry Exporters Before Changing Backends
+14. How to Test Cross-Signal Correlation with Two Concurrent Requests That Share the Same Service Labels
+15. How to Find Resource-Identity Mismatches Between Separately Configured LoggerProvider and TracerProvider Instances
+16. How to Carry OpenTelemetry Trace Context in RFC5424 Syslog Structured Data
+17. How to Map Renamed Prometheus Labels in Grafana Trace-to-Metrics Queries
+18. How to Diagnose a Missing Grafana Trace-to-Metrics Link When Required Span Tags Are Absent
+19. How to Diagnose No Data from Grafana Trace-to-Metrics When Only Traces Are Being Exported
+20. How to Preserve the Original Span Context When Logback Sends Log Records Through an Async Appender
+
+## Linux Namespaces
+
+1. How to Fix unshare PID Namespace Fork Failures Reported as Cannot Allocate Memory
+2. How to Keep Application Bind Mounts Available Across ip netns exec Sessions
+3. How to Reuse Persistent Network Namespace Handles Between unshare and ip netns
+4. How to Diagnose Go setns EINVAL Errors Caused by Shared CLONE_FS State
+5. How to Open Sockets on the Same Port in Several Linux Namespaces with Python os.setns
+6. How to Diagnose setns Permission Errors Across Linux User Namespace Boundaries
+7. How to Fix Programs That Fail After CLONE_NEWUSER by Initializing UID and GID Maps
+8. How to Keep Your Existing UID When Creating an Unprivileged Linux Network Namespace
+9. How to Run chroot as an Unprivileged User with a Linux User Namespace
+10. How to Keep chroot Hostname Changes Inside a Separate UTS Namespace
+11. How to Fix Stale Network Interfaces in sysfs After Entering a Linux Network Namespace
+12. How to Diagnose Namespace Bind Mounts That Disappear After an Editor Replaces the Host File
+13. How to Stop Shared Mount Events from Propagating Back to the Host Namespace
+14. How to Preserve nosuid and nodev When Remounting a Bind Mount Read-Only in a User Namespace
+15. How to Enter the Correct Root Filesystem with nsenter and /proc/PID/root Links
+16. How to Find Linux Mount Namespaces Keeping an Unmounted Filesystem Busy
+17. How to Diagnose GUI Connection Failures Caused by Abstract Sockets in Network Namespaces
+18. How to Test Monotonic and Boot-Time Clock Offsets with Linux Time Namespaces
+19. How to Isolate POSIX Shared Memory with a Mount Namespace and Private /dev/shm
+20. How to Verify That Two Processes Share a Linux Namespace Using Device and Inode IDs
