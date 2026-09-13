@@ -230,7 +230,6 @@
 
 ## Cloud Run
 
-14. How to Diagnose an Unexpected Cloud Run Bill: Minimum Instances, CPU Billing, Concurrency, and Egress
 15. Cloud Run Returns 429, 503, or 504: How to Tell Queue Saturation from Container Failure and Timeout
 16. How to Size Cloud Run Concurrency for CPU-Bound vs I/O-Bound Apps Without Causing OOM Kills
 17. Why a Puppeteer Process Keeps Running Between Cloud Run Requests: Idle CPU, Billing, and Browser Cleanup
