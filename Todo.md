@@ -230,7 +230,6 @@
 
 ## Cloud Run
 
-19. How to Export Custom Application Metrics from Cloud Run When Logs Work but Metrics Never Appear
 20. Why Cloud Run Cannot Expose a Second TCP Port—and How to Route Multiple Protocols Through One Ingress
 
 ## Idempotency
