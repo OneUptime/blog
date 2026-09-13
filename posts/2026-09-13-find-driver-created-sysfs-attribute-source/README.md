@@ -72,7 +72,7 @@ Write a small trace in your notes:
 
 The exact helper names depend on the kernel version and driver. This is a trace format, not a claim that every LED uses the same synchronous path.
 
-For a failed write, identify where the returned error originates. For an unexpected readback, determine whether the callback returns cached policy, cached hardware state, or a fresh register read. A generic callback can be correct while a hardware callback fails, and the reverse is also possible.
+For a failed write, identify where the returned error originates. In current LED class code, `brightness_store()` can return parsing or access-state errors, but `led_set_brightness()` returns `void`; a failure from a blocking hardware callback may be reported in the kernel log rather than returned by the sysfs write. For an unexpected readback, determine whether the callback returns cached policy, cached hardware state, or a fresh register read. A generic callback can be correct while a hardware callback fails, and the reverse is also possible.
 
 ## Check conditional creation
 
