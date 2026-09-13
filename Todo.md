@@ -227,7 +227,6 @@
 
 ## sysfs
 
-16. Which Driver Created This sysfs File? Resolving Class Symlinks and Mapping Attributes Back to Kernel Source
 17. Why a sysfs Attribute Exists on One Kernel but Not Another: Checking Kconfig, Driver Binding, and Hardware Support
 18. How to Expose Only One sysfs Control to an Unprivileged Service Without Granting Broad Root Access
 19. Why `/sys` Is Read-Only Inside Docker Even for Root—and How to Expose Only the Device Attributes You Need
