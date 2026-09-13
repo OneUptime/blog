@@ -71,7 +71,7 @@ parse decimal input
 if parsing failed: return parser error
 if outside supported range: return EINVAL
 lock device state
-if device is active in an incompatible mode: return EBUSY
+if device is active in an incompatible mode: unlock device state and return EBUSY
 program hardware
 unlock device state
 if programming failed: return hardware error
