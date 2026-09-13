@@ -233,7 +233,6 @@
 
 ## Idempotency
 
-7. Should You Cache Failed Idempotent Requests? Handling Validation Errors, 5xx Responses, and Unknown Outcomes
 8. How to Replay the Original HTTP Status, Headers, and Body for a Duplicate Idempotent Request
 9. Stripe Sends the Same Webhook Twice: How to Claim `event.id` Before Enqueuing Work
 10. Deduplication Is Not Enough: How to Handle Duplicate Webhooks That Arrive Out of Order
