@@ -48,9 +48,9 @@ A useful approximation is that more time per request requires more simultaneous 
 
 Raising the maximum can help only if downstream systems can accept the additional connections and work. Increasing concurrency can help only if existing instances have capacity. Choose the setting after measuring the bottleneck, rather than treating both as interchangeable ways to remove `429`.
 
-## Investigate 503 as an interrupted serving path
+## Investigate the 503 serving path
 
-If a request reached a container and then failed, inspect process exits, out-of-memory messages, failed probes, and framework worker timeouts. Cloud Run documents `503` cases involving malformed responses or connection errors, and memory failures can produce `500` or `503`. [Container and connection failures](https://docs.cloud.google.com/run/docs/troubleshooting#malformed-response-or-connection-error).
+First read the platform message: Cloud Run also documents `503` when high CPU and concurrency prevent instances from processing requests, including when the service has probably reached its maximum instance limit. If a request reached a container and then failed, inspect process exits, out-of-memory messages, failed probes, and framework worker timeouts. Cloud Run documents other `503` cases involving malformed responses or connection errors, and memory failures can produce `500` or `503`. [Cloud Run serving errors](https://docs.cloud.google.com/run/docs/troubleshooting#serving).
 
 Describe the affected revision, not merely the latest service template:
 
