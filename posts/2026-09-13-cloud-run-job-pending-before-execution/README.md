@@ -35,7 +35,7 @@ gcloud run jobs executions describe EXECUTION_NAME \
   --format=yaml
 ```
 
-Record creation and start timestamps, conditions, task counts, completed or retried tasks, and error messages. Do not assume every task starts simultaneously: configured parallelism can intentionally hold later tasks until capacity becomes available.
+Record creation and start timestamps, conditions, task counts, completed or retried tasks, execution mode, and error messages. A delayed execution can intentionally defer non-urgent tasks for up to 12 hours, and the mode can be overridden for an individual execution. Do not assume every task starts simultaneously: configured parallelism can intentionally hold later tasks until capacity becomes available.
 
 The [execution describe command](https://docs.cloud.google.com/sdk/gcloud/reference/run/jobs/executions/describe) exposes execution details without launching another run.
 
