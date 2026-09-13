@@ -65,7 +65,7 @@ if (ret)
     return ret;
 ```
 
-This is a registration fragment, not a complete driver. Allocate and initialize all callback state first, and let the device's managed-resource lifecycle release the group. Do not also leave an unconditional `sysfs_remove_group()` for the same managed registration in another path. If early removal is required, use the matching managed removal interface deliberately. [Device infrastructure APIs](https://docs.kernel.org/driver-api/infrastructure.html)
+This is a registration fragment, not a complete driver. Allocate and initialize all callback state first, and let the device's managed-resource lifecycle release the group. Do not also leave an unconditional `sysfs_remove_group()` for the same managed registration in another path. There is no matching `devm_device_remove_group()` helper; if the group must disappear before managed resources are released, use explicit `device_add_group()` and `device_remove_group()` calls instead. [Device infrastructure APIs](https://docs.kernel.org/driver-api/infrastructure.html)
 
 Managed cleanup occurs according to resource lifetime and acquisition order. It is not a guarantee that your manually freed hardware state remains valid until the group disappears. A remove callback that frees callback state before managed cleanup runs can still create a race. [Kernel devres documentation](https://docs.kernel.org/driver-api/driver-model/devres.html)
 
