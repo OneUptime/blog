@@ -227,7 +227,6 @@
 
 ## sysfs
 
-3. How to Make a sysfs Setting Survive Reboot, Module Load, Hotplug, and Resume
 4. Why `chmod` and `chown` Changes Under `/sys` Disappear—and How to Reapply Least-Privilege Access Safely
 5. Why a Device’s sysfs Path Changes After Reboot—and How to Match It with `ID_PATH` or Stable udev Symlinks
 6. How to Trace a `/dev` Node Back to Its sysfs Device, Bound Driver, and Kernel Module
