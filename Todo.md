@@ -227,7 +227,6 @@
 
 ## sysfs
 
-15. `sysfs_notify()` or a uevent? Choosing How a Driver Signals User Space About Attribute Changes
 16. Which Driver Created This sysfs File? Resolving Class Symlinks and Mapping Attributes Back to Kernel Source
 17. Why a sysfs Attribute Exists on One Kernel but Not Another: Checking Kconfig, Driver Binding, and Hardware Support
 18. How to Expose Only One sysfs Control to an Unprivileged Service Without Granting Broad Root Access
