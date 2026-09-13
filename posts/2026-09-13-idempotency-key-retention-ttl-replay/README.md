@@ -33,7 +33,7 @@ Choose the maximum supported elapsed time from first accepted intent to last per
 
 ## Keep provider retention separate from your own
 
-Stripe's API documentation allows pruning idempotency keys once they are at least 24 hours old and describes reuse after pruning as a new request. That is a provider-specific guarantee, not a default for every API. See [Stripe idempotent requests](https://docs.stripe.com/api/idempotent_requests).
+Stripe's API v1 documentation allows pruning idempotency keys once they are at least 24 hours old and describes reuse after pruning as a new request. That is a provider-specific guarantee, not a default for every API. See [Stripe idempotent requests](https://docs.stripe.com/api/idempotent_requests).
 
 If your workflow retries a downstream provider after your own longer retention window, your local record does not extend the provider's deduplication guarantee. Store the downstream object identifier and reconcile before resubmitting old commands. Never assume a week-old provider key still protects a new call.
 
@@ -122,6 +122,6 @@ Choose retention from complete retry paths and publish the expiry behavior. Sepa
 
 ## Official Documentation
 
-- [Stripe idempotent request retention](https://docs.stripe.com/api/idempotent_requests)
+- [Stripe API v1 idempotent request retention](https://docs.stripe.com/api/idempotent_requests)
 - [PostgreSQL constraints](https://www.postgresql.org/docs/current/ddl-constraints.html)
 - [PostgreSQL SELECT and SKIP LOCKED](https://www.postgresql.org/docs/current/sql-select.html)
