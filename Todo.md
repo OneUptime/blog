@@ -233,7 +233,6 @@
 
 ## Idempotency
 
-2. Two Requests Arrive with the Same Idempotency Key at Once: Wait, Replay, or Return `409 Conflict`?
 3. Same Idempotency Key, Different Payload: How to Hash Requests and Reject Unsafe Key Reuse
 4. How Long Should Idempotency Keys Live? Choosing a TTL Without Replaying Old Operations
 5. How to Scope Idempotency Keys by Tenant and Endpoint Without Cross-Customer Collisions
