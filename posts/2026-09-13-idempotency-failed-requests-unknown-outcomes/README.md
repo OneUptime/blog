@@ -29,7 +29,7 @@ For an API you control, distinguish these cases:
 
 These are design recommendations, not universal rules for third-party APIs. A provider can intentionally adopt different caching semantics.
 
-For example, Stripe retains the initial status and body once endpoint execution begins, including `500` responses. It excludes certain validation and concurrent-conflict cases that do not begin execution. Consult its [idempotent request contract](https://docs.stripe.com/api/idempotent_requests) rather than assuming all errors behave alike.
+For example, Stripe API v1 retains the initial status and body once endpoint execution begins, including `500` responses. It excludes certain validation and concurrent-conflict cases that do not begin execution. Consult its [idempotent request contract](https://docs.stripe.com/api/idempotent_requests) rather than assuming all errors behave alike.
 
 ## Keep pre-execution rejection separate
 
@@ -96,7 +96,7 @@ if transmission or provider outcome is ambiguous:
 
 Reconciliation can query the provider by a known object reference, retry under its documented idempotency contract, or consume a verified webhook. Never generate a fresh downstream key simply to escape a cached error.
 
-Stripe specifically advises treating `500` outcomes as indeterminate because side effects may have occurred, and describes reconciliation and webhook behavior in its [advanced error handling guide](https://docs.stripe.com/error-low-level).
+For API v1, Stripe specifically advises treating `500` outcomes as indeterminate because side effects may have occurred, and describes reconciliation and webhook behavior in its [advanced error handling guide](https://docs.stripe.com/error-low-level).
 
 ## Test the evidence, not just status codes
 
@@ -110,7 +110,7 @@ Cache completed decisions according to a documented contract, retry confirmed ro
 
 ## Official Documentation
 
-- [Stripe idempotent requests](https://docs.stripe.com/api/idempotent_requests)
+- [Stripe API v1 idempotent requests](https://docs.stripe.com/api/idempotent_requests)
 - [Stripe advanced error handling](https://docs.stripe.com/error-low-level)
 - [PostgreSQL transactions](https://www.postgresql.org/docs/current/tutorial-transactions.html)
 - [PostgreSQL error codes](https://www.postgresql.org/docs/current/errcodes-appendix.html)
