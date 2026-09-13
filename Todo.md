@@ -227,7 +227,6 @@
 
 ## sysfs
 
-17. Why a sysfs Attribute Exists on One Kernel but Not Another: Checking Kconfig, Driver Binding, and Hardware Support
 18. How to Expose Only One sysfs Control to an Unprivileged Service Without Granting Broad Root Access
 19. Why `/sys` Is Read-Only Inside Docker Even for Root—and How to Expose Only the Device Attributes You Need
 20. How to Enumerate sysfs Devices Without Double-Counting `/sys/class`, `/sys/bus`, and `/sys/devices` Symlinks
