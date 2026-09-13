@@ -227,7 +227,6 @@
 
 ## sysfs
 
-12. `sprintf` vs `sysfs_emit`: How to Avoid PAGE_SIZE Truncation and Buffer Bugs in sysfs `show()`
 13. Text Attribute or `bin_attribute`? Exposing Binary and Multi-Page Driver Data Through sysfs
 14. Why Partial Writes Do Not Work in sysfs—and How to Parse Newlines and Complete Buffers in `store()`
 15. `sysfs_notify()` or a uevent? Choosing How a Driver Signals User Space About Attribute Changes
