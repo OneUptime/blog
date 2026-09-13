@@ -230,7 +230,6 @@
 
 ## Cloud Run
 
-9. Why Updating a Secret Does Not Change a Running Cloud Run Revision—and How to Roll Out the New Version
 10. Vite Environment Variables Are `undefined` on Cloud Run: Build-Time Injection vs Runtime Container Variables
 11. Cloud Run Job Stuck in Pending Before Every Execution: Image Pulls, Startup Work, Quotas, and Regional Capacity
 12. Direct VPC Egress Works Publicly but Cannot Reach a Private IP: Cloud Run Firewall, Routes, and Network Tags
