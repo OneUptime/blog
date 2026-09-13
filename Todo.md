@@ -230,7 +230,6 @@
 
 ## Cloud Run
 
-3. How to Give a Cloud Run Service a Stable Outbound IP with Direct VPC Egress and Cloud NAT
 4. Cloud Run-to-Cloud Run 401s on a Custom Domain: Fixing the OIDC Audience and `run.app` URL
 5. How to Stop Cloud Run Autoscaling from Exhausting Cloud SQL Connections: Pool Size, Concurrency, and Max Instances
 6. Cloud Run WebSockets Closing with Code 1006: Handling Request Deadlines, Reconnects, and Cross-Instance State
