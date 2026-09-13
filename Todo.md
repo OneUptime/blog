@@ -227,7 +227,6 @@
 
 ## sysfs
 
-20. How to Enumerate sysfs Devices Without Double-Counting `/sys/class`, `/sys/bus`, and `/sys/devices` Symlinks
 
 ## Cloud Run
 
