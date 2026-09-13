@@ -227,7 +227,6 @@
 
 ## sysfs
 
-7. How to Decode a USB-over-PCI sysfs Path from Bus and Slot to Port and Interface
 8. How to Unbind and Rebind a PCI Device Through sysfs Without Stranding the Host
 9. sysfs `poll()` Returns Immediately: The Initial Read, `POLLPRI`, `lseek`, and `sysfs_notify()` Fix
 10. How to Add a Safe Read/Write sysfs Attribute to a Linux Device Driver with `DEVICE_ATTR`
