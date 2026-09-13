@@ -230,7 +230,6 @@
 
 ## Cloud Run
 
-11. Cloud Run Job Stuck in Pending Before Every Execution: Image Pulls, Startup Work, Quotas, and Regional Capacity
 12. Direct VPC Egress Works Publicly but Cannot Reach a Private IP: Cloud Run Firewall, Routes, and Network Tags
 13. Where Did My Uploaded File Go? How Cloud Run’s Ephemeral Filesystem, `/tmp`, and Instance Scaling Interact
 14. How to Diagnose an Unexpected Cloud Run Bill: Minimum Instances, CPU Billing, Concurrency, and Egress
