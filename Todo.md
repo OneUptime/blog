@@ -230,7 +230,6 @@
 
 ## Cloud Run
 
-1. Cloud Run 504s After a Long Request: How to Separate Platform Timeouts from Load Balancer and Client Deadlines
 2. Why Cloud Run Drops Work After the HTTP Response: Choosing Request-Based CPU, Always-Allocated CPU, or Cloud Tasks
 3. How to Give a Cloud Run Service a Stable Outbound IP with Direct VPC Egress and Cloud NAT
 4. Cloud Run-to-Cloud Run 401s on a Custom Domain: Fixing the OIDC Audience and `run.app` URL
