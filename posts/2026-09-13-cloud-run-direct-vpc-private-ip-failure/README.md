@@ -38,7 +38,7 @@ For Shared VPC, verify the host-project network and fully qualified subnet. A su
 
 Log the destination hostname and resolved addresses in a controlled diagnostic path. Do not infer what the container resolves from your laptop's DNS result. Split-horizon DNS, search domains, and IPv4 versus IPv6 selection can change the destination.
 
-For example, this Python diagnostic reports DNS and a bounded TCP connection separately:
+For example, this Python diagnostic reports DNS and a TCP connection attempt with a five-second timeout per resolved address separately:
 
 ```python
 import socket
