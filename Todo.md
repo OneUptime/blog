@@ -227,7 +227,6 @@
 
 ## sysfs
 
-19. Why `/sys` Is Read-Only Inside Docker Even for Root—and How to Expose Only the Device Attributes You Need
 20. How to Enumerate sysfs Devices Without Double-Counting `/sys/class`, `/sys/bus`, and `/sys/devices` Symlinks
 
 ## Cloud Run
