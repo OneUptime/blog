@@ -227,7 +227,6 @@
 
 ## sysfs
 
-6. How to Trace a `/dev` Node Back to Its sysfs Device, Bound Driver, and Kernel Module
 7. How to Decode a USB-over-PCI sysfs Path from Bus and Slot to Port and Interface
 8. How to Unbind and Rebind a PCI Device Through sysfs Without Stranding the Host
 9. sysfs `poll()` Returns Immediately: The Initial Read, `POLLPRI`, `lseek`, and `sysfs_notify()` Fix
