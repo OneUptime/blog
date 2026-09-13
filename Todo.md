@@ -233,7 +233,6 @@
 
 ## Idempotency
 
-5. How to Scope Idempotency Keys by Tenant and Endpoint Without Cross-Customer Collisions
 6. Why Generating a New Idempotency Key on Every Retry Defeats Safe Retries—and Where to Create It Instead
 7. Should You Cache Failed Idempotent Requests? Handling Validation Errors, 5xx Responses, and Unknown Outcomes
 8. How to Replay the Original HTTP Status, Headers, and Body for a Duplicate Idempotent Request
