@@ -227,7 +227,6 @@
 
 ## sysfs
 
-9. sysfs `poll()` Returns Immediately: The Initial Read, `POLLPRI`, `lseek`, and `sysfs_notify()` Fix
 10. How to Add a Safe Read/Write sysfs Attribute to a Linux Device Driver with `DEVICE_ATTR`
 11. `sysfs_create_group()` Leaves Duplicate Filenames After Module Reload: Fixing Probe and Remove Cleanup
 12. `sprintf` vs `sysfs_emit`: How to Avoid PAGE_SIZE Truncation and Buffer Bugs in sysfs `show()`
