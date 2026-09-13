@@ -230,7 +230,6 @@
 
 ## Cloud Run
 
-20. Why Cloud Run Cannot Expose a Second TCP Port—and How to Route Multiple Protocols Through One Ingress
 
 ## Idempotency
 
