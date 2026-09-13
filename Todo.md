@@ -230,7 +230,6 @@
 
 ## Cloud Run
 
-16. How to Size Cloud Run Concurrency for CPU-Bound vs I/O-Bound Apps Without Causing OOM Kills
 17. Why a Puppeteer Process Keeps Running Between Cloud Run Requests: Idle CPU, Billing, and Browser Cleanup
 18. Why a VM Cannot Open a TCP Connection Back to Cloud Run: Inbound Ports, Return Traffic, and Reverse Calls
 19. How to Export Custom Application Metrics from Cloud Run When Logs Work but Metrics Never Appear
