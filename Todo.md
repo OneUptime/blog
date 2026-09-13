@@ -230,7 +230,6 @@
 
 ## Cloud Run
 
-4. Cloud Run-to-Cloud Run 401s on a Custom Domain: Fixing the OIDC Audience and `run.app` URL
 5. How to Stop Cloud Run Autoscaling from Exhausting Cloud SQL Connections: Pool Size, Concurrency, and Max Instances
 6. Cloud Run WebSockets Closing with Code 1006: Handling Request Deadlines, Reconnects, and Cross-Instance State
 7. Cloud Run Custom Domain Stuck on Certificate Provisioning: Checking CNAMEs, CAA Records, and Cloudflare Proxying
