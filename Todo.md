@@ -227,7 +227,6 @@
 
 ## sysfs
 
-5. Why a Device’s sysfs Path Changes After Reboot—and How to Match It with `ID_PATH` or Stable udev Symlinks
 6. How to Trace a `/dev` Node Back to Its sysfs Device, Bound Driver, and Kernel Module
 7. How to Decode a USB-over-PCI sysfs Path from Bus and Slot to Port and Interface
 8. How to Unbind and Rebind a PCI Device Through sysfs Without Stranding the Host
