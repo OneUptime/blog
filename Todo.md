@@ -233,7 +233,6 @@
 
 ## Idempotency
 
-3. Same Idempotency Key, Different Payload: How to Hash Requests and Reject Unsafe Key Reuse
 4. How Long Should Idempotency Keys Live? Choosing a TTL Without Replaying Old Operations
 5. How to Scope Idempotency Keys by Tenant and Endpoint Without Cross-Customer Collisions
 6. Why Generating a New Idempotency Key on Every Retry Defeats Safe Retries—and Where to Create It Instead
