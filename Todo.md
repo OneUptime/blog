@@ -233,7 +233,6 @@
 
 ## Idempotency
 
-17. How to Retry Only Failed Items in a Batch Without Reprocessing Successful Ones
 18. How to Test the “Commit Succeeded but the Response Was Lost” Idempotency Failure Mode
 19. How to Monitor Idempotency: First-Execution, Replay, Conflict, and Expired-Key Metrics
 20. How to Add Idempotency to an Existing POST Endpoint Without Breaking Older Clients
