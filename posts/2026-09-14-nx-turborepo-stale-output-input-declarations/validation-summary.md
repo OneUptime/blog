@@ -1,4 +1,4 @@
-# Validation Summary: Nx or Turborepo Replays Stale Outputs: Declaring Every Source, Environment Variable, and Generated Input
+# Validation Summary: Fix Stale Nx and Turborepo Outputs with Complete Input Declarations
 
 ## Status
 validated

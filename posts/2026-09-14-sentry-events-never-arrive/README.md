@@ -1,4 +1,4 @@
-# Sentry Events Never Arrive: How to Trace DSN, CORS, Ad Blockers, and Ingest Rejections
+# Trace Missing Sentry Events: DSN, CORS, Ad Blockers, and Rejections
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -1,4 +1,4 @@
-# Why One Sentry Error Splits into Multiple Issues—and How to Normalize URLs, Releases, and Stack Frames
+# Fix Split Sentry Issues by Normalizing URLs, Releases, and Stack Frames
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

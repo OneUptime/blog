@@ -1,4 +1,4 @@
-# Why a BuildKit Local Cache Directory Grows Forever—and How to Rotate Unreferenced Blobs
+# Control BuildKit Local Cache Growth with Reset Exports and Rotation
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

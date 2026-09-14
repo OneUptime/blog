@@ -1,4 +1,4 @@
-# How to Back Up and Restore Self-Hosted Sentry Across PostgreSQL, ClickHouse, and Object Storage
+# Back Up Sentry PostgreSQL, ClickHouse, and Object Storage Consistently
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

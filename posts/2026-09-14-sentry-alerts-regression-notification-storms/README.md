@@ -1,4 +1,4 @@
-# How to Configure Actionable Sentry Alerts Without Notification Storms from Regressions
+# Configure Sentry Regression Alerts Without Notification Storms
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

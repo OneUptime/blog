@@ -1,4 +1,4 @@
-# How to Add User, Request, and Business Context to Sentry Without Leaking PII or Secrets
+# Add Sentry User, Request, and Business Context Without PII or Secrets
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -1,4 +1,4 @@
-# Validation Summary: Why Gradle Remote Cache Hits Locally but Misses in CI: Paths, Environment Inputs, and Non-Relocatable Tasks
+# Validation Summary: Fix Gradle CI Cache Misses from Paths and Environment Inputs
 
 ## Status
 validated

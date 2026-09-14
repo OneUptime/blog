@@ -1,4 +1,4 @@
-# Validation Summary: How to Debug Missing Native Symbols in Sentry for iOS, Android, Flutter, and Windows
+# Validation Summary: Debug Missing Sentry Symbols on iOS, Android, Flutter, and Windows
 
 ## Status
 validated

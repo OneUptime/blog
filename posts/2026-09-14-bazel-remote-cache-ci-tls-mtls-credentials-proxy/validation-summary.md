@@ -1,4 +1,4 @@
-# Validation Summary: Bazel Remote Cache Fails Only in CI: Debugging TLS, mTLS, Credentials, and Proxy Configuration
+# Validation Summary: Debug Bazel CI Cache Failures: TLS, mTLS, Credentials, and Proxies
 
 ## Status
 validated

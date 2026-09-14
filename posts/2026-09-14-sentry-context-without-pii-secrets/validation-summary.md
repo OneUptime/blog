@@ -1,4 +1,4 @@
-# Validation Summary: How to Add User, Request, and Business Context to Sentry Without Leaking PII or Secrets
+# Validation Summary: Add Sentry User, Request, and Business Context Without PII or Secrets
 
 ## Status
 validated

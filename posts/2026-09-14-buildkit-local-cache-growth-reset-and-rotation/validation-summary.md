@@ -1,4 +1,4 @@
-# Validation Summary: Why a BuildKit Local Cache Directory Grows Forever—and How to Rotate Unreferenced Blobs
+# Validation Summary: Control BuildKit Local Cache Growth with Reset Exports and Rotation
 
 ## Status
 validated

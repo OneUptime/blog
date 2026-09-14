@@ -1,4 +1,4 @@
-# GitHub Actions Says “Cache Restored” but `cache-hit` Is False: Exact Keys vs `restore-keys`
+# GitHub Actions Cache Restored but cache-hit Is False: Fallback Keys
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
@@ -14,7 +14,7 @@ Treat the output as an exact-match indicator, not a general “files exist” fl
 
 ## Interpret the Three Outcomes
 
-GitHub Actions expressions expose the cache action's `cache-hit` output as a string. An exact match produces `'true'`; both a restored non-exact match and a complete miss produce `'false'`. The robust condition for work required after anything other than an exact hit is `!= 'true'`, which also remains safe if the output is unavailable. [Cache action outputs](https://github.com/actions/cache#outputs).
+GitHub Actions expressions expose the cache action's `cache-hit` output as a string. An exact match produces `'true'`; a restored non-exact match produces `'false'`; a complete miss can produce an empty string. The robust condition for work required after anything other than an exact hit is `!= 'true'`, which handles both false and empty outputs. The v6 implementation intentionally leaves the output unset when no cache entry is found. [Cache action v6 restore implementation](https://github.com/actions/cache/blob/v6/src/restoreImpl.ts).
 
 | Requested primary key | Selected cache | Meaning |
 | --- | --- | --- |

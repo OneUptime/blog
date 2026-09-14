@@ -1,4 +1,4 @@
-# Validation Summary: How to Add Idempotency to an Existing POST Endpoint Without Breaking Older Clients
+# Validation Summary: Add Idempotency to a POST Endpoint Without Breaking Older Clients
 
 ## Status
 validated
@@ -26,8 +26,12 @@ Technical guide
 - MDN Web Docs, Cross-Origin Resource Sharing (CORS): https://developer.mozilla.org/en-US/docs/Web/HTTP/Guides/CORS
 - MDN Web Docs, `Access-Control-Expose-Headers`: https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/Access-Control-Expose-Headers
 
+- Stripe API v1 and v2 idempotency differences: https://docs.stripe.com/api-v2-overview#idempotency-differences-between-api-v1-and-api-v2
+
 ## Issues Found
-No technical issues found.
+- Scoped the retained-outcome policy to Stripe API v1. API v2 has different retry and response behavior, so the original unqualified reference to Stripe was too broad.
 
 ## Review Notes
 The TypeScript example is intentionally a rollout gate rather than a complete idempotency implementation. Its use of `rawHeaders` correctly preserves separate duplicate field lines in Node.js, but deployed systems still need to verify whether an ingress proxy normalizes or combines them, as the post notes. The PostgreSQL link is version-specific to PostgreSQL 18 and is current for the post date.
+
+The exact TypeScript rollout-gate snippet passed ten local cases covering optional and required policies, valid and case-insensitive headers, empty values, duplicates, comma-joined values, oversized keys, malformed pairs, and unrelated headers.

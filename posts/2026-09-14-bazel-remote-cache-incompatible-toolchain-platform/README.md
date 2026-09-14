@@ -1,4 +1,4 @@
-# Bazel Remote Cache Returned an Incompatible Binary: Include Toolchains and Platform State in Action Keys
+# Fix Bazel Cache Incompatibility with Toolchain and Platform Inputs
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -1,4 +1,4 @@
-# How to Monitor Idempotency: First-Execution, Replay, Conflict, and Expired-Key Metrics
+# Monitor Idempotency Execution, Replay, Conflict, and Expiry Metrics
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
@@ -29,7 +29,7 @@ Use a counter with one terminal decision per request that enters the idempotency
 
 These names define an example application contract, not standard Prometheus or HTTP outcomes. If a request waits for an owner and later obtains its result, classify it as `replay`; record waiting duration separately. Do not also count it as `in_progress` in the same terminal-decision counter.
 
-Acquiring first-execution rights does not mean a business transaction committed. Record the eventual execution outcome separately, including failure and uncertainty. A stored failure response can be replayed just as a stored success can, depending on the API's policy. Stripe is one concrete example with documented result retention, parameter comparisons, and exclusions for pre-execution failures. [Stripe idempotent requests](https://docs.stripe.com/api/idempotent_requests)
+Acquiring first-execution rights does not mean a business transaction committed. Record the eventual execution outcome separately, including failure and uncertainty. A stored failure response can be replayed just as a stored success can, depending on the API's policy. Stripe API v1 is one concrete example with documented result retention, parameter comparisons, and exclusions for pre-execution failures. [Stripe API v1 idempotent requests](https://docs.stripe.com/api/idempotent_requests)
 
 ## Keep request identity out of labels
 

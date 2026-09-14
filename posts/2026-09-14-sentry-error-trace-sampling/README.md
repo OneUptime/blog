@@ -1,4 +1,4 @@
-# How to Tune Sentry Error and Trace Sampling Separately Without Losing Rare Failures
+# Tune Sentry Error and Trace Sampling While Preserving Rare Failures
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

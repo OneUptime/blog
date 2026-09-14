@@ -1,4 +1,4 @@
-# Validation Summary: Why a GitHub Actions Cache Never Updates Under the Same Key—and How to Version It Safely
+# Validation Summary: Version Immutable GitHub Actions Cache Keys Safely
 
 ## Status
 validated

@@ -1,4 +1,4 @@
-# Why Only One Architecture Reuses Your Multi-Platform Docker Cache—and How to Split Cache Exports
+# Split Multi-Platform Docker Cache Exports for Architecture Reuse
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

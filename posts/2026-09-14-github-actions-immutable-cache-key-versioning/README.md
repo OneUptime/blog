@@ -1,4 +1,4 @@
-# Why a GitHub Actions Cache Never Updates Under the Same Key—and How to Version It Safely
+# Version Immutable GitHub Actions Cache Keys Safely
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

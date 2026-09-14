@@ -1,4 +1,4 @@
-# Sentry Says “Discarded Session Because of Missing Release”: How to Restore Release Health
+# Restore Sentry Release Health After Missing-Release Session Drops
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

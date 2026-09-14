@@ -1,4 +1,4 @@
-# Validation Summary: BuildKit Cache Mounts Work Locally but Vanish in GitHub Actions: Exporting Package Caches Correctly
+# Validation Summary: Persist BuildKit Package Cache Mounts in GitHub Actions
 
 ## Status
 validated

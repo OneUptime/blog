@@ -1,4 +1,4 @@
-# Validation Summary: Sentry Events Disappear in Serverless Jobs: How to Flush the SDK Before Process Exit
+# Validation Summary: Flush Sentry Events Before Serverless Jobs and Processes Exit
 
 ## Status
 validated

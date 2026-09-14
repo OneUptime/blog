@@ -1,4 +1,4 @@
-# Gradle `FROM-CACHE` vs `UP-TO-DATE` vs Configuration Cache: What Was Actually Reused?
+# Gradle FROM-CACHE, UP-TO-DATE, and Configuration Cache Explained
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -1,4 +1,4 @@
-# Validation Summary: Build Secrets Changed but the Docker Layer Stayed Cached: Adding Explicit Secret-Version Invalidation
+# Validation Summary: Invalidate Docker Build Caches with Explicit Secret Versions
 
 ## Status
 validated

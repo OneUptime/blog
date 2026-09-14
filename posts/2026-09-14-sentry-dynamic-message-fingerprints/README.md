@@ -1,4 +1,4 @@
-# How to Group Dynamic Sentry Messages with Custom Fingerprints Without Hiding Distinct Root Causes
+# Group Dynamic Sentry Messages Without Merging Distinct Root Causes
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

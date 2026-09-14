@@ -1,4 +1,4 @@
-# BuildKit Cache Mounts Work Locally but Vanish in GitHub Actions: Exporting Package Caches Correctly
+# Persist BuildKit Package Cache Mounts in GitHub Actions
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -1,4 +1,4 @@
-# Validation Summary: How to Design Monorepo Cache Keys So One Lockfile Change Does Not Rebuild Every Package
+# Validation Summary: Scope Monorepo Cache Keys to Avoid Full Rebuilds on Lockfile Changes
 
 ## Status
 validated
@@ -22,10 +22,11 @@ Technical guide
 - [Turborepo: Caching](https://turborepo.com/docs/crafting-your-repository/caching)
 - [Turborepo: `turbo run` command reference](https://turborepo.com/docs/reference/run)
 - [Turborepo caching documentation source](https://github.com/vercel/turborepo/blob/main/apps/docs/content/docs/crafting-your-repository/caching.mdx)
+- [Turborepo deferred-hashing configuration documentation source](https://github.com/vercel/turborepo/blob/main/apps/docs/content/docs/reference/configuration.mdx#deferred-hashing)
 
 ## Issues Found
 
-- The dry-run discussion suggested that deferred hashing can prevent `turbo run --dry=json` from reporting a final task hash. The current CLI reference explicitly lists the task hash in dry-run output. The sentence was corrected to recommend run summaries for execution timings and cached-artifact details, which are details a dry run does not provide.
+No technical issues found. The original deferred-hashing caveat is correct; its citation now points directly to the configuration documentation explaining that behavior.
 
 ## Review Notes
 
@@ -33,4 +34,5 @@ Technical guide
 - Nx affected-project selection and task-cache input configuration are correctly described as separate concerns.
 - The Nx `externalDependencies` behavior and the warning about custom command targets are consistent with the current input reference.
 - The Turborepo global-hash and package-hash descriptions, `globalDependencies`, `globalEnv`, per-task `env`, package configuration, and `turbo run build --dry=json` command are current.
+- Tasks using deferred hashing through `jit` or `dependencyOutputs` can report `hash: null` and a `hashReason` during a dry run because their final keys depend on execution. Actual run summaries are appropriate for those cases.
 - No product versions are pinned, so behavior should be rechecked after significant Nx, Turborepo, or package-manager upgrades.

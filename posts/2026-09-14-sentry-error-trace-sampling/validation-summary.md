@@ -1,4 +1,4 @@
-# Validation Summary: How to Tune Sentry Error and Trace Sampling Separately Without Losing Rare Failures
+# Validation Summary: Tune Sentry Error and Trace Sampling While Preserving Rare Failures
 
 ## Status
 validated

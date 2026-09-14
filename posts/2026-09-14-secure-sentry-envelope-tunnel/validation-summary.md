@@ -1,4 +1,4 @@
-# Validation Summary: How to Proxy Sentry Envelopes Through a Secure Tunnel Without Creating an Open Relay
+# Validation Summary: Proxy Sentry Envelopes Through a Secure Tunnel Without an Open Relay
 
 ## Status
 validated

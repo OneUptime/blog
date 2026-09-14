@@ -1,4 +1,4 @@
-# Validation Summary: How to Reduce Memory and Disk Pressure in Self-Hosted Sentry Without Dropping Critical Events
+# Validation Summary: Reduce Self-Hosted Sentry Memory and Disk Pressure Without Event Loss
 
 ## Status
 validated

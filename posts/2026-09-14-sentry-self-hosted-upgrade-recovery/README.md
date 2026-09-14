@@ -1,4 +1,4 @@
-# Self-Hosted Sentry Upgrade Fails in Kafka, Snuba, or ClickHouse: A Recovery Checklist
+# Recover Sentry Upgrades Failing in Kafka, Snuba, or ClickHouse
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

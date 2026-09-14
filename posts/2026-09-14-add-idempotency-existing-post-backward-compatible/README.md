@@ -1,4 +1,4 @@
-# How to Add Idempotency to an Existing POST Endpoint Without Breaking Older Clients
+# Add Idempotency to a POST Endpoint Without Breaking Older Clients
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
@@ -83,7 +83,7 @@ Decide which status, body, and selected headers are retained. Preserve the origi
 
 Do not replay connection-specific headers, credentials, or session cookies indiscriminately. Re-evaluate authorization before disclosing a saved response, and apply current response security controls around the stored application result.
 
-Document when execution starts and which failures become retained outcomes. Stripe's particular policy retains results after execution begins, while some validation and concurrent-request failures remain outside that cache. It is a useful example, not a requirement that every API copy those exact rules. [Stripe idempotent requests](https://docs.stripe.com/api/idempotent_requests)
+Document when execution starts and which failures become retained outcomes. Stripe's API v1 policy retains results after execution begins, while some validation and concurrent-request failures remain outside that cache. It is a useful example, not a requirement that every API copy those exact rules. [Stripe API v1 idempotent requests](https://docs.stripe.com/api/idempotent_requests)
 
 For browser clients, update the allowed request headers in CORS configuration. If clients read a custom replay-indicator response header, expose it as well. An HTTP test alone will not detect a browser preflight failure. [MDN CORS guide](https://developer.mozilla.org/en-US/docs/Web/HTTP/Guides/CORS)
 

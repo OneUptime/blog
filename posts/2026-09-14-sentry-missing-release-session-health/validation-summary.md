@@ -1,4 +1,4 @@
-# Validation Summary: Sentry Says “Discarded Session Because of Missing Release”: How to Restore Release Health
+# Validation Summary: Restore Sentry Release Health After Missing-Release Session Drops
 
 ## Status
 validated

@@ -1,4 +1,4 @@
-# Sentry Events Disappear in Serverless Jobs: How to Flush the SDK Before Process Exit
+# Flush Sentry Events Before Serverless Jobs and Processes Exit
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

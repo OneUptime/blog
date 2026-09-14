@@ -1,4 +1,4 @@
-# How to Prevent Overlapping Cron Runs from Repeating Side Effects with a Stable Business Key
+# Prevent Duplicate Cron Side Effects with Stable Business Keys
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

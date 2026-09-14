@@ -1,4 +1,4 @@
-# Why Sentry `ignoreErrors` Misses Handled Exceptions—and How to Filter Them with `beforeSend`
+# Filter Handled Sentry Exceptions with ignoreErrors and beforeSend
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

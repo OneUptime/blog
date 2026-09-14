@@ -1,4 +1,4 @@
-# Validation Summary: Sentry Events Never Arrive: How to Trace DSN, CORS, Ad Blockers, and Ingest Rejections
+# Validation Summary: Trace Missing Sentry Events: DSN, CORS, Ad Blockers, and Rejections
 
 ## Status
 validated

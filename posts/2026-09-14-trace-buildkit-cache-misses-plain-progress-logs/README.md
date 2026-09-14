@@ -1,4 +1,4 @@
-# How to Find the Exact Dockerfile Instruction That Invalidated BuildKit’s Cache with Plain Progress Logs
+# Trace BuildKit Cache Misses with Plain Progress Logs
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
@@ -18,16 +18,17 @@ Start with the same checkout, platform, target, arguments, and builder configura
 
 ```bash
 set -o pipefail
+build_log="$(mktemp /tmp/buildkit-cache-diagnosis.XXXXXX)"
 docker buildx build \
   --progress=plain \
   --platform linux/amd64 \
   --target runtime \
   --cache-from type=registry,ref=registry.example.com/team/api-cache:main \
   --load --tag api:cache-diagnosis \
-  . 2>&1 | tee build-current.log
+  . 2>&1 | tee "$build_log"
 ```
 
-Replace the registry reference with your authorized cache location. The example assumes registry authentication and a builder supporting that cache backend. `pipefail` prevents `tee` from hiding a failed build. Buildx documents `plain` as a progress mode that prints build output as plain text. [Buildx build reference](https://docs.docker.com/reference/cli/docker/buildx/build/).
+Replace the registry reference with your authorized cache location. The example assumes registry authentication and a builder supporting that cache backend. The log stays outside the build context so that `COPY . .` cannot include the changing diagnostic output and affect the cache comparison. `pipefail` prevents `tee` from hiding a failed build. Buildx documents `plain` as a progress mode that prints build output as plain text. [Buildx build reference](https://docs.docker.com/reference/cli/docker/buildx/build/).
 
 Capture environment facts separately:
 

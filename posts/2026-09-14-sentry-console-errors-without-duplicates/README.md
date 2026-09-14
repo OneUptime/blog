@@ -1,4 +1,4 @@
-# How to Capture `console.error` and Non-Thrown Failures in Sentry Without Double-Reporting
+# Capture Sentry Console Errors and Non-Thrown Failures Without Duplicates
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

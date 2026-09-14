@@ -1,4 +1,4 @@
-# Validation Summary: Why Only One Architecture Reuses Your Multi-Platform Docker Cache—and How to Split Cache Exports
+# Validation Summary: Split Multi-Platform Docker Cache Exports for Architecture Reuse
 
 ## Status
 validated

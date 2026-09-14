@@ -1,4 +1,4 @@
-# How to Cache Gradle or Maven Dependencies in Docker Without Baking the Repository into an Image Layer
+# Cache Gradle and Maven Dependencies in Docker with BuildKit Mounts
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

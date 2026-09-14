@@ -1,4 +1,4 @@
-# Build Secrets Changed but the Docker Layer Stayed Cached: Adding Explicit Secret-Version Invalidation
+# Invalidate Docker Build Caches with Explicit Secret Versions
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

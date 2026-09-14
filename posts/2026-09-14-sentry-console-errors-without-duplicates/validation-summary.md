@@ -1,4 +1,4 @@
-# Validation Summary: How to Capture `console.error` and Non-Thrown Failures in Sentry Without Double-Reporting
+# Validation Summary: Capture Sentry Console Errors and Non-Thrown Failures Without Duplicates
 
 ## Status
 validated

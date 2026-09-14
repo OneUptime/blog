@@ -1,4 +1,4 @@
-# How to Proxy Sentry Envelopes Through a Secure Tunnel Without Creating an Open Relay
+# Proxy Sentry Envelopes Through a Secure Tunnel Without an Open Relay
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

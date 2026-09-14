@@ -1,4 +1,4 @@
-# Nx or Turborepo Replays Stale Outputs: Declaring Every Source, Environment Variable, and Generated Input
+# Fix Stale Nx and Turborepo Outputs with Complete Input Declarations
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

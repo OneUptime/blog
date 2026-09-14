@@ -1,4 +1,4 @@
-# Validation Summary: Why One Sentry Error Splits into Multiple Issues—and How to Normalize URLs, Releases, and Stack Frames
+# Validation Summary: Fix Split Sentry Issues by Normalizing URLs, Releases, and Stack Frames
 
 ## Status
 validated

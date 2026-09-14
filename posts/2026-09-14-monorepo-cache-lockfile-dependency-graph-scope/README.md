@@ -1,4 +1,4 @@
-# How to Design Monorepo Cache Keys So One Lockfile Change Does Not Rebuild Every Package
+# Scope Monorepo Cache Keys to Avoid Full Rebuilds on Lockfile Changes
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
@@ -81,7 +81,7 @@ Capture a plan for each revision using the same installed tool version:
 turbo run build --dry=json > plan-before.json
 ```
 
-After changing only one package's dependency, capture the corresponding plan again. Compare task hashes and reported dependency inputs. Use actual run summaries when you also need execution timings or cached-artifact details that a dry run does not provide. [Turborepo run diagnostics](https://turborepo.dev/docs/reference/run).
+After changing only one package's dependency, capture the corresponding plan again. Compare task hashes and reported dependency inputs. Use actual run summaries when deferred hashing means a dry run cannot know the final key. [Turborepo deferred-hashing configuration](https://github.com/vercel/turborepo/blob/main/apps/docs/content/docs/reference/configuration.mdx#deferred-hashing).
 
 For Nx, inspect affected projects and resolved target configuration, then run the selected tasks with normal cache diagnostics. Keep package installation separate in the timing report so a full-lockfile download-cache miss is not mistaken for a full compilation rebuild.
 

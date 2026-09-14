@@ -1,4 +1,4 @@
-# Validation Summary: Self-Hosted Sentry Upgrade Fails in Kafka, Snuba, or ClickHouse: A Recovery Checklist
+# Validation Summary: Recover Sentry Upgrades Failing in Kafka, Snuba, or ClickHouse
 
 ## Status
 validated

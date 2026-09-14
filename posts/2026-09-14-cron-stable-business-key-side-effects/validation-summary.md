@@ -1,4 +1,4 @@
-# Validation Summary: How to Prevent Overlapping Cron Runs from Repeating Side Effects with a Stable Business Key
+# Validation Summary: Prevent Duplicate Cron Side Effects with Stable Business Keys
 
 ## Status
 validated
@@ -31,3 +31,5 @@ No technical issues found.
 
 ## Review Notes
 The Kubernetes scheduled-timestamp claim is correctly scoped to version 1.32 and later. The PostgreSQL documentation links are version-pinned to PostgreSQL 18; the SQL and concurrency behavior described are accurate for that version. The post also correctly distinguishes a durable local delivery intent from exactly-once execution of an external effect.
+
+The exact SQL snippets also passed local checks in an isolated temporary PostgreSQL 14 database: concurrent first-transaction commit and rollback, matching replay, changed-amount conflict, and rollback of the invoice when delivery-intent insertion fails. PostgreSQL 18 behavior was checked against its documentation; no shared database or external delivery service was used for these local checks.

@@ -1,4 +1,4 @@
-# Validation Summary: How to Configure Actionable Sentry Alerts Without Notification Storms from Regressions
+# Validation Summary: Configure Sentry Regression Alerts Without Notification Storms
 
 ## Status
 validated

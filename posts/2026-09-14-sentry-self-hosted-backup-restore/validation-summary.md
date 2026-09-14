@@ -1,4 +1,4 @@
-# Validation Summary: How to Back Up and Restore Self-Hosted Sentry Across PostgreSQL, ClickHouse, and Object Storage
+# Validation Summary: Back Up Sentry PostgreSQL, ClickHouse, and Object Storage Consistently
 
 ## Status
 validated
