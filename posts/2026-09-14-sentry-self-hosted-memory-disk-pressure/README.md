@@ -29,7 +29,7 @@ Memory exhaustion, inode exhaustion, and filesystem capacity are different probl
 
 Inspect the affected container's state and timestamped logs. Correlate restarts with ingestion spikes, cleanup runs, backups, or expensive searches. Track disk latency and I/O wait as well as capacity; databases can fall behind before a disk is full.
 
-Sentry currently documents a minimum of 4 CPU cores, 16 GB RAM plus 16 GB swap, and 20 GB free disk, and recommends more memory for a comfortable installation. These are installation baselines, not guarantees for your event rate and retention. See the [self-hosted requirements](https://develop.sentry.dev/self-hosted/).
+Sentry currently documents an installation minimum of 2 CPU cores and 4 GB RAM. Its recommended baseline is 4 CPU cores, 16 GB RAM, and 20 GB free disk. These are installation baselines, not guarantees for your event rate and retention. See the [self-hosted requirements](https://develop.sentry.dev/self-hosted/).
 
 ## Distinguish durable data from reclaimable overhead
 
