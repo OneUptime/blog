@@ -31,13 +31,13 @@ Attach a runbook to the receiving team's workflow. It should identify the affect
 
 Current Alerts can use projects or monitors as sources. Their default environment coverage is broad, so explicitly select production for production notifications. Multiple triggers use an ANY relationship; filters can be grouped with ANY or ALL behavior. These semantics are documented in [Sentry's Alerts guide](https://docs.sentry.io/product/alerts/create-alerts/issue-alert-config/).
 
-For a production regression notification, start with one service project, the production environment, and the regression trigger. Add only the filters that express your response policy: an owning team, an appropriate severity, or an approved business-operation tag.
+For a production regression notification, start with one service project, the production environment, and the regression trigger. Add only the filters that express your response policy: the issue's assigned team, an appropriate issue priority or event level, or an approved business-operation tag.
 
 Avoid an accidental condition such as:
 
 ```text
 Trigger: issue regresses
-Filters: team is checkout OR severity is error
+Filters: issue is assigned to checkout OR event level is error
 ```
 
 That can admit any error-level regression even when it belongs to another team. If both restrictions must hold, configure ALL for those filters. Verify the exact rule preview or displayed configuration before enabling the action.
@@ -54,7 +54,7 @@ The [Sentry monitor API documentation](https://docs.sentry.io/api/monitors/creat
 
 ## Remove overlapping delivery paths
 
-Inventory alert actions and personal notification subscriptions. One issue can produce a team Slack message, an on-call integration event, and an email subscription independently. Sentry documents personal notification controls separately from organization Alerts. See the [Alerts and notifications guidance](https://docs.sentry.io/product/alerts/create-alerts/issue-alert-config/).
+Inventory alert actions and personal notification subscriptions. One issue can produce a team Slack message, an on-call integration event, and an email subscription independently. Sentry exposes personal notification controls separately from organization Alerts. See the [Alerts configuration guidance](https://docs.sentry.io/product/alerts/create-alerts/issue-alert-config/).
 
 For each destination, identify one intentional owner. Disable redundant rules after the replacement has been tested. If the integration supports incident deduplication, use a stable issue or monitor identity together with the relevant service context. Do not collapse every service into one deduplication key, or an unrelated incident may disappear into an existing page.
 
