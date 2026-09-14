@@ -239,7 +239,6 @@
 
 ## Sentry
 
-13. Sentry Events Disappear in Serverless Jobs: How to Flush the SDK Before Process Exit
 14. How to Tune Sentry Error and Trace Sampling Separately Without Losing Rare Failures
 15. How to Configure Actionable Sentry Alerts Without Notification Storms from Regressions
 16. Self-Hosted Sentry Upgrade Fails in Kafka, Snuba, or ClickHouse: A Recovery Checklist
