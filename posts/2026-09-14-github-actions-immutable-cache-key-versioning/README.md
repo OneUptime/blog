@@ -40,7 +40,7 @@ For a typical repository, this is sufficient:
 - run: npm ci
 ```
 
-This is a steps fragment for a checked-out repository with Node 24 already installed. Avoid enabling a second cache for the same directory in setup-node. The downloaded package store helps installation; an exact hit still does not create `node_modules` on a fresh runner.
+This is a steps fragment for a checked-out repository with Node 24 already installed. If you use setup-node elsewhere in the job, avoid a second cache for the same directory; on versions that automatically enable npm caching from `package.json`, set `package-manager-cache: false`. The downloaded package store helps installation; an exact hit still does not create `node_modules` on a fresh runner.
 
 Keep the fallback prefix inside the same schema and compatibility boundary. A prefix as broad as `npm-` can accidentally bridge layouts you intentionally separated. A version bump that still restores the previous version defeats the purpose when the old content is incompatible.
 
