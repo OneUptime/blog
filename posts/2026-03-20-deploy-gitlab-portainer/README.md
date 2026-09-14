@@ -6,6 +6,8 @@ Tags: Portainer, GitLab, Git, CI/CD, Self-Hosted
 
 Description: Learn how to deploy self-hosted GitLab CE via Portainer with persistent storage, SSL configuration, and GitLab Runner integration for CI/CD pipelines.
 
+This guide assumes an external reverse proxy such as NGINX, Apache, or Traefik terminates TLS and forwards requests to GitLab on port 8929.
+
 ## GitLab via Portainer Stack
 
 **Stacks → Add Stack → gitlab**
