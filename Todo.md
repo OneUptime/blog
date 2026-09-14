@@ -236,7 +236,6 @@
 
 ## Build Caching
 
-9. Docker Keeps Reusing an Old Package Download: When `RUN` Cache Ignores Remote URL Changes
 10. Why a BuildKit Local Cache Directory Grows Forever—and How to Rotate Unreferenced Blobs
 11. Build Secrets Changed but the Docker Layer Stayed Cached: Adding Explicit Secret-Version Invalidation
 12. Gradle `FROM-CACHE` vs `UP-TO-DATE` vs Configuration Cache: What Was Actually Reused?
