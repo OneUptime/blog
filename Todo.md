@@ -239,7 +239,6 @@
 
 ## Sentry
 
-10. How to Capture `console.error` and Non-Thrown Failures in Sentry Without Double-Reporting
 11. Sentry `beforeSend` Runs Repeatedly: How to Break Recursive Capture Loops
 12. How to Add User, Request, and Business Context to Sentry Without Leaking PII or Secrets
 13. Sentry Events Disappear in Serverless Jobs: How to Flush the SDK Before Process Exit
