@@ -233,7 +233,6 @@
 
 ## Idempotency
 
-20. How to Add Idempotency to an Existing POST Endpoint Without Breaking Older Clients
 
 ## Build Caching
 
