@@ -239,7 +239,6 @@
 
 ## Sentry
 
-8. How to Group Dynamic Sentry Messages with Custom Fingerprints Without Hiding Distinct Root Causes
 9. Why One Sentry Error Splits into Multiple Issues—and How to Normalize URLs, Releases, and Stack Frames
 10. How to Capture `console.error` and Non-Thrown Failures in Sentry Without Double-Reporting
 11. Sentry `beforeSend` Runs Repeatedly: How to Break Recursive Capture Loops
