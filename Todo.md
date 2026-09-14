@@ -236,7 +236,6 @@
 
 ## Build Caching
 
-1. GitHub Actions Says “Cache Restored” but `cache-hit` Is False: Exact Keys vs `restore-keys`
 2. Why a GitHub Actions Cache Never Updates Under the Same Key—and How to Version It Safely
 3. How to Keep Forked Pull Requests from Poisoning a Trusted CI Build Cache
 4. How to Find the Exact Dockerfile Instruction That Invalidated BuildKit’s Cache with Plain Progress Logs
