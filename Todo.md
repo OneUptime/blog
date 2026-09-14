@@ -239,7 +239,6 @@
 
 ## Sentry
 
-16. Self-Hosted Sentry Upgrade Fails in Kafka, Snuba, or ClickHouse: A Recovery Checklist
 17. How to Back Up and Restore Self-Hosted Sentry Across PostgreSQL, ClickHouse, and Object Storage
 18. How to Reduce Memory and Disk Pressure in Self-Hosted Sentry Without Dropping Critical Events
 19. Sentry Says “Discarded Session Because of Missing Release”: How to Restore Release Health
