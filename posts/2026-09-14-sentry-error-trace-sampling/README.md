@@ -69,7 +69,7 @@ Keep the decision stable and understandable. A small table of operation classes 
 
 ## Do not try to resurrect a trace after an error
 
-Calling `captureException` records the error independently; it does not reconstruct spans that were never recorded. Similarly, `beforeSendTransaction` is a processing hook for transactions that reach that stage, not a mechanism to recover unsampled history. Sentry documents the relevant [SDK event and tracing options](https://docs.sentry.io/platforms/javascript/configuration/options/).
+Calling `captureException` records the error independently; it does not reconstruct spans that were never recorded. In SDK versions 9 and 10, `beforeSendTransaction` only processes transactions that reach that stage, so it cannot recover unsampled history. In version 11's default span-streaming mode, it is a no-op because the SDK no longer produces transaction events; use the version 11 span-processing options for recorded spans instead. Sentry documents the relevant [SDK event and tracing options](https://docs.sentry.io/platforms/javascript/configuration/options/).
 
 If a workflow requires every failing request's complete history, evaluate that requirement separately. You may need to retain a larger sample at the root, preserve selected important operations, or use an observability architecture that supports an appropriate tail-sampling workflow. Do not claim that a late error callback makes ordinary head sampling failure-aware.
 
