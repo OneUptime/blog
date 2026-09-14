@@ -239,7 +239,6 @@
 
 ## Sentry
 
-12. How to Add User, Request, and Business Context to Sentry Without Leaking PII or Secrets
 13. Sentry Events Disappear in Serverless Jobs: How to Flush the SDK Before Process Exit
 14. How to Tune Sentry Error and Trace Sampling Separately Without Losing Rare Failures
 15. How to Configure Actionable Sentry Alerts Without Notification Storms from Regressions
