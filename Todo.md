@@ -233,7 +233,6 @@
 
 ## Idempotency
 
-11. Kafka Idempotent Producer vs Idempotent Consumer: Which Duplicates Does Each One Prevent?
 12. How to Build a Transactional Inbox That Records a Message ID and Updates Domain State Atomically
 13. Why the Transactional Outbox Can Publish Twice—and How to Make Downstream Consumers Retry-Safe
 14. How to Retry a Third-Party API That Has No Idempotency Key: Status Queries, Reconciliation, and Compensating Actions
