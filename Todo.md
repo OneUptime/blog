@@ -236,7 +236,6 @@
 
 ## Build Caching
 
-15. Bazel Remote Cache Returned an Incompatible Binary: Include Toolchains and Platform State in Action Keys
 16. Bazel Remote Cache Fails Only in CI: Debugging TLS, mTLS, Credentials, and Proxy Configuration
 17. Nx or Turborepo Replays Stale Outputs: Declaring Every Source, Environment Variable, and Generated Input
 18. How to Design Monorepo Cache Keys So One Lockfile Change Does Not Rebuild Every Package
