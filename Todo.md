@@ -239,7 +239,6 @@
 
 ## Sentry
 
-6. How to Filter Noisy Sentry Events Before Ingestion Without Burning Your Quota
 7. Why Sentry `ignoreErrors` Misses Handled Exceptions—and How to Filter Them with `beforeSend`
 8. How to Group Dynamic Sentry Messages with Custom Fingerprints Without Hiding Distinct Root Causes
 9. Why One Sentry Error Splits into Multiple Issues—and How to Normalize URLs, Releases, and Stack Frames
