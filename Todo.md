@@ -236,7 +236,6 @@
 
 ## Build Caching
 
-6. Multiple Docker Images Overwrite One GitHub Actions Cache: Using a Separate BuildKit `scope` per Image
 7. Why Only One Architecture Reuses Your Multi-Platform Docker Cache—and How to Split Cache Exports
 8. How to Reuse Docker Layers Across Ephemeral CI Runners with a Registry Cache Manifest
 9. Docker Keeps Reusing an Old Package Download: When `RUN` Cache Ignores Remote URL Changes
