@@ -48,7 +48,6 @@ Sentry.init({
     genAI: { inputs: false, outputs: false },
     graphQL: { document: false, variables: false },
     databaseQueryData: false,
-    queues: false,
     stackFrameVariables: false,
     frameContextLines: 0,
   },
