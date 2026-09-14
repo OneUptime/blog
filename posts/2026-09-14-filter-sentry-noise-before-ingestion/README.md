@@ -31,7 +31,7 @@ Sentry.init({
 });
 ```
 
-Strings in `ignoreErrors` are partial matches. Anchored regular expressions express an exact match. This matters when a broad phrase also appears in real failures, such as `Unable to cancel upload after connection loss`. Sentry describes that matching behavior in its [filtering guide](https://docs.sentry.io/platforms/javascript/configuration/filtering/#using-ignoreerrors).
+Strings in `ignoreErrors` are partial matches. Anchored regular expressions express an exact match. This matters when a broad phrase also appears in real failures, such as `Unable to cancel upload after connection loss`. Sentry describes that matching behavior in its [filtering guide](https://docs.sentry.io/platforms/javascript/configuration/filtering/#using-ignore-errors).
 
 Do not copy a large public ignore list without checking your application. SDK defaults and browser behavior evolve, and a message that another product ignores may indicate a meaningful failure in yours.
 
@@ -68,7 +68,7 @@ The application can supply these tags in the capture context when it has verifie
 
 Often the best implementation is earlier still: if an expected result is not an error, do not call `captureException` for it. Keep an ordinary application counter or breadcrumb when useful. The hook is valuable when a shared reporting boundary already receives many failure types.
 
-The [beforeSend contract](https://docs.sentry.io/platforms/javascript/configuration/options/#beforesend) permits modifying an event or returning `null`. All scope data is already attached at that point. Return the event explicitly for every allowed path, and avoid network calls or Sentry capture calls inside the hook.
+The [beforeSend contract](https://docs.sentry.io/platforms/javascript/configuration/options/#beforeSend) permits modifying an event or returning `null`. All scope data is already attached at that point. Return the event explicitly for every allowed path, and avoid network calls or Sentry capture calls inside the hook.
 
 ## Handle third-party code conservatively
 
