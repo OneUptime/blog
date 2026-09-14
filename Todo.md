@@ -239,7 +239,6 @@
 
 ## Sentry
 
-1. Sentry Events Never Arrive: How to Trace DSN, CORS, Ad Blockers, and Ingest Rejections
 2. How to Proxy Sentry Envelopes Through a Secure Tunnel Without Creating an Open Relay
 3. Sentry Source Maps Uploaded but Stack Traces Stay Minified: Fix Release, Dist, URL, and Debug ID Mismatches
 4. How to Upload Sentry Source Maps in CI Without Publishing Them with Production Assets
