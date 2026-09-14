@@ -239,7 +239,6 @@
 
 ## Sentry
 
-14. How to Tune Sentry Error and Trace Sampling Separately Without Losing Rare Failures
 15. How to Configure Actionable Sentry Alerts Without Notification Storms from Regressions
 16. Self-Hosted Sentry Upgrade Fails in Kafka, Snuba, or ClickHouse: A Recovery Checklist
 17. How to Back Up and Restore Self-Hosted Sentry Across PostgreSQL, ClickHouse, and Object Storage
