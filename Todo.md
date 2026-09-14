@@ -233,7 +233,6 @@
 
 ## Idempotency
 
-14. How to Retry a Third-Party API That Has No Idempotency Key: Status Queries, Reconciliation, and Compensating Actions
 15. Worker Crashed After the Side Effect but Before ACK: How to Make Queue Consumers Idempotent
 16. How to Prevent Overlapping Cron Runs from Repeating Side Effects with a Stable Business Key
 17. How to Retry Only Failed Items in a Batch Without Reprocessing Successful Ones
