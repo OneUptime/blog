@@ -236,7 +236,6 @@
 
 ## Build Caching
 
-17. Nx or Turborepo Replays Stale Outputs: Declaring Every Source, Environment Variable, and Generated Input
 18. How to Design Monorepo Cache Keys So One Lockfile Change Does Not Rebuild Every Package
 19. Self-Hosted CI Runner Is Out of Disk: Pruning Build Caches Without Breaking Active Builds
 20. Cross-Platform Dependency Cache Restores but Native Modules Crash: Keying by OS, Architecture, and Toolchain
