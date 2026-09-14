@@ -90,7 +90,7 @@ tasks.register<GenerateCatalog>("generateCatalog") {
 
 A different schema version should cause a miss. A different CI job ID should not, unless the output intentionally includes that job ID. Remove unnecessary volatile metadata from reusable outputs rather than excluding a real output dependency from the key.
 
-Likewise, a compiler executable path can hide a meaningful toolchain difference. Align the Java toolchain configuration and plugin versions before trying to normalize environment differences away.
+Likewise, Java compiler differences can be meaningful even when they do not all affect the cache key. Gradle tracks the Java major version and, when specified through toolchains, the vendor and implementation, but not the minor version. Align the Java toolchain configuration and plugin versions before trying to normalize environment differences away.
 
 ## Inspect Generated Inputs and Checkout Behavior
 
