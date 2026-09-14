@@ -236,7 +236,6 @@
 
 ## Build Caching
 
-16. Bazel Remote Cache Fails Only in CI: Debugging TLS, mTLS, Credentials, and Proxy Configuration
 17. Nx or Turborepo Replays Stale Outputs: Declaring Every Source, Environment Variable, and Generated Input
 18. How to Design Monorepo Cache Keys So One Lockfile Change Does Not Rebuild Every Package
 19. Self-Hosted CI Runner Is Out of Disk: Pruning Build Caches Without Breaking Active Builds
