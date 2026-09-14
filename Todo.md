@@ -236,7 +236,6 @@
 
 ## Build Caching
 
-19. Self-Hosted CI Runner Is Out of Disk: Pruning Build Caches Without Breaking Active Builds
 20. Cross-Platform Dependency Cache Restores but Native Modules Crash: Keying by OS, Architecture, and Toolchain
 
 ## Sentry
