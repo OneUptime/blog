@@ -236,7 +236,6 @@
 
 ## Build Caching
 
-8. How to Reuse Docker Layers Across Ephemeral CI Runners with a Registry Cache Manifest
 9. Docker Keeps Reusing an Old Package Download: When `RUN` Cache Ignores Remote URL Changes
 10. Why a BuildKit Local Cache Directory Grows Forever—and How to Rotate Unreferenced Blobs
 11. Build Secrets Changed but the Docker Layer Stayed Cached: Adding Explicit Secret-Version Invalidation
