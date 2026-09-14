@@ -236,7 +236,6 @@
 
 ## Build Caching
 
-20. Cross-Platform Dependency Cache Restores but Native Modules Crash: Keying by OS, Architecture, and Toolchain
 
 ## Sentry
 
