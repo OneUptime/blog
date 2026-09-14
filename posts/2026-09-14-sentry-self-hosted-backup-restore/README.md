@@ -19,10 +19,11 @@ Sentry's supported partial export covers low-volume application data such as use
 On supported modern self-hosted versions, the administrative export can be invoked as:
 
 ```bash
-./sentry-admin.sh export global /path/to/protected/export.json
+SENTRY_DOCKER_IO_DIR=/path/to/protected \
+  ./sentry-admin.sh export global /sentry-admin/export.json
 ```
 
-Check `./sentry-admin.sh export --help` for your installed version and encryption options. Protect the export as sensitive data because administrative accounts, authorization data, and configuration are part of its purpose.
+The output path is inside the `web` container; `SENTRY_DOCKER_IO_DIR` maps the protected host directory to `/sentry-admin`. If the variable is omitted, the host directory defaults to `~/.sentry/sentry-admin`. Check `./sentry-admin.sh export --help` for your installed version and encryption options. Protect the export as sensitive data because administrative accounts, authorization data, and configuration are part of its purpose.
 
 Sentry documents full Docker-volume backup as an alternative, while explicitly describing that flow as not officially supported. A full backup strategy therefore needs your own restore testing and operational ownership.
 
