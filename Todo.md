@@ -236,7 +236,6 @@
 
 ## Build Caching
 
-3. How to Keep Forked Pull Requests from Poisoning a Trusted CI Build Cache
 4. How to Find the Exact Dockerfile Instruction That Invalidated BuildKit’s Cache with Plain Progress Logs
 5. BuildKit Cache Mounts Work Locally but Vanish in GitHub Actions: Exporting Package Caches Correctly
 6. Multiple Docker Images Overwrite One GitHub Actions Cache: Using a Separate BuildKit `scope` per Image
