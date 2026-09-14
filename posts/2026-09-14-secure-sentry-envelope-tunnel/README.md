@@ -146,7 +146,7 @@ The handler intentionally rejects compressed request bodies. If you add compress
 
 ## Preserve failure signals and test the boundary
 
-Forwarding `429` and rate-limit headers lets the SDK respond to upstream limits. Sentry's [transport rate-limit code](https://github.com/getsentry/sentry-javascript/blob/10.74.0/packages/core/src/utils/ratelimit.ts) interprets both category-specific limits and retry delays. Returning success unconditionally creates silent data loss and unnecessary retry traffic.
+Forwarding `429` and rate-limit headers lets the SDK respond to upstream limits. Sentry's [transport rate-limit code](https://github.com/getsentry/sentry-javascript/blob/10.74.0/packages/core/src/utils/ratelimit.ts) interprets both category-specific limits and retry delays. Returning success unconditionally creates silent data loss and unnecessary continued traffic during rate-limit windows.
 
 Use a stub upstream for local checks. Send a valid envelope containing binary bytes and assert that the outgoing bytes are identical. Then test malformed JSON, no newline, an oversized body without `Content-Length`, a different DSN, a forged destination, an upstream redirect, a `429`, and a timeout. Rejected destinations must result in zero outbound requests.
 
