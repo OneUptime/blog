@@ -58,7 +58,7 @@ fi
 
 Run these Linux commands on the Sentry host. A ClickHouse migration cannot succeed reliably while its disk is full, and restarting an OOM-killed service without changing memory pressure just repeats the failure.
 
-Sentry's documented baseline includes 4 CPU cores, 16 GB RAM plus 16 GB swap, and at least 20 GB of free disk; production sizing must also account for ingestion, retention, and temporary upgrade work. See [self-hosted requirements](https://develop.sentry.dev/self-hosted/).
+Sentry's documented recommended baseline includes 4 CPU cores, 16 GB RAM, and at least 20 GB of free disk; production sizing must also account for ingestion, retention, and temporary upgrade work. See [self-hosted requirements](https://develop.sentry.dev/self-hosted/).
 
 ## 4. Classify the first failing component
 
