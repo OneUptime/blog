@@ -239,7 +239,6 @@
 
 ## Sentry
 
-20. How to Debug Missing Native Symbols in Sentry for iOS, Android, Flutter, and Windows
 
 ## Drone
 
