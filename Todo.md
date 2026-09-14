@@ -239,7 +239,6 @@
 
 ## Sentry
 
-3. Sentry Source Maps Uploaded but Stack Traces Stay Minified: Fix Release, Dist, URL, and Debug ID Mismatches
 4. How to Upload Sentry Source Maps in CI Without Publishing Them with Production Assets
 5. How to Stop Development, Localhost, and Staging Errors from Polluting Sentry
 6. How to Filter Noisy Sentry Events Before Ingestion Without Burning Your Quota
