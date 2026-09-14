@@ -236,7 +236,6 @@
 
 ## Build Caching
 
-13. Why Gradle Remote Cache Hits Locally but Misses in CI: Paths, Environment Inputs, and Non-Relocatable Tasks
 14. How to Cache Gradle or Maven Dependencies in Docker Without Baking the Repository into an Image Layer
 15. Bazel Remote Cache Returned an Incompatible Binary: Include Toolchains and Platform State in Action Keys
 16. Bazel Remote Cache Fails Only in CI: Debugging TLS, mTLS, Credentials, and Proxy Configuration
