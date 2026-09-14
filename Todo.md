@@ -236,7 +236,6 @@
 
 ## Build Caching
 
-10. Why a BuildKit Local Cache Directory Grows Forever—and How to Rotate Unreferenced Blobs
 11. Build Secrets Changed but the Docker Layer Stayed Cached: Adding Explicit Secret-Version Invalidation
 12. Gradle `FROM-CACHE` vs `UP-TO-DATE` vs Configuration Cache: What Was Actually Reused?
 13. Why Gradle Remote Cache Hits Locally but Misses in CI: Paths, Environment Inputs, and Non-Relocatable Tasks
