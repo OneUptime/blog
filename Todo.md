@@ -233,7 +233,6 @@
 
 ## Idempotency
 
-15. Worker Crashed After the Side Effect but Before ACK: How to Make Queue Consumers Idempotent
 16. How to Prevent Overlapping Cron Runs from Repeating Side Effects with a Stable Business Key
 17. How to Retry Only Failed Items in a Batch Without Reprocessing Successful Ones
 18. How to Test the “Commit Succeeded but the Response Was Lost” Idempotency Failure Mode
