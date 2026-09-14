@@ -201,6 +201,27 @@
 ## Capacity Planning
 
 
+1. How to Estimate Peak Requests per Second from User Sessions for Capacity Planning
+2. How to Convert a Changing API Request Mix into a CPU Capacity Budget
+3. How to Find Sustainable API Capacity Under a Latency SLO with k6 Arrival-Rate Tests
+4. How to Diagnose Dropped k6 Iterations Before Declaring a Service at Capacity
+5. How to Calculate Backend Capacity When Cache Hit Rates Collapse
+6. How to Cap Django Replica Growth Using a PostgreSQL Connection Budget
+7. How to Calculate Queue Recovery Capacity While New Messages Keep Arriving
+8. How to Plan Worker Capacity When Message Processing Times Vary Widely
+9. How to Size Warm Kubernetes Capacity for Traffic Bursts During Node Startup
+10. How to Calculate Kubernetes Capacity for Concurrent Rollouts Across Multiple Deployments
+11. How to Plan Kubernetes Node Disk Capacity for Images, Logs, and Scratch Data
+12. How to Identify Stranded Kubernetes Capacity Caused by Node Placement Constraints
+13. How to Model Capacity When Multiple Tenants Hit Their Quotas at Once
+14. How to Budget Shared Service Capacity for Overlapping Batch and Interactive Peaks
+15. How to Size EBS IOPS and Throughput from Measured I/O Request Sizes
+16. How to Identify Instance Throughput Limits Before Adding EBS Volume Capacity
+17. How to Plan Capacity Purchases Around Exhaustion Forecasts and Hardware Delivery Delays
+18. How to Revise a Capacity Forecast After a Release Increases CPU Cost per Request
+19. How to Define Capacity Test Exit Criteria Before a Marketing Traffic Spike
+20. How to Compare Capacity Plans When Budget, Placement, and Redundancy Constraints Conflict
+
 ## etcd
 
 
@@ -8668,3 +8689,218 @@
 18. How to Test Monotonic and Boot-Time Clock Offsets with Linux Time Namespaces
 19. How to Isolate POSIX Shared Memory with a Mount Namespace and Private /dev/shm
 20. How to Verify That Two Processes Share a Linux Namespace Using Device and Inode IDs
+
+## PXE
+
+1. How to Diagnose PXE-E53 No Boot Filename Received in DHCP Offers
+2. How to Troubleshoot PXE-E32 TFTP Open Timeouts After DHCP Succeeds
+3. How to Resolve PXE-E55 ProxyDHCP Reply Failures on UDP Port 4011
+4. How to Trace Missing PXE Server Replies Across VLAN DHCP Relays
+5. How to Break an iPXE Chainloading Loop with DHCP User-Class Detection
+6. How to Diagnose iPXE Exec Format Errors When Booting Linux in UEFI Mode
+7. How to Investigate PXE TFTP Downloads That Produce Incorrect File Hashes
+8. How to Work Around TFTP Option Negotiation Failures in Older PXE Firmware
+9. How to Add a dnsmasq ProxyDHCP PXE Service Beside an Existing DHCP Server
+10. How to Boot Windows PE over HTTP with iPXE and wimboot
+11. How to Select Per-Machine iPXE Boot Scripts by MAC Address with a Default Fallback
+12. How to Return UEFI PXE Clients to Local Disk Boot After Installation
+13. How to Deploy Signed iPXE Shims and autoexec.ipxe for UEFI Secure Boot
+14. How to Fix Private-CA Certificate Chain Validation Failures in iPXE HTTPS Boot
+15. How to Debug iPXE HTTPS Boot Failures Caused by Unreachable Cross-Signed Certificates
+16. How to Diagnose a GRUB Shell Instead of a Menu During UEFI PXE Boot
+17. How to Debug NFS Root Mount Failures After a Successful PXE Kernel Download
+18. How to Repair a Custom PXE Initramfs That Is Missing Its Init Program
+19. How to Test a PXE Server with Separate BIOS and UEFI QEMU Clients
+20. How to Diagnose UEFI PXE Bootfile Transport Mismatches in VMware ESXi VMs
+
+
+## Lead Time
+
+1. How to Build Azure Boards Lead-Time Reports Across Projects with Analytics OData
+2. How to Diagnose Missing LeadTimeDays Values in Azure DevOps Analytics
+3. How to Reconcile Reopened Work Items with Azure Boards Lead-Time Charts
+4. How to Measure Time from Request Creation to First Work in Azure DevOps
+5. How to Calculate Custom-State Lead Time from Azure DevOps Work Item Revisions
+6. How to Filter Azure Boards Lead-Time Reports by Priority and Work Item Type
+7. How to Troubleshoot an Empty Azure Boards Lead Time Widget
+8. How to Automate Azure Boards Lead Time Widget Configuration with the REST API
+9. How to Estimate Blocked Time Within Azure Boards Lead Time from Daily Board Snapshots
+10. How to Audit Sub-Day Azure Boards Lead Times Against Work Item Revision Timestamps
+11. How to Configure Jira Control Charts to Include Waiting States in Lead Time
+12. How to Account for Reopened Issues in Jira Lead-Time Reports
+13. How to Filter Canceled and Duplicate Jira Issues out of Delivery Lead-Time Reports
+14. How to Diagnose Unrealistic Lead Times in Jira Data Center Control Charts
+15. How to Reconcile Jira Control Chart Rolling Averages with Exported Issue Lead Times
+16. How to Explain Near-Zero GitLab Change Lead Times When Coding Takes Days
+17. How to Measure Multi-Branch Change Lead Time with GitLab Self-Managed Experimental Rules
+18. How to Diagnose Missing GitLab Lead-Time Metrics on a Project's First Deployment
+19. How to Track Unfinished Work Age Alongside Completed Lead Time
+20. How to Set a Probabilistic Delivery Expectation from Historical Lead Times
+
+
+## Apache APISIX
+
+1. How to Rewrite API Path Prefixes in Apache APISIX with proxy-rewrite
+2. How to Use OIDC for APISIX Clients and a Separate API Key for the Upstream
+3. How to Give Browser and API Routes Different Authentication Methods in APISIX
+4. How to Assign Different APISIX Request Quotas to Consumers Sharing One Route
+5. How to Share APISIX Request Quotas Across Gateway Nodes with Redis
+6. How to Recover the Real Client IP in APISIX Behind Trusted Reverse Proxies
+7. How to Diagnose APISIX TLS Failures When No Certificate Matches the Requested SNI
+8. How to Restore Missing APISIX Request and Latency Metrics in Prometheus
+9. How to Configure APISIX Active and Passive Health Checks for Upstream Recovery
+10. How to Promote APISIX Configuration Between Environments with ADC Diff and Sync
+11. How to Investigate APISIX Routes That Disappear After an Ingress Controller Sync
+12. How to Enable and Verify WebSocket Upgrades Through APISIX
+13. How to Route Multiple gRPC-Web Services Through APISIX Without Path Conflicts
+14. How to Allow Credentialed Browser Requests from Selected Origins in APISIX
+15. How to Debug APISIX Plugin Ordering Across Rewrite and Access Phases
+16. How to Bypass APISIX Response Caching for Requests with Authorization or Session Cookies
+17. How to Keep APISIX Canary Users on the Same Upstream with Cookies
+18. How to Diagnose Missing Kubernetes Service Endpoints in APISIX Discovery
+19. How to Configure APISIX Upstream mTLS with Client Certificates and CA Verification
+20. How to Require Client Certificates for Selected APISIX HTTPS Hosts
+
+
+## Ceph RBD
+
+1. How to Reclaim Deleted File Space on Ceph RBD with Discard and fstrim
+2. How to Identify Ceph RBD Snapshots and Clones That Still Retain Deleted Data
+3. How to Restore an Accidentally Trashed Ceph RBD Image That Is Still Mapped
+4. How to Remove a Protected Ceph RBD Snapshot After Resolving Its Clone Dependencies
+5. How to Reconcile Ceph RBD Image Usage with Pool-Level ceph df Statistics
+6. How to Mount Ceph RBD Filesystems at Boot with rbdmap and Network Dependencies
+7. How to Find What Is Keeping a Ceph RBD Device Busy During Unmap
+8. How to Investigate Ceph RBD Image Still Has Watchers Errors Before Removing an Image
+9. How to Rebuild an Invalid Ceph RBD Object Map and Verify the Warning Clears
+10. How to Transfer Ceph RBD Snapshot Changes with export-diff and import-diff
+11. How to Preserve Ceph RBD Snapshot History in an Export-Format 2 Backup
+12. How to Grow an ext4 Filesystem After Expanding Its Ceph RBD Image
+13. How to Move XFS Data to a Smaller Ceph RBD Image
+14. How to Diagnose Ceph RBD QoS Limits That Are Ignored by Kernel-Mapped Clients
+15. How to Compare Direct Ceph RBD and VM Disk Performance with Matched fio Workloads
+16. How to Investigate Stale Reads Across Hosts Sharing a Ceph RBD Block Device
+17. How to Map a Journaling-Enabled Ceph RBD Image with rbd-nbd
+18. How to Queue Long-Running Ceph RBD Image Deletions as Background Tasks
+19. How to Recover a Single File from a Ceph RBD Snapshot Using a Temporary Clone
+20. How to Compare Files in Two Ceph RBD Snapshots Before Pruning Backups
+
+
+## Arch Linux
+
+1. How to Repair Unknown-Trust Package Signatures After an Arch Linux Update Gap
+2. How to Recover Arch Linux After an Interrupted pacman Upgrade Breaks Shared Libraries
+3. How to Resolve pacman Database Locks by Checking Running Package Managers First
+4. How to Resolve Arch Linux File-Conflict Errors by Checking Package Ownership
+5. How to Merge Arch Linux pacnew Files with pacdiff While Preserving Local Settings
+6. How to Recover Deleted pacnew Configuration Files from Arch Linux Package Archives
+7. How to Find the Arch Linux Package That Provides a Missing Command with pacman -F
+8. How to Pre-Download Arch Linux Updates Safely with checkupdates -d
+9. How to Clean the Arch Linux Package Cache While Keeping Versions for Recovery
+10. How to Rebuild an Arch Linux Package Set from Saved Official and AUR Package Lists
+11. How to Rebuild AUR Packages After an Arch Linux Shared-Library ABI Change
+12. How to Fix makepkg Unknown Public Key Errors in Your Arch Linux User Keyring
+13. How to Regenerate Missing Arch Linux Kernel Initramfs Images from a Live ISO
+14. How to Restore Keyboard Input at the Arch Linux LUKS Prompt with mkinitcpio Modules
+15. How to Enable and Verify a Fallback Initramfs Preset on Arch Linux
+16. How to Diagnose Arch Linux Boot Delays Before the Kernel Starts Running
+17. How to Configure NetworkManager to Use iwd on Arch Linux Without Competing Services
+18. How to Diagnose Missing DHCP and DNS After Connecting with iwctl on Arch Linux
+19. How to Troubleshoot PipeWire Dummy Output on Arch Linux with Missing Audio Firmware
+20. How to Fix Arch Linux Package Download 404 Errors by Checking Mirrors and Database Age
+
+
+## DAST
+
+1. How to Split DAST Between Fast Pull Request Checks and Scheduled Deep Scans
+2. How to Verify DAST Reaches Authenticated Pages Before Trusting a Clean Report
+3. How to Validate API Request Bodies and Test Data Before Starting a DAST Scan
+4. How to Scan Internal APIs with a Burp Suite DAST Agent in a Private Network
+5. How to Automate Multi-Step Login Flows with GitLab DAST Authentication Scripts
+6. How to Scan TOTP-Protected Test Accounts with GitLab DAST
+7. How to Fix GitLab DAST Scans That Lose Access After a Successful Login
+8. How to Restrict Access to Sensitive GitLab DAST Authentication Reports
+9. How to Prevent GitLab DAST Crawlers from Revisiting Thousands of Equivalent URLs
+10. How to Exclude Third-Party Hosts from GitLab DAST Browser Scans
+11. How to Pass a Dynamic Review Environment URL to a GitLab DAST Job
+12. How to Tune Burp Suite DAST Request Rates When Scans Trigger HTTP 429 Errors
+13. How to Triage DAST False Positives with Reproducible Request and Response Evidence
+14. How to Reimport Recurring DAST Results into DefectDojo Without Duplicate Findings
+15. How to Add Role and Tenant Isolation Tests to Cover Gaps in DAST Scans
+16. How to Find Unscanned Apigee APIs Before Adding Them to Burp Suite DAST
+17. How to Configure Client TLS Certificates for Burp Suite DAST API Scans
+18. How to Configure a Private Burp Collaborator Server for DAST Checks
+19. How to Retest DAST Findings After a Fix Without Mistaking Lost Coverage for Remediation
+20. How to Set Severity and Confidence Thresholds for Burp DAST GitLab Issues
+
+
+## Database Migration
+
+1. How to Resolve Flyway Checksum Mismatches Without Hiding Unapplied Schema Changes
+2. How to Baseline an Existing Database in Flyway While Preserving Environment-Specific Data
+3. How to Apply a Late Flyway Migration After Higher Versions Have Already Run
+4. How to Order Flyway Repeatable Migrations When Views and Functions Depend on Each Other
+5. How to Run CREATE INDEX CONCURRENTLY in Flyway Without Transaction or Advisory-Lock Conflicts
+6. How to Release a Stale Liquibase Changelog Lock After Confirming No Migration Is Running
+7. How to Move Liquibase Changelog Files Without Reapplying Existing Changesets
+8. How to Use Liquibase Preconditions to Halt a Migration or Mark an Existing Change as Ran
+9. How to Merge Alembic Revision Heads Without Deleting Applied Migration History
+10. How to Correct Alembic Autogenerate Output for Column Renames
+11. How to Exclude Unmanaged Tables from Alembic Autogenerate in a Shared Database
+12. How to Resolve Circular Dependencies When Squashing Django Migrations Across Apps
+13. How to Keep Django Data Migrations Replayable with Historical Models
+14. How to Resolve Django Migration Leaf Conflicts After Merging Feature Branches
+15. How to Add a Unique UUID Field to Existing Django Rows Without Duplicate Defaults
+16. How to Recover a Failed Prisma Production Migration with migrate resolve
+17. How to Backfill a Required Prisma Field Before Enforcing NOT NULL
+18. How to Repair a Dirty golang-migrate Database Before Forcing the Migration Version
+19. How to Generate EF Core Idempotent SQL for Databases at Different Migration Versions
+20. How to Fix Stored Procedure Batch Errors in EF Core Idempotent Migration Scripts
+
+
+## Self-Hosted Runners
+
+1. How to Diagnose Idle GitHub Self-Hosted Runners That Never Pick Up Queued Jobs
+2. How to Clean GitHub Self-Hosted Runner Workspaces with Post-Job Hooks
+3. How to Fix Checkout Permission Errors Caused by Docker Files on Self-Hosted Runners
+4. How to Fix Missing Build Tools in a Windows Self-Hosted Runner Service PATH
+5. How to Run Parallel GitHub Actions Jobs with Separate Runner Instances on One Host
+6. How to Register GitHub Just-in-Time Runners with a GitHub App Installation Token
+7. How to Preserve Ephemeral GitHub Runner Logs When Job Acquisition Hangs
+8. How to Drain an ARC Runner Scale Set Before Kubernetes Maintenance
+9. How to Choose Docker-in-Docker or Kubernetes Mode for ARC Container Jobs
+10. How to Diagnose Shared Workspace Permission Errors in ARC Kubernetes Mode
+11. How to Configure Proxy Settings for Both GitHub Runners and Their Docker Jobs
+12. How to Trust a Corporate CA for JavaScript Actions on Self-Hosted GitHub Runners
+13. How to Keep Pinned Self-Hosted Runner Images Within GitHub Update Requirements
+14. How to Limit Organization Self-Hosted Runners to Approved GitHub Repositories
+15. How to Isolate Untrusted Pull Request Jobs from Privileged Self-Hosted Runners
+16. How to Build an Outbound Firewall Allowlist for Self-Hosted GitHub Runners
+17. How to Measure ARC Job Startup Latency and Runner Pool Saturation
+18. How to Diagnose Artifact Upload Timeouts on Self-Hosted GitHub Runners
+19. How to Propagate GitHub Actions Cancellation to Child Processes on Self-Hosted Runners
+20. How to Provide GitHub Actions Runner Capacity from Two ARC Kubernetes Clusters
+
+
+## Kasten K10
+
+1. How to Diagnose Kasten K10 Snapshot Failures with CSI Storage Capability Checks
+2. How to Back Up NFS Volumes with Kasten K10 When CSI Snapshots Are Unavailable
+3. How to Stop Kasten K10 Export Volumes Accumulating on a Retain StorageClass
+4. How to Fix Kasten K10 S3 Certificate Errors by Checking CA Trust and Subject Alternative Names
+5. How to Restore a Kasten K10 Exported Backup After Its Local Snapshot Expires
+6. How to Recover Kasten K10 Restore-Point Metadata After Accidental Deletion
+7. How to Keep Daily and Monthly Kasten K10 Backups with Separate Local and Export Retention
+8. How to Set Kasten K10 Immutable Backup Protection Periods Alongside Retention Policies
+9. How to Fix Helm Ownership Annotations When Kasten K10 Restores to a New Namespace
+10. How to Change StorageClasses During a Kasten K10 Cross-Cluster Restore
+11. How to Restore One PVC from a Kasten K10 Backup with Artifact Filtering
+12. How to Validate Replica and Volume Compatibility Before a Kasten K10 Data-Only Restore
+13. How to Recover Files from a Kasten K10 Volume Clone While the Original Workload Keeps Running
+14. How to Choose a Kasten K10 Quick DR Mode for Storage with Limited Snapshot Support
+15. How to Collect Kasten K10 Export Failure Logs and Metrics for a Specific Time Window
+16. How to Add Kanister Logical PostgreSQL Backups to Kasten K10 StatefulSet Protection
+17. How to Fix Kasten K10 OpenShift ImageStream Exports That Run Out of Temporary Volume Space
+18. How to Expire Manual Kasten K10 Backups That Scheduled Retention Does Not Remove
+19. How to Diagnose Kasten K10 Token Login Loops with Authentication and RBAC Checks
+20. How to Select Kasten K10 Backup Applications and Filter VM Resources with the Right Labels
