@@ -217,6 +217,27 @@
 ## Buildkite
 
 
+1. How to Retry Buildkite Jobs After Agent Shutdown Without Retrying Test Timeouts
+2. How to Regenerate Buildkite Test Reports After Retrying Upstream Jobs
+3. How to Diagnose Buildkite Manual Retries That Are Immediately Canceled by Fast Fail
+4. How to Control Which Buildkite Agent Receives a Retried Job
+5. How to Configure Buildkite Required Checks for GitHub Merge Queues
+6. How to Stop Duplicate Buildkite Runs from Overwriting GitHub Commit Status Links
+7. How to Diagnose Buildkite Git Fetch Failures from Short Bitbucket Commit Hashes
+8. How to Pass Buildkite Secrets into Docker Steps Without Printing Them
+9. How to Trace AWS Credential Changes Across Buildkite Plugin Hooks
+10. How to Skip Repository Checkout for Buildkite Deployment Steps
+11. How to Prevent Stale Buildkite Working Directories from Breaking Git Pushes
+12. How to Prioritize Buildkite Release Jobs Over Pull Request Builds
+13. How to Run Bash-Based Buildkite Hooks on Windows Agents
+14. How to Fix Invalid Variable Name Errors in Buildkite Docker Compose Cache Configuration
+15. How to Design Docker Image Caching for Buildkite Agents on Kubernetes
+16. How to Restrict AWS Role Trust to Specific Buildkite Pipelines with OIDC Claims
+17. How to Gate Buildkite Fork Builds Before Untrusted Pipeline Code Runs
+18. How to Upload Custom Test Framework Results to Buildkite Test Engine
+19. How to Balance Pytest Shards Across Buildkite Parallel Jobs
+20. How to Reuse a Buildkite Agent for Steps That Need a Large Local Workspace
+
 ## Azure SQL
 
 
@@ -1601,6 +1622,27 @@
 18. How to Clean Up Orphaned Multus Interfaces and CNI Cache After Failed Pod Deletion
 19. How to Chain SR-IOV with Multus and Match Device-Plugin Resources to NetworkAttachmentDefinitions
 20. How to Roll Out Multus Upgrades Without Breaking Existing Pods or the Primary CNI
+
+21. How to Receive External Multicast Traffic Through a Multus Secondary Network
+22. How to Connect Multus Macvlan Pods to Services on Their Own Kubernetes Node
+23. How to Debug a Multus Pod That Responds to Ping but Refuses TCP Connections
+24. How to Design Service Discovery for Multus Secondary IP Addresses
+25. How to Hot-Plug a Network into a Running Pod with the Multus Dynamic Networks Controller
+26. How to Diagnose Multus Interfaces That Do Not Appear Inside Kata Containers
+27. How to Build Redundant Pod Network Paths with Multus and Bond CNI
+28. How to Diagnose Bond CNI Link Not Found Errors After a Containerd Upgrade
+29. How to Configure VLAN Access and Trunk Ports with Multus and OVS CNI
+30. How to Schedule Multus Pods Only on Nodes with the Required OVS Bridge
+31. How to Fix CPU Architecture Mismatches in Multus Delegated CNI Binaries
+32. How to Resolve Multus Plugin Not Found Errors Caused by K3s CNI Paths
+33. How to Evaluate a Single Macvlan Primary Interface for Multus Pods
+34. How to Apply Pod Network Sysctls Through Multus and the Tuning CNI Plugin
+35. How to Prepare Host Bridges and VLAN Interfaces Before Scheduling Multus Workloads
+36. How to Avoid Macvlan and IPvlan Parent-Interface Conflicts in Multus
+37. How to Attach a Default Secondary Network to Multus Pods While Excluding System Namespaces
+38. How to Pass a Dedicated Host NIC into a Multus Pod with the Host-Device CNI Plugin
+39. How to Expose Coturn Relay Ports Through a Dedicated Multus Network
+40. How to Make Home Assistant mDNS Discovery Work Across a Multus LAN Interface
 
 ## NGINX
 
@@ -7674,6 +7716,27 @@
 19. How to Benchmark CTE Materialization for Repeated Subqueries in PrestoDB
 20. How to Size a PrestoDB Cluster Using Representative Queries and Concurrency Targets
 
+21. How to Register Missing S3 Partitions When a PrestoDB External Table Returns No Rows
+22. How to Refresh PrestoDB Hive Metadata After Partitions Change Outside Presto
+23. How to Read CSV Numeric Columns with Empty Fields Through the PrestoDB Hive Connector
+24. How to Inspect Hive File Modification Times in PrestoDB Without Mistaking Them for Table Update History
+25. How to Calculate PrestoDB Ratios Without Integer Division or Decimal-Scale Truncation
+26. How to Exclude NaN and Infinity from PrestoDB Threshold Filters
+27. How to Quarantine Malformed Numeric Strings with TRY_CAST in PrestoDB
+28. How to Reset LAG at Each Customer Boundary in PrestoDB
+29. How to Calculate Running Spend Across Mixed Budget Periods in PrestoDB
+30. How to Fix Missing Column Aliases in PrestoDB Joins Between Aggregated Subqueries
+31. How to Keep One Deterministic Match per Left Row in a PrestoDB Join
+32. How to Return Several Fields from the Same max_by Row in PrestoDB
+33. How to Resolve Shared Keys in Chained PrestoDB Joins That Use USING
+34. How to Create a PrestoDB Table from a Query Containing Multiple CTEs
+35. How to Diagnose Queries That Fail Because a PrestoDB Catalog Is Missing on Workers
+36. How to Fix PrestoDB Regex Patterns Copied from JavaScript Slash Literals
+37. How to Extract the Nth Nonadjacent Regex Match in PrestoDB
+38. How to Build a PrestoDB Daily Report That Includes Dates with No Events
+39. How to Pair Start and Stop Events Across NULL Task Rows in PrestoDB
+40. How to Manage Scratch-Table Cleanup in PrestoDB When CREATE TEMP TABLE Is Unavailable
+
 ## Distribution
 
 1. How to Reclaim CNCF Distribution Storage Left Behind by Overwritten Tags
@@ -8854,3 +8917,170 @@
 18. How to Expire Manual Kasten K10 Backups That Scheduled Retention Does Not Remove
 19. How to Diagnose Kasten K10 Token Login Loops with Authentication and RBAC Checks
 20. How to Select Kasten K10 Backup Applications and Filter VM Resources with the Right Labels
+
+## Amazon Kinesis
+
+1. How to Retry Only Failed Records in an Amazon Kinesis PutRecords Batch
+2. How to Preserve Per-Entity Event Order When Amazon Kinesis Producer Requests Retry
+3. How to Diagnose Hot Partition Keys When Amazon Kinesis Has Spare Shard Capacity
+4. How to Fix Empty Kinesis Reads Caused by Starting a LATEST Iterator After Publishing
+5. How to Resume an Expired Amazon Kinesis Shard Iterator from the Last Processed Record
+6. How to Replay Amazon Kinesis Records from a Timestamp Without Resetting a Live Consumer
+7. How to Advance KCL Checkpoints Only After Downstream Writes Have Completed
+8. How to Unblock Kinesis Child Shards by Completing the Parent Shard Checkpoint
+9. How to Give Independent Kinesis Consumers Separate Checkpoints on One Stream
+10. How to Distinguish KCL Worker Scaling from Adding a New Kinesis Consumer Application
+11. How to Diagnose Read Throttling When Several Consumers Poll the Same Kinesis Shards
+12. How to Apply Producer Backpressure When KPL Pending Records Keep Growing
+13. How to Stop a Poison Record from Blocking a Kinesis-Triggered Lambda Indefinitely
+14. How to Return the Correct Sequence Number in Kinesis Lambda Partial Batch Failures
+15. How to Retain Full Failed Kinesis Event Payloads in an S3 Lambda Failure Destination
+16. How to Diagnose Kinesis Lambda Stalls When ParallelizationFactor Is Greater Than One
+17. How to Make a DMS-to-Kinesis Consumer Idempotent Across Duplicate Deliveries
+18. How to Handle Out-of-Order DynamoDB Changes Delivered Through Amazon Kinesis
+19. How to Plan a Kinesis Replay After a Consumer Outage Against the Retention Window
+20. How to Decode KPL-Aggregated Kinesis Records That Look Like Corrupted JSON
+
+
+## ClickHouse
+
+1. How to Prevent Duplicate Transaction Totals When ReplacingMergeTree Feeds a ClickHouse Materialized View
+2. How to Diagnose an Empty Stage in a ClickHouse Materialized View Cascade
+3. How to Change a ClickHouse Source Sorting Key Without Replaying Data into Existing Rollup Views
+4. How to Diagnose Refreshable ClickHouse View Results That Alternate Between Shards
+5. How to Coordinate Dependent ClickHouse View Refreshes Before Reading a Dashboard Snapshot
+6. How to Preserve a NULL Latest Value When Using argMax in ClickHouse
+7. How to Keep Latest-Record Fields Consistent Across ClickHouse argMax Aggregations
+8. How to Preserve Nullable Field Alignment in ClickHouse groupArray Results with Tuples
+9. How to Sort Unique Product Arrays by Observed Frequency in ClickHouse
+10. How to Aggregate JSON Arrays in ClickHouse Without Inflating Scalar Row Totals
+11. How to Calculate Per-Position Array Averages in ClickHouse When Array Lengths Vary
+12. How to Expose Projection-Set Mismatches When ClickHouse OPTIMIZE Returns Immediately
+13. How to Preview ClickHouse TTL Deletions When Event Time Differs from Ingestion Time
+14. How to Handle JSON Fields That Switch Between Scalars and Objects in ClickHouse
+15. How to Preserve Dotted JSON Keys Separately from Nested Paths in ClickHouse
+16. How to Prevent Decimal Precision Loss Before an INSERT Reaches ClickHouse
+17. How to Audit S3Queue Object Cleanup When ClickHouse Leaves Processed Files Behind
+18. How to Handle Late S3 Files Whose Names Sort Before the ClickHouse S3Queue Checkpoint
+19. How to Ingest Changed S3 Objects with Versioned Keys When ClickHouse S3Queue Ignores Overwrites
+20. How to Diagnose Growing S3 ListObjects Traffic from a ClickHouse S3Queue
+
+
+## Zero Trust
+
+1. How to Fix Cloudflare Access Policies That Block Allowlisted Users
+2. How to Require Both User Identity and Device Posture in Cloudflare Zero Trust
+3. How to Fix Missing Device Certificates in Cloudflare WARP Posture-Only Mode
+4. How to Fix Forbidden Errors During Cloudflare Zero Trust Device Enrollment
+5. How to Restore Private DNS Resolution with Cloudflare WARP Local Domain Fallback
+6. How to Diagnose Private IPs That Remain Unreachable After Connecting to Cloudflare WARP
+7. How to Diagnose Unintended Traffic Routing in Cloudflare WARP Domain Split Tunnels
+8. How to Authenticate CI Jobs to Cloudflare Access with Service Tokens
+9. How to Trace Cloudflare Access Service-Token 401 Errors to the Edge or Origin
+10. How to Authenticate Webhook Clients to Cloudflare Access with a Single Header
+11. How to Fix Cross-Subdomain API CORS Failures Behind Cloudflare Access
+12. How to Validate Cloudflare Access JWTs at the Origin to Prevent Direct-Access Gaps
+13. How to Diagnose Repeated Cloudflare Access Login Prompts Across Session Settings
+14. How to Audit Active SSH and VNC Connections After Revoking a Cloudflare Access Session
+15. How to Fix kubectl WebSocket Handshake Failures Through Cloudflare Access
+16. How to Fix Local Listener Binding Errors with Cloudflare Access RDP
+17. How to Protect Administrative Paths with Cloudflare Access While Exposing a Webhook Endpoint
+18. How to Fix Cloudflare Access Google Login When Email Allowlists Still Trigger One-Time Codes
+19. How to Route Overlapping Private Subnets Through Cloudflare Zero Trust Virtual Networks
+20. How to Rotate Cloudflare Access Service Tokens with a Controlled Secret Overlap
+
+
+## Service-Level Objectives
+
+1. How to Filter a Datadog SLO List Widget with Service and Environment Template Variables
+2. How to Graph Historical Datadog SLO Status and Error Budgets with the SLO Data Source
+3. How to Keep Datadog SLO Catalog Tags Separate from the Metrics That Define the SLI
+4. How to Export a Datadog Monitor-Based SLO to Time Slices and Check Unsupported Monitor Types
+5. How to Compare One-Minute and Five-Minute Datadog Time Slices Before Setting a Latency SLO
+6. How to Diagnose Grafana SLO Values Above 100% Caused by Unsynchronized Recording Rules
+7. How to Set Grafana SLO Query Offsets for Late-Arriving CloudWatch Metrics
+8. How to Prevent Newly Created Counter Series from Distorting a Grafana SLO
+9. How to Explain a Flat Grafana Error-Budget Burndown During the First SLO Window
+10. How to Exclude SLI Metrics from Grafana Adaptive Telemetry Aggregation
+11. How to Enable Ruler Access and Required Permissions for an Additional Grafana SLO Mimir Data Source
+12. How to Diagnose Missing SLO Annotations in Grafana Slack Notifications
+13. How to Publish Only Micrometer SLO Buckets Without Enabling the Full Percentile Histogram
+14. How to Convert a Success Ratio into the Error Ratio Expected by a Sloth Raw SLI
+15. How to Set Different Evaluation Intervals for Sloth SLI, Metadata, and Alert Rules
+16. How to Enable Sloth Denominator-Corrected Rules for Uneven Request Volumes
+17. How to Validate MetricsQL-Based SLOs with the Sloth VictoriaMetrics Plugin
+18. How to Partition Sloth SLO Manifests When Generated Prometheus Rules Exceed Upload Limits
+19. How to Add Custom Sloth Validation While Keeping the Default SLO Rule Generators
+20. How to Query Google Cloud SLO Health and Budget Selectors from a Grafana Dashboard
+
+
+## Redis Operator
+
+1. How to Choose Between OpsTree and Spotahome Redis Operators for Sentinel High Availability
+2. How to Design and Test Backups for an OpsTree Redis Operator Deployment
+3. How to Investigate Missing Redis Data After an OpsTree-Managed Cluster Restarts
+4. How to Diagnose Redis Followers That Fail to Rejoin an OpsTree-Managed Cluster
+5. How to Diagnose MOVED Redirects to Unreachable IPs with OpsTree Redis Operator LoadBalancers
+6. How to Diagnose TLS Certificate Failures in OpsTree Redis Operator Deployments
+7. How to Audit Authentication on Embedded Sentinel Ports in OpsTree Redis Operator
+8. How to Keep Default-User Authentication Working When Enabling OpsTree Redis Operator ACLs
+9. How to Plan Memory Headroom Before Scaling In an OpsTree Redis Cluster
+10. How to Diagnose Stale Node Configuration When Scaling an OpsTree Redis Cluster Back Out
+11. How to Separate Redis Data Persistence from Cluster Node Configuration in OpsTree Operator
+12. How to Fix Node-Conf Volume Permission Errors in OpsTree Redis Operator on OpenShift
+13. How to Diagnose Invalid Volume Mounts After Adding Custom OpsTree Redis Configuration
+14. How to Investigate RedisSentinel Resources That OpsTree Redis Operator Does Not Reconcile
+15. How to Keep Each Redis Leader and Its Replica on Different Nodes with OpsTree Operator
+16. How to Validate Sentinel Hostname Announcement with OpsTree Redis Operator
+17. How to Diagnose Unresolvable Redis Cluster Node Names from OpsTree Operator Clients
+18. How to Configure Separate Sentinel and Redis Passwords with OpsTree Redis Operator
+19. How to Diagnose an Authenticated OpsTree RedisReplication Set with No Detected Master
+20. How to Persist Runtime Redis ACL Changes with OpsTree Redis Operator and a PVC
+
+
+## Elastic APM
+
+1. How to Fix Elastic APM Central Configuration Stuck at "Not Yet Applied" for Java Services
+2. How to Resolve Elastic APM Central-Configuration 403 Errors with Elasticsearch Permissions
+3. How to Group Elastic APM Java Transactions by Stable Route Names
+4. How to Propagate Elastic APM Trace Context Across Non-HTTP .NET Workflows
+5. How to Preserve Elastic APM Log Correlation in Java Queue Workers
+6. How to Add Elastic APM Trace IDs to Java ECS Logs
+7. How to Find Missing Elastic APM Log Correlations in Custom Data Streams
+8. How to Fix Missing Service-Map Connections in Elastic APM for .NET HTTP Calls
+9. How to Fix Elastic APM RUM Intake Failures Caused by CORS
+10. How to Make Custom Elastic APM RUM Transactions Appear in Kibana
+11. How to Match Elastic APM RUM Source Maps to Service Versions and Bundle URLs
+12. How to Set Different Retention Periods for Elastic APM Traces and Metrics
+13. How to Retain Failed Elastic APM Traces While Sampling Successful Requests
+14. How to Diagnose Elastic APM Tail Sampling After Its Storage Limit Is Reached
+15. How to Diagnose Missing Elastic APM Trace Spans Using Sampling and Span Limits
+16. How to Prevent Elastic APM Label Type Conflicts Across Services
+17. How to Prevent Sensitive JSON Request Bodies from Reaching Elastic APM
+18. How to Investigate Slow Java Methods with Elastic APM Inferred Spans
+19. How to Trace Java Background Jobs That Elastic APM Does Not Automatically Capture
+20. How to Diagnose Elastic APM Server 401 Errors When Writing to Elasticsearch
+
+
+## Cascading Failures
+
+1. How to Prevent a Shared Database Outage from Restarting Every Pod Through Liveness Probes
+2. How to Keep an Open Resilience4j Circuit from Failing an ECS Container Health Check
+3. How to Diagnose Resilience4j Half-Open Circuits That Stall on Ignored Exceptions
+4. How to Reconcile Resilience4j Minimum Call Counts with Half-Open Probe Limits
+5. How to Trip a Resilience4j Circuit on Slow Calls That Still Return Successfully
+6. How to Assign Separate Resilience4j Bulkhead Pools to Dependencies with Different Failure Modes
+7. How to Preserve Request IDs Across Resilience4j Thread-Pool Bulkheads During an Outage
+8. How to Isolate Polly Circuit Breakers by HTTP Authority with SelectPipelineByAuthority
+9. How to Fix a Polly v8 Circuit That Stays Open Because Requests Bypass Pipeline Execution
+10. How to Bind Polly v8 CircuitBreakerStateProvider to the Pipeline Used by HttpClient
+11. How to Migrate a Consecutive-Failure Polly Breaker to v8 Failure-Ratio Semantics
+12. How to Isolate Calls to a Recovering Dependency with Polly ManualControl
+13. How to Diagnose Envoy Sending Traffic to Unhealthy Hosts After the Panic Threshold Is Reached
+14. How to Verify Envoy Retry Budgets and Track upstream_rq_retry_overflow During Fault Injection
+15. How to Distinguish Envoy Connection, Pending-Request, and Active-Request Limits Under HTTP/2 Load
+16. How to Separate Local Connection Failures from Upstream HTTP Errors in Envoy Outlier Detection
+17. How to Test That Retry Delays Actually Elapse Before a Failure Storm Reaches Production
+18. How to Tune Polly MinimumThroughput When a Low-Traffic Dependency Fails Every Call
+19. How to Check Whether .NET HTTP Resilience Defaults Amplify Fan-Out Calls During an Outage
+20. How to Find the Reduced Traffic Level Needed to Recover a Service Stuck in an Overload Loop
