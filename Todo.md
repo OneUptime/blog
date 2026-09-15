@@ -201,7 +201,6 @@
 ## Capacity Planning
 
 
-2. How to Convert a Changing API Request Mix into a CPU Capacity Budget
 3. How to Find Sustainable API Capacity Under a Latency SLO with k6 Arrival-Rate Tests
 4. How to Diagnose Dropped k6 Iterations Before Declaring a Service at Capacity
 5. How to Calculate Backend Capacity When Cache Hit Rates Collapse
