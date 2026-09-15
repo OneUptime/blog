@@ -82,7 +82,7 @@ Test a missing setting, a missing file, a filename containing spaces, and `../ou
 
 ## Use the image from a pipeline
 
-Publish the image to a registry the runner can read, then reference its immutable version or digest. Here the registry path is illustrative:
+Publish the image to a registry the runner can read, then reference a versioned tag that your registry enforces as immutable, or use an image digest. Here the registry path is illustrative:
 
 ```yaml
 kind: pipeline
