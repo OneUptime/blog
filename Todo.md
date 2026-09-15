@@ -201,7 +201,6 @@
 ## Capacity Planning
 
 
-19. How to Define Capacity Test Exit Criteria Before a Marketing Traffic Spike
 20. How to Compare Capacity Plans When Budget, Placement, and Redundancy Constraints Conflict
 
 ## etcd
