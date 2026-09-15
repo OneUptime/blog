@@ -33,8 +33,8 @@ steps:
       - |
         attempts=0
         until timeout --signal=TERM --kill-after=1s 5s psql -v ON_ERROR_STOP=1 -c 'SELECT 1' >/dev/null 2>&1; do
-          attempts=$$((attempts + 1))
-          if [ "$$attempts" -ge 30 ]; then
+          attempts=$((attempts + 1))
+          if [ "$attempts" -ge 30 ]; then
             echo 'database did not become ready' >&2
             exit 1
           fi
@@ -55,7 +55,7 @@ These credentials belong only to the temporary test database. They should not ma
 
 `PGHOST` uses the service name and `PGPORT` uses PostgreSQL's port inside the container. You do not need to publish a host port to connect two containers in the pipeline network. The PostgreSQL client documents these connection settings in its [environment variable reference](https://www.postgresql.org/docs/current/libpq-envars.html).
 
-The double dollar signs preserve shell expansion through Drone's configuration substitution. That escaping is necessary in inline YAML commands; it is unnecessary if the same shell code lives in a checked-in script. See [Drone environment substitution](https://docs.drone.io/pipeline/environment/substitution/).
+Drone's configuration substitution processes braced expressions such as `${NAME}` before parsing the YAML. Write ordinary shell forms such as `$attempts` and `$((attempts + 1))` as shown above; if an inline command needs a braced shell expansion, escape it as `$${NAME}` so the shell receives `${NAME}`. This escaping is unnecessary if the same shell code lives in a checked-in script. See [Drone environment substitution](https://docs.drone.io/pipeline/environment/substitution/).
 
 ## Make readiness a bounded application check
 
