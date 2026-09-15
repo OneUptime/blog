@@ -49,7 +49,7 @@ steps:
         from_secret: registry_writer_token
 ```
 
-This assumes the repository contains a Dockerfile and the runner permits the Docker plugin's execution requirements. Use an approved pinned plugin version or digest in production.
+This assumes the repository contains a Dockerfile and the runner permits the plugin to run with the privileged capabilities required by its integrated Docker daemon. Use an approved pinned plugin version or digest in production.
 
 The registry value identifies the authentication server; the repository value includes the full destination image name. Check that both name the same registry, including a custom port if one is required. Avoid silently pushing to Docker Hub because the intended hostname was omitted.
 
