@@ -243,7 +243,6 @@
 
 ## Drone
 
-10. How to Build Docker Images in Drone Without Exposing an Unrestricted Docker Socket
 11. `trigger` vs. `when` in Drone: How to Filter Pipelines and Individual Steps Correctly
 12. How to Run Drone Pipelines in Sequence with `depends_on` Without Accidental Parallelism
 13. How to Pass Generated Values Between Drone Steps and Pipelines Without Dynamic Environment Variables
