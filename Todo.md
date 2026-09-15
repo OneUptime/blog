@@ -243,7 +243,6 @@
 
 ## Drone
 
-18. How to Tag Docker Images from Drone Branch, Commit, and Git Tag Events Safely
 19. How to Reach Service Containers from Drone Steps: Hostnames, Ports, Health Checks, and Networks
 20. How to Prevent Secrets from Reaching Untrusted Drone Pull Requests and Forks
 21. How to Generate Reusable Drone Pipelines with Jsonnet and Validate the Rendered YAML
