@@ -201,7 +201,6 @@
 ## Capacity Planning
 
 
-14. How to Budget Shared Service Capacity for Overlapping Batch and Interactive Peaks
 15. How to Size EBS IOPS and Throughput from Measured I/O Request Sizes
 16. How to Identify Instance Throughput Limits Before Adding EBS Volume Capacity
 17. How to Plan Capacity Purchases Around Exhaustion Forecasts and Hardware Delivery Delays
