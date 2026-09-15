@@ -243,7 +243,6 @@
 
 ## Drone
 
-21. How to Generate Reusable Drone Pipelines with Jsonnet and Validate the Rendered YAML
 22. How to Build a Drone Configuration Extension for Organization-Wide Pipeline Defaults
 23. How to Validate and Reject Unsafe Drone Pipelines with an Admission Extension
 24. How to Enforce Kubernetes Namespace, Service Account, and Resource Policies for Drone Builds
