@@ -243,7 +243,6 @@
 
 ## Drone
 
-20. How to Prevent Secrets from Reaching Untrusted Drone Pull Requests and Forks
 21. How to Generate Reusable Drone Pipelines with Jsonnet and Validate the Rendered YAML
 22. How to Build a Drone Configuration Extension for Organization-Wide Pipeline Defaults
 23. How to Validate and Reject Unsafe Drone Pipelines with an Admission Extension
