@@ -201,7 +201,6 @@
 ## Capacity Planning
 
 
-9. How to Size Warm Kubernetes Capacity for Traffic Bursts During Node Startup
 10. How to Calculate Kubernetes Capacity for Concurrent Rollouts Across Multiple Deployments
 11. How to Plan Kubernetes Node Disk Capacity for Images, Logs, and Scratch Data
 12. How to Identify Stranded Kubernetes Capacity Caused by Node Placement Constraints
