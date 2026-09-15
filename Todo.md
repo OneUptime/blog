@@ -243,7 +243,6 @@
 
 ## Drone
 
-26. How to Set CPU and Memory Requests Without Starving Multi-Step Drone Kubernetes Pipelines
 27. How to Source Drone Secrets from HashiCorp Vault Without Storing Long-Lived Tokens in Repositories
 28. How to Write a Custom Drone Plugin and Map Settings to `PLUGIN_*` Environment Variables
 29. How to Evaluate and Deploy Drone's Beta High-Availability Mode with PostgreSQL, Redis, and a Load Balancer
