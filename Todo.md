@@ -201,7 +201,6 @@
 ## Capacity Planning
 
 
-20. How to Compare Capacity Plans When Budget, Placement, and Redundancy Constraints Conflict
 
 ## etcd
 
