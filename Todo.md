@@ -201,7 +201,6 @@
 ## Capacity Planning
 
 
-10. How to Calculate Kubernetes Capacity for Concurrent Rollouts Across Multiple Deployments
 11. How to Plan Kubernetes Node Disk Capacity for Images, Logs, and Scratch Data
 12. How to Identify Stranded Kubernetes Capacity Caused by Node Placement Constraints
 13. How to Model Capacity When Multiple Tenants Hit Their Quotas at Once
