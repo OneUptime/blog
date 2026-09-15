@@ -243,7 +243,6 @@
 
 ## Drone
 
-1. Drone Pipeline Stuck on Pending: Match Runner Labels, Platform, Type, and Capacity
 2. Drone Runner Cannot Connect to Server: Debug RPC Host, Protocol, Secret, and TLS
 3. Drone Clone Step Cannot Resolve Gitea or GitLab: Fix Runner Networks and DNS
 4. Drone Webhooks Arrive but No Build Starts: Check Repository Activation, Signatures, and Trigger Filters
