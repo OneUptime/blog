@@ -243,7 +243,6 @@
 
 ## Drone
 
-28. How to Write a Custom Drone Plugin and Map Settings to `PLUGIN_*` Environment Variables
 29. How to Evaluate and Deploy Drone's Beta High-Availability Mode with PostgreSQL, Redis, and a Load Balancer
 30. How to Upgrade Drone Server and Runners Without Stranding In-Flight Builds
 31. How to Back Up and Restore Drone's Database Without Breaking Repository and Build Metadata
