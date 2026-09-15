@@ -201,7 +201,6 @@
 ## Capacity Planning
 
 
-7. How to Calculate Queue Recovery Capacity While New Messages Keep Arriving
 8. How to Plan Worker Capacity When Message Processing Times Vary Widely
 9. How to Size Warm Kubernetes Capacity for Traffic Bursts During Node Startup
 10. How to Calculate Kubernetes Capacity for Concurrent Rollouts Across Multiple Deployments
