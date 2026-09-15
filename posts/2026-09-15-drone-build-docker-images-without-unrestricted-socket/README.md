@@ -49,7 +49,7 @@ Rootless BuildKit can reduce worker privileges, but its kernel, namespace, snaps
 
 ## Supply client credentials to one Drone step
 
-Create repository secrets containing the client CA PEM, client certificate PEM, client private key PEM, and Docker registry configuration JSON. Give the registry credential only the permissions needed to publish this repository's image.
+Create repository secrets containing the CA certificate PEM that validates the BuildKit server, client certificate PEM, client private key PEM, and Docker registry configuration JSON. Give the registry credential only the permissions needed to publish this repository's image.
 
 The following pipeline expects the configured BuildKit service at `builder.example.com:1234`:
 
