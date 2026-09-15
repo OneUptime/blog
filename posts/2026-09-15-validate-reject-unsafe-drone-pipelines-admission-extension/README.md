@@ -18,7 +18,7 @@ Create a Go module and install the pinned dependencies:
 
 ```sh
 go mod init example.com/drone-policy
-go get github.com/drone/drone-go@v1.7.1 gopkg.in/yaml.v3@v3.0.1
+go get github.com/drone/drone-go/plugin/validator@v1.7.1 gopkg.in/yaml.v3@v3.0.1
 ```
 
 Save the following as `main.go`:
