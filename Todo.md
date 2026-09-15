@@ -243,7 +243,6 @@
 
 ## Drone
 
-8. Drone Docker Publish Says “No Basic Auth Credentials”: Separate Plugin Secrets from Pull Secrets
 9. “Insufficient Privileges to Use Privileged Mode” in Drone: Trusted Repositories and Runner Security
 10. How to Build Docker Images in Drone Without Exposing an Unrestricted Docker Socket
 11. `trigger` vs. `when` in Drone: How to Filter Pipelines and Individual Steps Correctly
