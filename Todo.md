@@ -201,7 +201,6 @@
 ## Capacity Planning
 
 
-16. How to Identify Instance Throughput Limits Before Adding EBS Volume Capacity
 17. How to Plan Capacity Purchases Around Exhaustion Forecasts and Hardware Delivery Delays
 18. How to Revise a Capacity Forecast After a Release Increases CPU Cost per Request
 19. How to Define Capacity Test Exit Criteria Before a Marketing Traffic Spike
