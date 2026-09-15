@@ -37,6 +37,7 @@ This example uses Python's standard library and interactive prompts so a passwor
 ```bash
 drone_auth_dir=$(mktemp -d)
 chmod 700 "$drone_auth_dir"
+trap 'rm -rf "$drone_auth_dir"' EXIT
 
 python3 - "$drone_auth_dir/config.json" <<'PY'
 import base64
@@ -68,6 +69,7 @@ drone secret add \
   acme/api
 
 rm -rf "$drone_auth_dir"
+trap - EXIT
 unset drone_auth_dir
 ```
 
