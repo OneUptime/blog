@@ -243,7 +243,6 @@
 
 ## Drone
 
-13. How to Pass Generated Values Between Drone Steps and Pipelines Without Dynamic Environment Variables
 14. How to Cache Maven, npm, and Go Dependencies in Drone Without Reusing Corrupt State
 15. Drone Pipeline Works Locally but Fails on ARM or Windows: Match Architecture, OS, and Runner Type
 16. How to Run and Debug a Drone Pipeline Locally with `drone exec`
