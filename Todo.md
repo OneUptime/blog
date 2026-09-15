@@ -243,7 +243,6 @@
 
 ## Drone
 
-15. Drone Pipeline Works Locally but Fails on ARM or Windows: Match Architecture, OS, and Runner Type
 16. How to Run and Debug a Drone Pipeline Locally with `drone exec`
 17. How to Stop, Timeout, and Clean Up Hung Drone Builds Without Orphaning Containers
 18. How to Tag Docker Images from Drone Branch, Commit, and Git Tag Events Safely
