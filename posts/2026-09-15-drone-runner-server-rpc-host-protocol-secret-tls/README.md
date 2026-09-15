@@ -79,6 +79,6 @@ Keep `DRONE_RPC_SKIP_VERIFY=false`. Drone explicitly documents that bypassing ce
 
 Verify that the server and runner refer to the same secret-manager entry and revision. Check for copied quote characters, accidental whitespace, and one service retaining an old value after rotation. Avoid posting environment dumps, secret hashes, or verbose HTTP bodies into an issue.
 
-After updating the deployment, recreate or restart the affected service as required by its deployment method so the process receives the new environment. Changing a Compose file alone does not change an already-running process.
+After updating the deployment, recreate the affected container or restart the process using a deployment method that injects the new environment. With Compose, use `docker compose up -d` to recreate a service whose environment changed; `docker compose restart` does not apply Compose configuration changes.
 
 Finish by checking for successful server communication in fresh runner logs and running a small eligible pipeline. Successful connectivity followed by a pending build shifts the investigation to runner type, platform, labels, restrictions, and available slots.
