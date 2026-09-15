@@ -65,7 +65,7 @@ For each repository, review more than the list of repository secrets:
 | Source | What to verify |
 | --- | --- |
 | Repository secrets | Pull request access remains disabled |
-| Organization secrets | Scope is restricted to intended repositories and events supported by the installation |
+| Organization secrets | The organization boundary is appropriate and pull request access remains disabled |
 | External secret extensions | Repository, event, branch, and fork checks deny unauthorized requests |
 | Runner environment and mounts | No host credential files or privileged sockets reach untrusted jobs |
 | Private image credentials | Read access grants only the images the build needs |
