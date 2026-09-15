@@ -16,7 +16,7 @@ The following service applies a fixed Node test pipeline to `acme/api` and `acme
 
 ```sh
 go mod init example.com/drone-defaults
-go get github.com/drone/drone-go@v1.7.1
+go get github.com/drone/drone-go/plugin/config@v1.7.1
 ```
 
 Save this as `main.go`:
