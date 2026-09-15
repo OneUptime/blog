@@ -243,7 +243,6 @@
 
 ## Drone
 
-3. Drone Clone Step Cannot Resolve Gitea or GitLab: Fix Runner Networks and DNS
 4. Drone Webhooks Arrive but No Build Starts: Check Repository Activation, Signatures, and Trigger Filters
 5. Why Drone Starts the Same Build Twice—and How to Find Duplicate Webhooks
 6. Drone Secrets Are Empty: Fix `from_secret`, Target Names, and Repository or Organization Scope
