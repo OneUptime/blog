@@ -34,7 +34,7 @@ mean busy VUs approximately equals
   iterations started per second * mean iteration duration in seconds
 ```
 
-At 800 iterations/s with a 150 ms mean iteration duration, approximately 120 VUs are busy. Preallocating only 100 cannot maintain the average workload even before accounting for variation. If duration rises to 600 ms, mean busy VUs rise to 480.
+At 800 iterations/s with a 150 ms mean iteration duration, approximately 120 VUs are busy. Limiting the executor to 100 VUs cannot maintain the average workload even before accounting for variation. If duration rises to 600 ms, mean busy VUs rise to 480.
 
 These numbers do not prescribe a safe VU count. A long tail needs a measured cushion, and the generator must support that cushion. Multiplying by p99 duration can be a conservative experiment, but it is not a mathematical guarantee of zero drops.
 
@@ -45,6 +45,9 @@ Grafana recommends preallocating enough VUs and warns that dynamically creating 
 Consider this illustrative mistake:
 
 ```javascript
+import http from 'k6/http';
+import { sleep } from 'k6';
+
 export default function () {
   http.get(__ENV.TARGET_URL);
   sleep(1);
