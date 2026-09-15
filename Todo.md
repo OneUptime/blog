@@ -243,7 +243,6 @@
 
 ## Drone
 
-6. Drone Secrets Are Empty: Fix `from_secret`, Target Names, and Repository or Organization Scope
 7. How to Pull Private Build Images in Drone with `image_pull_secrets`
 8. Drone Docker Publish Says “No Basic Auth Credentials”: Separate Plugin Secrets from Pull Secrets
 9. “Insufficient Privileges to Use Privileged Mode” in Drone: Trusted Repositories and Runner Security
