@@ -201,7 +201,6 @@
 ## Capacity Planning
 
 
-11. How to Plan Kubernetes Node Disk Capacity for Images, Logs, and Scratch Data
 12. How to Identify Stranded Kubernetes Capacity Caused by Node Placement Constraints
 13. How to Model Capacity When Multiple Tenants Hit Their Quotas at Once
 14. How to Budget Shared Service Capacity for Overlapping Batch and Interactive Peaks
