@@ -90,7 +90,7 @@ If the plan conservatively allows a whole old generation to remain terminating f
 
 Repeated revisions or rapid scale cycles can accumulate more terminating work. Serialize revisions until prior termination completes, or explicitly include additional overlap in the budget. A measured typical value of `T_i` is useful for cost estimates but should not silently become a hard guarantee.
 
-If a new release changes requests, calculate old, new, and terminating populations separately over the rollout sequence. A simple upper bound can use the larger old/new request for each resource, but it may overestimate capacity significantly. Do not charge old terminating Pods the new request when the old Pod was larger.
+If a new release changes requests, calculate old, new, and terminating populations separately over the rollout sequence. A simple upper bound can use the larger old/new request for each resource, but it may overestimate capacity significantly. Charge old terminating Pods their actual old request; using the new request would understate demand when the old Pod was larger.
 
 ## Translate resources into feasible placement
 
