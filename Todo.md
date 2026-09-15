@@ -201,7 +201,6 @@
 ## Capacity Planning
 
 
-5. How to Calculate Backend Capacity When Cache Hit Rates Collapse
 6. How to Cap Django Replica Growth Using a PostgreSQL Connection Budget
 7. How to Calculate Queue Recovery Capacity While New Messages Keep Arriving
 8. How to Plan Worker Capacity When Message Processing Times Vary Widely
