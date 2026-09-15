@@ -243,7 +243,6 @@
 
 ## Drone
 
-25. How to Isolate Drone Kubernetes Runner Workloads by Repository and Trust Level
 26. How to Set CPU and Memory Requests Without Starving Multi-Step Drone Kubernetes Pipelines
 27. How to Source Drone Secrets from HashiCorp Vault Without Storing Long-Lived Tokens in Repositories
 28. How to Write a Custom Drone Plugin and Map Settings to `PLUGIN_*` Environment Variables
