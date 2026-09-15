@@ -1,4 +1,4 @@
-# Validation Summary: How to Enforce Kubernetes Namespace, Service Account, and Resource Policies for Drone Builds
+# Validation Summary: How to Enforce Namespace, Service Account, and Resource Policies in Drone
 
 ## Status
 validated

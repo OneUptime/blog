@@ -1,4 +1,4 @@
-# How to Evaluate and Deploy Drone's Beta High-Availability Mode with PostgreSQL, Redis, and a Load Balancer
+# How to Deploy Drone's Beta HA Mode with PostgreSQL, Redis, and a Load Balancer
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

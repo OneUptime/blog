@@ -1,4 +1,4 @@
-# How to Build Docker Images in Drone Without Exposing an Unrestricted Docker Socket
+# How to Build Docker Images in Drone Without an Unrestricted Docker Socket
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

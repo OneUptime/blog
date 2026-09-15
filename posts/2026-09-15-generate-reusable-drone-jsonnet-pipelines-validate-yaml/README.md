@@ -1,4 +1,4 @@
-# How to Generate Reusable Drone Pipelines with Jsonnet and Validate the Rendered YAML
+# How to Generate Drone Pipelines with Jsonnet and Validate the YAML
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

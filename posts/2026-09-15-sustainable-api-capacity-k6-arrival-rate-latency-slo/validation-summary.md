@@ -1,4 +1,4 @@
-# Validation Summary: How to Find Sustainable API Capacity Under a Latency SLO with k6 Arrival-Rate Tests
+# Validation Summary: How to Measure API Capacity Under a Latency SLO with k6 Arrival-Rate Tests
 
 ## Status
 validated

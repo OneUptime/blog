@@ -1,4 +1,4 @@
-# `trigger` vs. `when` in Drone: How to Filter Pipelines and Individual Steps Correctly
+# Drone trigger vs. when: How to Filter Pipelines and Steps
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

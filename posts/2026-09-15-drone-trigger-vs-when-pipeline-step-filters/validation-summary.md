@@ -1,4 +1,4 @@
-# Validation Summary: `trigger` vs. `when` in Drone: How to Filter Pipelines and Individual Steps Correctly
+# Validation Summary: Drone trigger vs. when: How to Filter Pipelines and Steps
 
 ## Status
 validated

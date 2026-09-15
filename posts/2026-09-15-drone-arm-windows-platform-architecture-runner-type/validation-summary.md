@@ -1,4 +1,4 @@
-# Validation Summary: Drone Pipeline Works Locally but Fails on ARM or Windows: Match Architecture, OS, and Runner Type
+# Validation Summary: Drone Fails on ARM or Windows: Match Architecture, OS, and Runner Type
 
 ## Status
 validated

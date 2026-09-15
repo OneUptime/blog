@@ -1,4 +1,4 @@
-# How to Set CPU and Memory Requests Without Starving Multi-Step Drone Kubernetes Pipelines
+# How to Set CPU and Memory Requests for Multi-Step Drone Kubernetes Pipelines
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

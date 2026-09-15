@@ -1,4 +1,4 @@
-# Drone Secrets Are Empty: Fix `from_secret`, Target Names, and Repository or Organization Scope
+# Drone Secrets Are Empty: Fix from_secret, Target Names, and Scope
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -1,4 +1,4 @@
-# How to Calculate Kubernetes Capacity for Concurrent Rollouts Across Multiple Deployments
+# How to Calculate Kubernetes Capacity for Concurrent Deployment Rollouts
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

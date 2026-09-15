@@ -1,4 +1,4 @@
-# Drone Pipeline Stuck on Pending: Match Runner Labels, Platform, Type, and Capacity
+# Drone Pipelines Pending: Check Runner Labels, Platform, Type, and Capacity
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

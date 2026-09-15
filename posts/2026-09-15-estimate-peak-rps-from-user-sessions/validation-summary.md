@@ -1,4 +1,4 @@
-# Validation Summary: How to Estimate Peak Requests per Second from User Sessions for Capacity Planning
+# Validation Summary: How to Estimate Peak API Requests per Second from User Sessions
 
 ## Status
 validated

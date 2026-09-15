@@ -1,4 +1,4 @@
-# How to Source Drone Secrets from HashiCorp Vault Without Storing Long-Lived Tokens in Repositories
+# How to Source Drone Secrets from Vault Without Tokens in Repositories
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

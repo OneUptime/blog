@@ -1,4 +1,4 @@
-# Validation Summary: How to Evaluate and Deploy Drone's Beta High-Availability Mode with PostgreSQL, Redis, and a Load Balancer
+# Validation Summary: How to Deploy Drone's Beta HA Mode with PostgreSQL, Redis, and a Load Balancer
 
 ## Status
 validated

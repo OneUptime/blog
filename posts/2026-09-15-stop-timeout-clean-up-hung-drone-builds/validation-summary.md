@@ -1,4 +1,4 @@
-# Validation Summary: How to Stop, Timeout, and Clean Up Hung Drone Builds Without Orphaning Containers
+# Validation Summary: How to Stop and Clean Up Hung Drone Builds Without Orphaning Containers
 
 ## Status
 validated

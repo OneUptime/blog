@@ -1,4 +1,4 @@
-# Validation Summary: How to Write a Custom Drone Plugin and Map Settings to `PLUGIN_*` Environment Variables
+# Validation Summary: How to Write a Drone Plugin and Map Settings to PLUGIN_* Variables
 
 ## Status
 validated

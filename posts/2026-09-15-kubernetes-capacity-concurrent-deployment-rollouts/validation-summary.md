@@ -1,4 +1,4 @@
-# Validation Summary: How to Calculate Kubernetes Capacity for Concurrent Rollouts Across Multiple Deployments
+# Validation Summary: How to Calculate Kubernetes Capacity for Concurrent Deployment Rollouts
 
 ## Status
 validated

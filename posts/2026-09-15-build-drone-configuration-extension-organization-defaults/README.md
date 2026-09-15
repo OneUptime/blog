@@ -1,4 +1,4 @@
-# How to Build a Drone Configuration Extension for Organization-Wide Pipeline Defaults
+# How to Build a Drone Configuration Extension for Shared Pipeline Defaults
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -1,4 +1,4 @@
-# Validation Summary: How to Run Drone Pipelines in Sequence with `depends_on` Without Accidental Parallelism
+# Validation Summary: How to Sequence Drone Pipelines with depends_on and Control Parallelism
 
 ## Status
 validated

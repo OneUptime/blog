@@ -1,4 +1,4 @@
-# How to Pass Generated Values Between Drone Steps and Pipelines Without Dynamic Environment Variables
+# How to Pass Generated Values Between Drone Steps and Pipelines
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

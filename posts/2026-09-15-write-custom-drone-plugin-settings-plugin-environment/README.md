@@ -1,4 +1,4 @@
-# How to Write a Custom Drone Plugin and Map Settings to `PLUGIN_*` Environment Variables
+# How to Write a Drone Plugin and Map Settings to PLUGIN_* Variables
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

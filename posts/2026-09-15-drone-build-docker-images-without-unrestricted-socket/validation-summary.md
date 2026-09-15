@@ -1,4 +1,4 @@
-# Validation Summary: How to Build Docker Images in Drone Without Exposing an Unrestricted Docker Socket
+# Validation Summary: How to Build Docker Images in Drone Without an Unrestricted Docker Socket
 
 ## Status
 validated

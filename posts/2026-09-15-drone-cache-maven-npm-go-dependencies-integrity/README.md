@@ -1,4 +1,4 @@
-# How to Cache Maven, npm, and Go Dependencies in Drone Without Reusing Corrupt State
+# How to Cache Maven, npm, and Go Dependencies Safely in Drone
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

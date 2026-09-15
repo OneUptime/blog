@@ -1,4 +1,4 @@
-# Drone Docker Publish Says “No Basic Auth Credentials”: Separate Plugin Secrets from Pull Secrets
+# Drone Docker 'No Basic Auth Credentials': Check Plugin and Pull Secrets
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

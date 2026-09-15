@@ -1,4 +1,4 @@
-# Validation Summary: How to Plan Capacity Purchases Around Exhaustion Forecasts and Hardware Delivery Delays
+# Validation Summary: How to Plan Capacity Purchases Around Forecasts and Hardware Delivery Delays
 
 ## Status
 validated

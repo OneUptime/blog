@@ -1,4 +1,4 @@
-# Validation Summary: How to Compare Capacity Plans When Budget, Placement, and Redundancy Constraints Conflict
+# Validation Summary: How to Compare Capacity Plans Under Budget, Placement, and Redundancy Limits
 
 ## Status
 validated

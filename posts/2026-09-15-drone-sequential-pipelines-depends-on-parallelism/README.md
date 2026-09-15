@@ -1,4 +1,4 @@
-# How to Run Drone Pipelines in Sequence with `depends_on` Without Accidental Parallelism
+# How to Sequence Drone Pipelines with depends_on and Control Parallelism
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

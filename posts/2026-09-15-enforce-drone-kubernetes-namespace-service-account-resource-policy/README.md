@@ -1,4 +1,4 @@
-# How to Enforce Kubernetes Namespace, Service Account, and Resource Policies for Drone Builds
+# How to Enforce Namespace, Service Account, and Resource Policies in Drone
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

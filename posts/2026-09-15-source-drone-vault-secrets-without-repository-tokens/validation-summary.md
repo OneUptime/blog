@@ -1,4 +1,4 @@
-# Validation Summary: How to Source Drone Secrets from HashiCorp Vault Without Storing Long-Lived Tokens in Repositories
+# Validation Summary: How to Source Drone Secrets from Vault Without Tokens in Repositories
 
 ## Status
 

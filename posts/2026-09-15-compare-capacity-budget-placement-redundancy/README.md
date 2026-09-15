@@ -1,4 +1,4 @@
-# How to Compare Capacity Plans When Budget, Placement, and Redundancy Constraints Conflict
+# How to Compare Capacity Plans Under Budget, Placement, and Redundancy Limits
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

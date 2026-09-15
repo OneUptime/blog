@@ -1,4 +1,4 @@
-# Validation Summary: How to Cache Maven, npm, and Go Dependencies in Drone Without Reusing Corrupt State
+# Validation Summary: How to Cache Maven, npm, and Go Dependencies Safely in Drone
 
 ## Status
 validated

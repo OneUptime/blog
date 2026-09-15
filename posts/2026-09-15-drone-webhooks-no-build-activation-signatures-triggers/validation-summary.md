@@ -1,4 +1,4 @@
-# Validation Summary: Drone Webhooks Arrive but No Build Starts: Check Repository Activation, Signatures, and Trigger Filters
+# Validation Summary: Drone Webhooks Start No Builds: Check Activation, Signatures, and Triggers
 
 ## Status
 validated

@@ -56,6 +56,8 @@ resources:
 
 Create the namespaces, accounts, and matching node labels before testing. Mount the policy and configure `DRONE_POLICY_FILE` on the runner. Policies use first-match selection, so keep the catch-all last and make every policy complete. See [Drone runner policies](https://docs.drone.io/runner/kubernetes/configuration/policies/).
 
+The policy's `node_selector` alone does not enforce node isolation. The runner accepts repository-controlled `node_name`, copies it into the Pod, and leaves it intact when applying the selector policy. Kubernetes [`nodeName` bypasses the scheduler and overrides `nodeSelector`](https://kubernetes.io/docs/concepts/scheduling-eviction/assign-pod-node/#nodename). Before treating separate node pools as a trust boundary, reject nonempty `node_name` through administrator-controlled server validation, or reject nonempty `spec.nodeName` when Drone build Pods are created through Kubernetes admission. Verify this behavior against the [pinned runner compiler](https://github.com/drone-runners/drone-runner-kube/blob/018c41607ac6366a59beaa9a2cf497669dc07258/engine/compiler/compiler.go) and your deployed revision.
+
 The runner's [compiler](https://github.com/drone-runners/drone-runner-kube/blob/master/engine/compiler/compiler.go) supplies repository, event, and target-branch metadata to policy matching. This example relies on those fields; verify them against your installed runner. Do not invent a `trust_level` selector and assume the runner enforces it.
 
 A push to `main` is trusted only if the Git provider prevents unauthorized direct pushes and requires the reviews you expect. Tag releases need a separate policy because a tag event has no reliable source-branch association. Unrecognized events should remain on the restrictive path.
@@ -93,6 +95,6 @@ For stronger separation, use distinct runner deployments with namespace-scoped c
 
 ## Test both intended routing and attempted escape
 
-Run a pull request, a push to a feature branch, and a reviewed push to `main`. Inspect the namespace, service account, node placement, token mounts, and network access for each. Then attempt to request the release namespace and account from the pull request configuration; the policy and cluster controls should prevent that override.
+Run a pull request, a push to a feature branch, and a reviewed push to `main`. Inspect the namespace, service account, node placement, token mounts, and network access for each. Then attempt to request the release namespace and account from the pull request configuration; the policy and cluster controls should prevent that override. Also submit `node_name` naming a release node from an untrusted pipeline and require rejection before the Pod starts. Confirm ordinary builds still schedule through the enforced selector.
 
 Record these tests alongside the policy version. Re-run them whenever runner images, Git provider permissions, secret integrations, or Kubernetes admission rules change. Isolation is the observed behavior of all those controls together, not just a successful policy-file deployment.

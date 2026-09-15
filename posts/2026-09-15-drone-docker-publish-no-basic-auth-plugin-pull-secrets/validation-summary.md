@@ -1,4 +1,4 @@
-# Validation Summary: Drone Docker Publish Says “No Basic Auth Credentials”: Separate Plugin Secrets from Pull Secrets
+# Validation Summary: Drone Docker 'No Basic Auth Credentials': Check Plugin and Pull Secrets
 
 ## Status
 validated

@@ -1,4 +1,4 @@
-# How to Budget Shared Service Capacity for Overlapping Batch and Interactive Peaks
+# How to Budget Capacity for Overlapping Batch and Interactive Peaks
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

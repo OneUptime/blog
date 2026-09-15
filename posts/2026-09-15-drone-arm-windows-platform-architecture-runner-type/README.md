@@ -1,4 +1,4 @@
-# Drone Pipeline Works Locally but Fails on ARM or Windows: Match Architecture, OS, and Runner Type
+# Drone Fails on ARM or Windows: Match Architecture, OS, and Runner Type
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

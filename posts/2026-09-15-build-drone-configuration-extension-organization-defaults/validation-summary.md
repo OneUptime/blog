@@ -1,4 +1,4 @@
-# Validation Summary: How to Build a Drone Configuration Extension for Organization-Wide Pipeline Defaults
+# Validation Summary: How to Build a Drone Configuration Extension for Shared Pipeline Defaults
 
 ## Status
 validated

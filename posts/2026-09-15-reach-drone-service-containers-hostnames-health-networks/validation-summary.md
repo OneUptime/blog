@@ -1,4 +1,4 @@
-# Validation Summary: How to Reach Service Containers from Drone Steps: Hostnames, Ports, Health Checks, and Networks
+# Validation Summary: How to Reach Drone Services: Hostnames, Ports, Health Checks, and Networks
 
 ## Status
 validated
@@ -26,9 +26,9 @@ Technical guide
 - Kubernetes pod documentation: https://kubernetes.io/docs/concepts/workloads/pods/
 
 ## Issues Found
-- The retry loop used `$$((attempts + 1))` and `$$attempts`. Drone's configuration substitution recognizes braced `${...}` expressions; it does not turn these unbraced double-dollar forms into ordinary shell expansions. The arithmetic assignment would therefore be invalid shell syntax, and `$$attempts` would represent the shell PID followed by text. Changed them to `$((attempts + 1))` and `$attempts`.
-- The accompanying explanation stated that double-dollar escaping was necessary for the loop's inline shell expansions. Revised it to explain that Drone escaping is needed for braced inline expressions such as `${NAME}`, written as `$${NAME}`, but not for `$name` or `$((...))`.
+- The explanation incorrectly described double-dollar escaping as necessary for every inline shell expansion. Clarified that it is optional for unbraced variables and arithmetic, while braced runtime expressions must be escaped. The original double-dollar commands are valid and remain unchanged.
 
 ## Review Notes
+- Tested the actual `drone/envsubst` v1.0.3 implementation and executed six resulting shell cases: plain and double-dollar variables, command substitution, and arithmetic all behave correctly. Braced expressions without escaping are expanded during configuration processing; `$${NAME}` reaches the runtime shell as `${NAME}`. Verified the [escape scanner](https://github.com/drone/envsubst/blob/0351a447dc0531882e15ce0a2367c9f797927a10/parse/scan.go#L120-L188) and the [Docker runner's v1.0.3 dependency](https://github.com/drone-runners/drone-runner-docker/blob/58f896ddd9292ecc8eb03ed93d1e1cdb23002c25/go.mod#L11).
 - The floating `postgres:17-bookworm` and `postgres:17-alpine` tags are currently available and appropriate for a major-version example, but they can move to newer PostgreSQL 17 minor releases and newer base-image revisions.
 - `PGPASSWORD` is suitable here only because the post explicitly scopes the credentials to a disposable test database. PostgreSQL advises against this environment variable for sensitive long-lived credentials on systems where process environments may be observable.

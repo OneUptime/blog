@@ -1,4 +1,4 @@
-# Validation Summary: Drone Pipeline Stuck on Pending: Match Runner Labels, Platform, Type, and Capacity
+# Validation Summary: Drone Pipelines Pending: Check Runner Labels, Platform, Type, and Capacity
 
 ## Status
 validated

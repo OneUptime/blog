@@ -1,4 +1,4 @@
-# How to Estimate Peak Requests per Second from User Sessions for Capacity Planning
+# How to Estimate Peak API Requests per Second from User Sessions
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

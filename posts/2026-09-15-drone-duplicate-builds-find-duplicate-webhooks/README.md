@@ -1,4 +1,4 @@
-# Why Drone Starts the Same Build Twice—and How to Find Duplicate Webhooks
+# Why Drone Starts the Same Build Twice-and How to Find Duplicate Webhooks
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

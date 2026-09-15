@@ -1,4 +1,4 @@
-# “Insufficient Privileges to Use Privileged Mode” in Drone: Trusted Repositories and Runner Security
+# Drone 'Insufficient Privileges': Check Repository Trust and Runner Security
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
@@ -73,7 +73,7 @@ Inspect runner-wide injected volumes and privileged-image configuration as well.
 
 The Docker runner has a `DRONE_RUNNER_PRIVILEGED_IMAGES` setting for images that are started privileged by default. This is a separate mechanism from a repository explicitly requesting `privileged: true`. Review the effective list for your deployed runner version rather than assuming every image with a familiar name is approved. [Privileged image configuration](https://docs.drone.io/runner/docker/configuration/reference/drone-runner-privileged-images/)
 
-Adding an arbitrary image to that list is a security-policy change, not a harmless substitute for repository trust. Pin and review allowed images, protect the registry that serves them, and keep the list small.
+Adding an arbitrary image to that list is a security-policy change, not a harmless substitute for repository trust. The runner [matches image names without tags or digests](https://github.com/drone-runners/drone-runner-docker/blob/58f896ddd9292ecc8eb03ed93d1e1cdb23002c25/internal/docker/image/image.go#L42-L53), so pinning an allowlist entry does not restrict the permitted image versions. Pin step images separately, enforce permitted digests through administrator-controlled validation, protect the registry that serves them, and keep the list small.
 
 Likewise, mounting `/var/run/docker.sock` into a build step can grant control of the host Docker daemon even without a privileged flag. Docker documents the daemon control surface as highly sensitive. [Docker Engine security](https://docs.docker.com/engine/security/)
 

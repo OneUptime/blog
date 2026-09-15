@@ -1,4 +1,4 @@
-# How to Plan Capacity Purchases Around Exhaustion Forecasts and Hardware Delivery Delays
+# How to Plan Capacity Purchases Around Forecasts and Hardware Delivery Delays
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
