@@ -243,7 +243,6 @@
 
 ## Drone
 
-17. How to Stop, Timeout, and Clean Up Hung Drone Builds Without Orphaning Containers
 18. How to Tag Docker Images from Drone Branch, Commit, and Git Tag Events Safely
 19. How to Reach Service Containers from Drone Steps: Hostnames, Ports, Health Checks, and Networks
 20. How to Prevent Secrets from Reaching Untrusted Drone Pull Requests and Forks
