@@ -243,7 +243,6 @@
 
 ## Drone
 
-29. How to Evaluate and Deploy Drone's Beta High-Availability Mode with PostgreSQL, Redis, and a Load Balancer
 30. How to Upgrade Drone Server and Runners Without Stranding In-Flight Builds
 31. How to Back Up and Restore Drone's Database Without Breaking Repository and Build Metadata
 32. How to Monitor Drone Queue Depth and Running Jobs with the Built-In Prometheus Metrics
