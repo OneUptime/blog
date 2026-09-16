@@ -244,7 +244,6 @@
 
 ## Drone
 
-35. How to Prevent an Older Drone Build from Deploying After a Newer Commit
 36. How to Serialize Drone Production Deployments While Keeping Test Pipelines Parallel
 37. How to Convert Local Schedules to Drone's UTC Cron Expressions Without Triggering Push-Only Steps
 38. How to Fan Out Drone Test Shards and Fan In Coverage and Test Reports
