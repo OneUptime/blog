@@ -247,7 +247,6 @@
 
 ## gRPC
 
-6. `wait_for_ready` vs. Fail Fast in gRPC: Prevent Startup Races Without Hiding Outages
 7. How to Apply Backpressure to gRPC Streams Before Slow Consumers Exhaust Server Memory
 8. gRPC Hits the HTTP/2 Concurrent-Stream Limit: Tune Connections, Queues, and `MAX_CONCURRENT_STREAMS`
 9. How to Serve gRPC and HTTP/JSON on the Same Port with Protocol Detection and Safe Fallbacks
