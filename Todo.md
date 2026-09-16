@@ -247,7 +247,6 @@
 
 ## gRPC
 
-4. Python gRPC Channels: How to Reuse One Stub and Close It Without Leaking Threads
 5. gRPC Client Stays on a Dead Kubernetes Pod: Fix DNS Re-Resolution, Resolver Schemes, and Channel State
 6. `wait_for_ready` vs. Fail Fast in gRPC: Prevent Startup Races Without Hiding Outages
 7. How to Apply Backpressure to gRPC Streams Before Slow Consumers Exhaust Server Memory
