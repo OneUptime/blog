@@ -244,7 +244,6 @@
 
 ## Drone
 
-31. How to Back Up and Restore Drone's Database Without Breaking Repository and Build Metadata
 32. How to Monitor Drone Queue Depth and Running Jobs with the Built-In Prometheus Metrics
 33. How to Rotate Drone's RPC Secret Across Servers and Runners with a Controlled Maintenance Window
 34. How to Roll Back a Drone Deployment with Rollback Events and the Original Build Metadata
