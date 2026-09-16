@@ -217,7 +217,6 @@
 ## Buildkite
 
 
-10. How to Skip Repository Checkout for Buildkite Deployment Steps
 11. How to Prevent Stale Buildkite Working Directories from Breaking Git Pushes
 12. How to Prioritize Buildkite Release Jobs Over Pull Request Builds
 13. How to Run Bash-Based Buildkite Hooks on Windows Agents
