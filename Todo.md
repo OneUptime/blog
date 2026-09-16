@@ -244,7 +244,6 @@
 
 ## Drone
 
-37. How to Convert Local Schedules to Drone's UTC Cron Expressions Without Triggering Push-Only Steps
 38. How to Fan Out Drone Test Shards and Fan In Coverage and Test Reports
 39. How to Preserve Drone Test Reports and Build Artifacts After Ephemeral Workspaces Disappear
 40. How to Build Change-Aware Drone Pipelines for Large Monorepos Without Running Every Service
