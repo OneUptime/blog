@@ -247,7 +247,6 @@
 
 ## gRPC
 
-16. How to Evolve Proto3 Scalar Fields to `optional` Without Breaking Older gRPC Clients
 17. How to Remove or Rename Protobuf Fields Safely with `deprecated` and `reserved`
 18. How to Avoid Duplicate Protobuf Symbols When Multiple gRPC Packages Share Common Types
 19. How to Distinguish Transport Failures from Application Status Errors in gRPC Clients
