@@ -54,7 +54,7 @@ Give the producer a stable key:
 steps:
   - label: "Prepare local workspace"
     key: prepare-workspace
-    command: "bash .buildkite/scripts/prepare-workspace.sh"
+    command: "bash .buildkite/scripts/prepare-and-upload-local.sh"
     agents:
       queue: persistent-builds
 ```
@@ -64,11 +64,17 @@ After preparation succeeds and the manifest is complete, the producer can execut
 ```python
 import json
 import os
+from pathlib import Path
 
 owner = os.environ["BUILDKITE_AGENT_META_DATA_WORKSPACE_OWNER"]
-workspace = os.environ["LOCAL_WORKSPACE"]
-if not owner or not workspace.startswith("/var/lib/company/build-workspaces/"):
-    raise SystemExit("Missing workspace owner or unexpected workspace path")
+workspace_root = Path("/var/lib/company/build-workspaces").resolve(strict=True)
+workspace = Path(os.environ["LOCAL_WORKSPACE"]).resolve(strict=True)
+try:
+    relative_workspace = workspace.relative_to(workspace_root)
+except ValueError:
+    raise SystemExit("Workspace is outside the permitted root")
+if not owner or relative_workspace == Path("."):
+    raise SystemExit("Missing workspace owner or invalid workspace path")
 
 print(json.dumps({
     "steps": [{
@@ -77,13 +83,13 @@ print(json.dumps({
         "depends_on": "prepare-workspace",
         "agents": {"queue": "persistent-builds", "workspace_owner": owner},
         "checkout": {"skip": True},
-        "env": {"LOCAL_WORKSPACE": workspace},
+        "env": {"LOCAL_WORKSPACE": str(workspace)},
         "command": "/opt/company/bin/test-local-workspace",
     }]
 }))
 ```
 
-Save it as `.buildkite/local-consumer.py`, then upload the generated JSON:
+Save it as `.buildkite/local-consumer.py`, then use `.buildkite/scripts/prepare-and-upload-local.sh` to run the preparation script in the same shell before uploading the generated JSON:
 
 ```bash
 #!/usr/bin/env bash
@@ -91,6 +97,7 @@ set -euo pipefail
 
 consumer_definition=$(mktemp)
 trap 'rm -f -- "$consumer_definition"' EXIT
+source .buildkite/scripts/prepare-workspace.sh
 python3 .buildkite/local-consumer.py > "$consumer_definition"
 buildkite-agent pipeline upload --no-interpolation "$consumer_definition"
 ```
