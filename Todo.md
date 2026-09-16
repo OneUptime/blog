@@ -247,7 +247,6 @@
 
 ## gRPC
 
-5. gRPC Client Stays on a Dead Kubernetes Pod: Fix DNS Re-Resolution, Resolver Schemes, and Channel State
 6. `wait_for_ready` vs. Fail Fast in gRPC: Prevent Startup Races Without Hiding Outages
 7. How to Apply Backpressure to gRPC Streams Before Slow Consumers Exhaust Server Memory
 8. gRPC Hits the HTTP/2 Concurrent-Stream Limit: Tune Connections, Queues, and `MAX_CONCURRENT_STREAMS`
