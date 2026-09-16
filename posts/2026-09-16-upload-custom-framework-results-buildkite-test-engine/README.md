@@ -110,7 +110,7 @@ The runner must write a fresh result file for this invocation even when tests fa
 
 Parallel shards should share the build's run key while identifying their individual job IDs. Do not give each test a new run key or reuse one constant key across unrelated builds.
 
-The [CI environment guide](https://buildkite.com/docs/pipelines/configure/tests/ci-environments) describes the metadata used to group executions. Retried jobs represent new attempts, so retain their actual job identity and avoid re-uploading old files as though they came from the replacement job.
+The [CI environment guide](https://buildkite.com/docs/pipelines/configure/tests/test-collection/ci-environments) describes the metadata used to group executions. Retried jobs represent new attempts, so retain their actual job identity and avoid re-uploading old files as though they came from the replacement job.
 
 Choose one uploader per execution. If the harness uploads directly, disable overlapping collector or bktec uploads for the same results. The [test collection overview](https://buildkite.com/docs/pipelines/configure/tests/test-collection) explains the duplicate-execution risk.
 
