@@ -244,7 +244,6 @@
 
 ## Drone
 
-36. How to Serialize Drone Production Deployments While Keeping Test Pipelines Parallel
 37. How to Convert Local Schedules to Drone's UTC Cron Expressions Without Triggering Push-Only Steps
 38. How to Fan Out Drone Test Shards and Fan In Coverage and Test Reports
 39. How to Preserve Drone Test Reports and Build Artifacts After Ephemeral Workspaces Disappear
