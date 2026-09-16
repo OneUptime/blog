@@ -217,7 +217,6 @@
 ## Buildkite
 
 
-17. How to Gate Buildkite Fork Builds Before Untrusted Pipeline Code Runs
 18. How to Upload Custom Test Framework Results to Buildkite Test Engine
 19. How to Balance Pytest Shards Across Buildkite Parallel Jobs
 20. How to Reuse a Buildkite Agent for Steps That Need a Large Local Workspace
