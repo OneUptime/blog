@@ -91,7 +91,7 @@ steps:
       queue: deployments
 ```
 
-Priority and serialization are complementary. One chooses which eligible queued work receives compute; the other prevents concurrent operations on the protected environment. Review the [concurrency documentation](https://buildkite.com/docs/pipelines/configure/workflows/controlling-concurrency) before relying on priority to reorder jobs within a concurrency group.
+Priority and serialization are complementary. One chooses which eligible queued work receives compute; the other prevents concurrent operations on the protected environment. The default `ordered` concurrency method preserves creation order within a concurrency group; priority takes precedence for an available concurrency slot only when the group uses `concurrency_method: eager`. Keep the ordered default when deployment order matters, and review the [concurrency documentation](https://buildkite.com/docs/pipelines/configure/workflows/controlling-concurrency) before changing it.
 
 Also prevent stale releases through release identity and promotion policy. A high priority does not prove a build is the newest approved version.
 
