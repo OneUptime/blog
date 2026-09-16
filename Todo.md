@@ -217,7 +217,6 @@
 ## Buildkite
 
 
-19. How to Balance Pytest Shards Across Buildkite Parallel Jobs
 20. How to Reuse a Buildkite Agent for Steps That Need a Large Local Workspace
 
 ## Azure SQL
