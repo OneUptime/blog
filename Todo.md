@@ -217,7 +217,6 @@
 ## Buildkite
 
 
-11. How to Prevent Stale Buildkite Working Directories from Breaking Git Pushes
 12. How to Prioritize Buildkite Release Jobs Over Pull Request Builds
 13. How to Run Bash-Based Buildkite Hooks on Windows Agents
 14. How to Fix Invalid Variable Name Errors in Buildkite Docker Compose Cache Configuration
