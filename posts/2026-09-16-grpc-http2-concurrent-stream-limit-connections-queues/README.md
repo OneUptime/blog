@@ -24,7 +24,7 @@ A proxy introduces another capacity boundary. There is a client-to-proxy connect
 
 ## Estimate how much room remains
 
-Consider a connection with a negotiated limit of 100 streams. If 90 subscriptions stay open, only about 10 slots remain for other simultaneous RPCs on that connection. Those numbers are illustrative, not gRPC defaults.
+Consider a connection with an advertised limit of 100 streams. If 90 subscriptions stay open, only about 10 slots remain for other simultaneous RPCs on that connection. Those numbers are illustrative, not gRPC defaults.
 
 For unary traffic, a rough concurrency estimate is arrival rate multiplied by mean RPC duration. At 400 requests per second and 50 milliseconds of active duration, average concurrency is about 20. Bursts and tail latency require additional headroom.
 
