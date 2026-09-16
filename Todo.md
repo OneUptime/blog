@@ -244,7 +244,6 @@
 
 ## Drone
 
-40. How to Build Change-Aware Drone Pipelines for Large Monorepos Without Running Every Service
 
 ## gRPC
 
