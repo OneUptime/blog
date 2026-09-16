@@ -244,7 +244,6 @@
 
 ## Drone
 
-33. How to Rotate Drone's RPC Secret Across Servers and Runners with a Controlled Maintenance Window
 34. How to Roll Back a Drone Deployment with Rollback Events and the Original Build Metadata
 35. How to Prevent an Older Drone Build from Deploying After a Newer Commit
 36. How to Serialize Drone Production Deployments While Keeping Test Pipelines Parallel
