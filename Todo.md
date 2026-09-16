@@ -217,7 +217,6 @@
 ## Buildkite
 
 
-4. How to Control Which Buildkite Agent Receives a Retried Job
 5. How to Configure Buildkite Required Checks for GitHub Merge Queues
 6. How to Stop Duplicate Buildkite Runs from Overwriting GitHub Commit Status Links
 7. How to Diagnose Buildkite Git Fetch Failures from Short Bitbucket Commit Hashes
