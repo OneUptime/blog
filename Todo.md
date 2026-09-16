@@ -247,7 +247,6 @@
 
 ## gRPC
 
-12. How to Send and Read gRPC Trailers for Partial Results, Rate Limits, and Error Diagnostics
 13. How to Refresh Per-Call Authentication Metadata on Long-Lived gRPC Channels
 14. How to Diagnose gRPC Streams That Buffer Messages Instead of Delivering Them in Real Time
 15. How to Test Go gRPC Services In Memory with `bufconn` and `grpc.NewClient`
