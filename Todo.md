@@ -217,7 +217,6 @@
 ## Buildkite
 
 
-12. How to Prioritize Buildkite Release Jobs Over Pull Request Builds
 13. How to Run Bash-Based Buildkite Hooks on Windows Agents
 14. How to Fix Invalid Variable Name Errors in Buildkite Docker Compose Cache Configuration
 15. How to Design Docker Image Caching for Buildkite Agents on Kubernetes
