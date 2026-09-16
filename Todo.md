@@ -217,7 +217,6 @@
 ## Buildkite
 
 
-13. How to Run Bash-Based Buildkite Hooks on Windows Agents
 14. How to Fix Invalid Variable Name Errors in Buildkite Docker Compose Cache Configuration
 15. How to Design Docker Image Caching for Buildkite Agents on Kubernetes
 16. How to Restrict AWS Role Trust to Specific Buildkite Pipelines with OIDC Claims
