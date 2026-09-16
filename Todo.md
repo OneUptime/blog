@@ -247,7 +247,6 @@
 
 ## gRPC
 
-20. How to Drain gRPC Connections During Kubernetes Rolling Updates Without `UNAVAILABLE` Spikes
 
 ## PostgreSQL Operator
 
