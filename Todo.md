@@ -247,7 +247,6 @@
 
 ## gRPC
 
-17. How to Remove or Rename Protobuf Fields Safely with `deprecated` and `reserved`
 18. How to Avoid Duplicate Protobuf Symbols When Multiple gRPC Packages Share Common Types
 19. How to Distinguish Transport Failures from Application Status Errors in gRPC Clients
 20. How to Drain gRPC Connections During Kubernetes Rolling Updates Without `UNAVAILABLE` Spikes
