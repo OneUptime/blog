@@ -217,7 +217,6 @@
 ## Buildkite
 
 
-1. How to Retry Buildkite Jobs After Agent Shutdown Without Retrying Test Timeouts
 2. How to Regenerate Buildkite Test Reports After Retrying Upstream Jobs
 3. How to Diagnose Buildkite Manual Retries That Are Immediately Canceled by Fast Fail
 4. How to Control Which Buildkite Agent Receives a Retried Job
