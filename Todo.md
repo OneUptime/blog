@@ -247,7 +247,6 @@
 
 ## gRPC
 
-1. A gRPC Stream Dies After a Network Blip: How to Reconnect, Resume, and Avoid Duplicate Messages
 2. How to Shut Down a gRPC Server Gracefully Without Terminating Long-Lived Streams
 3. How to Detect gRPC Client Disconnects Without Polling the Underlying TCP Connection
 4. Python gRPC Channels: How to Reuse One Stub and Close It Without Leaking Threads
