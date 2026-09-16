@@ -247,7 +247,6 @@
 
 ## gRPC
 
-9. How to Serve gRPC and HTTP/JSON on the Same Port with Protocol Detection and Safe Fallbacks
 10. How to Debug “HTTP/2 Client Preface String Missing or Corrupt” Between gRPC Clients and Proxies
 11. How to Propagate gRPC Cancellation Through Fan-Out Calls Without Leaking Backend Work
 12. How to Send and Read gRPC Trailers for Partial Results, Rate Limits, and Error Diagnostics
