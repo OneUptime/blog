@@ -217,7 +217,6 @@
 ## Buildkite
 
 
-7. How to Diagnose Buildkite Git Fetch Failures from Short Bitbucket Commit Hashes
 8. How to Pass Buildkite Secrets into Docker Steps Without Printing Them
 9. How to Trace AWS Credential Changes Across Buildkite Plugin Hooks
 10. How to Skip Repository Checkout for Buildkite Deployment Steps
