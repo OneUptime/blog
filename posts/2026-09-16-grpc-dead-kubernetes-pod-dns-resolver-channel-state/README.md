@@ -33,9 +33,9 @@ If the application resolves DNS once at startup and then passes a Pod IP to gRPC
 
 ## Use an explicit resolver scheme
 
-A target such as `dns:///ledger-headless.payments.svc.cluster.local:50051` selects DNS resolution. The empty authority between `//` and `/` means use the configured resolver; it is not an HTTP URL. Do not add `https://` to select transport encryption.
+A target such as `dns:///ledger-headless.payments.svc.cluster.local:50051` selects DNS resolution. The empty authority between `//` and `/` means use the default DNS server; it is not an HTTP URL. Do not add `https://` to select transport encryption.
 
-For Go, `grpc.NewClient` uses DNS by default, while the older `grpc.Dial` defaults to passthrough for compatibility. The [gRPC-Go client creation guide](https://github.com/grpc/grpc-go/blob/master/Documentation/anti-patterns.md) explains this difference. Explicit targets make migrations and custom dialers easier to reason about.
+For Go, `grpc.NewClient` uses DNS by default unless the application overrides the default resolver scheme, while the older `grpc.Dial` defaults to passthrough for compatibility. The [gRPC-Go client creation guide](https://github.com/grpc/grpc-go/blob/master/Documentation/anti-patterns.md) explains this difference. Explicit targets make migrations and custom dialers easier to reason about.
 
 This complete client constructor uses system certificate roots and a headless Service. The server certificate must cover the service hostname:
 
