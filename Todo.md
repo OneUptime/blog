@@ -247,7 +247,6 @@
 
 ## gRPC
 
-13. How to Refresh Per-Call Authentication Metadata on Long-Lived gRPC Channels
 14. How to Diagnose gRPC Streams That Buffer Messages Instead of Delivering Them in Real Time
 15. How to Test Go gRPC Services In Memory with `bufconn` and `grpc.NewClient`
 16. How to Evolve Proto3 Scalar Fields to `optional` Without Breaking Older gRPC Clients
