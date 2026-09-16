@@ -59,7 +59,7 @@ Start with an alert that exposes both backlog and loss of visibility:
 groups:
   - name: drone-queue
     rules:
-      - alert: DroneQueueGrowing
+      - alert: DroneQueueBacklog
         expr: drone_pending_jobs{job="drone"} > 10
         for: 15m
         labels:
