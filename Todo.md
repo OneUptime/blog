@@ -247,7 +247,6 @@
 
 ## gRPC
 
-8. gRPC Hits the HTTP/2 Concurrent-Stream Limit: Tune Connections, Queues, and `MAX_CONCURRENT_STREAMS`
 9. How to Serve gRPC and HTTP/JSON on the Same Port with Protocol Detection and Safe Fallbacks
 10. How to Debug “HTTP/2 Client Preface String Missing or Corrupt” Between gRPC Clients and Proxies
 11. How to Propagate gRPC Cancellation Through Fan-Out Calls Without Leaking Backend Work
