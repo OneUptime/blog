@@ -247,7 +247,6 @@
 
 ## gRPC
 
-19. How to Distinguish Transport Failures from Application Status Errors in gRPC Clients
 20. How to Drain gRPC Connections During Kubernetes Rolling Updates Without `UNAVAILABLE` Spikes
 
 ## PostgreSQL Operator
