@@ -217,7 +217,6 @@
 ## Buildkite
 
 
-20. How to Reuse a Buildkite Agent for Steps That Need a Large Local Workspace
 
 ## Azure SQL
 
