@@ -217,7 +217,6 @@
 ## Buildkite
 
 
-15. How to Design Docker Image Caching for Buildkite Agents on Kubernetes
 16. How to Restrict AWS Role Trust to Specific Buildkite Pipelines with OIDC Claims
 17. How to Gate Buildkite Fork Builds Before Untrusted Pipeline Code Runs
 18. How to Upload Custom Test Framework Results to Buildkite Test Engine
