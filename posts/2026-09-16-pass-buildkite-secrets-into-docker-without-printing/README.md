@@ -14,7 +14,7 @@ Keep the secret in the job environment and pass its variable name to Docker. Ret
 
 ## Retrieve the secret before the command phase
 
-Assume the secret `integration_api_token` exists in Buildkite Secrets and its access policy permits the current test job. Native secret keys must start with a letter and contain only letters, digits, and underscores; see the [secret key requirements](https://buildkite.com/docs/apis/rest-api/clusters/secrets). On a self-hosted Linux agent, a repository `pre-command` hook can retrieve it:
+Assume the secret `integration_api_token` exists in Buildkite Secrets and its access policy permits the current test job. Native secret keys must start with a letter, contain only letters, digits, and underscores, be at most 255 characters long, and not start with `buildkite` or `bk` (case-insensitive); see the [secret key requirements](https://buildkite.com/docs/apis/rest-api/clusters/secrets). On a self-hosted Linux agent, a repository `pre-command` hook can retrieve it:
 
 ```bash
 #!/usr/bin/env bash
@@ -105,6 +105,6 @@ Buildkite automatically redacts some sensitive values, including secrets fetched
 
 ## Check failure paths too
 
-Test a job denied access to the secret, a missing secret, and an empty value. Each should fail before the container performs authenticated work. Inspect the stored YAML and logs for the harmless test credential used in a staging trial.
+Test a job denied access to the secret and a missing secret. You can also mock an empty command result to exercise the shell guard; Buildkite Secrets does not permit blank stored values. Each should fail before the container performs authenticated work. Inspect the stored YAML and logs for the harmless test credential used in a staging trial.
 
 Finally, confirm that an untrusted fork job cannot request the secret at all. A clean log is useful, but the stronger boundary is limiting which jobs and containers receive credentials in the first place.
