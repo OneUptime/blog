@@ -217,7 +217,6 @@
 ## Buildkite
 
 
-8. How to Pass Buildkite Secrets into Docker Steps Without Printing Them
 9. How to Trace AWS Credential Changes Across Buildkite Plugin Hooks
 10. How to Skip Repository Checkout for Buildkite Deployment Steps
 11. How to Prevent Stale Buildkite Working Directories from Breaking Git Pushes
