@@ -247,7 +247,6 @@
 
 ## gRPC
 
-2. How to Shut Down a gRPC Server Gracefully Without Terminating Long-Lived Streams
 3. How to Detect gRPC Client Disconnects Without Polling the Underlying TCP Connection
 4. Python gRPC Channels: How to Reuse One Stub and Close It Without Leaking Threads
 5. gRPC Client Stays on a Dead Kubernetes Pod: Fix DNS Re-Resolution, Resolver Schemes, and Channel State
