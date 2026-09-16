@@ -217,7 +217,6 @@
 ## Buildkite
 
 
-6. How to Stop Duplicate Buildkite Runs from Overwriting GitHub Commit Status Links
 7. How to Diagnose Buildkite Git Fetch Failures from Short Bitbucket Commit Hashes
 8. How to Pass Buildkite Secrets into Docker Steps Without Printing Them
 9. How to Trace AWS Credential Changes Across Buildkite Plugin Hooks
