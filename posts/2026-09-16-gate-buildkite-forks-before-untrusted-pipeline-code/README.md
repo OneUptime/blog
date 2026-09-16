@@ -8,7 +8,7 @@ Description: Place a trusted Buildkite approval gate before checkout and pipelin
 
 ---
 
-A block step inside a pull request's `.buildkite/pipeline.yml` is too late to protect the job that checked out the pull request and ran its pipeline generator. Repository hooks, plugins, and generator code may already have executed before that block was uploaded.
+A block step inside a pull request's `.buildkite/pipeline.yml` is too late to protect the job that checked out the pull request and ran its pipeline generator. Repository hooks and generator code may already have executed before that block was uploaded.
 
 Put the gate in trusted initial pipeline configuration, before any agent command that consumes fork-controlled code. After approval, continue to run the fork in an environment designed for untrusted work.
 
