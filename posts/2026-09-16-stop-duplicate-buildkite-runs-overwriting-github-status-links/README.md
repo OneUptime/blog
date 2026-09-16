@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Buildkite, GitHub, CI/CD, Troubleshooting, Automation
 
-Description: Identify duplicate status writers by commit and context, reduce duplicate Buildkite triggers, and preserve stable GitHub check ownership.
+Description: Identify duplicate status writers by commit and context, reduce duplicate Buildkite triggers, and preserve stable GitHub commit status ownership.
 
 ---
 
@@ -14,7 +14,7 @@ Fix the ownership of the status. Renaming a Buildkite step label or rerunning th
 
 ## Identify the collision
 
-A commit status has several relevant fields: commit SHA, context, state, target URL, and description. For this investigation, the effective identity is the repository, commit, and context. Branch names are not a separate namespace for commit statuses.
+A commit status has several relevant fields: commit SHA, context, state, target URL, and description. For this investigation, the effective identity is the repository, commit, and case-insensitive context. Branch names are not a separate namespace for commit statuses.
 
 GitHub's [commit status API](https://docs.github.com/en/rest/commits/statuses) distinguishes the history of statuses from the combined view, which uses the latest status for each context. This explains how the link can change while the original Buildkite build remains intact.
 
