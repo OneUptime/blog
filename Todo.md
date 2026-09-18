@@ -250,7 +250,6 @@
 
 ## PostgreSQL Operator
 
-12. CloudNativePG Major Upgrade Fails with Timeline or WAL Errors: How to Recover the Cutover
 13. How to Expand a PostgreSQL Operator PVC Safely—and What to Do When the StorageClass Cannot Resize
 14. How to Place PostgreSQL Operator Replicas Across Zones with Anti-Affinity and Topology Spread
 15. How to Keep PostgreSQL Operator Pods Available During Node Drains and Cluster Upgrades
