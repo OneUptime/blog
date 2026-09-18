@@ -250,7 +250,6 @@
 
 ## PostgreSQL Operator
 
-20. PostgreSQL Operator Cluster Stuck Reconciling: Read Conditions, Events, Instance Logs, and Finalizers
 
 ## Photon OS
 
