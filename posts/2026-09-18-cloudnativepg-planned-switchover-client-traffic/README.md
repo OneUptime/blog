@@ -58,12 +58,13 @@ kubectl patch pooler orders-pooler -n database --type=merge \
 A successful Kubernetes patch confirms desired state only. Inspect each PgBouncer instance through its administrative database. CloudNativePG's managed Pooler restricts this interface to local peer-authenticated connections as the `pgbouncer` operating-system user, as described in its [pooler security documentation](https://cloudnative-pg.io/docs/1.30/connection_pooling/#security). Use your approved per-pod local-socket access method and a client available in that image. In that admin connection, run:
 
 ```sql
+SHOW STATE;
 SHOW DATABASES;
 SHOW POOLS;
 SHOW SERVERS;
 ```
 
-Verify the affected database is paused on every pooler pod and server connections have drained. For separately managed PgBouncer installations that permit remote administration, a load-balanced Service checks only whichever pod handled that connection; it still does not verify every instance.
+Verify `SHOW STATE` reports `paused = yes` on every pooler pod and `SHOW SERVERS` has no remaining server connections. A global `PAUSE` does not set the per-database `paused` flag in `SHOW DATABASES`, and the global paused state alone does not prove the drain has completed. For separately managed PgBouncer installations that permit remote administration, a load-balanced Service checks only whichever pod handled that connection; it still does not verify every instance.
 
 If draining exceeds the maintenance budget, stop before promotion and resume the Pooler. Investigate long transactions, session-mode clients, or an unhealthy pooler. Include the resume command in the runbook and assign responsibility for it so an interrupted operator terminal does not leave the application paused indefinitely.
 
@@ -89,7 +90,7 @@ kubectl patch pooler orders-pooler -n database --type=merge \
   -p '{"spec":{"pgbouncer":{"paused":false}}}'
 ```
 
-Confirm every pooler instance resumed, waiting clients decline, and application latency returns to baseline.
+Confirm `SHOW STATE` reports `active = yes` and `paused = no` on every pooler instance, waiting clients decline, and application latency returns to baseline.
 
 ## Verify business traffic, not just readiness
 
