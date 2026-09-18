@@ -253,7 +253,6 @@
 
 ## Photon OS
 
-4. How to Stop a Cloned Photon OS VM from Reusing Its DHCP Identity
 5. How to Configure Photon OS with cloud-init and a NoCloud Seed ISO on vSphere
 6. How to Add, Prioritize, and Troubleshoot tdnf Repositories on Photon OS 5
 7. How to Repair Photon OS Updates After Repository URLs Move or TLS Certificates Fail
