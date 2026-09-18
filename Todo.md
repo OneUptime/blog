@@ -256,7 +256,6 @@
 
 ## Data Residency
 
-2. How to Build a Data Residency Inventory That Finds Copies in Queues, Caches, Logs, and Backups
 3. How to Separate a Global SaaS Control Plane from Regional Customer Data Planes
 4. How to Route Each SaaS Tenant to the Correct Regional Database Using a Residency Registry
 5. How to Choose Between Shared, Schema-per-Tenant, and Database-per-Region Storage for Data Residency
