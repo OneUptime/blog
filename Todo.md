@@ -253,7 +253,6 @@
 
 ## Photon OS
 
-19. How to Manage Photon OS Packages with Ansible When the Generic package Module Fails
 20. How to Reset an Expired or Locked Photon OS Root Password from GRUB
 
 ## Data Residency
