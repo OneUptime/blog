@@ -250,7 +250,6 @@
 
 ## PostgreSQL Operator
 
-14. How to Place PostgreSQL Operator Replicas Across Zones with Anti-Affinity and Topology Spread
 15. How to Keep PostgreSQL Operator Pods Available During Node Drains and Cluster Upgrades
 16. How to Rotate PostgreSQL Operator User Passwords and TLS Certificates Without Downtime
 17. How to Bootstrap Multiple Databases, Roles, and Extensions Declaratively in CloudNativePG
