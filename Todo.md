@@ -250,7 +250,6 @@
 
 ## PostgreSQL Operator
 
-1. CloudNativePG Failover Does Not Promote a Replica: Diagnose Quorum, WAL, and Instance Health
 2. How to Perform a Planned PostgreSQL Operator Switchover Without Dropping Client Traffic
 3. PgBouncer Still Points to the Old Primary After Operator Failover: DNS, Pool, and Reconnect Fixes
 4. How to Test PostgreSQL Operator Failover and Measure RPO and RTO Before Production
