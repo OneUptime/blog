@@ -256,7 +256,6 @@
 
 ## Data Residency
 
-6. How to Move One SaaS Tenant to a New Data Region with Minimal Downtime
 7. How to Keep Authentication, Sessions, and User Profiles Inside Regional Data Boundaries
 8. How to Restrict Google Cloud Pub/Sub Storage to Allowed Persistence Regions
 9. How to Check Whether Azure Storage Queues, Service Bus, and Functions Keep Data in Your Selected Geography
