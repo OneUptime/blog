@@ -253,7 +253,6 @@
 
 ## Photon OS
 
-6. How to Add, Prioritize, and Troubleshoot tdnf Repositories on Photon OS 5
 7. How to Repair Photon OS Updates After Repository URLs Move or TLS Certificates Fail
 8. How to Automate Photon OS Security Patching with tdnf-automatic
 9. How to Upgrade Photon OS in an Air-Gapped Environment with a Local Repository
