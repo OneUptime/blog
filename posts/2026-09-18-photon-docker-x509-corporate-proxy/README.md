@@ -12,7 +12,7 @@ An `x509: certificate signed by unknown authority` error during `docker pull` us
 
 ## Identify the failing request
 
-Capture the exact error, registry hostname, and timestamp:
+These commands assume Docker runs as a system service on the Photon host. Run the host administration commands in a root shell on that host. Capture the exact error, registry hostname, and timestamp:
 
 ```bash
 docker pull registry.example.com/team/app:approved
@@ -28,11 +28,11 @@ Docker distinguishes host and container trust in its [CA-certificate guidance](h
 
 ## Install the approved CA in the Photon host trust path
 
-Photon's [CA package specification](https://github.com/vmware/photon/blob/5.0/SPECS/ca-certificates/ca-certificates.spec) installs the bundle at `/etc/pki/tls/certs/ca-bundle.crt`. Inspect the local package files rather than assuming Ubuntu's `update-ca-certificates` or another distribution's `update-ca-trust` command exists.
+Photon 5.0's [CA package specification](https://github.com/vmware/photon/blob/5.0/SPECS/ca-certificates/ca-certificates.spec) installs the bundle at `/etc/pki/tls/certs/ca-bundle.crt` in the `ca-certificates-pki` subpackage. Inspect the local package files rather than assuming Ubuntu's `update-ca-certificates` or another distribution's `update-ca-trust` command exists.
 
 ```bash
-rpm -q ca-certificates
-rpm -ql ca-certificates
+rpm -q ca-certificates ca-certificates-pki
+rpm -ql ca-certificates ca-certificates-pki
 ls -l /etc/pki/tls/certs/ca-bundle.crt
 openssl x509 -in corporate-root.crt -noout -subject -issuer -fingerprint -sha256
 ```
@@ -63,7 +63,7 @@ Environment="NO_PROXY=localhost,127.0.0.1,registry.internal.example.com"
 
 Create the drop-in directory first if needed. Replace these values with your actual routing policy. Using an `http://` URL for `HTTPS_PROXY` can be correct: the variable describes HTTPS destination traffic, while the URL specifies how to reach the proxy.
 
-Inspect existing daemon JSON and service overrides for conflicting proxy settings. Docker documents that daemon configuration takes precedence over environment variables, so a conflicting `proxies` entry in `daemon.json` can make a correct service drop-in appear ineffective. Keep one deliberate source of proxy configuration. Avoid putting proxy credentials into a broadly readable file or pasting them into diagnostic output.
+Inspect existing daemon JSON and service overrides for conflicting proxy settings. Docker Engine 23.0 and later support proxy settings in `daemon.json`; these take precedence over environment variables, so a conflicting `proxies` entry in `daemon.json` can make a correct service drop-in appear ineffective. Keep one deliberate source of proxy configuration. Avoid putting proxy credentials into a broadly readable file or pasting them into diagnostic output.
 
 Check `NO_PROXY` separately from certificate trust. A bypassed registry must be reachable directly; adding its name to the bypass list does not repair its issuing chain. Conversely, sending an internal registry through a proxy that cannot reach it can produce connection failures unrelated to the CA bundle. Test the exact registry and authentication destinations from the daemon's intended route.
 
