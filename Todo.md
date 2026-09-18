@@ -253,7 +253,6 @@
 
 ## Photon OS
 
-3. How to Set a Persistent Static IP, Gateway, and DNS on Photon OS 5 with nmctl
 4. How to Stop a Cloned Photon OS VM from Reusing Its DHCP Identity
 5. How to Configure Photon OS with cloud-init and a NoCloud Seed ISO on vSphere
 6. How to Add, Prioritize, and Troubleshoot tdnf Repositories on Photon OS 5
