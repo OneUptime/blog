@@ -21,7 +21,7 @@ docker run --rm photon:5.0 sh -c \
 
 This command can exit nonzero when a tool is absent; that is expected during diagnosis. If the image differs from the official Photon base or comes from an internal registry, inspect its build history and package inventory before assuming a standard layout.
 
-Photon's [shadow package specification](https://github.com/vmware/photon/blob/5.0/SPECS/shadow/shadow.spec) supplies account-management programs including `useradd` and `groupadd`. Package splits and dependencies can change between revisions, so inspect what the matching repositories provide with `tdnf info shadow` and, after installation, `rpm -ql shadow`.
+Photon's [shadow package specification](https://github.com/vmware/photon/blob/5.0/SPECS/shadow/shadow.spec) supplies account-management programs including `useradd` and `groupadd`. Package splits and dependencies can change between revisions, so inspect what the matching repositories provide with `tdnf info shadow`. After installation, `rpm -ql shadow` lists the package files if the RPM CLI is available; minimal images may omit that CLI even when `tdnf` is present.
 
 Do not use an `apt`, `apk`, or `useradd` installation command copied from a different container distribution. The package manager belongs to the image filesystem, not to the operating system running Docker.
 
