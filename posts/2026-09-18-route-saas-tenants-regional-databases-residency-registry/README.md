@@ -86,8 +86,8 @@ Bind database pools to a deployment and credential identity. On migration, drain
 
 ## Test Routing and Migration Races
 
-Exercise unknown tenants, unauthorized tenant selection, unexpected deployment names, malformed records, stale versions, and unavailable registry reads. Verify that denied requests never open a database connection.
+Exercise unknown tenants, unauthorized tenant selection, unexpected deployment names, malformed records, stale versions, and unavailable registry reads. Verify that requests denied during authorization or placement resolution never acquire a customer database connection. Requests rejected by the database-backed regional fence must not modify customer rows.
 
-Then test a writer that starts immediately before the migration fence, a delayed queue message, and a process that misses cache invalidation. The old writer must finish before the fence completes, and later writers must be rejected. Compare the acknowledged writes with destination records before activating the new placement.
+Then test a writer that acquires the tenant-serving lock immediately before the migration fence, a delayed queue message, and a process that misses cache invalidation. The lock-holding writer must finish before the fence completes, and writers that acquire the lock after the fence commits must be rejected in the old region. Compare the acknowledged writes with destination records before activating the new placement.
 
 Log the routing outcome and placement version without logging credentials or customer payloads. This makes stale-route incidents diagnosable while keeping the registry's role precise: it coordinates placement, and regional controls enforce it.
