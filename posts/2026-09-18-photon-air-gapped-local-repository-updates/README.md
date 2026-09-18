@@ -48,7 +48,7 @@ Preserve the metadata and package directory layout, including security-advisory 
 
 Move the snapshot through your approved removable-media or transfer process. Verify its checksum manifest after transfer and before publication. Protect the snapshot from writes by ordinary clients.
 
-For a single machine, mount verified media or copy the snapshot under a controlled path. For many machines, publish it through an internal HTTPS service with a CA trusted by the targets. The following local-file example assumes the snapshot exists at `/srv/photon-snapshot`:
+For a single machine, mount verified media or copy the snapshot under a controlled path. For many machines, publish it through an internal HTTPS service with a CA trusted by the targets. The following local-file example assumes the snapshot exists at `/srv/photon-snapshot`. As root, save it as `/etc/yum.repos.d/offline-photon.repo`:
 
 ```ini
 [offline-photon-base]
@@ -70,7 +70,7 @@ Verify that the key path matches the installed release and trusted key material.
 
 ## Test using only the offline sources
 
-On a disposable clone of the target, explicitly exclude every other repository:
+On a disposable clone of the target, run these commands as root and explicitly exclude every other repository:
 
 ```bash
 tdnf --disablerepo='*' \
