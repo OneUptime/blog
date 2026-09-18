@@ -256,7 +256,6 @@
 
 ## Data Residency
 
-4. How to Route Each SaaS Tenant to the Correct Regional Database Using a Residency Registry
 5. How to Choose Between Shared, Schema-per-Tenant, and Database-per-Region Storage for Data Residency
 6. How to Move One SaaS Tenant to a New Data Region with Minimal Downtime
 7. How to Keep Authentication, Sessions, and User Profiles Inside Regional Data Boundaries
