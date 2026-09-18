@@ -250,7 +250,6 @@
 
 ## PostgreSQL Operator
 
-19. How to Expose CloudNativePG Inside and Outside Kubernetes Without Sending Writes to Read-Only Services
 20. PostgreSQL Operator Cluster Stuck Reconciling: Read Conditions, Events, Instance Logs, and Finalizers
 
 ## Photon OS
