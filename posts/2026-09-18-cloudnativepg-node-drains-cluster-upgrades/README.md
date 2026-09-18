@@ -6,7 +6,7 @@ Tags: CloudNativePG, PostgreSQL, Kubernetes, High Availability, Upgrade
 
 Description: Plan CloudNativePG node maintenance around disruption budgets, replica health, storage mobility, and application reconnection.
 
-PostgreSQL availability during node maintenance depends on more than the number of running Pods. A replacement must be schedulable, its storage must be usable, and another instance must be ready to serve writes before the current primary leaves. Applications also need to recover from the connection break caused by a switchover.
+PostgreSQL availability during node maintenance depends on more than the number of running Pods. A replacement must be schedulable, its storage must be usable, and a healthy standby must be available for promotion before the current primary is removed. Applications also need to recover from the connection break caused by a switchover.
 
 This guide uses CloudNativePG 1.30. Its [maintenance documentation](https://cloudnative-pg.io/docs/1.30/kubernetes_upgrade/) describes operator-managed PodDisruptionBudgets and coordinated primary switchovers. These reduce planned disruption; they cannot guarantee that every client connection survives.
 
@@ -56,13 +56,13 @@ The empty-directory option removes transient Pod storage, so inspect all workloa
 
 If the command refuses because it encounters a Pod without a recognized controller, inspect that Pod's owner references and recovery mechanism. Use `--force` only after accounting for those workloads; this flag addresses unmanaged-Pod checks and does not itself bypass PDB eviction protection. Do not use `--disable-eviction` as a way around database availability limits. See the [kubectl drain reference](https://kubernetes.io/docs/reference/kubectl/generated/kubectl_drain/).
 
-In another terminal, follow the Cluster, Pods, and service endpoints:
+In separate terminals, run each command below to follow the Cluster, Pods, and service endpoints:
 
 ```bash
 kubectl get cluster app-db -n database -w
 kubectl get pods -n database -l cnpg.io/cluster=app-db -w
 kubectl get endpointslices -n database \
-  -l kubernetes.io/service-name=app-db-rw
+  -l kubernetes.io/service-name=app-db-rw -w
 ```
 
 A blocked drain is useful evidence. Check a failed switchover, unhealthy standby, unavailable volume, or unschedulable replacement before changing the budget. Setting `enablePDB: false` merely removes the protection; it does not create another working database instance.
