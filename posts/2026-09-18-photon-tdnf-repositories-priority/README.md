@@ -52,7 +52,7 @@ tdnf --disablerepo='*' --enablerepo=company-tools makecache
 tdnf --enablerepo=company-tools info company-agent
 ```
 
-The first command isolates metadata access. The second leaves normal repositories available so dependency information can still resolve. Replace `company-agent` with a real package from your source.
+The first command isolates metadata access. The second displays package information with normal repositories still enabled; it does not test dependency resolution. Replace `company-agent` with a real package from your source.
 
 ## Understand priority before enabling it
 
@@ -77,7 +77,7 @@ A metadata failure needs a different repair from an unsatisfied dependency:
 | Dependency conflict | Release alignment and competing package candidates |
 | Signature failure | Package provenance and trusted key fingerprint |
 
-Use `tdnf clean metadata` followed by `tdnf makecache` after correcting a URL or stale metadata issue. Clearing cache cannot fix an invalid server certificate or supply an RPM that the server never published. Keep the original error message and failing URL in the incident record.
+Use `tdnf clean metadata` followed by `tdnf makecache` after correcting a URL or stale metadata issue. If `company-tools` is still disabled, use `tdnf --enablerepo=company-tools makecache` to refresh it too. Clearing cache cannot fix an invalid server certificate or supply an RPM that the server never published. Keep the original error message and failing URL in the incident record.
 
 For a repository that is required to supply an approved dependency, avoid silently skipping unavailable metadata. A successful transaction against only the surviving sources may conceal an incomplete patch set.
 
