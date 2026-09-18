@@ -253,7 +253,6 @@
 
 ## Photon OS
 
-16. How to Expand a Photon OS Root Partition and Filesystem After Growing the VMDK
 17. How to Diagnose File Permission and Missing Log Problems in Photon OS Services
 18. How to Restore tcpdump, netcat, and Other Missing Tools on Minimal Photon OS
 19. How to Manage Photon OS Packages with Ansible When the Generic package Module Fails
