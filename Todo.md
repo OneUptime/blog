@@ -253,7 +253,6 @@
 
 ## Photon OS
 
-17. How to Diagnose File Permission and Missing Log Problems in Photon OS Services
 18. How to Restore tcpdump, netcat, and Other Missing Tools on Minimal Photon OS
 19. How to Manage Photon OS Packages with Ansible When the Generic package Module Fails
 20. How to Reset an Expired or Locked Photon OS Root Password from GRUB
