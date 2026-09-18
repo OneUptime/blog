@@ -253,7 +253,6 @@
 
 ## Photon OS
 
-20. How to Reset an Expired or Locked Photon OS Root Password from GRUB
 
 ## Data Residency
 
