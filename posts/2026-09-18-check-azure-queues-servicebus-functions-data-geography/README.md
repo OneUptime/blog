@@ -68,7 +68,7 @@ Inspect the hosting plan and resource relationships:
 az functionapp show \
   --resource-group YOUR_RESOURCE_GROUP \
   --name YOUR_FUNCTION_APP \
-  --query '{id:id,location:location,plan:serverFarmId,kind:kind}' \
+  --query '{id:id,location:location,plan:(appServicePlanId || properties.serverFarmId || serverFarmId),kind:kind}' \
   --output json
 ```
 
