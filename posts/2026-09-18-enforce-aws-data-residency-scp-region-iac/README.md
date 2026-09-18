@@ -22,7 +22,7 @@ Keep application workloads out of the management account and test policies in a 
 
 The `aws:RequestedRegion` condition evaluates the endpoint region being called. It does not universally constrain every downstream effect of the request. AWS specifically identifies cross-region S3 replication and bucket creation as examples in its [global condition-key reference](https://docs.aws.amazon.com/IAM/latest/UserGuide/reference_policies_condition-keys.html#condition-keys-requestedregion).
 
-This illustrative deny statement allows requests in two example approved regions and exempts a small reviewed list of global service actions from this particular deny:
+This illustrative deny statement denies requests outside two example approved regions and exempts a small reviewed list of global service actions from this particular deny:
 
 ```json
 {
