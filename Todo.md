@@ -253,7 +253,6 @@
 
 ## Photon OS
 
-14. How to Troubleshoot Docker Containers That Become Unreachable After a Photon OS Upgrade
 15. How to Run Docker macvlan Containers Across VLANs on Photon OS and a vSphere vDS
 16. How to Expand a Photon OS Root Partition and Filesystem After Growing the VMDK
 17. How to Diagnose File Permission and Missing Log Problems in Photon OS Services
