@@ -250,7 +250,6 @@
 
 ## PostgreSQL Operator
 
-16. How to Rotate PostgreSQL Operator User Passwords and TLS Certificates Without Downtime
 17. How to Bootstrap Multiple Databases, Roles, and Extensions Declaratively in CloudNativePG
 18. CloudNativePG Rejects a Custom PostgreSQL or TimescaleDB Image: Verify Labels, UID, Binaries, and Extensions
 19. How to Expose CloudNativePG Inside and Outside Kubernetes Without Sending Writes to Read-Only Services
