@@ -253,7 +253,6 @@
 
 ## Photon OS
 
-11. How to Install Docker Engine and Docker Compose on Photon OS 5
 12. How to Fix Docker Pull x509 Errors on Photon OS Behind Zscaler or a Corporate Proxy
 13. How to Create a Non-Root User in a Minimal Photon OS Container When useradd Is Missing
 14. How to Troubleshoot Docker Containers That Become Unreachable After a Photon OS Upgrade
