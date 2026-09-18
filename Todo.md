@@ -250,7 +250,6 @@
 
 ## PostgreSQL Operator
 
-13. How to Expand a PostgreSQL Operator PVC Safely—and What to Do When the StorageClass Cannot Resize
 14. How to Place PostgreSQL Operator Replicas Across Zones with Anti-Affinity and Topology Spread
 15. How to Keep PostgreSQL Operator Pods Available During Node Drains and Cluster Upgrades
 16. How to Rotate PostgreSQL Operator User Passwords and TLS Certificates Without Downtime
