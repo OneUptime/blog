@@ -1,4 +1,4 @@
-# How to Drain gRPC Connections During Kubernetes Rolling Updates Without `UNAVAILABLE` Spikes
+# Drain gRPC Connections in Kubernetes Updates Without `UNAVAILABLE` Spikes
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -1,4 +1,4 @@
-# How to Route Each SaaS Tenant to the Correct Regional Database Using a Residency Registry
+# Route SaaS Tenants to Regional Databases with a Residency Registry
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

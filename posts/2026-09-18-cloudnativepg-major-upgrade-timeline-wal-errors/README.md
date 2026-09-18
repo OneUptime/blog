@@ -1,4 +1,4 @@
-# CloudNativePG Major Upgrade Fails with Timeline or WAL Errors: How to Recover the Cutover
+# Recover CloudNativePG Major Upgrade Cutovers with Timeline or WAL Errors
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
@@ -27,6 +27,7 @@ Find the actual upgrade Job name in the returned resources. CloudNativePG normal
 # Substitute the upgrade Job discovered above.
 kubectl logs -n database job/app-db-1-major-upgrade --all-containers=true
 kubectl describe job app-db-1-major-upgrade -n database
+kubectl describe pods -n database -l batch.kubernetes.io/job-name=app-db-1-major-upgrade
 ```
 
 Inspect `.status.pgDataImageInfo` and the job result alongside the running image. Do not infer the on-disk version solely from `.spec.imageName`; that field is the requested state.

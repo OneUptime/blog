@@ -8,7 +8,7 @@ Description: Use Buildkite checkout.skip for artifact-driven deployment jobs and
 
 ---
 
-A deployment job that only invokes a preinstalled deployment tool or consumes a previously built artifact may not need the repository. Skipping checkout removes Git access and checkout latency from that job, provided its command does not secretly depend on files that checkout supplied.
+A deployment job that only invokes a preinstalled deployment tool or consumes a previously built artifact may not need the repository. Skipping checkout avoids the checkout's Git access and latency for that job, provided its command does not secretly depend on files that checkout supplied. It does not by itself revoke Git credentials or network access available to the job.
 
 Use the native checkout setting on current agents, then make the deployment's inputs explicit. The key design question is where its executable code and release identity come from.
 
@@ -71,7 +71,7 @@ A repository hook cannot be your reliable mechanism for enabling skipped checkou
 
 The agent resolves checkout settings alongside environment and startup configuration. A step-level setting overrides a pipeline-level setting in the normal configuration flow. An agent started with a forced skip setting can prevent a job from re-enabling checkout under protected override modes.
 
-An `environment` or `pre-checkout` hook can also alter `BUILDKITE_SKIP_CHECKOUT` after earlier settings were resolved. If checkout still runs unexpectedly, inspect those hooks rather than repeatedly changing YAML indentation.
+When the agent's checkout override policy does not lock the value, an `environment` or `pre-checkout` hook can also alter `BUILDKITE_SKIP_CHECKOUT` after earlier settings were resolved. If checkout still runs unexpectedly, inspect those hooks rather than repeatedly changing YAML indentation.
 
 The [agent configuration reference](https://buildkite.com/docs/agent/self-hosted/configure) describes `checkout-override-mode`. Treat that setting as agent policy. Do not relax a centrally enforced mode just to fix one step without understanding why it was chosen.
 

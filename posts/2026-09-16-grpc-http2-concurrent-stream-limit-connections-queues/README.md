@@ -1,4 +1,4 @@
-# gRPC Hits the HTTP/2 Concurrent-Stream Limit: Tune Connections, Queues, and `MAX_CONCURRENT_STREAMS`
+# Fix gRPC HTTP/2 Stream Limits: Connections, Queues, and `MAX_CONCURRENT_STREAMS`
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

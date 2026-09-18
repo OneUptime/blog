@@ -1,4 +1,4 @@
-# Validation Summary: How to Preserve Drone Test Reports and Build Artifacts After Ephemeral Workspaces Disappear
+# Validation Summary: Preserve Drone Test Reports and Build Artifacts Beyond Ephemeral Workspaces
 
 ## Status
 validated

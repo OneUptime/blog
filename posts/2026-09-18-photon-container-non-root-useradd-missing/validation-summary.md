@@ -1,4 +1,4 @@
-# Validation Summary: How to Create a Non-Root User in a Minimal Photon OS Container When useradd Is Missing
+# Validation Summary: Create a Non-Root User in a Minimal Photon OS Container Without useradd
 
 ## Status
 validated

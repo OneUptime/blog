@@ -1,4 +1,4 @@
-# How to Debug “HTTP/2 Client Preface String Missing or Corrupt” Between gRPC Clients and Proxies
+# Debug gRPC 'HTTP/2 Client Preface String Missing or Corrupt' Errors with Proxies
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

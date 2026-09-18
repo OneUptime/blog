@@ -1,4 +1,4 @@
-# Validation Summary: How to Keep PostgreSQL Operator Pods Available During Node Drains and Cluster Upgrades
+# Validation Summary: Keep PostgreSQL Operator Pods Available During Node Drains and Cluster Upgrades
 
 ## Status
 

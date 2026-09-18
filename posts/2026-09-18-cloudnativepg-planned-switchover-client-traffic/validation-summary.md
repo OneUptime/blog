@@ -1,4 +1,4 @@
-# Validation Summary: How to Perform a Planned PostgreSQL Operator Switchover Without Dropping Client Traffic
+# Validation Summary: Manage Client Traffic During a Planned PostgreSQL Operator Switchover
 
 ## Status
 validated

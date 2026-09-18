@@ -1,4 +1,4 @@
-# Validation Summary: How to Diagnose Buildkite Manual Retries That Are Immediately Canceled by Fast Fail
+# Validation Summary: Diagnose Buildkite Manual Retries Immediately Canceled by Fast Fail
 
 ## Status
 validated

@@ -1,4 +1,4 @@
-# Validation Summary: CloudNativePG Failover Does Not Promote a Replica: Diagnose Quorum, WAL, and Instance Health
+# Validation Summary: CloudNativePG Replica Promotion Fails: Check Quorum, WAL, and Instance Health
 
 ## Status
 validated

@@ -1,4 +1,4 @@
-# How to Fix Invalid Variable Name Errors in Buildkite Docker Compose Cache Configuration
+# Fix Invalid Variable Names in Buildkite Docker Compose Cache Configuration
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

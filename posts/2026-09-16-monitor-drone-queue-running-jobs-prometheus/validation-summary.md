@@ -1,4 +1,4 @@
-# Validation Summary: How to Monitor Drone Queue Depth and Running Jobs with the Built-In Prometheus Metrics
+# Validation Summary: Monitor Drone Queue Depth and Running Jobs with Built-In Prometheus Metrics
 
 ## Status
 validated

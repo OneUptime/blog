@@ -1,4 +1,4 @@
-# How to Back Up and Restore Drone's Database Without Breaking Repository and Build Metadata
+# Back Up and Restore Drone's Database While Preserving Repository and Build Data
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
@@ -31,6 +31,7 @@ Keep a small verification ledger: a repository identifier, several historical bu
 For SQLite, use its backup mechanism rather than copying only a live database file and ignoring a possible write-ahead log. This host-side example assumes the configured database really is at the illustrated path and the operator has appropriate access:
 
 ```sh
+set -eu
 umask 077
 mkdir -p /secure-backups/drone
 test -f /var/lib/drone/database.sqlite || exit 1
@@ -39,11 +40,12 @@ sqlite3 /var/lib/drone/database.sqlite \
 sqlite3 /secure-backups/drone/database.sqlite 'PRAGMA integrity_check;'
 ```
 
-Require the integrity result to be `ok`. Confirm the path from configuration; do not let a typo create an empty database and then mistake its successful integrity check for a valid backup. SQLite documents consistent copying through its [backup API](https://www.sqlite.org/backup.html) and the shell's [backup command](https://sqlite.org/cli.html).
+Require the backup command to succeed before checking the output, then require the integrity result to be `ok`. The shell's `set -e` stops the snippet on a failed backup instead of checking a stale file from an earlier run. Confirm the path from configuration; do not let a typo create an empty database and then mistake its successful integrity check for a valid backup. SQLite documents consistent copying through its [backup API](https://www.sqlite.org/backup.html) and the shell's [backup command](https://sqlite.org/cli.html).
 
 For PostgreSQL, use an authenticated service definition or your approved credential mechanism:
 
 ```sh
+set -eu
 umask 077
 mkdir -p /secure-backups/drone
 pg_dump --dbname=service=drone_backup --format=custom \

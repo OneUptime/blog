@@ -33,7 +33,7 @@ steps:
     environment:
       COVERAGE_FILE: reports/shard-0/.coverage
     commands:
-      - .venv/bin/pytest tests/shard_0 --junitxml=reports/shard-0/junit.xml --cov=app --cov-report=
+      - .venv/bin/pytest tests/shard_0 --junitxml=reports/shard-0/junit.xml --cov=app --cov-report= --cov-fail-under=0
     depends_on:
       - prepare
 
@@ -42,7 +42,7 @@ steps:
     environment:
       COVERAGE_FILE: reports/shard-1/.coverage
     commands:
-      - .venv/bin/pytest tests/shard_1 --junitxml=reports/shard-1/junit.xml --cov=app --cov-report=
+      - .venv/bin/pytest tests/shard_1 --junitxml=reports/shard-1/junit.xml --cov=app --cov-report= --cov-fail-under=0
     depends_on:
       - prepare
 
@@ -72,6 +72,8 @@ Do not add `failure: ignore` to make aggregation convenient. A failing test comm
 A report collector is not guaranteed to run after cancellation, runner loss, timeout, or a failed clone. Design those cases as incomplete executions. A missing JUnit file is not an empty successful test suite.
 
 The code combines the two exact coverage files, then applies a threshold to the combined result. [coverage.py's combine command](https://coverage.readthedocs.io/en/latest/commands/cmd_combine.html) accepts explicitly named data files and `--keep` preserves inputs. The [pytest-cov reporting options](https://pytest-cov.readthedocs.io/en/latest/reporting.html) allow suppressing per-shard report output while still collecting coverage data.
+
+`--cov-report=` alone does not disable a coverage threshold inherited from project configuration. Each shard uses [`--cov-fail-under=0`](https://pytest-cov.readthedocs.io/en/latest/config.html) to defer that threshold to the combined report. Test assertion failures still fail their shard.
 
 Do not average per-shard percentages. Different shards execute different lines, and overlap between them makes arithmetic averaging meaningless. Combine execution data against the same source revision and consistent path configuration. If checkout paths differ, configure coverage path mapping before trusting the result.
 

@@ -66,19 +66,19 @@ nc -h
 
 Different netcat implementations have different flags and may return a nonzero exit code when displaying help. Photon maintains an [OpenBSD-derived netcat package](https://github.com/vmware/photon/blob/5.0/SPECS/netcat/netcat.spec); confirm the options in your installed version.
 
-A bounded TCP connection test is:
+A TCP connection test with a connection timeout is:
 
 ```bash
 nc -vz -w 3 database.example.com 5432
 ```
 
-Replace the destination and port with an authorized service. Success means a TCP connection could be established; it does not prove that TLS, database authentication, or an application query works. Follow it with the actual application client when diagnosing those layers.
+Replace the destination and port with an authorized service. The `-w 3` option limits each connection attempt; DNS resolution and attempts to multiple resolved addresses can make the total runtime longer than three seconds. Success means a TCP connection could be established; it does not prove that TLS, database authentication, or an application query works. Follow it with the actual application client when diagnosing those layers.
 
 A UDP probe needs more careful interpretation because lack of a response does not reliably prove reachability. Use a protocol-aware request or packet capture when the result would otherwise be ambiguous.
 
 ## Capture a small amount of relevant traffic
 
-Identify the correct interface with `ip -br link`. Then capture a limited number of packets for a specific peer and port:
+Identify the correct interface with `ip -br link` and replace `eth0` below with that interface. Run live captures as root or with the required packet-capture capabilities. Then capture a limited number of packets for a specific peer and port:
 
 ```bash
 tcpdump -i eth0 -nn -c 20 \

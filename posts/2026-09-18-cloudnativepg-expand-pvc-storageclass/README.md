@@ -1,4 +1,4 @@
-# How to Expand a PostgreSQL Operator PVC Safely—and What to Do When the StorageClass Cannot Resize
+# Expand PostgreSQL Operator PVCs and Handle StorageClasses That Cannot Resize
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

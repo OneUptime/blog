@@ -1,4 +1,4 @@
-# How to Send and Read gRPC Trailers for Partial Results, Rate Limits, and Error Diagnostics
+# Send and Read gRPC Trailers for Partial Results, Rate Limits, and Diagnostics
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

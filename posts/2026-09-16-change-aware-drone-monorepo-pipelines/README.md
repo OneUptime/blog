@@ -1,4 +1,4 @@
-# How to Build Change-Aware Drone Pipelines for Large Monorepos Without Running Every Service
+# Build Change-Aware Drone Monorepo Pipelines to Run Only Affected Services
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -1,4 +1,4 @@
-# How to Distinguish Transport Failures from Application Status Errors in gRPC Clients
+# Distinguish gRPC Transport Failures from Application Status Errors
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

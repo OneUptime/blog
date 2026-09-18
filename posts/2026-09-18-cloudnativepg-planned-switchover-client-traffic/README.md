@@ -1,4 +1,4 @@
-# How to Perform a Planned PostgreSQL Operator Switchover Without Dropping Client Traffic
+# Manage Client Traffic During a Planned PostgreSQL Operator Switchover
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

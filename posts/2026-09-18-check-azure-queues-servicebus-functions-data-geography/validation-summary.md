@@ -1,4 +1,4 @@
-# Validation Summary: How to Check Whether Azure Storage Queues, Service Bus, and Functions Keep Data in Your Selected Geography
+# Validation Summary: Check Data Geography in Azure Storage Queues, Service Bus, and Functions
 
 ## Status
 

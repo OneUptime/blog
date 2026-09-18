@@ -1,4 +1,4 @@
-# How to Serialize Drone Production Deployments While Keeping Test Pipelines Parallel
+# Serialize Drone Production Deployments While Keeping Test Pipelines Parallel
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

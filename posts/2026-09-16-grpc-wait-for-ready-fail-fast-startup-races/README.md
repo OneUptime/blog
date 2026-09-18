@@ -1,4 +1,4 @@
-# `wait_for_ready` vs. Fail Fast in gRPC: Prevent Startup Races Without Hiding Outages
+# gRPC `wait_for_ready` vs. Fail Fast: Avoid Startup Races Without Hiding Outages
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

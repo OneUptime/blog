@@ -1,4 +1,4 @@
-# How to Manage Photon OS Packages with Ansible When the Generic package Module Fails
+# Manage Photon OS Packages with Ansible When the Generic package Module Fails
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
@@ -10,7 +10,7 @@ Description: Handle Photon package automation with explicit tdnf operations, Pyt
 
 Ansible's generic `package` module delegates to a package-manager-specific implementation. On Photon, setting a fact to `tdnf` does not create a compatible backend, and the `dnf` module's Python requirements are not satisfied merely because `tdnf` has similar command-line syntax. Diagnose the missing layer before replacing the task.
 
-The [Ansible package documentation](https://docs.ansible.com/projects/ansible/latest/collections/ansible/builtin/package_module.html) describes this delegation. The [dnf module reference](https://docs.ansible.com/projects/ansible/13/collections/ansible/builtin/dnf_module.html) lists its own requirements. A predictable fallback uses the Photon CLI explicitly and makes idempotence visible in the playbook.
+The [Ansible package documentation](https://docs.ansible.com/projects/ansible/latest/collections/ansible/builtin/package_module.html) describes this delegation. The [dnf module reference](https://docs.ansible.com/projects/ansible/latest/collections/ansible/builtin/dnf_module.html) lists its own requirements. A predictable fallback uses the Photon CLI explicitly and makes idempotence visible in the playbook.
 
 ## Check Python and package facts separately
 
@@ -56,7 +56,9 @@ For a small approved list of named RPMs, query installed state and install only 
       loop: "{{ photon_packages }}"
       register: photon_rpm_checks
       changed_when: false
-      failed_when: photon_rpm_checks.rc not in [0, 1]
+      failed_when: >-
+        photon_rpm_checks.rc not in [0, 1] or
+        (photon_rpm_checks.stderr | default('') | trim | length > 0)
       check_mode: false
 
     - name: Show packages missing in check mode
@@ -77,7 +79,7 @@ For a small approved list of named RPMs, query installed state and install only 
       changed_when: true
 ```
 
-This example defines “present” as an installed package with that exact RPM name. It does not implement version constraints, virtual provides, package groups, or “latest.” Investigate RPM-database errors rather than treating them as ordinary absence; preserve stderr in job logs.
+This example defines “present” as an installed package with that exact RPM name. It does not implement version constraints, virtual provides, package groups, or “latest.” Exit code 1 alone does not distinguish absence from an RPM-database error, so the query also fails conservatively on any stderr diagnostics, including warnings. Investigate these diagnostics rather than treating them as ordinary absence; preserve stderr in job logs.
 
 The [command module reference](https://docs.ansible.com/projects/ansible/latest/collections/ansible/builtin/command_module.html) documents `argv` and its limited built-in check-mode support. Here the read-only RPM query runs even in check mode, while the installation is explicitly excluded. The debug task reports intended installation, but it cannot prove dependency resolution will succeed.
 

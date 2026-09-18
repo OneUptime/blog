@@ -1,4 +1,4 @@
-# How to Rotate Drone's RPC Secret Across Servers and Runners with a Controlled Maintenance Window
+# Rotate Drone RPC Secrets Across Servers and Runners in a Maintenance Window
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

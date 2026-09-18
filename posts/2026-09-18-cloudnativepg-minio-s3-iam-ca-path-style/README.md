@@ -1,4 +1,4 @@
-# How to Back Up CloudNativePG to MinIO or S3 with IAM, Custom CAs, and Path-Style URLs
+# Back Up CloudNativePG to MinIO or S3 with IAM, Custom CAs, and Path-Style URLs
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -1,4 +1,4 @@
-# Validation Summary: How to Avoid Duplicate Protobuf Symbols When Multiple gRPC Packages Share Common Types
+# Validation Summary: Avoid Duplicate Protobuf Symbols Across gRPC Packages with Shared Types
 
 ## Status
 validated

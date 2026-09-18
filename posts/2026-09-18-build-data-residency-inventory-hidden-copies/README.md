@@ -1,4 +1,4 @@
-# How to Build a Data Residency Inventory That Finds Copies in Queues, Caches, Logs, and Backups
+# Build a Data Residency Inventory for Queues, Caches, Logs, and Backups
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

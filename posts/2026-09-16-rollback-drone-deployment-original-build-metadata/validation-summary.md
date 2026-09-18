@@ -1,4 +1,4 @@
-# Validation Summary: How to Roll Back a Drone Deployment with Rollback Events and the Original Build Metadata
+# Validation Summary: Roll Back Drone Deployments Using Rollback Events and Original Build Metadata
 
 ## Status
 validated

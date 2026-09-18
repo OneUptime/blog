@@ -1,4 +1,4 @@
-# PostgreSQL Operator Cluster Stuck Reconciling: Read Conditions, Events, Instance Logs, and Finalizers
+# Debug PostgreSQL Operator Reconciliation: Conditions, Events, Logs, Finalizers
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
@@ -40,7 +40,7 @@ For Pending Pods, inspect scheduler messages about resource requests, taints, an
 
 Kubernetes documents how to distinguish [application and scheduling failures](https://kubernetes.io/docs/tasks/debug/debug-application/debug-pods/) and [storage binding behavior](https://kubernetes.io/docs/concepts/storage/storage-classes/). Increasing the PostgreSQL startup timeout does not fix a Pod that never reaches a node.
 
-For image-pull failures, verify the exact registry reference, pull credentials, and platform. For CrashLoopBackOff, inspect exit status and previous logs; changing readiness thresholds only hides the symptom if PostgreSQL is actually crashing.
+For image-pull failures, verify the exact registry reference, pull credentials, and platform. For CrashLoopBackOff, inspect exit status and previous logs; changing readiness thresholds does not fix a crashing PostgreSQL process; readiness probes control whether the Pod receives service traffic, not whether its container restarts.
 
 ## Correlate operator and instance logs
 

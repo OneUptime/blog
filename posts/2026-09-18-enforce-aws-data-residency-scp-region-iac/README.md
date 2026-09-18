@@ -1,4 +1,4 @@
-# How to Enforce AWS Data Residency with SCPs, Region-Deny Policies, and IaC Checks
+# Enforce AWS Data Residency with SCPs, Region-Deny Policies, and IaC Checks
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

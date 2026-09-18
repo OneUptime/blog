@@ -1,4 +1,4 @@
-# Validation Summary: How to Fix Invalid Variable Name Errors in Buildkite Docker Compose Cache Configuration
+# Validation Summary: Fix Invalid Variable Names in Buildkite Docker Compose Cache Configuration
 
 ## Status
 validated

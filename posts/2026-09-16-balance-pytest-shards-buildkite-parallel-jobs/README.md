@@ -30,7 +30,7 @@ steps:
           upload-results: true
 ```
 
-The plugin installs and configures the client, while the command actually runs it. It uses Buildkite's parallel-job context to obtain the work assigned to each shard. The [Tests plugin documentation](https://github.com/buildkite-plugins/tests-buildkite-plugin) describes setup, suite naming, OIDC authentication, and options.
+The plugin installs the client when it is absent and configures it, while the command actually runs it. Version 1.0.0 [reuses an existing `bktec` on `PATH`](https://github.com/buildkite-plugins/tests-buildkite-plugin/blob/v1.0.0/hooks/pre-command), so ensure that client is current and at least v2.7.0 for built-in result uploads. It uses Buildkite's parallel-job context to obtain the work assigned to each shard. The [Tests plugin documentation](https://github.com/buildkite-plugins/tests-buildkite-plugin) describes setup, suite naming, OIDC authentication, and options.
 
 Keep the suite slug stable. Moving identical tests between unrelated suite identities fragments the timing history the planner needs. Ensure the pipeline is permitted to access or create the intended suite under your organization's policies.
 

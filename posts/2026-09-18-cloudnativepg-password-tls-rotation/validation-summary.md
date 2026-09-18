@@ -1,4 +1,4 @@
-# Validation Summary: How to Rotate PostgreSQL Operator User Passwords and TLS Certificates Without Downtime
+# Validation Summary: Rotate PostgreSQL Operator Passwords and TLS Certificates Without Downtime
 
 ## Status
 validated

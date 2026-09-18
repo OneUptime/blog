@@ -1,4 +1,4 @@
-# How to Diagnose Buildkite Manual Retries That Are Immediately Canceled by Fast Fail
+# Diagnose Buildkite Manual Retries Immediately Canceled by Fast Fail
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -48,7 +48,7 @@ PostgreSQL logical replication does not copy DDL, sequence state, or large objec
 
 Pause interactive writes and stop tenant jobs, exports, and scheduled work. Drain active transactions. Then enforce a durable source-side write fence that rejects new operations for the old placement version.
 
-A routing change alone is not a fence: cached routes, pooled connections, and administrators can bypass it. Have every participating writer check tenant ownership in the same transactional boundary as its mutation, or use another enforceable database-level mechanism appropriate to the tenancy model.
+A routing change alone is not a fence: cached routes, pooled connections, and administrators can bypass it. Have every participating writer check tenant ownership in the same transactional boundary as its mutation, with locking that serializes the mutation against fence changes, or use another enforceable database-level mechanism appropriate to the tenancy model. A plain ownership read inside a transaction is insufficient: the fence could change after the read but before the mutation commits.
 
 After the fence completes, capture the final source position and wait for the destination to apply it. Verify table synchronization as well as stream progress. Check tenant row counts, key ranges, business totals, object versions, and deletion tombstones. A transport acknowledgment is not proof that all application state is usable.
 

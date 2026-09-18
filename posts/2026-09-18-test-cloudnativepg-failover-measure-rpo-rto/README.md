@@ -1,4 +1,4 @@
-# How to Test PostgreSQL Operator Failover and Measure RPO and RTO Before Production
+# Test PostgreSQL Operator Failover and Measure RPO and RTO Before Production
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

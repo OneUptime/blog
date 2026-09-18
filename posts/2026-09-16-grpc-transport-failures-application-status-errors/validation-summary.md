@@ -1,4 +1,4 @@
-# Validation Summary: How to Distinguish Transport Failures from Application Status Errors in gRPC Clients
+# Validation Summary: Distinguish gRPC Transport Failures from Application Status Errors
 
 ## Status
 validated

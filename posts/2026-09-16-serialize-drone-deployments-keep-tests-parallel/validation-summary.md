@@ -1,4 +1,4 @@
-# Validation Summary: How to Serialize Drone Production Deployments While Keeping Test Pipelines Parallel
+# Validation Summary: Serialize Drone Production Deployments While Keeping Test Pipelines Parallel
 
 ## Status
 validated

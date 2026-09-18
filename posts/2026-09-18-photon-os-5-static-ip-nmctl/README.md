@@ -8,7 +8,7 @@ Description: Configure persistent Photon OS 5 networking with nmctl and verify D
 
 ---
 
-Photon OS 5 uses `systemd-networkd` for network configuration, and `nmctl` provides an interface to it. Adding a static address is only one part of the change: DHCP can still install another address, gateway, and DNS server unless you deliberately change that behavior. Work from the VM console while changing the interface that carries your SSH session.
+Photon OS 5 uses `systemd-networkd` for network configuration, and `nmctl` provides an interface to it. Adding a static address is only one part of the change: DHCP can still install another address, gateway, and DNS server unless you deliberately change that behavior. Work from the VM console while changing the interface that carries your SSH session. Run configuration-changing commands and file edits as root (or with `sudo`).
 
 ## Identify the active configuration
 
@@ -51,7 +51,7 @@ nmctl set-ipv4 dev eth0 dhcp no \
   dns 192.0.2.53,192.0.2.54
 ```
 
-Use this only if the installed command help offers `set-ipv4` with these arguments. It sets the desired IPv4 configuration, including disabling DHCPv4, in one operation. It does not establish a complete IPv6 policy; configure IPv6 separately if your environment uses it.
+Use this only if the installed command help offers `set-ipv4` with these arguments. It configures the IPv4 address and gateway and disables DHCPv4 in one operation, but by default it merges the supplied DNS servers with existing static DNS entries. Review the active `.network` file and remove stale DNS entries intentionally. It does not establish a complete IPv6 policy; configure IPv6 separately if your environment uses it.
 
 ## Use the documented individual operations when needed
 
@@ -63,7 +63,7 @@ nmctl add-default-gw dev eth0 gw 192.0.2.1 onlink yes
 nmctl add-dns dev eth0 dns 192.0.2.53 192.0.2.54
 ```
 
-They add configuration and are not a substitute for disabling DHCP. If your installed build lacks the combined operation, inspect its supported DHCP command or edit the active `.network` file so its `[Network]` section contains `DHCP=no`. Retain the relevant `[Match]` section and review existing addresses, gateways, and DNS entries to remove stale values intentionally.
+They add configuration and are not a substitute for disabling DHCP. If your installed build lacks the combined operation, inspect its supported DHCP command or edit the active `.network` file so its `[Network]` section contains `DHCP=no`. Use `DHCP=ipv6` instead if you need to retain explicitly enabled DHCPv6 while disabling DHCPv4; `DHCP=no` does not prevent DHCPv6 triggered by IPv6 router advertisements. Retain the relevant `[Match]` section and review existing addresses, gateways, and DNS entries to remove stale values intentionally.
 
 The [systemd.network documentation](https://www.freedesktop.org/software/systemd/man/latest/systemd.network.html) explains file matching and route configuration. The first matching network file wins; adding another file with a later name can leave the previous DHCP configuration in control.
 
@@ -82,4 +82,4 @@ Repeat `ip -br address`, `ip route`, `networkctl status eth0`, and `resolvectl s
 
 Do not overwrite `/etc/resolv.conf` blindly. Determine whether it is managed by systemd-resolved and whether another provisioning system regenerates networking at boot. Photon documents [network generators](https://vmware.github.io/photon/docs-v5/administration-guide/managing-network-configuration/using-the-network-configuration-manager/) that can recreate networkd files from YAML or kernel arguments.
 
-Reboot during the maintenance window and repeat the same checks. If settings revert, fix the configuration owner—cloud-init, a generator, or template customization—instead of repeatedly changing the generated output. Keep the backup until the new address, route, DNS, and remote management access all survive that reboot.
+Reboot during the maintenance window and repeat the same checks. If settings revert, fix the configuration owner-cloud-init, a generator, or template customization-instead of repeatedly changing the generated output. Keep the backup until the new address, route, DNS, and remote management access all survive that reboot.

@@ -1,4 +1,4 @@
-# CloudNativePG WAL Archive Keeps Growing: Fix Retention, Failed Uploads, and Orphaned Backups
+# Fix CloudNativePG WAL Growth: Retention, Upload Failures, and Orphaned Backups
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
@@ -73,7 +73,7 @@ Check delete authorization and any object lock or legal hold. Retention cannot e
 
 ## Explain bucket growth that survives cleanup
 
-An S3 deletion in a versioned bucket can leave noncurrent versions consuming storage. Inspect current objects, noncurrent versions, incomplete multipart uploads, and delete markers separately. AWS documents these distinctions in its [versioning lifecycle guidance](https://docs.aws.amazon.com/AmazonS3/latest/userguide/ManagingDelMarkers.html).
+An S3 deletion in a versioned bucket can leave noncurrent versions consuming storage. Inspect current objects, noncurrent versions, incomplete multipart uploads, and delete markers separately. AWS documents these distinctions in its [versioning lifecycle guidance](https://docs.aws.amazon.com/AmazonS3/latest/userguide/intro-lifecycle-rules.html).
 
 Do not impose a generic thirty-day lifecycle deletion on live WAL objects solely because Barman uses a thirty-day window. The required starting backup may be older, and a lifecycle rule does not understand the PostgreSQL recovery chain. Test the oldest promised restore point before shortening any storage policy.
 

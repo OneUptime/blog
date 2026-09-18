@@ -1,4 +1,4 @@
-# How to Fix Docker Pull x509 Errors on Photon OS Behind Zscaler or a Corporate Proxy
+# Fix Docker Pull x509 Errors on Photon OS Behind Zscaler or a Corporate Proxy
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 

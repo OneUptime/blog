@@ -1,4 +1,4 @@
-# Validation Summary: How to Convert Local Schedules to Drone's UTC Cron Expressions Without Triggering Push-Only Steps
+# Validation Summary: Convert Local Schedules to Drone UTC Cron Without Running Push-Only Steps
 
 ## Status
 validated

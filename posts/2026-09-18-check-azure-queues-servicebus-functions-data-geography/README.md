@@ -1,4 +1,4 @@
-# How to Check Whether Azure Storage Queues, Service Bus, and Functions Keep Data in Your Selected Geography
+# Check Data Geography in Azure Storage Queues, Service Bus, and Functions
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

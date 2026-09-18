@@ -14,7 +14,7 @@ The concrete example below covers a plain ext4 root filesystem on the final part
 
 ## Record the current layout
 
-Before changing the VMDK, take a recoverable backup and verify console access. Record the current root mount and block devices:
+Before changing the VMDK, take a recoverable backup and verify console access. Run the guest commands below in a root shell. Record the current root mount and block devices:
 
 ```bash
 findmnt /
@@ -87,4 +87,4 @@ For XFS, the growth operation targets the mounted filesystem with `xfs_growfs`, 
 
 Check kernel logs for storage or filesystem errors and confirm the application can read and write normally. Compare the new filesystem capacity with the intended size, allowing for partition boundaries and filesystem metadata.
 
-Reboot when the change plan requires it and verify root mounts correctly. Keep the before-and-after layout in the maintenance record. The task is complete when the disk, partition, filesystem, and application all recognize usable capacity—not when vSphere alone displays a larger number.
+Reboot when the change plan requires it and verify root mounts correctly. Keep the before-and-after layout in the maintenance record. The task is complete when the disk, partition, filesystem, and application all recognize usable capacity-not when vSphere alone displays a larger number.

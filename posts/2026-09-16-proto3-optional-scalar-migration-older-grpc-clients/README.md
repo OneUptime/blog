@@ -1,4 +1,4 @@
-# How to Evolve Proto3 Scalar Fields to `optional` Without Breaking Older gRPC Clients
+# Evolve Proto3 Scalars to `optional` Without Breaking Older gRPC Clients
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

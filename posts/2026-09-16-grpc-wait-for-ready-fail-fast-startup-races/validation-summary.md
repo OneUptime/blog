@@ -1,4 +1,4 @@
-# Validation Summary: `wait_for_ready` vs. Fail Fast in gRPC: Prevent Startup Races Without Hiding Outages
+# Validation Summary: gRPC `wait_for_ready` vs. Fail Fast: Avoid Startup Races Without Hiding Outages
 
 ## Status
 validated

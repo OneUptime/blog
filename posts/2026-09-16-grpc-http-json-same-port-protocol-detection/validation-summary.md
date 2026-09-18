@@ -1,4 +1,4 @@
-# Validation Summary: How to Serve gRPC and HTTP/JSON on the Same Port with Protocol Detection and Safe Fallbacks
+# Validation Summary: Serve gRPC and HTTP/JSON on One Port with Protocol Detection and Safe Fallbacks
 
 ## Status
 validated

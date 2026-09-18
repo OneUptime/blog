@@ -1,4 +1,4 @@
-# Validation Summary: How to Back Up and Restore Drone's Database Without Breaking Repository and Build Metadata
+# Validation Summary: Back Up and Restore Drone's Database While Preserving Repository and Build Data
 
 ## Status
 validated
@@ -23,7 +23,9 @@ Technical operations guide
 - [PostgreSQL `pg_restore` documentation](https://www.postgresql.org/docs/current/app-pgrestore.html)
 
 ## Issues Found
-No technical issues found.
+- Added `set -eu` to both backup shell snippets so a failed backup stops execution before archive validation. Without fail-fast behavior, a failed SQLite `.backup` could be followed by a successful integrity check of a stale backup, leaving the snippet with exit status zero. Clarified that backup command success must be checked before the output is trusted.
 
 ## Review Notes
 The post correctly distinguishes a database backup from external S3-compatible blob storage and cluster-wide PostgreSQL objects. The SQLite `.backup` command is appropriate for a consistent live snapshot, and the source-file existence check avoids SQLite silently creating an empty database at a mistyped path. The PostgreSQL custom archive, archive listing, and `--exit-on-error` restore guidance are valid. Operators should continue to apply PostgreSQL's version-compatibility rules when selecting `pg_dump`: it can generally dump older servers, but it cannot dump a server newer than its own major version.
+
+A local SQLite reproduction used a corrupt source and an existing valid backup. The original snippet printed a backup error followed by `ok` and exited zero; fail-fast behavior stopped it at the backup error. No live Drone database was accessed.

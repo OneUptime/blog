@@ -1,4 +1,4 @@
-# CloudNativePG Backup Is Green but Restore Fails: Validate Base Backups, WAL, and Object-Store Layout
+# CloudNativePG Backup Succeeds but Restore Fails: Check WAL and Backup Layout
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

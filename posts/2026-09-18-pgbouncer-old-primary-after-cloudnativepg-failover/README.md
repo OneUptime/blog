@@ -1,4 +1,4 @@
-# PgBouncer Still Points to the Old Primary After Operator Failover: DNS, Pool, and Reconnect Fixes
+# Fix PgBouncer's Old Primary After Operator Failover: DNS, Pools, and Reconnects
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
@@ -8,7 +8,7 @@ Description: Trace stale PostgreSQL connections through CloudNativePG Services, 
 
 ---
 
-After failover, new PostgreSQL connections may succeed while one application keeps reporting read-only transactions. That is a useful clue: the cluster may have promoted correctly, but the application or PgBouncer still holds connections to the former primary.
+After failover, new PostgreSQL connections may succeed while one application keeps reporting read-only transactions. That is a useful clue: the cluster may have promoted correctly, but the application or PgBouncer is reaching a standby or using a read-only transaction setting. In a normal CloudNativePG failover, the former primary restarts to rejoin as a replica, terminating its original sessions. Connections to that replica afterward indicate a routing or reconnection problem, not sessions surviving demotion.
 
 Debug the route in layers. A hostname, a Kubernetes Service, and an established TCP connection have different lifetimes. Lowering a DNS cache timeout does not necessarily change where an existing connection goes.
 
@@ -46,7 +46,7 @@ kubectl get pooler orders-pooler -n database -o yaml
 kubectl get pods -n database -l cnpg.io/poolerName=orders-pooler
 ```
 
-In a CloudNativePG-managed Pooler, verify `spec.cluster.name` and `spec.type`. The operator generates the database mappings. Make persistent changes through the `Pooler` resource rather than editing a generated configuration file that reconciliation can replace. See the operator's [controlled configurability](https://cloudnative-pg.io/docs/1.30/connection_pooling/#controlled-configurability).
+In a CloudNativePG-managed Pooler, verify `spec.cluster.name` and `spec.type`. The operator generates the database mappings. In CloudNativePG 1.30, `spec.cluster` is immutable; pointing at another cluster requires a new `Pooler`. Make persistent changes through the `Pooler` resource rather than editing a generated configuration file that reconciliation can replace. See the operator's [controlled configurability](https://cloudnative-pg.io/docs/1.30/connection_pooling/#controlled-configurability).
 
 For a separately managed PgBouncer, inspect the `[databases]` entry. A pod IP, pod hostname, old primary address, or read-only Service is not an appropriate write destination. Change the durable configuration to the intended primary endpoint, then reload it using the administration interface.
 
@@ -59,13 +59,13 @@ SHOW POOLS;
 SHOW CONFIG;
 ```
 
-The admin console uses the virtual `pgbouncer` database; these commands are not normal PostgreSQL SQL. Avoid putting credentials in shell history. For independently managed poolers with remote administration enabled, a Service in front of several instances does not guarantee successive admin commands reach the same process.
+The admin console uses the virtual `pgbouncer` database; these commands are not normal PostgreSQL SQL. Avoid putting credentials in shell history. For independently managed poolers with remote administration enabled, separate admin connections through a Service in front of several instances may reach different processes; commands on one established connection reach the same process.
 
 ## Decide whether DNS is involved
 
 With a standard ClusterIP Service, `orders-rw.database.svc` normally resolves to the Service IP. Failover changes its ready endpoints while the Service IP stays the same. In that topology a DNS answer can be correct while an established connection still reaches the old backend.
 
-DNS matters when your design changes the hostname's resolved address, such as an external endpoint or a headless Service. Compare resolution from the pooler's network environment, the configured destination, and the addresses shown by `SHOW SERVERS`.
+DNS matters when your design changes the hostname's resolved address, such as an external endpoint or a headless Service. Compare resolution from the pooler's network environment, the configured destination, and the addresses shown by `SHOW SERVERS`. With a ClusterIP destination, `SHOW SERVERS` can show the Service IP rather than the backend pod IP; use the role query and `inet_server_addr()` to identify the actual PostgreSQL backend.
 
 PgBouncer's [`dns_max_ttl`](https://www.pgbouncer.org/config.html#dns_max_ttl) controls its own cache and does not honor the authoritative record's TTL as a replacement. When resolution changes, PgBouncer retires old server connections when they are released according to pool mode. A long-lived session can therefore delay convergence even after DNS refreshes.
 
@@ -81,7 +81,7 @@ WAIT_CLOSE app;
 
 [`RECONNECT` and `WAIT_CLOSE`](https://www.pgbouncer.org/usage.html#reconnect-db) do not migrate in-flight transactions. `RECONNECT` closes connections after release; `WAIT_CLOSE` waits for connections marked for closure. It can wait a long time for session pooling. During convergence, old and new backend connections can coexist.
 
-For a planned change that requires all connections to move together, use a coordinated `PAUSE`, verify the drain, change or verify the destination, and `RESUME`. CloudNativePG exposes that through `spec.pgbouncer.paused`. For an unplanned outage, applications still need bounded reconnects and correct handling of ambiguous commits.
+For a planned change that requires all connections to move together, use a coordinated `PAUSE`, verify the drain, change or verify the destination, and `RESUME`. In session pooling, `PAUSE` waits for clients to disconnect, so coordinate draining client-side pools as well. CloudNativePG exposes that through `spec.pgbouncer.paused`. For an unplanned outage, applications still need bounded reconnects and correct handling of ambiguous commits.
 
 Do not restart every pooler pod as the first diagnostic action. That removes evidence and disconnects clients across the fleet. If a targeted restart becomes necessary, use the deployment's maintenance procedure and observe its effects before moving to another instance.
 

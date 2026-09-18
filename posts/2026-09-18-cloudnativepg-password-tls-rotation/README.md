@@ -1,4 +1,4 @@
-# How to Rotate PostgreSQL Operator User Passwords and TLS Certificates Without Downtime
+# Rotate PostgreSQL Operator Passwords and TLS Certificates Without Downtime
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

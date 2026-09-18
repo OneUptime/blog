@@ -1,4 +1,4 @@
-# Validation Summary: gRPC Client Stays on a Dead Kubernetes Pod: Fix DNS Re-Resolution, Resolver Schemes, and Channel State
+# Validation Summary: Fix gRPC Clients on Dead Kubernetes Pods: DNS, Resolvers, and Channel State
 
 ## Status
 validated

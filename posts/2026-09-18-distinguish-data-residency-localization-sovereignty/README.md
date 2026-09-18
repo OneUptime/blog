@@ -1,4 +1,4 @@
-# How to Distinguish Data Residency, Data Localization, and Data Sovereignty Before Designing Your Architecture
+# Data Residency vs. Localization vs. Sovereignty: Architecture Differences
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -1,4 +1,4 @@
-# Validation Summary: How to Route Each SaaS Tenant to the Correct Regional Database Using a Residency Registry
+# Validation Summary: Route SaaS Tenants to Regional Databases with a Residency Registry
 
 ## Status
 validated

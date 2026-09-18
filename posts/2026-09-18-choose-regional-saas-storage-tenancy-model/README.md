@@ -1,4 +1,4 @@
-# How to Choose Between Shared, Schema-per-Tenant, and Database-per-Region Storage for Data Residency
+# Data Residency Storage: Shared, Schema-per-Tenant, or Database-per-Region
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

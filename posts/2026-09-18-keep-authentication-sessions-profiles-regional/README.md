@@ -1,4 +1,4 @@
-# How to Keep Authentication, Sessions, and User Profiles Inside Regional Data Boundaries
+# Keep Authentication, Sessions, and Profiles Within Regional Data Boundaries
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

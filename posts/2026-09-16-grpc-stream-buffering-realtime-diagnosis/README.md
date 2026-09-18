@@ -1,4 +1,4 @@
-# How to Diagnose gRPC Streams That Buffer Messages Instead of Delivering Them in Real Time
+# Diagnose gRPC Streams That Buffer Messages Instead of Delivering in Real Time
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

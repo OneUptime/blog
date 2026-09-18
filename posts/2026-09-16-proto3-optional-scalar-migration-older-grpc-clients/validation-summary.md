@@ -1,4 +1,4 @@
-# Validation Summary: How to Evolve Proto3 Scalar Fields to `optional` Without Breaking Older gRPC Clients
+# Validation Summary: Evolve Proto3 Scalars to `optional` Without Breaking Older gRPC Clients
 
 ## Status
 validated

@@ -1,4 +1,4 @@
-# How to Serve gRPC and HTTP/JSON on the Same Port with Protocol Detection and Safe Fallbacks
+# Serve gRPC and HTTP/JSON on One Port with Protocol Detection and Safe Fallbacks
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -1,4 +1,4 @@
-# CloudNativePG Rejects a Custom PostgreSQL or TimescaleDB Image: Verify Labels, UID, Binaries, and Extensions
+# Fix Rejected CloudNativePG PostgreSQL or TimescaleDB Images
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

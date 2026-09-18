@@ -1,4 +1,4 @@
-# Validation Summary: How to Build a Data Residency Inventory That Finds Copies in Queues, Caches, Logs, and Backups
+# Validation Summary: Build a Data Residency Inventory for Queues, Caches, Logs, and Backups
 
 ## Status
 

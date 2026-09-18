@@ -1,4 +1,4 @@
-# How to Migrate PostgreSQL into CloudNativePG with Minimal Downtime Using an External Cluster
+# Migrate PostgreSQL to CloudNativePG via an External Cluster with Low Downtime
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
@@ -20,11 +20,11 @@ Inventory databases, extensions, ownership, tables without usable replica identi
 
 ## Prepare the source and credentials
 
-The following example assumes one application database named `app`, ordinary tables, and a target owner also named `app`. For multiple databases, repeat the subscription and validation process for each database; there is no cluster-wide transaction boundary across subscriptions.
+The following example assumes one application database named `app`, ordinary tables, and a target owner also named `app`. For multiple databases, import each database's schema before creating its subscription, then validate each database; the shown `microservice` bootstrap imports only one database per target cluster. There is no cluster-wide transaction boundary across subscriptions.
 
-Configure the source for logical replication, with enough replication slots and WAL senders for initial synchronization and steady-state streaming. Establish a TLS connection from the target Kubernetes network, and restrict the source's access rules to the migration identity and expected client network.
+Configure the source with `wal_level = logical`, with enough replication slots and WAL senders for initial synchronization and steady-state streaming. Establish a TLS connection from the target Kubernetes network, and restrict the source's access rules to the migration identity and expected client network.
 
-Give the migration identity the source permissions needed for schema extraction, replication, and the initial table copy. In a simple single-owner database this can be its application owner with temporary replication permission; managed services may require provider-specific setup. A database administrator creates the publication:
+Give the migration identity the source permissions needed for schema extraction, replication, and the initial table copy. In a simple single-owner database this can be its application owner with temporary replication permission; managed services may require provider-specific setup. Before creating the publication, ensure every table that receives updates or deletes has a usable replica identity. A database administrator with superuser privileges creates the `FOR ALL TABLES` publication (on a managed service without this privilege, use an explicit table publication with the required ownership permissions):
 
 ```sql
 -- Run in the source app database after reviewing its tables.
@@ -106,6 +106,6 @@ Stop every source writer, including workers, scheduled jobs, and maintenance tas
 
 Copy each sequence's final state, preserving its `is_called` meaning, and validate extension-specific migration steps. Delete the migration Subscription only after synchronization is complete; the configured delete reclaim policy removes the SQL subscription. Keep the source reachable during cleanup and verify its migration slot is gone.
 
-Point applications at `app-target-rw.database.svc`, supply the target credentials, and reopen connections. Test a committed write and subsequent read through the application. Record the write-pause duration and the first successful request.
+Point applications running inside the Kubernetes cluster at `app-target-rw.database.svc` (external clients need a separately configured reachable endpoint), supply the target credentials, and reopen connections. Test a committed write and subsequent read through the application. Record the write-pause duration and the first successful request.
 
 Retain the source without application writes for the agreed rollback period. Before the target accepts writes, returning traffic to the source is straightforward. After target writes begin, returning requires deliberate data reconciliation. Finish by taking and restoring a target backup in an isolated environment so that the migration also establishes a working recovery path.

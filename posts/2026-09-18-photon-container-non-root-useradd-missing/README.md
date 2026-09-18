@@ -1,4 +1,4 @@
-# How to Create a Non-Root User in a Minimal Photon OS Container When useradd Is Missing
+# Create a Non-Root User in a Minimal Photon OS Container Without useradd
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 

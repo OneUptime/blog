@@ -1,4 +1,4 @@
-# How to Avoid Duplicate Protobuf Symbols When Multiple gRPC Packages Share Common Types
+# Avoid Duplicate Protobuf Symbols Across gRPC Packages with Shared Types
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

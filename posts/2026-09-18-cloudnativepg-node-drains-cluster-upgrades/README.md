@@ -1,4 +1,4 @@
-# How to Keep PostgreSQL Operator Pods Available During Node Drains and Cluster Upgrades
+# Keep PostgreSQL Operator Pods Available During Node Drains and Cluster Upgrades
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

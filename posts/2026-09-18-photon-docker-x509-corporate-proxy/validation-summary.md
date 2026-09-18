@@ -1,4 +1,4 @@
-# Validation Summary: How to Fix Docker Pull x509 Errors on Photon OS Behind Zscaler or a Corporate Proxy
+# Validation Summary: Fix Docker Pull x509 Errors on Photon OS Behind Zscaler or a Corporate Proxy
 
 ## Status
 validated

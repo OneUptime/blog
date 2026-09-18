@@ -1,4 +1,4 @@
-# Validation Summary: How to Enforce AWS Data Residency with SCPs, Region-Deny Policies, and IaC Checks
+# Validation Summary: Enforce AWS Data Residency with SCPs, Region-Deny Policies, and IaC Checks
 
 ## Status
 

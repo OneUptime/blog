@@ -1,4 +1,4 @@
-# Validation Summary: How to Build Change-Aware Drone Pipelines for Large Monorepos Without Running Every Service
+# Validation Summary: Build Change-Aware Drone Monorepo Pipelines to Run Only Affected Services
 
 ## Status
 validated

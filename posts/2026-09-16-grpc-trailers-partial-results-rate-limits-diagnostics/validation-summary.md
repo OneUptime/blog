@@ -1,4 +1,4 @@
-# Validation Summary: How to Send and Read gRPC Trailers for Partial Results, Rate Limits, and Error Diagnostics
+# Validation Summary: Send and Read gRPC Trailers for Partial Results, Rate Limits, and Diagnostics
 
 ## Status
 validated

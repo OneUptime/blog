@@ -1,4 +1,4 @@
-# gRPC Client Stays on a Dead Kubernetes Pod: Fix DNS Re-Resolution, Resolver Schemes, and Channel State
+# Fix gRPC Clients on Dead Kubernetes Pods: DNS, Resolvers, and Channel State
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

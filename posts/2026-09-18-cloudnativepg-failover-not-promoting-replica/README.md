@@ -1,4 +1,4 @@
-# CloudNativePG Failover Does Not Promote a Replica: Diagnose Quorum, WAL, and Instance Health
+# CloudNativePG Replica Promotion Fails: Check Quorum, WAL, and Instance Health
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

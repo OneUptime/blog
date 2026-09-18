@@ -1,4 +1,4 @@
-# Validation Summary: CloudNativePG Rejects a Custom PostgreSQL or TimescaleDB Image: Verify Labels, UID, Binaries, and Extensions
+# Validation Summary: Fix Rejected CloudNativePG PostgreSQL or TimescaleDB Images
 
 ## Status
 

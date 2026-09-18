@@ -1,4 +1,4 @@
-# How to Troubleshoot Docker Containers That Become Unreachable After a Photon OS Upgrade
+# Troubleshoot Unreachable Docker Containers After a Photon OS Upgrade
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 

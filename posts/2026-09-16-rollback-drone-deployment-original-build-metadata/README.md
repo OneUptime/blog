@@ -1,4 +1,4 @@
-# How to Roll Back a Drone Deployment with Rollback Events and the Original Build Metadata
+# Roll Back Drone Deployments Using Rollback Events and Original Build Metadata
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

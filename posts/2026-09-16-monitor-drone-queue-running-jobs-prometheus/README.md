@@ -1,4 +1,4 @@
-# How to Monitor Drone Queue Depth and Running Jobs with the Built-In Prometheus Metrics
+# Monitor Drone Queue Depth and Running Jobs with Built-In Prometheus Metrics
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

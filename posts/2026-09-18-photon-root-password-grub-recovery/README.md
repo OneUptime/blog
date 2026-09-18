@@ -77,6 +77,8 @@ If the configured mechanism is `pam_tally2` and the tool exists, its documented 
 pam_tally2 --reset --user root
 ```
 
+If the PAM configuration sets a custom `file=` for `pam_tally2`, add `--file /path/to/counter` with that same path to the reset command; otherwise, it resets the default `/var/log/tallylog`.
+
 If the PAM stack uses `pam_faillock`, inspect and reset that mechanism instead:
 
 ```bash

@@ -1,4 +1,4 @@
-# Validation Summary: How to Test PostgreSQL Operator Failover and Measure RPO and RTO Before Production
+# Validation Summary: Test PostgreSQL Operator Failover and Measure RPO and RTO Before Production
 
 ## Status
 validated

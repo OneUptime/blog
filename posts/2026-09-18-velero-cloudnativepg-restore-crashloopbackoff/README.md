@@ -1,4 +1,4 @@
-# Velero Restore Leaves CloudNativePG in CrashLoopBackOff: Reconcile CRs, PVCs, and `PGDATA`
+# Fix CloudNativePG CrashLoopBackOff After Velero Restore: CRs, PVCs, and `PGDATA`
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
@@ -48,7 +48,7 @@ Prefer restoring into an isolated destination with deliberate resource ownership
 
 ## Verify every required volume
 
-A bound PVC proves a volume was attached, not that it contains the expected backup. Build a small inventory:
+A bound PVC confirms a binding to a PersistentVolume, not that the volume is attached, mounted, or contains the expected backup. Build a small inventory:
 
 | Volume role | Evidence to check |
 | --- | --- |

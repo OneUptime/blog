@@ -1,4 +1,4 @@
-# How to Repair Photon OS Updates After Repository URLs Move or TLS Certificates Fail
+# Repair Photon OS Updates After Repository URL Changes or TLS Failures
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
@@ -28,7 +28,7 @@ Retry metadata refresh once and preserve the output. Distinguish a name-resoluti
 
 ## Apply the official repository migration
 
-The Photon project's [migration notice](https://github.com/vmware/photon/wiki/changes-to-repository-location-in-photon) explains the move from `packages.vmware.com` to `packages-prod.broadcom.com`. It directs administrators of Photon 4 and 5 systems to update the repository package together with the text-processing dependencies used by its migration logic:
+The Photon project's [migration notice](https://github.com/vmware/photon/wiki/changes-to-repository-location-in-photon) explains the initial move from `packages.vmware.com` to `packages-prod.broadcom.com`. The current [Photon 4](https://github.com/vmware/photon/blob/4.0/SPECS/photon-repos/photon.repo) and [Photon 5](https://github.com/vmware/photon/blob/5.0/SPECS/photon-repos/photon.repo) repository files now use `packages.broadcom.com`, following a later migration. The notice directs administrators of Photon 4 and 5 systems to update the repository package together with the text-processing dependencies used by its migration logic:
 
 ```bash
 tdnf update --refresh grep sed photon-repos
@@ -36,16 +36,16 @@ tdnf update --refresh grep sed photon-repos
 
 If the old endpoint still works, this is the preferred starting point. Review the resulting definitions and any `.rpmnew` files when locally modified configuration was preserved.
 
-If the old host is already unreachable, correct only the affected vendor `baseurl` hostname using the current official notice and release-matching repository files as your reference. Preserve `$releasever`, `$basearch`, repository IDs, signature settings, and custom internal sources. Do not replace a Photon 4 path with a Photon 5 path as a shortcut to upgrading.
+If the old host is already unreachable, correct only the affected vendor `baseurl` hostname to `packages.broadcom.com`, using the current release-matching repository files as your reference. Preserve `$releasever`, `$basearch`, repository IDs, signature settings, and custom internal sources. Do not replace a Photon 4 path with a Photon 5 path as a shortcut to upgrading.
 
-Verify the edited URL reaches the expected `repodata/repomd.xml`, then update `photon-repos` so future package management uses vendor-maintained configuration. Search again for the retired hostname and explain any remaining occurrences rather than editing unrelated configuration indiscriminately.
+Verify the edited URL reaches the expected `repodata/repomd.xml`, then update `photon-repos` so future package management uses vendor-maintained configuration. Search again for both older hostnames and explain any remaining occurrences rather than editing unrelated configuration indiscriminately.
 
 ## Separate trust failures from endpoint failures
 
 Check DNS and time before importing certificates:
 
 ```bash
-getent hosts packages-prod.broadcom.com
+getent hosts packages.broadcom.com
 timedatectl status
 ```
 
@@ -64,10 +64,10 @@ The path must exist and contain the appropriate trusted certificates. Verify the
 
 ## Restore a healthy transaction path
 
-Once the endpoint, clock, proxy, and trust chain are correct, refresh metadata:
+Once the endpoint, clock, proxy, and trust chain are correct, clear the cache and refresh metadata. Use `clean all` for compatibility with older tdnf versions; it also removes cached packages:
 
 ```bash
-tdnf clean metadata
+tdnf clean all
 tdnf makecache
 tdnf check-update
 ```

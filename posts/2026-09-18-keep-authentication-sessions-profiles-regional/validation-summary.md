@@ -1,4 +1,4 @@
-# Validation Summary: How to Keep Authentication, Sessions, and User Profiles Inside Regional Data Boundaries
+# Validation Summary: Keep Authentication, Sessions, and Profiles Within Regional Data Boundaries
 
 ## Status
 validated
