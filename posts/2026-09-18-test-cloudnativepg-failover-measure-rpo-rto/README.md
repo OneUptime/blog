@@ -81,7 +81,7 @@ In the disposable environment, identify the current primary again and deliberate
 kubectl delete pod orders-1 -n database
 ```
 
-Ordinary deletion allows graceful termination, so document it as a pod deletion test. Use your infrastructure's controlled node shutdown or fault-injection procedure for a separate abrupt node-loss test. Rehearse network partitions separately and preserve access to the observer and management plane. Do not use broad production NetworkPolicy changes as an improvised experiment.
+Ordinary deletion allows graceful termination, so document it as a pod deletion test. Use your infrastructure's fault-injection procedure that prevents graceful pod termination for a separate abrupt node-loss test; a controlled node shutdown may terminate pods gracefully and should be recorded separately. Rehearse network partitions separately and preserve access to the observer and management plane. Do not use broad production NetworkPolicy changes as an improvised experiment.
 
 CloudNativePG's [failure modes](https://cloudnative-pg.io/docs/1.30/failure_modes/) and [automated failover](https://cloudnative-pg.io/docs/1.30/failover/) explain why Kubernetes failure detection, shutdown, WAL state, quorum, and the 1.30 primary Lease affect timing. If quorum intentionally blocks promotion, record the unavailable interval and the preserved durability policy. Bypassing it changes the experiment.
 
