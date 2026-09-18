@@ -256,7 +256,6 @@
 
 ## Data Residency
 
-8. How to Restrict Google Cloud Pub/Sub Storage to Allowed Persistence Regions
 9. How to Check Whether Azure Storage Queues, Service Bus, and Functions Keep Data in Your Selected Geography
 10. How to Enforce AWS Data Residency with SCPs, Region-Deny Policies, and IaC Checks
 11. How to Keep Database Backups and Point-in-Time Recovery Data Inside the Required Jurisdiction
