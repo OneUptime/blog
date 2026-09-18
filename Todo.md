@@ -250,7 +250,6 @@
 
 ## PostgreSQL Operator
 
-7. How to Perform Point-in-Time Recovery with CloudNativePG Without Overwriting the Source Cluster
 8. CloudNativePG WAL Archive Keeps Growing: Fix Retention, Failed Uploads, and Orphaned Backups
 9. How to Back Up CloudNativePG to MinIO or S3 with IAM, Custom CAs, and Path-Style URLs
 10. Velero Restore Leaves CloudNativePG in CrashLoopBackOff: Reconcile CRs, PVCs, and `PGDATA`
