@@ -250,7 +250,6 @@
 
 ## PostgreSQL Operator
 
-17. How to Bootstrap Multiple Databases, Roles, and Extensions Declaratively in CloudNativePG
 18. CloudNativePG Rejects a Custom PostgreSQL or TimescaleDB Image: Verify Labels, UID, Binaries, and Extensions
 19. How to Expose CloudNativePG Inside and Outside Kubernetes Without Sending Writes to Read-Only Services
 20. PostgreSQL Operator Cluster Stuck Reconciling: Read Conditions, Events, Instance Logs, and Finalizers
