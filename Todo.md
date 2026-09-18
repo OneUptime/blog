@@ -250,7 +250,6 @@
 
 ## PostgreSQL Operator
 
-10. Velero Restore Leaves CloudNativePG in CrashLoopBackOff: Reconcile CRs, PVCs, and `PGDATA`
 11. How to Migrate PostgreSQL into CloudNativePG with Minimal Downtime Using an External Cluster
 12. CloudNativePG Major Upgrade Fails with Timeline or WAL Errors: How to Recover the Cutover
 13. How to Expand a PostgreSQL Operator PVC Safely—and What to Do When the StorageClass Cannot Resize
