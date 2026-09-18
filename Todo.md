@@ -256,7 +256,6 @@
 
 ## Data Residency
 
-5. How to Choose Between Shared, Schema-per-Tenant, and Database-per-Region Storage for Data Residency
 6. How to Move One SaaS Tenant to a New Data Region with Minimal Downtime
 7. How to Keep Authentication, Sessions, and User Profiles Inside Regional Data Boundaries
 8. How to Restrict Google Cloud Pub/Sub Storage to Allowed Persistence Regions
