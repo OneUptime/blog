@@ -49,7 +49,7 @@ A per-tenant logical export may help migration, but rehearse it. Shared objects,
 
 Operating distinct databases per approved region makes configuration and access review easier. Use distinct regional credentials and restrict each application deployment to its assigned stores.
 
-However, a regional database is not automatically a tenant boundary. If many tenants share it, apply shared-table or schema isolation as appropriate. If a large tenant needs dedicated capacity or independent recovery, it can receive a dedicated database within the same approved region.
+However, a regional database is not automatically a tenant boundary. If many tenants share it, apply shared-table or schema isolation as appropriate. If a large tenant needs dedicated capacity or independent physical recovery, it can receive a dedicated database instance within the same approved region. In PostgreSQL, separate databases on a shared instance still share server resources and the physical backup and recovery boundary.
 
 Review read replicas, analytical exports, backup destinations, database monitoring, and restore environments. A cross-region read replica is a second copy even when the primary remains correctly placed.
 
