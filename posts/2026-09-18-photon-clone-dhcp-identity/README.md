@@ -12,7 +12,7 @@ Two cloned VMs can have different virtual MAC addresses yet send the same DHCP i
 
 ## Confirm an identity collision
 
-From each VM's console, collect:
+From each VM's console, collect (replace `eth0` with the interface name shown by `ip -br link`):
 
 ```bash
 cat /etc/machine-id
@@ -29,8 +29,9 @@ Check for explicitly configured identifiers:
 
 ```bash
 grep -R -E 'DUID|IAID|ClientIdentifier|Address=' \
-  /etc/systemd/network /etc/systemd/networkd.conf \
-  /etc/systemd/networkd.conf.d 2>/dev/null
+  /{etc,run,usr/lib,usr/local/lib}/systemd/network \
+  /etc/systemd/networkd.conf \
+  /{etc,run,usr/lib,usr/local/lib}/systemd/networkd.conf.d 2>/dev/null
 ```
 
 Some listed paths may not exist. An explicit `DUIDRawData` or equivalent override can keep clones identical even after machine IDs differ. Also inspect configuration delivered by cloud-init or another template-customization process.

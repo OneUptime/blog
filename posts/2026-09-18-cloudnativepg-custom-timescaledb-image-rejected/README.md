@@ -36,10 +36,11 @@ When using `imageName`, the tag must begin with a recognizable PostgreSQL versio
 
 An ImageCatalog can explicitly supply the major when the existing image tag does not follow that convention. The [image catalog documentation](https://cloudnative-pg.io/docs/1.30/image_catalog/) explains that the declared major must match the binaries. A catalog declaration cannot convert a PostgreSQL 16 image into PostgreSQL 17.
 
-Inspect the candidate locally using an approved image and an isolated environment. These commands do not mount a production data volume:
+Inspect the candidate locally using an approved image and an isolated environment. Replace the example image reference with your candidate image. These commands do not mount a production data volume:
 
 ```bash
 IMAGE=registry.example.com/database/postgresql:17.11-custom1
+docker pull "$IMAGE"
 docker image inspect "$IMAGE" --format '{{json .Config.Labels}}'
 docker image inspect "$IMAGE" --format '{{json .Config.User}}'
 docker run --rm --entrypoint postgres "$IMAGE" --version
