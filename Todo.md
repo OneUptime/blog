@@ -24,6 +24,28 @@
 ## Postgres Replication
 
 
+
+1. How to Use PostgreSQL 18 idle_replication_slot_timeout Without Invalidating Planned Pauses
+2. How to Recover a PostgreSQL Standby After Its Required WAL Has Been Removed
+3. How to Seed PostgreSQL Logical Replication from an Exported Snapshot Without Missing Writes
+4. How to Resynchronize One PostgreSQL Logical Replication Table After a Lost Subscription
+5. How to Add a Table to a PostgreSQL Publication and Start Its Initial Copy
+6. How to Rename a PostgreSQL Table Without Dropping In-Flight Logical Replication Changes
+7. How to Replicate Tenant Rows with PostgreSQL Row Filters and a Matching Replica Identity
+8. How to Diagnose PostgreSQL Row Filters That Copy Unexpected Rows During Initial Sync
+9. How to Publish Selected PostgreSQL Columns While Preserving UPDATE and DELETE Replication
+10. How to Replicate Between Different PostgreSQL Partition Layouts with publish_via_partition_root
+11. How to Handle TRUNCATE Across PostgreSQL Publications with Foreign-Key Dependencies
+12. How to Enable PostgreSQL Subscriber Triggers and Measure Their Replication Overhead
+13. How to Plan a PostgreSQL Logical Replication Migration When Large Objects Are Present
+14. How to Grant PostgreSQL Logical Replication Initial Copy Permissions Without Superuser Access
+15. How to Reduce Logical Replication Lag from Large PostgreSQL Transactions with Parallel Apply
+16. How to Split PostgreSQL Logical Replication Across Subscriptions Without Assuming Shared Ordering
+17. How to Validate PostgreSQL Publisher and Subscriber Data Before a Migration Cutover
+18. How to Lower max_connections Across PostgreSQL Replicas in the Correct Restart Order
+19. How to Test PostgreSQL Replication Authentication with a Replication Protocol Connection
+20. How to Prevent Replication Loops in PostgreSQL 16 with origin = none
+
 ## EdgeDB
 
 
@@ -554,6 +576,28 @@
 18. How to Tune Cloudability Rightsizing Preferences Without Breaking Commitment Coverage or CPU Architecture
 19. How to Reduce Cloudability Anomaly Alert Noise with Thresholds, Business Dimensions, and Ticket Routing
 20. A Cloudability User Sees Blank Dashboards: Fixing View Assignment, Feature Permissions, and Default Views
+
+
+21. How to Diagnose Missing Owner Tags in Cloudability Tag Explorer
+22. How to Bring AWS Account-Level Tags into Cloudability Cost Reports
+23. How to Consolidate Inconsistent Tag Keys into One Cloudability Reporting Dimension
+24. How to Diagnose IBM Cloud Account Verification Failures Before Billing Files Arrive in Cloudability
+25. How to Export Readable Business Mapping Headers from Cloudability with useDimensionNames
+26. How to Inventory Saved Cloudability Reports and Their Sharing Settings with the API
+27. How to Stop Repeated Pages and Duplicate Rows in Cloudability API Exports
+28. How to Retrieve Large Cloudability Reports with the Asynchronous Enqueue Workflow
+29. How to Investigate Currency Precision Differences Between Cloudability CSV and API Results
+30. How to Diagnose 404 Errors When Looking Up Saved Cloudability Reports by ID
+31. How to Isolate Invalid Query Parameters Behind Cloudability Cost Reporting API Errors
+32. How to Resolve Cloudability Business Metric Creation Errors Caused by the Wrong API Endpoint
+33. How to Calculate Cloudability Cost Ratios After Aggregation with Calculated Metrics
+34. How to Sync ServiceNow CMDB Ownership into Cloudability Business Dimensions
+35. How to Allocate OpenSearch Serverless OCU Costs by Application in Cloudability
+36. How to Scope Cloudability Budgets to Individual IBM Cloud Projects
+37. How to Exclude Credits and One-Time Charges from a Cloudability Enhanced Forecast
+38. How to Fix Cloudability Basic Auth 401 Errors Caused by a Frontdoor API Key
+39. How to Explain Different Totals for Cloudability Anomalies on the Same Service
+40. How to Combine Cloudability Cost and Utilization Exports Without Misstating Billed Spend
 
 ## EFS
 
@@ -3116,6 +3160,28 @@
 19. How to Cache Hashed JavaScript and CSS for a Year While Keeping HTML Deployments Fresh
 20. Browser, Service Worker, CDN, or Origin? Locate a Stale Response with `Age`, `Via`, `X-Cache`, and DevTools
 
+
+21. How to Cache Async Python Results Without Reusing an Awaited Coroutine
+22. How to Release Python Instances Retained by Cached Bound Methods
+23. How to Stop Callers from Mutating Objects Stored in a Python Function Cache
+24. How to Build Stable Cache Keys for Nested Python Dictionary Arguments
+25. How to Coalesce Concurrent Python Cache Misses When lru_cache Repeats the Work
+26. How to Reclaim Memory Held by Expired cachetools TTLCache Entries
+27. How to Invalidate One cachetools Entry Before Its TTL Expires
+28. How to Isolate Memoized Python Functions in Tests That Use Different Mocks
+29. How to Refresh a Python cached_property After Its Underlying State Changes
+30. How to Prevent Duplicate cached_property Initialization in Python 3.12 and Later
+31. How to Fix Spring Cache Annotations Bypassed by Calls Within the Same Bean
+32. How to Keep Spring Cacheable from Skipping a Required Database Update
+33. How to Defer Spring Cache Updates Until a Database Transaction Commits
+34. How to Choose Read-Triggered Refresh or Scheduled Reloading for a Caffeine Cache
+35. How to Fix the Caffeine "refreshAfterWrite Requires a LoadingCache" Error in Spring
+36. How to Preserve HTTP Cache Validation When Gzip Changes Representation Bytes
+37. How to Update Cached Response Metadata Correctly with HTTP 304 Responses
+38. How to Prevent Cached CORS Responses from Reusing the Wrong Allowed Origin
+39. How to Limit the Lifetime of Permanent Redirects Before a URL Migration
+40. How to Diagnose Video Playback Stalls Caused by Cached HTTP Range Responses
+
 ## Octavia
 
 1. Octavia Load Balancer Stuck in `PENDING_CREATE`: Trace Amphora Boot, Management Port 9443, and Security Groups
@@ -4985,6 +5051,27 @@
 18. How to Encrypt Sensitive Parquet Columns While Preserving Projection and Predicate Pushdown
 19. How to Detect Corrupt Parquet Pages and Truncated Footers with CRCs and Footer Validation
 20. How to Benchmark File Skipping, Page Skipping, and Decoding Separately in a Columnar Query
+
+21. How to Choose Arrow IPC Files for Memory-Mapped Random Batch Reads
+22. How to Share Read-Only Arrow Data Across Python Processes with Memory-Mapped IPC Files
+23. How to Verify Zero-Copy Arrow-to-Pandas Conversion by Checking Nulls and Chunk Boundaries
+24. How to Avoid Unnecessary Arrow combine_chunks Copies in a Columnar Pipeline
+25. How to Diagnose Arrow String Offset Overflow and Evaluate large_string Compatibility
+26. How to Control Whether Pandas Indexes Become Physical Columns in Parquet Files
+27. How to Test Numeric Categorical Columns Through a Pandas and Parquet Round Trip
+28. How to Read Parquet String Columns as Arrow Dictionaries to Reduce Materialization Costs
+29. How to Benchmark Parquet BYTE_STREAM_SPLIT Encoding with Zstd for Floating-Point Columns
+30. How to Evaluate Parquet DELTA_BINARY_PACKED Encoding for Monotonic Integer Columns
+31. How to Set Parquet Data Page Versions Independently from Logical Type Compatibility
+32. How to Choose Different Parquet Compression Codecs for Text, Numbers, and Binary Payloads
+33. How to Count Rows in a Parquet Dataset from File Metadata Without Decoding Columns
+34. How to Store Sensor Columns with Different Sampling Rates in Parquet Without Inventing Measurements
+35. How to Tune PyArrow Parquet Pre-Buffering Without Duplicating Filesystem Readahead
+36. How to Stream Arrow IPC Record Batches Through an HTTP Response with a Stable Schema
+37. How to Explain ORC Stripe Sizes by Separating Uncompressed Targets from On-Disk Bytes
+38. How to Diagnose ORC Bloom Filters That Do Not Improve Equality Queries
+39. How to Read ORC with VectorizedRowBatch While Respecting Null and Repeating-Value Flags
+40. How to Diagnose ORC Timestamp Shifts Across Writer and Reader Time Zones
 
 ## CloudEvents
 
@@ -7660,6 +7747,28 @@
 19. How to Stop Unwanted OTLP Trace Export Errors in CNCF Distribution 3
 20. How to Reuse Existing Layers with CNCF Distribution Cross-Repository Blob Mounts
 
+
+21. How to Fix Ignored Configuration Mounts When Switching Between CNCF Distribution 2 and 3
+22. How to Migrate CNCF Distribution 2 Redis Settings to the Version 3 Cache Configuration
+23. How to Move Off Unsupported Swift or OSS Storage Before Upgrading CNCF Distribution 3
+24. How to Fix CNCF Distribution Login Failures Caused by the Wrong htpasswd Hash Format
+25. How to Diagnose Conflicting Storage Backends in CNCF Distribution Environment Overrides
+26. How to Configure CNCF Distribution Middleware Lists with YAML and Indexed Overrides
+27. How to Audit Shared Manifest Digests Before Deleting CNCF Distribution Tags
+28. How to Retag a Multi-Platform Image in CNCF Distribution Without Downloading Its Layers
+29. How to Diagnose CNCF Distribution Pulls Redirected to an Unreachable S3 Endpoint
+30. How to Restrict Access to Private Docker Hub Images Cached by CNCF Distribution
+31. How to Separate Writable Repositories from a CNCF Distribution Pull-Through Cache
+32. How to Diagnose Docker Engine Skipping a CNCF Distribution Mirror for Private Registry Images
+33. How to Migrate a CNCF Distribution Data Volume with Digest Checks After Restore
+34. How to Detect Full CNCF Distribution Storage When the Registry Still Reports Healthy
+35. How to Rotate Static S3 Credentials Used by CNCF Distribution with a Controlled Rollout
+36. How to Investigate an Empty CNCF Distribution Catalog on SeaweedFS S3 Storage
+37. How to Diagnose CNCF Distribution Blob Upload Failures on Native Windows Filesystems
+38. How to Size CNCF Distribution Blob Metadata Caches Separately from Image Storage
+39. How to Verify CNCF Distribution Pull-Through Cache Hits When Upstream Requests Continue
+40. How to Fix CNCF Distribution Authentication Errors Caused by a JWT Audience Mismatch
+
 ## CUDA
 
 1. How to Identify the CUDA Toolkit Actually Used When nvcc and nvidia-smi Show Different Versions
@@ -8984,3 +9093,354 @@
 18. How to Tune Polly MinimumThroughput When a Low-Traffic Dependency Fails Every Call
 19. How to Check Whether .NET HTTP Resilience Defaults Amplify Fan-Out Calls During an Outage
 20. How to Find the Reduced Traffic Level Needed to Recover a Service Stuck in an Overload Loop
+
+
+## Proxy
+
+1. How to Fix curl Ignoring HTTP_PROXY by Checking Variable Case and Precedence
+2. How to Test NO_PROXY Domain Suffixes Across curl, Wget, and Python Requests
+3. How to Diagnose TLS Wrong Version Number Errors Caused by a Proxy URL Scheme
+4. How to Keep Environment Variables from Overriding Python Requests Session Proxies
+5. How to Disable Environment Proxies in Requests While Preserving Custom CA Trust
+6. How to Resolve Private Hostnames Through a SOCKS Proxy with Requests and socks5h
+7. How to Authenticate curl to Both a Forward Proxy and the Destination API
+8. How to Diagnose Repeated HTTP 407 Challenges from an NTLM Proxy with curl
+9. How to Translate Browser PAC Routing into Explicit Proxy Settings for CLI Tools
+10. How to Encode Special Characters in Proxy Credentials for Python Requests
+11. How to Allow an Approved Nonstandard HTTPS Port Through Squid 7
+12. How to Diagnose Squid 7 TCP_DENIED Responses by Tracing ACL Order
+13. How to Configure Separate CA Trust for an HTTPS Proxy and Its Origin with curl
+14. How to Diagnose Corporate Proxy Certificate Errors by Inspecting the Presented Chain
+15. How to Preserve Selected Proxy Variables When Running a Command Through sudo
+16. How to Restore Proxy Routing After Adding an Explicit HTTPX Transport
+17. How to Enable Environment Proxy Support for Native Node.js fetch by Runtime Version
+18. How to Configure HTTPS Proxy Exclusions for java.net with http.nonProxyHosts
+19. How to Diagnose Git Clone HTTP 407 Errors After the Proxy CONNECT Request
+20. How to Apply a Forward Proxy to One GNU Wget Download
+
+
+## SUSE Linux
+
+1. How to Diagnose SUSEConnect Certificate Errors on SLES 15 Without Disabling TLS Verification
+2. How to Register SLES 15 Behind a Proxy When SUSEConnect Cannot Reach SCC
+3. How to Recover Missing SUSEConnect Packages from Matching SLES Installation Media
+4. How to Find Unregistered SLES Modules That Are Missing Security Updates
+5. How to Choose Between zypper patch and zypper update on SLES 15
+6. How to Apply Only Security Advisories on SLES 15 with Zypper
+7. How to Identify SLES Services Still Using Deleted Libraries After Patching
+8. How to Handle Zypper Reboot-Required Exit Codes in SLES Patch Automation
+9. How to Resolve PackageKit Locks Before Registering or Patching SLES
+10. How to Review Zypper Vendor Changes Before Switching SUSE Package Repositories
+11. How to Retain a Known-Good Kernel on SLES 15 Without Freezing All Kernel Updates
+12. How to Reclaim SLES Boot Space While Preserving the Running and Fallback Kernels
+13. How to Restore One Configuration File from a SLES Snapper Snapshot
+14. How to Check Which SLES Data a Snapper Root Rollback Will Leave Unchanged
+15. How to Tune SLES Snapper Cleanup When Snapshots Fill the Root Filesystem
+16. How to Reconcile SLES Registration and Repositories After a Service-Pack Rollback
+17. How to Stop DHCP on a Secondary NIC from Replacing the SLES 15 Default Route
+18. How to Make Static Routes Survive wicked Restarts on SLES 15
+19. How to Decide Whether a Live-Patched SLES Kernel Still Needs a Planned Reboot
+20. How to Review Orphaned Packages After a SLES Service-Pack Upgrade
+
+
+## Active-Active
+
+1. How to Fail Over One ECS Microservice in an Active-Active Deployment Behind Shared ALBs
+2. How to Diagnose Uneven Active-Active Traffic When Route 53 Records Contain Multiple IPs
+3. How to Keep a Drained Active-Active Region Out of Route 53 Zero-Weight Fallback
+4. How to Test Active-Active DNS Behavior When Every Route 53 Health Check Fails
+5. How to Separate SignalR Session Affinity from Message Fanout in Active-Active Servers
+6. How to Fix Regional Signing Errors in Active-Active API Gateway WebSocket Callbacks
+7. How to Choose DynamoDB MREC or MRSC for Active-Active Idempotency Keys
+8. How to Prevent Replicated DynamoDB Stream Events from Repeating Active-Active Side Effects
+9. How to Test Concurrent TTL Changes Before Using Redis Active-Active for Expiring Sessions
+10. How to Check Which Redis Transaction Guarantees Survive Active-Active Replication
+11. How to Budget Redis Active-Active Memory for Tombstones and Replication Headroom
+12. How to Gate Redis Active-Active Failback on Replication Health Instead of TCP Reachability
+13. How to Route Active-Active Requests by Data Key to Preserve Local Cache Hits
+14. How to Diagnose Cross-Region Lock Races in Redis Active-Active Applications
+15. How to Initialize KeyDB Active-Active Replicas Without Overwriting the Authoritative Dataset
+16. How to Remove a KeyDB Active-Active Peer Without Leaving Stale Replication Links
+17. How to Diagnose S3 Object 404s During Active-Active Multi-Region Access Point Reads
+18. How to Model Shared Counters with INCR Instead of Read-Modify-SET in Redis Active-Active
+19. How to Probe Every Redis Active-Active Shard for Replication Failures
+20. How to Audit Which Data Stores in an Active-Active Application Still Have One Writable Region
+
+
+## Cloud Profiler
+
+1. How to Diagnose Cloud Profiler Permission Errors When GKE Uses an Unexpected Service Account
+2. How to Distinguish Harmless Metadata Warnings from Cloud Profiler Upload Failures
+3. How to Fix Cloud Profiler Java Agent Loading Errors in Alpine Containers
+4. How to Start Cloud Profiler Once per Gunicorn Worker Without Profiling Django Management Commands
+5. How to Restore Missing CPU and Wall Profiles from uWSGI Workers in Cloud Profiler
+6. How to Investigate Unknown Python Thread State Frames in Cloud Profiler
+7. How to Profile Node.js Child Processes and Interpret External Frames in Cloud Profiler
+8. How to Troubleshoot Missing TypeScript Source Maps in Cloud Profiler
+9. How to Diagnose Java Waiting Time When Cloud Profiler Wall Time Exceeds CPU Time
+10. How to Choose Cloud Trace or Cloud Profiler for a Slow Cloud Function
+11. How to Diagnose Missing Cloud Profiler Data from Dataflow Templates
+12. How to Trace Missing JOB_NAME Metadata When Dataflow Cannot Start Cloud Profiler
+13. How to Keep Cloud Profiler Agents Out of Browser Bundles in React and Django Apps
+14. How to Investigate Python Native Crashes After Enabling Cloud Profiler
+15. How to Diagnose Missing Cloud Profiler Java Heap Profiles When Another Agent Is Loaded
+16. How to Restore Cloud Profiler CPU Samples for Go c-archive and c-shared Builds
+17. How to Separate Cloud Profiler Viewer Access from Agent Upload Permissions
+18. How to Register a New Cloud Profiler Service Version After Enabling Another Profile Type
+19. How to Diagnose Cloud Profiler Signal Wakeup Buffer Errors in Python
+20. How to Configure Node.js Cloud Profiler Logging for Agent Troubleshooting
+
+
+## Public Cloud
+
+1. How to Compare Public Cloud Costs for Always-On VMs and Elastic Workloads
+2. How to Map Billable Network Hops Before Moving Data-Heavy Applications to a Public Cloud
+3. How to Group Application and Database Servers into Public Cloud Migration Waves Using Dependency Data
+4. How to Test File-Access Latency Before Moving SMB Servers to a Public Cloud
+5. How to Budget for Parallel On-Premises and Public Cloud Operations During Migration
+6. How to Design Public Cloud Sandbox Cost Controls Around Delayed Billing Alerts
+7. How to Reconcile Untagged Public Cloud Charges with Team Cost Reports
+8. How to Find Owners of Abandoned Public Cloud Resources Before Scheduling Cleanup
+9. How to Allocate Shared Public Cloud Costs When Resource Tags Cannot Identify Tenants
+10. How to Explain a Rising Public Cloud Bill by Separating Usage, Pricing, and Network Changes
+11. How to Troubleshoot Azure Portal Access to Private Storage and Key Vault over a VPN
+12. How to Verify Azure Private Endpoint DNS from On-Premises and Cloud Clients
+13. How to Plan GPU Launches When Public Cloud Capacity Is Scarce in Your Allowed Regions
+14. How to Verify Azure Storage Public Access Is Disabled After Adding a Private Endpoint
+15. How to Assign Backup and Restore Ownership After Migrating to Managed Public Cloud Services
+16. How to Rehearse Public Cloud Recovery When the Production Account Is Inaccessible
+17. How to Test Public Cloud Emergency Access During an Identity Provider Outage
+18. How to Rehearse a Public Cloud Exit with a Real Data Export and Restore
+19. How to Inventory Managed-Service Dependencies Before Committing to a Public Cloud Exit
+20. How to Define On-Premises Decommission Gates After a Public Cloud Cutover
+
+
+## Amazon ElastiCache
+
+1. How to Fix CROSSSLOT Errors in ElastiCache Multi-Key Operations with Hash Tags
+2. How to Diagnose MOVED Errors When a Standalone Redis Client Connects to ElastiCache Cluster Mode
+3. How to Recover ElastiCache Clients from READONLY Errors After a Primary Failover
+4. How to Route ElastiCache Reads to Replicas When Cluster Mode Is Disabled
+5. How to Diagnose ElastiCache Serverless Connection Timeouts Caused by Missing TLS
+6. How to Fix Slow ElastiCache Serverless Connections When Port 6380 Is Blocked
+7. How to Refresh ElastiCache IAM Tokens for Reconnects and Long-Lived Connections
+8. How to Diagnose ElastiCache IAM Authentication Failures Across Users, Cache Names, and Policies
+9. How to Restrict an ElastiCache Maintenance User to Deleting Keys with a Specific Prefix
+10. How to Rotate an ElastiCache AUTH Token with ROTATE and SET Without Recreating the Cache
+11. How to Diagnose ElastiCache OOM Errors When CloudWatch Still Shows Freeable Memory
+12. How to Choose ElastiCache Eviction Policies for Keys With and Without TTLs
+13. How to Enable ElastiCache Key Expiration Notifications When CONFIG SET Is Restricted
+14. How to Handle Delayed or Lost ElastiCache Key Expiration Notifications
+15. How to Find Application Keys Across Every Shard in a Node-Based ElastiCache Cluster
+16. How to Scale ElastiCache Memcached Nodes While Planning for Key Remapping and Cache Misses
+17. How to Diagnose ElastiCache Cluster Connections That Fail Beyond an SSH Tunnel
+18. How to Reduce ElastiCache CPU Spikes Caused by Repeated Client Connections
+19. How to Separate ElastiCache Command Latency from ECS Network and Client Latency
+20. How to Diagnose Hot-Slot Throttling in ElastiCache Serverless Before Raising Cache Limits
+
+## AI Agents
+
+1. How to Recover AI Agent Runs After Worker Restarts with Durable LangGraph Checkpoints
+2. How to Prevent Duplicate Tool Side Effects When LangGraph Replays an Interrupted Node
+3. How to Bind Human Approval to an Exact AI Agent Tool Call and Argument Version
+4. How to Reject Stale AI Agent Approvals After the Target Resource Changes
+5. How to Record the Authenticated Approver When Resuming a LangGraph Agent
+6. How to Route AI Agent Approval Requests to a Fallback Reviewer After a Timeout
+7. How to Resume Parallel LangGraph Approvals by Interrupt ID
+8. How to Stop AI Agents at Separate Model-Call and Tool-Call Budgets
+9. How to Keep AI Agent Retries from Repeating Permanent Validation Failures
+10. How to Separate AI Agent Conversation Checkpoints from Shared User Memory
+11. How to Partition AI Agent Memories by Tenant and User Before Retrieval
+12. How to Prevent Concurrent AI Agent Requests from Overwriting the Same Conversation State
+13. How to Turn a Failed AI Agent Run into a Regression Case with Recorded Tool Results
+14. How to Evaluate AI Agent Task Success Separately from Tool Argument Validity
+15. How to Test AI Agents Against Partial Tool Failures and Ambiguous Timeouts
+16. How to Give Delegated AI Agents Narrower Tool Permissions Than Their Parent
+17. How to Carry Authorization and Audit Context Across AI Agent Delegation
+18. How to Repair Agent Message History After a Tool Call Fails Mid-Turn
+19. How to Detect AI Agents That Keep Repeating a Completed Action
+20. How to Prune AI Agent Checkpoints While Retaining Approval Audit Events
+
+## Platform APIs
+
+1. How to Model Long-Running Platform API Requests with Operation IDs and Pollable Status
+2. How to Avoid Reporting Platform API Provisioning Success Before Resources Are Ready
+3. How to Make Platform API Submission Retries Return the Existing Provisioning Operation
+4. How to Keep Portal, CLI, and GitOps Clients Aligned on One Platform API Contract
+5. How to Validate Platform API Inputs Before Creating Cloud Resources
+6. How to Return Field-Level Platform API Errors for Invalid Deployment Parameters
+7. How to Separate Developer-Owned Fields from Platform Defaults in Kubernetes APIs
+8. How to Use Optimistic Concurrency to Prevent Lost Platform API Updates
+9. How to Expose Readiness for Each Dependency in a Platform API Response
+10. How to Enforce Team Ownership on Every Platform API Read and Mutation
+11. How to Prevent Users from Cancelling Other Teams' Backstage Scaffolder Tasks
+12. How to Audit Platform API Requests Across Scaffolder and Provisioning Stages
+13. How to Limit Self-Service Platform API Resource Counts with Kubernetes Namespace Quotas
+14. How to Restrict Platform API Regions and Instance Classes with Admission Policies
+15. How to Let Teams Opt In to Crossplane Composition Revisions for Existing Resources
+16. How to Design a Governed Escape Hatch for Platform API Defaults That Do Not Fit
+17. How to Turn Inconsistent Service Metadata into Stable Platform API Resource IDs
+18. How to Surface Platform API Deletion Progress When Resource Cleanup Takes Minutes
+19. How to Cancel Platform API Operations That Have Partly Provisioned Resources
+20. How to Publish Platform API Examples That Match the Deployed XRD Schema
+
+## Container Scanning
+
+1. How to Prioritize Container CVEs with Grype Risk Scores, EPSS, and KEV Evidence
+2. How to Trace a Grype Container Finding to Its Package, File, and Matching Rule
+3. How to Audit Grype's Built-In Kernel-Header Suppressions in Container Scan Results
+4. How to Fix Grype Ignore Rules That Fail Because of Advisory IDs or Fix-State Constraints
+5. How to Fail a Grype CI Scan at a Severity Threshold While Keeping the Full Report
+6. How to Separate Unfixed and Won't-Fix Container CVEs in Grype Without Losing Audit Evidence
+7. How to Check Whether a Grype Fix Recommendation Requires Changing Your Python Release Branch
+8. How to Rescan Stored Container SBOMs with Grype When New CVEs Appear After Deployment
+9. How to Join Grype Scan Reports to Deployed Image Digests When Tags Keep Moving
+10. How to Assign Base-Image and Application CVEs to Separate Owners Using Grype Package Evidence
+11. How to Restore Grype Database Updates After the Schema v5 Feed Retirement
+12. How to Tell Whether a Missing Grype CVE Is Absent from the Feed or the Package Inventory
+13. How to Compare Grype Upgrades Using the Same Image Digest and Recorded Database Build
+14. How to Enforce Grype Database Freshness in Container-Scanning Jobs with Intermittent Internet Access
+15. How to Recognize Incomplete Container Scan Coverage When Grype Flags an End-of-Life Distribution
+16. How to Scan a Jenkins-Built Docker Archive with Trivy Without Sharing the Docker Socket
+17. How to Investigate a Clean Trivy Report When a Container Includes Self-Compiled Runtime Binaries
+18. How to Scan an Exported Container Filesystem with Trivy Rootfs and Preserve Runtime Package Coverage
+19. How to Audit Embedded SBOM Discovery Before Trusting a Trivy Container Image Scan
+20. How to Convert One Trivy JSON Image Scan into HTML and JUnit Reports Without Rescanning
+
+## Skopeo
+
+1. How to Preserve Multi-Architecture Image Digests During a Skopeo Registry Migration
+2. How to Move Digest-Pinned Images Across an Air Gap with Skopeo Directory Archives
+3. How to Distinguish Manifest, Config, and Layer Digests in Skopeo Inspect Output
+4. How to Inspect an ARM64 Image from an AMD64 Host with Skopeo
+5. How to Speed Up Skopeo Inspect by Skipping Repository Tag Enumeration
+6. How to Mirror Only Matching Release Tags with Skopeo Sync YAML and SemVer Filters
+7. How to Prevent Repository Name Collisions When Skopeo Sync Mirrors Multiple Registries
+8. How to Preview a Skopeo Sync and Save a Digest Inventory for Mirror Verification
+9. How to Diagnose Repeated Layer Uploads in Skopeo Copies by Checking Blob Reuse and Cache Persistence
+10. How to Tune Skopeo Layer Parallelism and Retry Delays for Unreliable Registry Connections
+11. How to Fix Skopeo Certificate Trust Errors with Registry-Specific CA Directories
+12. How to Use Separate Source and Destination Authfiles in a Skopeo Copy Job
+13. How to Debug Skopeo Unauthorized Errors by Checking Repository Paths and Credential Lookup Order
+14. How to Keep Skopeo Registry Logins Available After Reboots and Across CI Sessions
+15. How to Configure Registry Credential Helpers for Skopeo Without Embedding Passwords in Copy Commands
+16. How to Recompress Container Image Layers with Skopeo and Verify the Resulting Media Types
+17. How to Diagnose Skopeo Index-Only Copy Failures When Platform Manifests Are Missing
+18. How to Fix Skopeo Signature Identity Mismatches When Promoting Images to a New Registry Namespace
+19. How to Investigate Skopeo Preserve-Digests Failures Caused by Zstd Index Annotations
+20. How to Check Which Registry Tags Share a Manifest Before Running Skopeo Delete
+
+## Apache CloudStack
+
+1. How to Diagnose Missing OVA Disk Files During CloudStack VMware-to-KVM Conversion
+2. How to Import a Stopped Proxmox KVM VM into CloudStack from Its QCOW2 Disks
+3. How to Map VMware Disks and NICs Before Importing a VM into CloudStack KVM
+4. How to Trace a CloudStack Live Migration Failure Across Management and KVM Agent Logs
+5. How to Move CloudStack VM Volumes Between Primary Storage Pools with Compatible Offerings
+6. How to Unmanage a CloudStack 4.22+ KVM Instance While Preserving Its NICs and Domain Definition
+7. How to Correct CloudStack CPU Capacity Reporting on ARM KVM Hosts
+8. How to Reprovision CloudStack Host Certificates After Replacing a KVM Server
+9. How to Upload a Complete TLS Certificate Chain for CloudStack Console Proxy Access
+10. How to Diagnose Missing MySQL Stored Procedures During a CloudStack Upgrade
+11. How to Diagnose CloudStack Certificate Name Mismatches After a Management IP Change
+12. How to Run CloudStack Network Diagnostics from a Virtual Router Using the UI and API
+13. How to Match CloudStack Site-to-Site VPN Settings with a Remote IPsec Peer
+14. How to Plan Peer-Side VPN Failover for CloudStack Across Two Remote Internet Links
+15. How to Diagnose Incorrect Next Hops in CloudStack VPC Private-Gateway Routes
+16. How to Choose CloudStack Routed or NATTED Dual-Stack Networking for an IPv6 VPC
+17. How to Deliver Cloud-Init User Data to New CloudStack Instances from a Reusable Library
+18. How to Reset a CloudStack Instance SSH Key Pair and Verify Guest-Side Application
+19. How to Retire a CloudStack Template That Still Has Running Instances
+20. How to Verify CloudStack Host Affinity and Anti-Affinity Placement After Deployment
+
+## Table Formats
+
+1. How to Schedule Iceberg Snapshot Expiration When Retention Properties Alone Do Not Remove Snapshots
+2. How to Dry-Run Iceberg Orphan File Cleanup and Check URI Scheme Mismatches
+3. How to Rebuild a Lost Iceberg Catalog Entry from a Verified Committed Metadata File
+4. How to Move an Iceberg Table Between Catalogs Without Leaving Two Active Registrations
+5. How to Handle Iceberg CommitFailedException When Compaction Overlaps Streaming Writes
+6. How to Investigate Conflicting Iceberg Delete Files During Concurrent Row Updates
+7. How to Read Iceberg Append Snapshots Incrementally and Detect Unsupported Delete Changes
+8. How to Change Iceberg Partition Granularity While Validating Old and New Partition Specs
+9. How to Rewrite Iceberg Manifests When Metadata Planning Dominates Query Latency
+10. How to Configure an Iceberg Audit Branch Without Mixing spark.wap.id and spark.wap.branch
+11. How to Track Iceberg Metadata File Growth Separately from Snapshot Retention
+12. How to Inspect Iceberg Snapshot Ancestry Before Reverting a Bad Table Write
+13. How to Align Delta Lake VACUUM Retention with the Required Time-Travel Window
+14. How to Restore a Delta Lake Table Version and Account for Downstream Streaming Replays
+15. How to Reduce Delta ConcurrentAppendException with Explicitly Disjoint MERGE Predicates
+16. How to Resolve Ambiguous Delta MERGE Matches with Deterministic Source Deduplication
+17. How to Rename Delta Lake Columns and Check Reader Protocol Compatibility First
+18. How to Resume Delta Lake 3.0+ Structured Streaming After a Column Rename Using Schema Tracking
+19. How to Recover Old Delta Lake Column Names from Table History for Downstream Mappings
+20. How to Separate Delta Lake File Compaction from VACUUM in a Maintenance Schedule
+
+## Anchore
+
+1. How to Explain Why Syft Finds npm Packages in a Directory but Misses Them in Its Container Image
+2. How to Include npm Development Dependencies in a Syft Build SBOM and Keep Runtime Inventory Separate
+3. How to Recover Missing NuGet Package Versions in Syft by Checking Deps Files and DLL Evidence
+4. How to Diagnose Missing Java Dependency Versions in Syft JAR Scans
+5. How to Diagnose Missing Maven Versions in Syft When Parent POMs Sit Outside the Scan Root
+6. How to Choose Syft Image-Layer Scope When Removed Packages Reappear in an SBOM
+7. How to Trace a Syft SBOM Component Back to Its File Path and Image Layer
+8. How to Fix Syft Exclusion Patterns That Work for Images but Fail for Directory Scans
+9. How to Generate a Host Software Inventory with Syft While Excluding Pseudo-Filesystems and Caches
+10. How to Check Which Syft Metadata Is Lost When Converting an SBOM to CycloneDX or SPDX
+11. How to Pin Syft CycloneDX Output to a Schema Version Your Dependency-Track Instance Accepts
+12. How to Export Syft JSON, SPDX, and CycloneDX from a Single CI Scan
+13. How to Explain Duplicate RPM and Python Components in Syft Using Package Ownership Relationships
+14. How to Profile Slow Syft Scans of .NET Projects and Check Which Cataloger Is Taking the Time
+15. How to Enrich Missing npm License Metadata in Syft Using an Explicit Registry API URL
+16. How to Enforce License Allowlists on Syft SBOMs with Anchore Grant
+17. How to Import an Existing Syft Image SBOM into Anchore Enterprise with AnchoreCTL
+18. How to Group Image and Filesystem SBOMs into an Application Release in Anchore Enterprise
+19. How to Detect Unexpected Package Additions Between Builds with Anchore Enterprise SBOM Drift Policies
+20. How to Find Every Image in an Anchore Application Release That Contains a Specific Package Version
+
+## PgBouncer
+
+1. How to Budget PostgreSQL Connections Across PgBouncer Replicas, Databases, and Users
+2. How to Coordinate Node.js Connection Pools with PgBouncer to Avoid Double Queueing
+3. How to Fix PgBouncer Queues Caused by PHP Persistent Connections in Session Mode
+4. How to Find Idle Transactions That Keep PgBouncer Server Connections Occupied
+5. How to Give Background Jobs Longer Statement Timeouts Through PgBouncer Transaction Pools
+6. How to Enable Protocol-Level Prepared Statements in PgBouncer Without Relying on SQL PREPARE
+7. How to Clear PgBouncer Cached-Plan Errors After a Schema Migration
+8. How to Fix Django Cursor Does Not Exist Errors Behind PgBouncer Transaction Pooling
+9. How to Keep PostgreSQL LISTEN Consumers Connected Alongside PgBouncer Transaction Pools
+10. How to Move Advisory-Lock Critical Sections to Transaction Scope for PgBouncer
+11. How to Fix PgBouncer auth_user SCRAM Failures When the Client Provides No SCRAM Keys
+12. How to Make a Custom PgBouncer auth_query Reject Expired PostgreSQL Passwords
+13. How to Fix PgBouncer Authentication Lookups That Run in the Wrong Database
+14. How to Resolve PgBouncer Unsupported Startup Parameters Without Silently Ignoring Required Settings
+15. How to Route Query Cancellations to the Correct PgBouncer Instance with Peering
+16. How to Drain PgBouncer During Rolling Restarts with Version-Appropriate Shutdown Signals
+17. How to Choose Between PgBouncer server_lifetime and server_idle_timeout for Backend Recycling
+18. How to Detect Dead PgBouncer Client Connections Behind an AWS Network Load Balancer
+19. How to Separate PgBouncer Queue Wait from Query Execution Time in Pool Statistics
+20. How to Preserve PgBouncer File-Descriptor Limits Across Service Restarts
+
+## Flow Metrics
+
+1. How to Compare Flow Metrics When Teams Define Done as Merged or Released
+2. How to Keep Blocked Work Visible in WIP While Measuring Its Waiting Time
+3. How to Find Aging Work Hidden by a Healthy Average Cycle Time
+4. How to Set a Kanban Service Level Expectation from Cycle-Time Percentiles
+5. How to Compare Work Item Age with Historical Items of the Same Type
+6. How to Detect Growing Work Queues by Comparing Arrival Rate with Throughput
+7. How to Choose an Initial WIP Limit and Adjust It Using Observed Flow
+8. How to Forecast Release Scope with Throughput-Based Monte Carlo Simulations
+9. How to Include Unplanned Support Work in Software Delivery Forecasts
+10. How to Rebuild a Flow-Metrics Baseline After Team or Workflow Changes
+11. How to Distinguish Zero-Throughput Days from Missing Data in Flow Reports
+12. How to Define Throughput Counting Rules for Reopened Jira Work Items
+13. How to Exclude Duplicate and Cancelled Issues from Jira Cycle-Time Analysis
+14. How to Separate Technical Subtasks from User Stories in Flow Dashboards
+15. How to Report Cycle-Time Percentiles When Your Team Has Very Little History
+16. How to Measure the Review Queue Separately from Active Code Review Time
+17. How to Investigate a Widening Testing Band in a Jira Cumulative Flow Diagram
+18. How to Use Flow Metrics for Team Improvement Without Ranking Individual Developers
+19. How to Evaluate Whether Lower WIP Actually Improved Your Team's Delivery Flow
+20. How to Forecast Features Shared by Several Teams Without Adding Their Velocities
