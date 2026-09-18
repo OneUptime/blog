@@ -256,7 +256,6 @@
 
 ## Data Residency
 
-10. How to Enforce AWS Data Residency with SCPs, Region-Deny Policies, and IaC Checks
 11. How to Keep Database Backups and Point-in-Time Recovery Data Inside the Required Jurisdiction
 12. How to Design Disaster Recovery When Cross-Region Replication Would Violate Residency Rules
 13. How to Use Region-Scoped KMS Keys Without Breaking Backup Restore or Tenant Migration
