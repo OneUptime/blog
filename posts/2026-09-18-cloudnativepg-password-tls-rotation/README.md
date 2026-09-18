@@ -6,7 +6,7 @@ Tags: CloudNativePG, PostgreSQL, Kubernetes, Security, TLS, Certificate Rotation
 
 Description: Coordinate CloudNativePG password and certificate rotation with overlapping identities, Secret reconciliation, client trust, and fresh-connection tests.
 
-CloudNativePG can apply password changes and reload certificates without restarting PostgreSQL. That does not automatically make an application rotation interruption-free. A client using an old password will fail its next authentication after that password is replaced, and a client missing a new CA will reject the renewed server certificate.
+CloudNativePG can apply password changes and reload certificates without restarting PostgreSQL. That does not automatically make an application rotation interruption-free. A client using an old password will fail its next authentication after that password is replaced, and a client that verifies server certificates will reject a replacement certificate if it does not trust its issuing CA.
 
 For a rotation with continuous application service, use overlapping login identities where possible and stage trust changes before certificate replacement. The examples follow CloudNativePG 1.30. Read the matching [role-management documentation](https://cloudnative-pg.io/docs/1.30/declarative_role_management/) before adapting an older operator installation.
 
@@ -38,7 +38,7 @@ spec:
           name: app-login-b
 ```
 
-Grant only the required database, schema, table, and sequence privileges to `app_access`. Include default privileges for objects created later by the actual schema owner. Membership alone does not grant access to objects that the group role cannot use.
+Grant only the required database, schema, table, and sequence privileges to `app_access`. Set default privileges for each role that will create objects in the schema; the schema owner's defaults do not apply to objects created by other roles. Membership alone does not grant access to objects that the group role cannot use.
 
 Each referenced Secret must use type `kubernetes.io/basic-auth`, with `username` matching its login and a `password` value managed through your secret-management system. Label the Secrets so changes trigger prompt reconciliation:
 
@@ -49,7 +49,7 @@ kubectl label secret app-login-a app-login-b -n database \
 
 ## Rotate through the unused identity
 
-Suppose production currently uses `app_login_a`. Generate a fresh password for `app_login_b`, update its Secret through the normal delivery system, and wait for the operator to reconcile it. Inspect managed-role status and errors without printing Secret values:
+Suppose production currently uses `app_login_a`. Generate a fresh password for `app_login_b`, update its Secret through the normal delivery system, and wait for the operator to reconcile it. If the unused role was disabled after a previous rotation, then set its managed configuration back to `login: true` and wait for reconciliation before testing it. Inspect managed-role status and errors without printing Secret values:
 
 ```bash
 kubectl get cluster app-db -n database \
@@ -86,7 +86,7 @@ spec:
     serverTLSSecret: app-server-tls
 ```
 
-The CA Secret contains `ca.crt`; the TLS Secret contains `tls.crt` and `tls.key`. Verify the new certificate's validity dates, matching private key, full chain, and the DNS names used by clients before replacing the Secret.
+The CA Secret contains `ca.crt`; the TLS Secret must have type `kubernetes.io/tls` and contain `tls.crt` and `tls.key`. Verify the new certificate's validity dates, matching private key, full chain, and the DNS names used by clients before replacing the Secret.
 
 ```bash
 kubectl label secret app-server-tls app-server-ca -n database \
@@ -98,7 +98,7 @@ An explicit reload is useful when the update was not watched. Check PostgreSQL l
 
 ## Treat a CA change as a trust rollout
 
-Distribute a trust bundle containing both old and new server CAs to clients before switching the server certificate. Confirm new connections succeed with that bundle, replace the server certificate and chain, and test every connection path using hostname verification. Remove the old CA only after all endpoints and clients have migrated.
+Distribute a trust bundle containing both old and new server CAs to clients before switching the server certificate. For user-provided certificates, also place that bundle in `ca.crt` of the Secret referenced by `serverCASecret` and wait for reconciliation across the cluster: CloudNativePG and the instances use it to verify server certificates. Confirm new connections succeed with that bundle, replace the server certificate and chain, and test every connection path using hostname verification. Remove the old CA only after all endpoints and clients have migrated.
 
 Client-certificate authentication has the reverse dependency: the server must trust the new client CA before clients present new certificates. Include the replication identity and any pooler connections in the plan; they are separate from the application's password.
 
