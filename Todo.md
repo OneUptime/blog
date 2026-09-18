@@ -253,7 +253,6 @@
 
 ## Photon OS
 
-1. How to Deploy Photon OS 5 on ESXi from an OVA
 2. How to Build a Minimal Photon OS 5 Docker Host from the ISO
 3. How to Set a Persistent Static IP, Gateway, and DNS on Photon OS 5 with nmctl
 4. How to Stop a Cloned Photon OS VM from Reusing Its DHCP Identity
