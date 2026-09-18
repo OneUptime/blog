@@ -250,7 +250,6 @@
 
 ## PostgreSQL Operator
 
-3. PgBouncer Still Points to the Old Primary After Operator Failover: DNS, Pool, and Reconnect Fixes
 4. How to Test PostgreSQL Operator Failover and Measure RPO and RTO Before Production
 5. How to Configure Synchronous Replication in CloudNativePG for Zero-Data-Loss Failover
 6. CloudNativePG Backup Is Green but Restore Fails: Validate Base Backups, WAL, and Object-Store Layout
