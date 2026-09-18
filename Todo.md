@@ -253,7 +253,6 @@
 
 ## Photon OS
 
-15. How to Run Docker macvlan Containers Across VLANs on Photon OS and a vSphere vDS
 16. How to Expand a Photon OS Root Partition and Filesystem After Growing the VMDK
 17. How to Diagnose File Permission and Missing Log Problems in Photon OS Services
 18. How to Restore tcpdump, netcat, and Other Missing Tools on Minimal Photon OS
