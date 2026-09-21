@@ -278,7 +278,6 @@
 
 ## Data Residency
 
-11. How to Keep Database Backups and Point-in-Time Recovery Data Inside the Required Jurisdiction
 12. How to Design Disaster Recovery When Cross-Region Replication Would Violate Residency Rules
 13. How to Use Region-Scoped KMS Keys Without Breaking Backup Restore or Tenant Migration
 14. How to Prevent PII in Logs, Traces, Metrics, and Error Reports from Leaving a Region
