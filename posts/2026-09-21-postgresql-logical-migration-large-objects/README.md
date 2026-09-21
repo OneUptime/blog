@@ -1,4 +1,4 @@
-# How to Plan a PostgreSQL Logical Replication Migration When Large Objects Are Present
+# How to Migrate PostgreSQL Large Objects Alongside Logical Replication
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
