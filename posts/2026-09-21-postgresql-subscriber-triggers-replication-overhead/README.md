@@ -1,4 +1,4 @@
-# How to Enable PostgreSQL Subscriber Triggers and Measure Their Replication Overhead
+# How to Enable PostgreSQL Subscriber Triggers and Measure Overhead
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
@@ -51,7 +51,7 @@ ALTER TABLE public.orders
 ENABLE REPLICA TRIGGER audit_replicated_order;
 ```
 
-Keep the audit table outside any publication that would send it back into this data flow. Its identity sequence is local and must have sufficient capacity. Ensure the role used while applying `orders` can insert into the audit table and use its sequence; creating both tables under the same intended owner simplifies that arrangement.
+Keep the audit table outside any publication that would send it back into this data flow. Its identity sequence is local and must have sufficient capacity. Ensure the role used while applying `orders` can insert into the audit table; creating both tables under the same intended owner simplifies that arrangement. Automatic generation of this identity column does not require a separate sequence grant.
 
 With PostgreSQL 18's default subscription behavior, apply switches to each target table owner. A trigger's access to other objects therefore depends on that ownership and its grants. Avoid changing `run_as_owner` merely to hide a permission error. [Logical replication security](https://www.postgresql.org/docs/18/logical-replication-security.html)
 
@@ -90,7 +90,7 @@ ALTER SYSTEM SET track_functions = 'pl';
 SELECT pg_reload_conf();
 ```
 
-Read snapshots before and after each workload:
+Read snapshots before and after each workload. Before the first tracked call, this query can return no row; use zero as the initial baseline in that case:
 
 ```sql
 SELECT calls, total_time, self_time
@@ -98,11 +98,11 @@ FROM pg_stat_user_functions
 WHERE funcid = 'public.audit_replicated_order()'::regprocedure;
 ```
 
-Compute `(after.total_time - before.total_time) / (after.calls - before.calls)` for average milliseconds per invocation. The counters are cumulative and can be reported with a delay; read them after the worker becomes idle, using fresh transactions. Their delta isolates function time but does not capture every downstream storage or checkpoint cost. [PostgreSQL statistics](https://www.postgresql.org/docs/18/monitoring-stats.html)
+Compute `(after.total_time - before.total_time) / (after.calls - before.calls)` for average milliseconds per invocation only when the call delta is positive and the statistics have not been reset between snapshots. The ordinary-mode replication baseline should have no calls, so its per-invocation average is undefined. The counters are cumulative and can be reported with a delay; read them after the worker becomes idle, using fresh transactions. Their delta isolates function time but does not capture every downstream storage or checkpoint cost. [PostgreSQL statistics](https://www.postgresql.org/docs/18/monitoring-stats.html)
 
 ## Roll back deliberately
 
-If the function raises an error, the replication transaction cannot complete. Repair the function or its permissions and observe the worker retry. Disabling required auditing is a business decision because resumed transactions would then leave no audit trail.
+If the function raises an error, the replication transaction cannot complete. Repair the function or its permissions and observe the worker retry. If `disable_on_error = true` disabled the subscription, re-enable it with `ALTER SUBSCRIPTION subscription_name ENABLE` after the repair. Disabling required auditing is a business decision because resumed transactions would then leave no audit trail.
 
 For an approved rollback to ordinary trigger behavior:
 
