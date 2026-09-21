@@ -6990,6 +6990,27 @@
 19. How to Apply Mount Options Through a StorageClass Without Breaking Volume Mounts
 20. How to Retire a StorageClass Safely While Existing PVCs Still Reference It
 
+21. How to Fix WaitForFirstConsumer PVCs That Stay Pending When a Pod Sets nodeName
+22. How to Fix PVC Selector Errors That Prevent a StorageClass from Provisioning Volumes
+23. How to Determine Which StorageClass Settings Apply to a Statically Created PersistentVolume
+24. How to Set Separate Storage Request and PVC Count Quotas for Each StorageClass
+25. How to Diagnose Retroactive Default StorageClass Assignment on Previously Pending PVCs
+26. How to Trace StorageClass No Available Topology Found Errors to CSINode Registration
+27. How to Find Conflicts Between StorageClass allowedTopologies and Pod Node Affinity
+28. How to Diagnose Pods Whose Two PVCs Were Provisioned in Incompatible Availability Zones
+29. How to Choose a StorageClass for ReadWriteMany Claims When Local-Path Only Supports Single-Node Access
+30. How to Diagnose PVC Resize Rejections After Enabling allowVolumeExpansion on a StorageClass
+31. How to Plan Manual Volume Growth for a kubernetes.io/no-provisioner StorageClass
+32. How to Resolve Conflicting Reclaim Policies Between a StorageClass and Its Existing PVs
+33. How to Fix EKS Auto Mode PVCs That Reference the Standard EBS CSI Provisioner
+34. How to Constrain an EKS Auto Mode StorageClass to Auto Mode Nodes in a Mixed Cluster
+35. How to Explain Why an NFS Subdirectory StorageClass Does Not Enforce PVC Size Limits
+36. How to Handle Unsupported PVC Expansion with nfs-subdir-external-provisioner
+37. How to Fix Helm-Rendered StorageClass Parameters That Become Nested Maps Instead of Strings
+38. How to Tag Dynamically Provisioned EBS Volumes with PVC Names and Namespaces
+39. How to Replace Unsupported Recycle Policies in Kubernetes StorageClass Manifests
+40. How to Update Tags on Existing EBS PVC Volumes with VolumeAttributesClass
+
 ## Dependency Management
 
 1. How to Decide What Belongs in a Dependency Manifest, Lockfile, Constraints File, or Maven BOM
@@ -9444,3 +9465,210 @@
 18. How to Use Flow Metrics for Team Improvement Without Ranking Individual Developers
 19. How to Evaluate Whether Lower WIP Actually Improved Your Team's Delivery Flow
 20. How to Forecast Features Shared by Several Teams Without Adding Their Velocities
+
+## Rollbar
+
+1. How to Upload Private JavaScript Source Maps to Rollbar from CI
+2. How to Fix Rollbar Source Maps That Use the Wrong Code Version
+3. How to Resolve npm Dependency Stack Traces in Rollbar with Source Maps
+4. How to Apply Rollbar Exception Filters to Manually Reported Rails Errors
+5. How to Filter Crawler Errors in Rollbar with JavaScript checkIgnore
+6. How to Stop Django Logging from Sending Unwanted 404 Errors to Rollbar
+7. How to Disable Rollbar Reporting in Django Development and Test Environments
+8. How to Report Caught Python Exceptions to Rollbar with Their Tracebacks
+9. How to Send Django Background Task Errors to Rollbar Through Logging
+10. How to Send Rails Warning Logs to Rollbar with the Ruby Logger Adapter
+11. How to Troubleshoot Missing Serilog Errors in Rollbar
+12. How to Configure Rollbar Alerts for Errors Affecting a Specific User
+13. How to Reduce Repeated Rollbar Notifications with Occurrence Rate Rules
+14. How to Limit JavaScript Error Reports per Page Load in Rollbar
+15. How to Count Rollbar Error Occurrences by Day with RQL
+16. How to Find Rollbar Errors for an Affected User with RQL
+17. How to Add a Custom Message to a Ruby Exception Report in Rollbar
+18. How to Connect Rollbar to Vue 3 Error Handling and the Composition API
+19. How to Capture Next.js App Router Errors on the Client and Server with Rollbar
+20. How to Group Variable Error Messages in Rollbar with Custom Fingerprints
+
+## Tarantool
+
+1. How to Query a Tarantool Secondary Index Without Primary Key Type Errors
+2. How to Filter and Sort Tarantool Tuples with a Composite Index
+3. How to Paginate Tarantool Index Queries with Continuation Positions
+4. How to Fetch Multiple Tarantool Keys in One Stored Function Call
+5. How to Return One Tarantool Tuple Field to Go with a Lua Function
+6. How to Index Nested JSON Fields in Tarantool
+7. How to Update Nested Tarantool Fields with JSON Paths
+8. How to Grant a Tarantool Application User Access to One Space
+9. How to Configure a Tarantool Replica Set Without Sharding
+10. How to Diagnose Tarantool Replication Startup Failures
+11. How to Monitor Tarantool Replica Lag with box.info.replication
+12. How to Commit Multiple Tarantool Updates Atomically in Lua
+13. How to Enable Yielding in Tarantool memtx Transactions with MVCC
+14. How to Restore Tarantool Data from a Snapshot and WAL Files
+15. How to Configure Tarantool WAL Durability for Application Writes
+16. How to Interpret Tarantool Slab Statistics Before Changing Memory Settings
+17. How to Increase Tarantool memtx Memory When Writes Hit the Quota
+18. How to Investigate Tarantool Resident Memory Beyond Tuple and Index Usage
+19. How to Measure Tarantool Query Latency with the clock Module
+20. How to Generate Tarantool Primary Keys with a Sequence
+
+## k8gb
+
+1. How to Configure k8gb Failover Across Two Clusters with Existing Ingresses
+2. How to Attach k8gb Global Load Balancing to a Gateway API HTTPRoute
+3. How to Diagnose Missing A Records in k8gb CoreDNS
+4. How to Trace Missing Remote Cluster Targets in k8gb
+5. How to Expose k8gb CoreDNS Through a Kubernetes LoadBalancer Service
+6. How to Verify k8gb DNS Delegation and Nameserver Glue Records
+7. How to Publish Public k8gb Addresses for Clusters Behind Static NAT
+8. How to Override k8gb Application Targets with Dynamic Hostnames
+9. How to Require Every Backend Service to Be Healthy in k8gb
+10. How to Test k8gb DNS Failover When a Deployment Scales to Zero
+11. How to Test k8gb Failover Coverage for Ingress Controller Outages
+12. How to Measure k8gb Failover Delay Across DNS TTL and Reconciliation Cycles
+13. How to Debug k8gb Weighted DNS Answers Behind a Caching Resolver
+14. How to Connect k8gb to BIND with ExternalDNS and RFC2136
+15. How to Manage Multiple DNS Zones in One k8gb Deployment
+16. How to Migrate Legacy k8gb GSLB Resources to the k8gb.io API
+17. How to Replace Obsolete k8gb Helm Values Before an Upgrade
+18. How to Scrape the Current k8gb Metrics Service with Prometheus
+19. How to Alert on Missing Healthy Local DNS Targets in k8gb
+20. How to Fix Ambiguous k8gb resourceRef Label Selectors
+
+## DVC
+
+1. How to Share One DVC Cache Across Local Git Clones Without Duplicating Datasets
+2. How to Set Group Permissions for a DVC Cache Shared by Multiple Linux Users
+3. How to Change DVC Cache Link Types and Relink Existing Workspace Files
+4. How to Edit Hardlinked DVC Data Without Modifying Cached Versions
+5. How to Garbage Collect a Shared DVC Cache While Preserving Every Project's Data
+6. How to Pin an Imported DVC Dataset to a Git Commit and Upgrade It Explicitly
+7. How to Refresh DVC Import Metadata in CI Without Downloading the Dataset
+8. How to Override the Source Remote When Importing Data from Another DVC Repository
+9. How to Append Files to a DVC-Tracked Directory Without Pulling the Entire Dataset
+10. How to Track Existing S3 Data with DVC import-url Without Downloading It
+11. How to Diagnose DVC HeadObject 403 Errors When Using an AWS Named Profile
+12. How to Merge New Files Added to a DVC-Tracked Directory on Two Git Branches
+13. How to Generate DVC foreach Stages with Distinct Dependencies and Output Paths
+14. How to Split a DVC Pipeline Across dvc.yaml Files with Correct Relative Dependencies
+15. How to Add a Manual Label-Validation Gate Before Model Training in a DVC Pipeline
+16. How to Make DVC Parameter Changes Rerun Only the Stages That Depend on Them
+17. How to Run Long DVC Experiments in Temporary Workspaces While Switching Git Branches
+18. How to Promote a Queued DVC Experiment into a Git Branch with Its Artifact Versions
+19. How to Diagnose Queued DVC Experiments That Fail Before Producing Logs
+20. How to Push One DVC Experiment's Artifacts Without Uploading Unrelated Pipelines
+
+## Ceph
+
+1. How to Restore Ceph PG Autoscaling When Overlapping CRUSH Roots Block It
+2. How to Diagnose Ceph Recovery Limits That Keep Reverting Under mClock
+3. How to Prevent Cephadm from Recreating an OSD on a Recently Zapped Disk
+4. How to Diagnose an Applied Cephadm OSD Spec That Creates No Daemons
+5. How to Diagnose Cephadm OSD Specs That Select the Wrong Hosts and Disk Paths
+6. How to Restart One Cephadm OSD When the Service Command Cannot Find osd.N
+7. How to Trace Cephadm Stray Daemon Warnings to Short-Hostname and FQDN Mismatches
+8. How to Find Why Cephadm Marks an Unused Disk Unavailable for OSD Creation
+9. How to Diagnose Ceph Dashboard RGW Timeouts After Enabling Virtual-Hosted S3 Access
+10. How to Find Noncurrent Versions Retaining Space After Ceph RGW Lifecycle Expiration
+11. How to Identify Legacy Ceph RGW Buckets That Lost Lifecycle Processing After Resharding
+12. How to Investigate Large Ceph RGW Bucket-Index OMAPs When Visible Object Counts Look Small
+13. How to Diagnose Ceph RGW Multisite Lag After Resharding Without Assuming Equal Shard Counts
+14. How to Investigate Ceph RGW Multipart Shadow Objects Missing from Upload Listings
+15. How to Trace CephFS Space Retention Through Subvolume Trash and Retained Snapshots
+16. How to Diagnose CephFS Snapshot EPERM Errors with Capabilities and Subvolume Boundaries
+17. How to Cancel a CephFS Snapshot Clone and Remove Its Incomplete Subvolume
+18. How to Recover a CephFS Mount After MDS Restart Evicts and Blocklists Its Client
+19. How to Diagnose Cephadm OSD Permission Errors After Installing Host Ceph Packages
+20. How to Explain Ceph Pool MAX AVAIL When It Is Lower Than Raw Free Space Suggests
+
+## SMART
+
+1. How to Investigate SATA SMART Warnings When the Overall Health Check Still Says PASSED
+2. How to Interpret SMART Raw and Normalized Values for a Specific Drive Model
+3. How to Track Pending and Reallocated SMART Sectors After a Failed Self-Test
+4. How to Distinguish SMART UDMA CRC Errors from Disk Media Read Failures
+5. How to Start a SMART Self-Test and Read Its Results After smartctl Returns
+6. How to Diagnose SMART Extended Self-Tests That Abort Before Completion
+7. How to Inspect a Slow SMART Surface Scan with Selective Self-Test Progress
+8. How to Check NVMe Self-Test Support When smartctl Shows No Test Results
+9. How to Read SMART Data Through a USB Bridge with the Correct smartctl Device Type
+10. How to Read Physical Disk SMART Data Behind a MegaRAID Controller
+11. How to Interpret SAS SMART Error Counters When ATA Attribute Tables Are Absent
+12. How to Decode smartctl Exit-Status Bits in a Shell Health-Check Script
+13. How to Parse smartctl JSON Without Losing Precision in Large NVMe Counters
+14. How to Diagnose SMART Collection Failures After a Drive Database Update
+15. How to Configure smartd Polling Without Repeatedly Waking Standby Disks
+16. How to Schedule Weekly Short and Monthly Extended SMART Tests with smartd
+17. How to Stagger smartd Self-Tests Across Disks in the Same Storage Array
+18. How to Test smartd Email Alerts When the Mail Command Works Only Manually
+19. How to Limit Repeated smartd Warning Emails with the Correct Notification Policy
+20. How to Send smartd Alerts to a Custom Handler Using SMARTD Environment Variables
+
+## OLTP
+
+1. How to Weigh SQL Server OLTP Index Benefits Against INSERT and UPDATE Costs
+2. How to Consolidate Overlapping SQL Server Indexes Without Regressing OLTP Queries
+3. How to Index Pending OLTP Work with a SQL Server Filtered Index
+4. How to Reduce OLTP Insert Contention with SQL Server OPTIMIZE_FOR_SEQUENTIAL_KEY
+5. How to Separate PAGELATCH_EX Contention from WRITELOG Delays in SQL Server OLTP
+6. How to Prove SQL Server Lock Escalation Is Blocking OLTP Requests with Extended Events
+7. How to Size SQL Server Purge Transactions by Lock Footprint Instead of Row Count
+8. How to Enable READ_COMMITTED_SNAPSHOT for OLTP Reads and Verify Its Semantics
+9. How to Choose RCSI or SNAPSHOT for Multi-Statement SQL Server Transactions
+10. How to Find Long-Lived Snapshot Transactions Retaining SQL Server Row Versions
+11. How to Prevent Overselling with Conditional PostgreSQL Inventory Updates
+12. How to Increment PostgreSQL OLTP Counters Atomically and Measure Hot-Row Contention
+13. How to Order PostgreSQL Row Locks for Multi-Item OLTP Transactions
+14. How to Use FOR NO KEY UPDATE to Reduce PostgreSQL Foreign-Key Blocking
+15. How to Choose PostgreSQL ON CONFLICT or MERGE for Concurrent OLTP Upserts
+16. How to Classify Unique Violations Before Retrying PostgreSQL Serializable Transactions
+17. How to Reproduce and Prevent Write Skew in PostgreSQL OLTP Business Rules
+18. How to Diagnose Savepoint-Heavy PostgreSQL Transactions That Overflow the Subtransaction Cache
+19. How to Run Consistent PostgreSQL Reports with SERIALIZABLE READ ONLY DEFERRABLE
+20. How to Model OLTP Hot Keys in pgbench with random_zipfian and permute
+
+## Debian
+
+1. How to Plan a Debian 11-to-13 Upgrade Through the Supported Debian 12 Step
+2. How to Audit Mixed APT Suites and Third-Party Packages Before a Debian 13 Upgrade
+3. How to Resume an Interrupted Debian Upgrade by Inspecting dpkg Package States
+4. How to Migrate Debian 13 APT Sources to deb822 and Remove Duplicate Entries
+5. How to Fix Conflicting Signed-By Values Across Debian APT Source Files
+6. How to Scope a Third-Party Debian Repository with Signed-By and Package Pinning
+7. How to Install a Debian Backports Kernel While Keeping a Bootable Stable Kernel
+8. How to Verify Debian DKMS MOK Enrollment When Secure Boot Rejects a Signed Module
+9. How to Supply Missing Debian Network Firmware from USB During Installation
+10. How to Keep Required Debian Firmware Installed Without Holding Back Security Updates
+11. How to Test Debian unattended-upgrades Origin Rules with a Debug Dry Run
+12. How to Identify Debian Services Still Using Old Libraries with needrestart
+13. How to Diagnose Debian unattended-upgrades That Never Run Using Timers and Logs
+14. How to Reconcile Debian Maintainer Configuration Changes After Keeping a Local Conffile
+15. How to Recover a Debian Kernel Upgrade When initramfs Fills the Boot Partition
+16. How to Enter Debian Installer Rescue Mode and Access an Existing Root Filesystem
+17. How to Resolve Debian Multiarch Dependencies When amd64 and i386 Versions Differ
+18. How to Diagnose Debian APT 404 Errors Caused by Stale Package Indexes
+19. How to Check Debian 12 LTS Package Coverage with check-support-status
+20. How to Keep Debian unattended-upgrades Overrides Separate from Package Defaults
+
+## OpenNebula
+
+1. How to Diagnose OpenNebula VMs Stuck Pending Despite Available Host Resources
+2. How to Trace OpenNebula PROLOG_FAILURE to Image Transfer and Datastore Access Errors
+3. How to Fix OpenNebula Guests That Have an Assigned IP but No Configured Network Interface
+4. How to Refresh OpenNebula Guest DNS Context After Changing a Virtual Network
+5. How to Add Secondary IP Addresses to OpenNebula VMs with NIC Aliases
+6. How to Constrain OpenNebula Live Migration When VMs Use host-passthrough CPUs
+7. How to Choose OpenNebula Shared Storage with Separate Plans for Live Migration and Host Failure
+8. How to Choose Persistent or Non-Persistent OpenNebula Images for Reusable VM Templates
+9. How to Check OpenNebula Saved VM Templates for Duplicate Disk Entries Before Reuse
+10. How to Grow a Linux Guest Filesystem After Resizing Its OpenNebula Virtual Disk
+11. How to Plan OpenNebula 7.0.1 Backup Recovery When the Frontend Database Is Lost
+12. How to Preserve OpenNebula Service Credentials When Moving the Frontend to a New Server
+13. How to Debug OpenNebula VNC Console Failures Through FireEdge and a Reverse Proxy
+14. How to Restore Missing OpenNebula Host Probe Scripts When Passwordless SSH Already Works
+15. How to Test OpenNebula Security Group Changes Without Mistaking Existing Connections for Rule Failures
+16. How to Investigate OpenNebula LEASES Quota Errors When a User Has No Running VMs
+17. How to Set OpenNebula Running VM Quotas Separately from Allocated VM Quotas
+18. How to Reconcile Incorrect OpenNebula Quota Usage with Version-Matched Database Tools
+19. How to Investigate OpenNebula Disk Usage That Exceeds the Guest Filesystem Usage
+20. How to Diagnose OpenNebula Host Monitoring Failures Caused by Missing Ruby or Datastore Permissions
