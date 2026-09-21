@@ -1,4 +1,4 @@
-# How to Replicate Between Different PostgreSQL Partition Layouts with publish_via_partition_root
+# How to Replicate PostgreSQL Partitions with publish_via_partition_root
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
@@ -75,6 +75,8 @@ Before starting the copy, keep the subscriber table empty and prohibit local wri
 
 ## Start the initial copy
 
+This assumes the publisher has `wal_level = logical` and both servers have sufficient replication slots, senders, and worker capacity as described in the [configuration requirements](https://www.postgresql.org/docs/18/logical-replication-config.html). The connection role needs `LOGIN`, `REPLICATION`, and access to the publisher database through `pg_hba.conf`.
+
 On the publisher, grant the established connection role access to the root for this root-publishing setup:
 
 ```sql
@@ -82,11 +84,11 @@ GRANT USAGE ON SCHEMA public TO logical_replicator;
 GRANT SELECT ON public.events TO logical_replicator;
 ```
 
-Then create the subscription on the subscriber:
+Then create the subscription on the subscriber, outside a transaction block, using a role with `pg_create_subscription` and database `CREATE` privileges that can `SET ROLE` to the target table owner. Replace the connection placeholders below. With the default `password_required = true`, a subscription owned by a non-superuser requires a password in the connection string. The subscriber server must also trust the publisher's TLS certificate, whose hostname must match, for `sslmode=verify-full` to work.
 
 ```sql
 CREATE SUBSCRIPTION events_sub
-    CONNECTION 'host=publisher.example.internal dbname=app user=logical_replicator sslmode=verify-full'
+    CONNECTION 'host=publisher.example.internal dbname=app user=logical_replicator password=REPLACE_WITH_PASSWORD sslmode=verify-full'
     PUBLICATION events_pub
     WITH (copy_data = true);
 ```
@@ -112,7 +114,7 @@ INSERT INTO public.events VALUES
     ('2026-10-03', 202, 'created in October');
 ```
 
-On the subscriber, inspect physical placement:
+After committing the publisher inserts, run the following query on the subscriber until both rows appear; replication is asynchronous in this setup. Inspect physical placement:
 
 ```sql
 SELECT tableoid::regclass AS physical_table,
@@ -134,7 +136,7 @@ DELETE FROM public.events
 WHERE event_date = '2026-10-03' AND event_id = 202;
 ```
 
-Confirm one updated row remains on the subscriber. These checks exercise root mapping and replica identity, not merely successful initial copying. The [publication identity rules](https://www.postgresql.org/docs/18/logical-replication-publication.html) explain why a usable key is needed for updates and deletes.
+After committing the publisher changes, repeat the subscriber query until one updated row remains. The earlier `r` state means initial synchronization is complete, not that every later write has already been applied. These checks exercise root mapping and replica identity, not merely successful initial copying. The [publication identity rules](https://www.postgresql.org/docs/18/logical-replication-publication.html) explain why a usable key is needed for updates and deletes.
 
 ## Treat partition maintenance as a separate migration
 
