@@ -25,7 +25,6 @@
 
 
 
-2. How to Recover a PostgreSQL Standby After Its Required WAL Has Been Removed
 3. How to Seed PostgreSQL Logical Replication from an Exported Snapshot Without Missing Writes
 4. How to Resynchronize One PostgreSQL Logical Replication Table After a Lost Subscription
 5. How to Add a Table to a PostgreSQL Publication and Start Its Initial Copy
