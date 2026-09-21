@@ -25,7 +25,6 @@
 
 
 
-7. How to Replicate Tenant Rows with PostgreSQL Row Filters and a Matching Replica Identity
 8. How to Diagnose PostgreSQL Row Filters That Copy Unexpected Rows During Initial Sync
 9. How to Publish Selected PostgreSQL Columns While Preserving UPDATE and DELETE Replication
 10. How to Replicate Between Different PostgreSQL Partition Layouts with publish_via_partition_root
