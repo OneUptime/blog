@@ -25,7 +25,6 @@
 
 
 
-10. How to Replicate Between Different PostgreSQL Partition Layouts with publish_via_partition_root
 11. How to Handle TRUNCATE Across PostgreSQL Publications with Foreign-Key Dependencies
 12. How to Enable PostgreSQL Subscriber Triggers and Measure Their Replication Overhead
 13. How to Plan a PostgreSQL Logical Replication Migration When Large Objects Are Present
