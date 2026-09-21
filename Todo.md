@@ -261,7 +261,6 @@
 
 ## OpenMetrics
 
-1. How to Expose a Valid OpenMetrics 1.0 Endpoint Without a Client Library
 2. How to Implement HTTP Content Negotiation Between OpenMetrics and Prometheus Text Format
 3. How to Fix HTTP 406 Errors When Prometheus Requests application/openmetrics-text
 4. How to Fix Prometheus 3 Scrapes Rejected for a Missing or Incorrect Content-Type
