@@ -1,4 +1,4 @@
-# How to Validate PostgreSQL Publisher and Subscriber Data Before a Migration Cutover
+# How to Validate PostgreSQL Publisher and Subscriber Data Before Cutover
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
@@ -48,13 +48,13 @@ CREATE TABLE public.migration_barrier (
 );
 ```
 
-On the publisher, add it:
+On the publisher, ensure the publication includes `insert` operations and add the table if it is not already included through `FOR ALL TABLES` or `FOR TABLES IN SCHEMA public`:
 
 ```sql
 ALTER PUBLICATION migration_pub ADD TABLE public.migration_barrier;
 ```
 
-On the subscriber, refresh and wait for its ready state:
+On the subscriber, refresh outside a transaction block and wait for its ready state. This command assumes two-phase commit is not enabled for the subscription; if it is enabled, refreshing requires `WITH (copy_data = false)`, which is suitable here only if the new barrier table is still empty and no other newly subscribed tables need an initial copy:
 
 ```sql
 ALTER SUBSCRIPTION migration_sub REFRESH PUBLICATION;
@@ -75,7 +75,7 @@ Keep writes fenced for the remaining comparison. Otherwise, the source can chang
 
 Start with counts and primary-key ranges to localize problems, but do not stop at matching counts. For an example `orders(id, customer_id, status, total_cents)` table, export an explicit column projection ordered by its primary key.
 
-With secure libpq service definitions named `publisher` and `subscriber`, run:
+With secure libpq service definitions named `publisher` and `subscriber`, use roles with `SELECT` access to the projected columns and visibility of every row in the expected dataset. Row-level security must not silently hide rows from these exports. Run:
 
 ```bash
 set -euo pipefail
