@@ -1,4 +1,4 @@
-# How to Lower max_connections Across PostgreSQL Replicas in the Correct Restart Order
+# How to Lower PostgreSQL Replica max_connections in the Right Restart Order
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
@@ -14,7 +14,7 @@ This procedure is for physical replicas of the same PostgreSQL major version. Lo
 
 ## Prepare the connection budget
 
-Suppose the cluster currently uses 500 connections and the reviewed target is 300. Confirm that application pools, administrative access, replication connections, and reserved connections fit the new capacity. A recent low connection count is not enough; include expected peak demand and failover consolidation.
+Suppose the cluster currently uses 500 connections and the reviewed target is 300. Confirm that application pools and administrative access fit the new capacity, accounting for reserved connection slots. Budget WAL sender connections separately under `max_wal_senders`; they do not consume `max_connections` slots. A recent low connection count is not enough; include expected peak demand and failover consolidation.
 
 On every node, record effective values and configuration sources:
 
@@ -95,6 +95,6 @@ Set each standby's managed configuration to 300, restart it, and verify its effe
 
 After all nodes have converged, check connection rejection rates, pool wait time, replica lag, and the configured values on every failover candidate. Matching capacities make future promotions easier to reason about.
 
-If a standby logs insufficient parameter settings and pauses recovery, restore that standby to a value high enough for the WAL it must replay and restart it. Merely calling `pg_wal_replay_resume()` does not allocate the missing shared memory and can cause shutdown when the incompatible record is retried. [Hot standby recovery behavior](https://www.postgresql.org/docs/18/hot-standby.html)
+If a standby logs insufficient parameter settings and pauses recovery, restore that standby to a value high enough for the WAL it must replay and restart it. Merely calling `pg_wal_replay_resume()` does not allocate the missing shared memory and will cause the server to shut down when recovery is unpaused after this error. [Hot standby recovery behavior](https://www.postgresql.org/docs/18/hot-standby.html)
 
 If the lower primary limit causes application problems, reversing the change is an increase: raise and restart every affected standby first, then raise and restart the primary. Treat rollback ordering with the same care as the original rollout.
