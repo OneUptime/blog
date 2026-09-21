@@ -1,4 +1,4 @@
-# How to Handle TRUNCATE Across PostgreSQL Publications with Foreign-Key Dependencies
+# How to Handle PostgreSQL TRUNCATE Replication with Foreign Keys
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
@@ -48,7 +48,7 @@ CONNECTION 'host=publisher.example.com dbname=app user=logical_replicator sslmod
 PUBLICATION accounts_pub, events_pub;
 ```
 
-This example assumes a subscription administrator with an already configured server-side credential source. If a non-superuser owns the subscription, its default password requirement also applies. Configure that account deliberately rather than copying a secret into a shared runbook. [CREATE SUBSCRIPTION](https://www.postgresql.org/docs/18/sql-createsubscription.html)
+This password-free connection string assumes a superuser-owned subscription with an already configured server-side credential source. If a non-superuser owns the subscription, the default `password_required = true` requires password authentication and a password specified in the connection string; a server-side password file alone does not satisfy that requirement. Supply that password through secure provisioning rather than copying a secret into a shared runbook. [CREATE SUBSCRIPTION](https://www.postgresql.org/docs/18/sql-createsubscription.html)
 
 Wait for both tables to reach ready state before exercising the maintenance operation:
 
