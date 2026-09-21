@@ -25,7 +25,6 @@
 
 
 
-17. How to Validate PostgreSQL Publisher and Subscriber Data Before a Migration Cutover
 18. How to Lower max_connections Across PostgreSQL Replicas in the Correct Restart Order
 19. How to Test PostgreSQL Replication Authentication with a Replication Protocol Connection
 20. How to Prevent Replication Loops in PostgreSQL 16 with origin = none
