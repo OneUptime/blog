@@ -261,7 +261,6 @@
 
 ## OpenMetrics
 
-8. How to Choose Between Counter, Gauge, Histogram, Summary, Info, and StateSet Metrics
 9. How to Encode OpenMetrics Histograms with Buckets, sum, count, and the +Inf Boundary
 10. How to Add Trace and Span Exemplars to OpenMetrics Counters and Histograms
 11. How to Bridge OTLP Metrics to an OpenMetrics Scrape Endpoint with the OpenTelemetry Collector
