@@ -261,7 +261,6 @@
 
 ## OpenMetrics
 
-7. How to Escape UTF-8 Metric Names, Label Names, and Label Values in OpenMetrics
 8. How to Choose Between Counter, Gauge, Histogram, Summary, Info, and StateSet Metrics
 9. How to Encode OpenMetrics Histograms with Buckets, sum, count, and the +Inf Boundary
 10. How to Add Trace and Span Exemplars to OpenMetrics Counters and Histograms
