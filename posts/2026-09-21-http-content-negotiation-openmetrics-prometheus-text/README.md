@@ -1,4 +1,4 @@
-# How to Implement HTTP Content Negotiation Between OpenMetrics and Prometheus Text Format
+# How to Negotiate HTTP OpenMetrics and Prometheus Text Formats
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
