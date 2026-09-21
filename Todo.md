@@ -278,7 +278,6 @@
 
 ## Data Residency
 
-16. How to Run Cross-Region Analytics Without Copying Raw Customer Data
 17. How to Give Engineers Auditable Production Access Without Exporting Regional Data
 18. How to Propagate Data Deletion Across Replicas, Search Indexes, Queues, and Backups
 19. How to Continuously Prove Data Residency with Cloud Configuration Evidence and Data-Flow Tests
