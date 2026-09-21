@@ -1,4 +1,4 @@
-# How to Encode OpenMetrics Histograms with Buckets, sum, count, and the +Inf Boundary
+# How to Encode OpenMetrics Histogram Buckets, sum, count, and +Inf
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
@@ -61,7 +61,7 @@ Verify whether upstream buckets are already cumulative before applying this conv
 
 Buckets, sum, and count must describe the same population at the same instant. Reading mutable bucket counters separately while observations arrive can produce an impossible snapshot, such as a finite bucket larger than the infinity bucket.
 
-A client library normally owns this consistency problem. In a custom exporter, collect or lock a snapshot once, copy the relevant state, then serialize outside the lock. Use the same ordinary labels on the bucket, sum, and count samples. Only bucket samples get `le`.
+A client library handles histogram collection, but do not assume it provides an atomic snapshot across buckets and sum; check its concurrency guarantees. In a custom exporter, collect or lock a snapshot once, copy the relevant state, then serialize outside the lock. Use the same ordinary labels on the bucket, sum, and count samples. Only bucket samples get `le`.
 
 Repeat the whole group for another label set, keeping each labeled histogram together. Avoid sorting every sample globally by suffix if that interleaves multiple labeled metrics in the OpenMetrics family.
 
