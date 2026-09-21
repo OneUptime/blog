@@ -1,4 +1,4 @@
-# How to Reduce Logical Replication Lag from Large PostgreSQL Transactions with Parallel Apply
+# How to Reduce PostgreSQL Transaction Replication Lag with Parallel Apply
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
@@ -66,7 +66,7 @@ CREATE TABLE public.apply_benchmark (
 
 Add it to the tested publication and refresh the subscription. Wait until its table synchronization state is ready. Choose a batch size that produces a representative WAL volume without threatening available disk.
 
-On the publisher, run one transaction, using a fresh ID range for every run:
+On the publisher, run one transaction, using a fresh ID range and a unique `batch_id` for every run. This example uses batch 1; update both the inserted batch value and the subscriber's polling predicate for subsequent runs:
 
 ```sql
 BEGIN;
