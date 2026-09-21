@@ -1,4 +1,4 @@
-# How to Test PostgreSQL Replication Authentication with a Replication Protocol Connection
+# How to Test PostgreSQL Authentication Through the Replication Protocol
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
@@ -16,7 +16,7 @@ Run the test from the replica host, container, or equivalent network path. Use t
 
 Use a direct database endpoint unless your proxy explicitly supports replication protocol connections. A normal SQL pooler's successful health check is not proof that it forwards replication startup parameters.
 
-The examples use interactive password prompting with `-W`. For unattended checks, provision a protected libpq password file or your existing secret mechanism; do not place real passwords in command history.
+The examples use interactive password prompting with `-W`. For unattended checks, replace `-W` with `-w` and provision a protected libpq password file or your existing secret mechanism; do not place real passwords in command history.
 
 ## Test physical replication
 
@@ -24,7 +24,7 @@ Run:
 
 ```bash
 psql -X -W -v ON_ERROR_STOP=1 \
-  "host=publisher.example.com port=5432 user=physical_replicator dbname=postgres replication=true sslmode=verify-full connect_timeout=5 application_name=physical_auth_probe" \
+  "host=publisher.example.com port=5432 user=physical_replicator dbname=postgres replication=true sslmode=verify-full gssencmode=disable connect_timeout=5 application_name=physical_auth_probe" \
   -c 'IDENTIFY_SYSTEM;'
 ```
 
@@ -40,7 +40,7 @@ Logical replication connects to a specific database:
 
 ```bash
 psql -X -W -v ON_ERROR_STOP=1 \
-  "host=publisher.example.com port=5432 user=logical_replicator dbname=app replication=database sslmode=verify-full connect_timeout=5 application_name=logical_auth_probe" \
+  "host=publisher.example.com port=5432 user=logical_replicator dbname=app replication=database sslmode=verify-full gssencmode=disable connect_timeout=5 application_name=logical_auth_probe" \
   -c 'IDENTIFY_SYSTEM;'
 ```
 
@@ -48,7 +48,7 @@ Expect the returned database field to be `app`. `replication=database` allows re
 
 ```bash
 psql -X -W -v ON_ERROR_STOP=1 \
-  "host=publisher.example.com port=5432 user=logical_replicator dbname=app replication=database sslmode=verify-full connect_timeout=5" \
+  "host=publisher.example.com port=5432 user=logical_replicator dbname=app replication=database sslmode=verify-full gssencmode=disable connect_timeout=5" \
   -c 'SELECT id FROM public.orders LIMIT 1;'
 ```
 
@@ -68,9 +68,9 @@ Replace the documentation address with the real source address seen by PostgreSQ
 On the publisher, an administrator can inspect parsing problems and role attributes:
 
 ```sql
-SELECT line_number, type, database, user_name, address, auth_method, error
+SELECT rule_number, file_name, line_number, type, database, user_name, address, auth_method, error
 FROM pg_hba_file_rules
-ORDER BY line_number;
+ORDER BY rule_number NULLS LAST, file_name, line_number;
 
 SELECT rolname, rolcanlogin, rolreplication, rolsuper
 FROM pg_roles
@@ -81,8 +81,8 @@ Both example accounts should have `LOGIN` and `REPLICATION`; neither needs to be
 
 ## Interpret failures without widening access
 
-A connection timeout points first to routing, firewalls, listener address, or the endpoint. An HBA rejection means the server was reached but no acceptable rule matched the requested connection properties. A password failure means the matched authentication method rejected the supplied credential. A replication-role error means ordinary login authority was insufficient.
+A connection timeout points first to routing, firewalls, listener address, or the endpoint. An HBA rejection means the server was reached but no rule matched the requested connection properties, or a matching `reject` rule denied access. A password failure means the matched authentication method rejected the supplied credential. A replication-role error means ordinary login authority was insufficient.
 
-For certificate failures, verify the requested hostname, server certificate, trusted CA, and client certificate configuration. Keep `sslmode=verify-full` while repairing that identity chain instead of changing the probe to a weaker mode and declaring the production path healthy. The mode verifies both the certificate chain and hostname. [libpq TLS options](https://www.postgresql.org/docs/18/libpq-connect.html)
+For certificate failures, verify the requested hostname, server certificate, trusted CA, and client certificate configuration. Keep `sslmode=verify-full` while repairing that identity chain instead of changing the probe to a weaker mode and declaring the production path healthy. The mode verifies both the certificate chain and hostname for TLS connections. The examples also set `gssencmode=disable` because available GSSAPI encryption otherwise takes precedence over TLS regardless of `sslmode`. [libpq TLS options](https://www.postgresql.org/docs/18/libpq-connect.html)
 
 Finally, distinguish authentication from full replication readiness. A passing `IDENTIFY_SYSTEM` does not validate WAL availability, an existing slot, publication membership, decoding configuration, or subscriber apply permissions. Once this small probe passes, move to the specific failing operation and its logs. That separation keeps a missing table grant from turning into an unnecessary network or superuser change.
