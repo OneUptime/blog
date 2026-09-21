@@ -1,4 +1,4 @@
-# How to Prevent PII in Logs, Traces, Metrics, and Error Reports from Leaving a Region
+# How to Keep PII in Logs, Traces, Metrics, and Error Reports Within a Region
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
