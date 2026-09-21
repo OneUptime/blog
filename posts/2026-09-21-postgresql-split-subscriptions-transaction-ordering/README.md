@@ -1,4 +1,4 @@
-# How to Split PostgreSQL Logical Replication Across Subscriptions Without Assuming Shared Ordering
+# How to Split PostgreSQL Subscriptions Without Assuming Shared Ordering
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
@@ -12,7 +12,7 @@ PostgreSQL guarantees transactional consistency for publications within a single
 
 ## Define independent data domains
 
-Consider a transaction that inserts a customer and an order referencing that customer. If `customers` and `orders` travel through different subscriptions, the order can become visible before the customer. A join may temporarily hide it; a subscriber trigger might fail when it cannot find the parent.
+Consider a transaction that inserts a customer and an order referencing that customer. If `customers` and `orders` travel through different subscriptions, the order can become visible before the customer. A join may temporarily hide it; a subscriber row trigger configured with `ENABLE REPLICA` or `ENABLE ALWAYS` might fail when it cannot find the parent. Ordinary triggers do not fire during logical replication apply by default. [Subscriber trigger behavior](https://www.postgresql.org/docs/18/logical-replication-architecture.html)
 
 Keep tables together when their consumers require transactionally consistent joins, trigger side effects, or coordinated truncation. Separate a truly independent telemetry domain from commerce data instead:
 
@@ -88,7 +88,7 @@ Do not use one subscription's `received_lsn` to declare both domains synchronize
 
 If a reporting job must read a stable combined dataset, use a deliberate boundary: fence source writers, drain transactions, and wait for an application marker carried by each subscription. Create a separate marker table per subscription so the feeds remain nonoverlapping. Insert the final markers after all earlier writers have completed.
 
-Only run the report when all required markers are visible and all tables are ready. Reading both marker tables in one subscriber transaction gives the report a consistent local snapshot once the source is quiescent. This protocol is an application design built on each subscription's ordering guarantee; PostgreSQL does not create it automatically.
+Only run the report when all required markers are visible and all tables are ready. Check both marker tables and run the report in the same `REPEATABLE READ` subscriber transaction to use one consistent local snapshot once the source is quiescent. If either marker is absent from that snapshot, retry in a new transaction. The default `READ COMMITTED` isolation level takes a new snapshot for each statement. [Transaction isolation](https://www.postgresql.org/docs/18/transaction-iso.html) This protocol is an application design built on each subscription's ordering guarantee; PostgreSQL does not create it automatically.
 
 For continuously writable sources, define weaker consumer behavior explicitly. A consumer can tolerate missing joins, retry processing, or wait for domain-specific completeness records. If the business invariant cannot tolerate such a window, retain one subscription for those tables and investigate parallel apply or source transaction size before splitting them.
 
