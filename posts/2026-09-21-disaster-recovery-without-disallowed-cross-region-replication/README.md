@@ -1,4 +1,4 @@
-# How to Design Disaster Recovery When Cross-Region Replication Would Violate Residency Rules
+# How to Plan Disaster Recovery Within Data Residency Rules
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
