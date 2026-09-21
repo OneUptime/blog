@@ -51,7 +51,9 @@ def numbered_lines(handle):
 try:
     with path.open(encoding="utf-8", errors="strict", newline="") as handle:
         families = list(text_fd_to_metric_families(numbered_lines(handle)))
-except (UnicodeDecodeError, ValueError) as error:
+except UnicodeDecodeError as error:
+    raise SystemExit(f"Invalid UTF-8 (buffered decoding; line unavailable): {error}")
+except ValueError as error:
     raise SystemExit(f"Parse failed at or before line {position}: {error}")
 
 print(f"Parsed {len(families)} metric families")
