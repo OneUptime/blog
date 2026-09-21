@@ -1,4 +1,4 @@
-# How to Keep CDN Caches, Object Replicas, and Upload Processing Inside a Data Boundary
+# How to Keep CDN Caches, Object Replicas, and Uploads Within a Data Boundary
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
@@ -28,7 +28,7 @@ When a requirement prohibits edge processing outside a location set, use a provi
 
 ## Check caching controls at the effective behavior
 
-For content that should never be retained in intermediary caches, set the appropriate response policy and inspect the CDN configuration together. CloudFront documents that a positive minimum TTL can cause caching even when the origin sends `no-cache`, `no-store`, or `private`. See [expiration controls](https://docs.aws.amazon.com/AmazonCloudFront/latest/DeveloperGuide/Expiration.html).
+For content that should never be retained in intermediary caches, set appropriate origin response headers and inspect the cache policy on the matching CDN behavior together. A CloudFront response headers policy changes viewer response headers but does not control CloudFront caching. CloudFront documents that a positive minimum TTL can cause caching even when the origin sends `no-cache`, `no-store`, or `private`. See [expiration controls](https://docs.aws.amazon.com/AmazonCloudFront/latest/DeveloperGuide/Expiration.html).
 
 Disabling caching still does not remove edge processing or network transit. It only addresses one storage path. Previously cached objects may also need invalidation or expiration; changing a future caching policy is not proof that old copies disappeared.
 
