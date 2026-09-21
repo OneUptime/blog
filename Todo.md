@@ -25,7 +25,6 @@
 
 
 
-12. How to Enable PostgreSQL Subscriber Triggers and Measure Their Replication Overhead
 13. How to Plan a PostgreSQL Logical Replication Migration When Large Objects Are Present
 14. How to Grant PostgreSQL Logical Replication Initial Copy Permissions Without Superuser Access
 15. How to Reduce Logical Replication Lag from Large PostgreSQL Transactions with Parallel Apply
