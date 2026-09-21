@@ -261,7 +261,6 @@
 
 ## OpenMetrics
 
-3. How to Fix HTTP 406 Errors When Prometheus Requests application/openmetrics-text
 4. How to Fix Prometheus 3 Scrapes Rejected for a Missing or Incorrect Content-Type
 5. How to Fix the OpenMetrics “Data Does Not End with # EOF” Error
 6. How to Emit HELP, TYPE, and UNIT Metadata in the Correct OpenMetrics Order
