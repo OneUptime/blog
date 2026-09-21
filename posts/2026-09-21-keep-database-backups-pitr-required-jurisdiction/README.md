@@ -1,4 +1,4 @@
-# How to Keep Database Backups and Point-in-Time Recovery Data Inside the Required Jurisdiction
+# How to Keep Database Backups and PITR Data Within Required Jurisdictions
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
