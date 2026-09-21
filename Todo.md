@@ -25,7 +25,6 @@
 
 
 
-8. How to Diagnose PostgreSQL Row Filters That Copy Unexpected Rows During Initial Sync
 9. How to Publish Selected PostgreSQL Columns While Preserving UPDATE and DELETE Replication
 10. How to Replicate Between Different PostgreSQL Partition Layouts with publish_via_partition_root
 11. How to Handle TRUNCATE Across PostgreSQL Publications with Foreign-Key Dependencies
