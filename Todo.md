@@ -25,7 +25,6 @@
 
 
 
-20. How to Prevent Replication Loops in PostgreSQL 16 with origin = none
 
 ## EdgeDB
 
