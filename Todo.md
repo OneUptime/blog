@@ -25,7 +25,6 @@
 
 
 
-1. How to Use PostgreSQL 18 idle_replication_slot_timeout Without Invalidating Planned Pauses
 2. How to Recover a PostgreSQL Standby After Its Required WAL Has Been Removed
 3. How to Seed PostgreSQL Logical Replication from an Exported Snapshot Without Missing Writes
 4. How to Resynchronize One PostgreSQL Logical Replication Table After a Lost Subscription
