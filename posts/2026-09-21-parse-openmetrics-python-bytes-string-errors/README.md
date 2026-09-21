@@ -1,4 +1,4 @@
-# How to Parse an OpenMetrics Endpoint in Python Without Bytes-versus-String Errors
+# How to Parse OpenMetrics in Python Without Bytes and String Errors
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
@@ -61,6 +61,8 @@ def fetch_families(url):
             raise ValueError("endpoint did not return OpenMetrics")
         if content_type.get_param("version") != "1.0.0":
             raise ValueError("expected OpenMetrics version 1.0.0")
+        if content_type.get_content_charset() != "utf-8":
+            raise ValueError("expected OpenMetrics charset utf-8")
         body = bytearray()
         for chunk in response.iter_content(chunk_size=65536):
             body.extend(chunk)
