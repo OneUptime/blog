@@ -1,4 +1,4 @@
-# How to Diagnose PostgreSQL Row Filters That Copy Unexpected Rows During Initial Sync
+# How to Diagnose PostgreSQL Row Filters During Initial Replication Sync
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
@@ -19,7 +19,8 @@ SHOW server_version;
 
 SELECT subname, subpublications, subenabled
 FROM pg_subscription
-WHERE subname = 'reporting_sub';
+WHERE subname = 'reporting_sub'
+  AND subdbid = (SELECT oid FROM pg_database WHERE datname = current_database());
 ```
 
 On the publisher, list every publication that includes the affected table:
@@ -88,7 +89,7 @@ CREATE SUBSCRIPTION reporting_sub
 
 Both historical rows are eligible for the initial copy. Initial synchronization does not use the publication's `publish` operations to decide which history to copy. With several publications, rows matching any applicable initial-copy filter are included. That behavior is documented in the [initial snapshot architecture](https://www.postgresql.org/docs/18/logical-replication-architecture.html).
 
-Now insert `(7,101,'new other tenant')` on the publisher. That new insert does not match the insert publication; the update-only publication does not publish the insert. This explains why a historical row can arrive while a comparable new row does not.
+Wait until initial synchronization of `tenant_events` finishes (`srsubstate = 'r'` for this table and subscription in the subscriber's [pg_subscription_rel catalog](https://www.postgresql.org/docs/18/catalog-pg-subscription-rel.html)), then insert `(7,101,'new other tenant')` on the publisher. That new insert does not match the insert publication; the update-only publication does not publish the insert. This explains why a historical row can arrive while a comparable new row does not.
 
 The example intentionally illustrates a confusing contract. Prefer a publication design whose initial dataset and subsequent insert, update, and delete behavior describe the same intended materialized dataset.
 
