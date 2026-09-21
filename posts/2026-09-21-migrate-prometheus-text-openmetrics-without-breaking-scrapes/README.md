@@ -1,4 +1,4 @@
-# How to Migrate a Prometheus Text 0.0.4 Endpoint to OpenMetrics 1.0 Without Breaking Scrapes
+# How to Migrate Prometheus Text 0.0.4 to OpenMetrics 1.0 Safely
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
