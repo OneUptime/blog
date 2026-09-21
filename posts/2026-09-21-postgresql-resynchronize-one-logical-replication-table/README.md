@@ -1,4 +1,4 @@
-# How to Resynchronize One PostgreSQL Logical Replication Table After a Lost Subscription
+# How to Resync a PostgreSQL Table After Losing a Logical Subscription
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

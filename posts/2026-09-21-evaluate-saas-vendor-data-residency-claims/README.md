@@ -1,4 +1,4 @@
-# How to Evaluate a SaaS Vendor’s Data Residency Claims Before Sending Customer Data
+# How to Verify SaaS Data Residency Claims Before Sharing Customer Data
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
