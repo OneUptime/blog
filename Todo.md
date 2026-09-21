@@ -278,7 +278,6 @@
 
 ## Data Residency
 
-13. How to Use Region-Scoped KMS Keys Without Breaking Backup Restore or Tenant Migration
 14. How to Prevent PII in Logs, Traces, Metrics, and Error Reports from Leaving a Region
 15. How to Keep CDN Caches, Object Replicas, and Upload Processing Inside a Data Boundary
 16. How to Run Cross-Region Analytics Without Copying Raw Customer Data
