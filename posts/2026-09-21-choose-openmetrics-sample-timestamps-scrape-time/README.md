@@ -1,4 +1,4 @@
-# How to Decide Whether to Emit Sample Timestamps or Let Prometheus Stamp Scrape Time
+# How to Choose OpenMetrics Sample Timestamps or Prometheus Scrape Time
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
