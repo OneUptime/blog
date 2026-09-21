@@ -17,7 +17,7 @@ This is an intentional compatibility change. The [Prometheus 3 migration guide](
 Run a request from the same network path as the scraper:
 
 ```bash
-curl -sS --fail-with-body -D response.headers \
+curl -sS --location --fail-with-body -D response.headers \
   -H 'Accept: application/openmetrics-text;version=1.0.0,text/plain;version=0.0.4;q=0.5' \
   https://metrics.example.com/metrics -o response.body
 ```
