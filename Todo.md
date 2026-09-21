@@ -261,7 +261,6 @@
 
 ## OpenMetrics
 
-12. How to Decide Whether to Emit Sample Timestamps or Let Prometheus Stamp Scrape Time
 13. How to Design OpenMetrics Labels Without Causing a Cardinality Explosion
 14. How to Find and Fix Duplicate Time Series in an OpenMetrics Payload
 15. How to Convert a JSON API or Log-Derived Statistics into an OpenMetrics Exporter
