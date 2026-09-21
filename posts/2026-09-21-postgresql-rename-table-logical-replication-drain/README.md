@@ -1,4 +1,4 @@
-# How to Rename a PostgreSQL Table Without Dropping In-Flight Logical Replication Changes
+# How to Rename PostgreSQL Tables Without Losing Logical Replication Changes
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
@@ -12,7 +12,7 @@ A predictable procedure is to stop relevant writes, prove earlier changes have a
 
 ## Establish a barrier in the same subscription
 
-Assume `public.orders` belongs to `sales_pub`, consumed by `sales_sub`. Prepare a small barrier table on both publisher and subscriber before the maintenance window:
+Assume `public.orders` belongs to `sales_pub`, consumed by `sales_sub`. These examples assume `sales_pub` explicitly lists its tables and publishes `INSERT` operations, so the barrier can be added and its markers replicated. Run statements individually in autocommit mode except for the explicit rename transactions. Prepare a small barrier table on both publisher and subscriber before the maintenance window:
 
 ```sql
 CREATE TABLE public.replication_barrier (
@@ -21,14 +21,14 @@ CREATE TABLE public.replication_barrier (
 );
 ```
 
-Publish it on the source:
+On the subscriber, give the barrier table the same owner as `orders`, so the subscription's existing apply permissions cover it; if `run_as_owner = true`, grant the subscription owner the required table privileges instead. Publish it on the source:
 
 ```sql
 GRANT SELECT ON public.replication_barrier TO logical_replicator;
 ALTER PUBLICATION sales_pub ADD TABLE public.replication_barrier;
 ```
 
-Refresh `sales_sub` and wait until both tables are ready:
+The initial refresh below assumes `two_phase = false`; PostgreSQL rejects a refresh with `copy_data = true` when two-phase replication is enabled. Refresh `sales_sub` outside a transaction block and wait until both tables show `srsubstate = 'r'` (ready):
 
 ```sql
 ALTER SUBSCRIPTION sales_sub
@@ -114,6 +114,6 @@ ALTER SUBSCRIPTION sales_sub
 
 Keep all writes fenced while confirming that the renamed table remains ready and the worker has no schema-mapping errors. Logical replication's [schema restrictions](https://www.postgresql.org/docs/18/logical-replication-restrictions.html) explain why both sides must be compatible before new DML arrives.
 
-Through a controlled maintenance connection, insert a new marker and make an approved canary change to `purchases`. Confirm both on all subscribers, then deploy or enable application code using the new name and release the fence.
+Through a controlled maintenance connection on the publisher, commit a new marker and an approved canary change to `purchases`. Confirm both on all subscribers, then deploy or enable application code using the new name and release the fence.
 
 If one rename fails, leave writers fenced and replication disabled while restoring a consistent pair of names. If both names already match, repair the remaining permission or mapping problem rather than discarding the slot. The preserved slot and drained boundary let the operation resume without guessing which old changes were lost.
