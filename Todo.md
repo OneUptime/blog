@@ -261,7 +261,6 @@
 
 ## OpenMetrics
 
-13. How to Design OpenMetrics Labels Without Causing a Cardinality Explosion
 14. How to Find and Fix Duplicate Time Series in an OpenMetrics Payload
 15. How to Convert a JSON API or Log-Derived Statistics into an OpenMetrics Exporter
 16. How to Parse an OpenMetrics Endpoint in Python Without Bytes-versus-String Errors
