@@ -261,7 +261,6 @@
 
 ## OpenMetrics
 
-4. How to Fix Prometheus 3 Scrapes Rejected for a Missing or Incorrect Content-Type
 5. How to Fix the OpenMetrics “Data Does Not End with # EOF” Error
 6. How to Emit HELP, TYPE, and UNIT Metadata in the Correct OpenMetrics Order
 7. How to Escape UTF-8 Metric Names, Label Names, and Label Values in OpenMetrics
