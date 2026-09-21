@@ -4317,6 +4317,26 @@
 38. How to Generate a Trino PIVOT Query When Category Names Change
 39. How to Count Literal Delimiters in Trino Strings with regexp_count
 40. How to Query Employee Hierarchies in Trino Within Recursive CTE Limits
+41. How to Discover Mixed-Case Hive Partition Directories with Trino sync_partition_metadata
+42. How to Register Existing S3 Partition Folders That Do Not Use Hive Naming in Trino
+43. How to Repair Trino Parquet Timestamp Reads When Files Store Strings or TIME Values
+44. How to Isolate Files Behind Trino Hive Data-Parsing Failures with the Hidden Path Column
+45. How to Diagnose Trino Hive Partition Schema Mismatches After a Glue Crawler Changes Types
+46. How to Reduce Trino Query Stages Before Raising query.max-stage-count
+47. How to Diagnose Trino MERGE Multiple-Match Errors with Unique Source Keys and a Version Reproducer
+48. How to Rewrite Unsupported Trino Correlated Subqueries for the Latest Event Before a Cutoff
+49. How to Interpret Trino Python Client EXECUTE IMMEDIATE Fallback Warnings
+50. How to Manage Trino Python Transactions Without Relying on cursor.close for Rollback
+51. How to Reduce Oversized Trino Prepared-Statement Headers with JDBC explicitPrepare
+52. How to Keep Trino CTE Results Consistent When Random Expressions Are Referenced More Than Once
+53. How to Preserve Deterministic Result Ordering Across Multiple Trino CTEs
+54. How to Pin Trino Iceberg Joins to Explicit Snapshots for Reproducible Historical Reports
+55. How to Initialize Iceberg JDBC Catalog Metadata Tables Before Connecting Trino
+56. How to Validate Hive View Function Semantics Before Querying the Views Through Trino
+57. How to Diagnose Trino SQLAlchemy Bulk Inserts That Send One Query per Row
+58. How to Detect Late Trino Write Failures While Consuming Python Client Results
+59. How to Query Athena Partition-Projection Tables from Trino Without Registering Every Partition
+60. How to Investigate Iceberg Delete Files That Remain After Snapshot Expiration in Trino
 
 ## GraphScope
 
@@ -6157,6 +6177,26 @@
 18. How to Create Log-Based Alerts from VictoriaLogs with `vmalert` and LogsQL
 19. How to Migrate Loki Logs and Grafana Dashboards to VictoriaLogs While Translating LogQL to LogsQL
 20. How to Export Large VictoriaLogs Query Results Safely with Streaming APIs and Client Cancellation
+21. How to Sort VictoriaLogs Grouped Counts Numerically and Return the Top Results
+22. How to Group Dynamic API URLs in VictoriaLogs Without Counting Every Request ID Separately
+23. How to Filter VictoriaLogs Entries by Exact Values Inside JSON Arrays
+24. How to Calculate Time Between Consecutive Events in VictoriaLogs with running_stats
+25. How to Apply the Same Time Limit to VictoriaLogs Joins and Their Subqueries
+26. How to Enrich VictoriaLogs Query Results with Small Inline Lookup Tables
+27. How to Speed Up VictoriaLogs Full-Text Searches That Slow Down After Sorting
+28. How to Find the Expensive Stage of a VictoriaLogs Query with query_stats
+29. How to Identify Which VictoriaLogs Fields Consume the Most Disk Space
+30. How to Audit VictoriaLogs Hidden Fields for Sensitive Values Still Visible in _stream
+31. How to Limit VictoriaLogs Query Time Ranges, Execution Time, and Concurrency
+32. How to Choose Raw Logs, Instant, and Range Queries for VictoriaLogs Grafana Panels
+33. How to Handle VictoriaLogs Query Failures When a Storage Node Is Unavailable
+34. How to Calculate Per-Service Error Percentages in VictoriaLogs with Conditional Aggregations
+35. How to Align VictoriaLogs Time Buckets with a Local Timezone Offset
+36. How to Expand VictoriaLogs Error Context Beyond the Default One-Hour Window
+37. How to Query Syslog and Journald Hostnames Under One Field in VictoriaLogs
+38. How to Cap Unique-User Counts in VictoriaLogs to Bound Aggregation Memory
+39. How to Diagnose VictoriaLogs Log Rates That Change Unexpectedly with Grafana Intervals
+40. How to Return the Latest N Log Entries per Host in VictoriaLogs
 
 ## Immutable Infrastructure
 
@@ -9622,3 +9662,187 @@
 18. How to Reconcile Incorrect OpenNebula Quota Usage with Version-Matched Database Tools
 19. How to Investigate OpenNebula Disk Usage That Exceeds the Guest Filesystem Usage
 20. How to Diagnose OpenNebula Host Monitoring Failures Caused by Missing Ruby or Datastore Permissions
+
+## Content Delivery
+
+1. How to Fix CloudFront CORS Responses That Work for One Origin but Fail for Another
+2. How to Cache CloudFront OPTIONS Responses with the Correct Preflight Headers
+3. How to Diagnose CloudFront Serving Gzip When Brotli Is Enabled
+4. How to Fix Uncompressed WebAssembly Downloads Through CloudFront
+5. How to Diagnose CloudFront 416 Errors After Replacing a Video File
+6. How to Fix CloudFront Returning Full Files Instead of HTTP 206 Range Responses
+7. How to Forward Authorization Through CloudFront Without Sharing Authenticated Responses
+8. How to Stop CloudFront from Replaying Cached Set-Cookie Headers
+9. How to Forward ALB Stickiness Cookies Through CloudFront Without Fragmenting Public-Asset Caches
+10. How to Make CloudFront Honor Cache-Control Private and No-Store Responses
+11. How to Cache Content Longer in CloudFront Than in the Browser with s-maxage
+12. How to Stop CloudFront from Caching Origin Error Responses Longer Than Expected
+13. How to Diagnose CloudFront Signed URLs That Expire During Resumed Downloads
+14. How to Set Download Filenames for CloudFront Signed URLs with Content-Disposition
+15. How to Route SPA Deep Links Through CloudFront Without Rewriting API Errors to HTML
+16. How to Fix CloudFront Redirects That Expose the Load Balancer Hostname
+17. How to Normalize Query Parameter Order Before CloudFront Cache Lookup
+18. How to Exclude UTM Tracking Parameters from CloudFront Cache Keys
+19. How to Restore Conditional Revalidation Between CloudFront and a Static-Asset Origin
+20. How to Keep Versioned CloudFront Assets Available During Rolling Deployments
+
+## MAAS Provisioning
+
+1. How to Investigate a MAAS Machine Stuck in Commissioning Using SSH and Script Results
+2. How to Distinguish MAAS Commissioning Timeouts from BMC Power-Action Failures
+3. How to Debug MAAS 50-maas-01-commissioning Post-Processing Failures
+4. How to Configure MAAS DHCP Relay Across Routed VLANs with the API
+5. How to Diagnose Intermittent MAAS PXE Boots Caused by Competing DHCP Servers
+6. How to Enlist MAAS Machines from the CLI with Correct IPMI Power Parameters
+7. How to Fix MAAS IPMI Login Failures When the BMC Web Console Still Works
+8. How to Recommission Redfish-Managed Machines Without Reconfiguring Their BMC Credentials in MAAS
+9. How to Pass Per-Machine Cloud-Init User Data to a MAAS Deployment
+10. How to Debug Cloud-Init Commands That Do Not Run After MAAS Marks a Machine Deployed
+11. How to Create a Custom Login User and SSH Keys During MAAS Provisioning
+12. How to Select the Intended MAAS Boot Disk on a Server with Multiple Drives
+13. How to Fix MAAS Cannot Place Filesystem on the Boot Disk Errors in Custom Storage Layouts
+14. How to Generate MAAS RAID and LVM Storage Layouts from a Commissioning Script
+15. How to Diagnose MAAS Deployment Failures Caused by UEFI Boot-Order Changes
+16. How to Troubleshoot ARM and UEFI Machines That Drop to GRUB During MAAS PXE Boot
+17. How to Diagnose Failed MAAS Custom-Image Imports with Boot Resource and Region Logs
+18. How to Reduce MAAS Boot-Image Storage by Removing Unused Image Selections
+19. How to Configure MAAS DNS Forwarders So Deployed Machines Resolve External Domains
+20. How to Troubleshoot MAAS Deployments with an Open vSwitch Bridge over a Linux Bond
+
+## Exactly-Once
+
+1. How to Diagnose Kafka read_committed Consumer Stalls at the Last Stable Offset
+2. How to Explain Offset Gaps Caused by Kafka Transaction Markers
+3. How to Assign Kafka transactional.id Values Across Kubernetes Replicas and Restarts
+4. How to Recover from ProducerFencedException Without Reusing the Fenced Kafka Producer
+5. How to Handle Kafka commitTransaction Timeouts Without Starting a Conflicting Abort
+6. How to Commit Kafka Consumer Offsets with Output Records Using sendOffsetsToTransaction
+7. How to Pass Consumer Group Metadata to Kafka Transactions for Rebalance Fencing
+8. How to Rewind Every Assigned Kafka Partition After Aborting a Processing Transaction
+9. How to Verify That Kafka read_committed Consumers Still Receive Nontransactional Records
+10. How to Isolate Concurrent Workloads Sharing a Transactional Kafka Producer
+11. How to Tune Kafka Streams Commit Intervals for Exactly-Once Output Latency
+12. How to Test Kafka Exactly-Once Recovery by Crashing Between Output Writes and Offset Commits
+13. How to Persist Kafka Offsets with Database Changes in the Same Transaction
+14. How to Keep Kafka Streams External Database Side Effects Safe During Reprocessing
+15. How to Diagnose Duplicate Business Events with Kafka Producer Idempotence Enabled
+16. How to Enable Kafka Transactions in Single-Broker Integration Tests
+17. How to Restore Flink Kafka Exactly-Once Pipelines from Checkpointed Source Offsets
+18. How to Prevent Transactional ID Prefix Collisions Between Flink KafkaSink Jobs
+19. How to Size Flink Kafka Transaction Timeouts for Checkpoints and Restart Delays
+20. How to Deduplicate Spark foreachBatch Database Writes with Batch IDs
+
+## Cassandra
+
+1. How to Fix Cassandra Queries That Skip a Preceding Clustering Column
+2. How to Query Recent Cassandra Events Across Time Buckets Without ALLOW FILTERING
+3. How to Model Cassandra Results for ORDER BY on a Non-Clustering Column
+4. How to Replace Timing-Out Cassandra COUNT Queries with a Bounded Paged Scan
+5. How to Choose Cassandra Page Size Without Confusing It with the CQL LIMIT
+6. How to Build Cassandra Pagination Cursors That Stay Bound to the Original Query
+7. How to Improve Cassandra Bulk Inserts with Bounded Asynchronous Writes
+8. How to Test Cassandra Batch Atomicity and Read Isolation Across Partitions
+9. How to Refresh Cassandra TTLs Without Leaving Columns on Different Expiration Schedules
+10. How to Diagnose Cassandra Rows That Outlive a Newly Configured Default TTL
+11. How to Use Unset Parameters for Cassandra Partial Updates Without Writing Null Tombstones
+12. How to Diagnose Expired Cassandra SSTables Kept Alive by Mixed TTL Data
+13. How to Choose Cassandra gc_grace_seconds Around Repair and Node Downtime
+14. How to Diagnose Cassandra Updates Ignored Because of Future Write Timestamps
+15. How to Prevent Cassandra Counter Overcounts from Automatic Request Retries
+16. How to Keep Cassandra List Appends from Repeating During Speculative Execution
+17. How to Configure Cassandra LWT Serial Consistency Separately from Commit Consistency
+18. How to Handle Cassandra IF NOT EXISTS Results When a Row Already Exists
+19. How to Reclaim Cassandra Disk Space Retained by Snapshots After Cleanup
+20. How to Prevent Stale Cassandra Read-After-Write Results Within One Datacenter
+
+## Jsonnet
+
+1. How to Override Jsonnet Nested Defaults While Keeping self References Dynamic
+2. How to Choose Jsonnet Object Inheritance or mergePatch for Null and Nested Overrides
+3. How to Patch a Named Kubernetes Container in a Jsonnet Array
+4. How to Merge Jsonnet Array Values Across Configuration Files with Repeated Keys
+5. How to Export Reusable Jsonnet Helpers Without Manifesting Their Hidden Fields
+6. How to Remove Inherited Jsonnet Fields from Generated Kubernetes Manifests
+7. How to Generate Optional Jsonnet Fields with Computed Field Names
+8. How to Fix Jsonnet Computed Keys That Cannot Access the Merged Configuration
+9. How to Traverse Jsonnet Objects When Field Names Are Unknown in Advance
+10. How to Remove Empty Strings and Null Values from Jsonnet Arrays
+11. How to Fix Jsonnet Computed Import Errors When Combining Library Files
+12. How to Pass a Runtime-Selected Input File to Jsonnet Without a Computed Import
+13. How to Share a Parameterized Jsonnet Template Between Bash and Other Jsonnet Files
+14. How to Generate Multiple Output Files from One Jsonnet Entry Point
+15. How to Embed Multiline Shell Scripts in Jsonnet ConfigMaps
+16. How to Preserve Regex Backslashes Through Jsonnet and JSON Serialization
+17. How to Inspect Jsonnet Intermediate Values with std.trace While Rendering Output
+18. How to Import YAML into Jsonnet with importstr and std.parseYaml
+19. How to Resolve Relative Jsonnet Imports from Python evaluate_snippet
+20. How to Fix Root Reference Errors in Imported Jsonnet Objects
+
+## Multi-Model Databases
+
+1. How to Choose Between Record Links and Graph Relations in SurrealDB
+2. How to Model Three-Way Associations in SurrealDB with a Junction Record
+3. How to Define Typed Record Links in SurrealDB SCHEMAFULL Tables
+4. How to Expand Nested SurrealDB Record Links with FETCH
+5. How to Prevent Duplicate SurrealDB Graph Relations with a Unique Endpoint Index
+6. How to Reject SurrealDB Relations Whose Endpoint Records Do Not Exist
+7. How to Return a Nested Tree from SurrealDB with Bounded Recursive Traversal
+8. How to Fix Expected a Record ID During Recursive Traversal in SurrealDB
+9. How to Restrict SurrealDB Records to Their Owners with Record Access and Table Permissions
+10. How to Commit SurrealDB Document and Graph-Edge Changes in One Transaction
+11. How to Combine Document Filters and Graph Traversals in One ArangoDB AQL Query
+12. How to Include the Starting Document in ArangoDB Graph Traversal Results
+13. How to Stop ArangoDB Traversal Paths Early with PRUNE and Filter the Returned Vertices
+14. How to Choose Path or Global Vertex Uniqueness for Cyclic ArangoDB Graphs
+15. How to Speed Up Filtered ArangoDB Supernode Traversals with Vertex-Centric Indexes
+16. How to Delete ArangoDB Vertices and Their Connected Edges Through the Named Graph API
+17. How to Index Individual Array Members in ArangoDB Documents
+18. How to Handle Concurrent ArangoDB UPSERT Conflicts on Unique Business Keys
+19. How to Update Nested ArangoDB Objects Without Replacing Unchanged Fields
+20. How to Find Low-Cost Routes in ArangoDB with Weighted Graph Traversals
+
+## Scheduler
+
+1. How to Load KubeSchedulerConfiguration When kubectl Reports No Matches for Kind
+2. How to Mount a Custom Scheduler Configuration into kubeadm Static Pods
+3. How to Migrate Removed KubeSchedulerConfiguration v1beta3 Files to v1
+4. How to Fix a Second Kubernetes Scheduler Competing for the Default Leader Lease
+5. How to Identify the Active kube-scheduler Leader from Kubernetes Leases
+6. How to Distinguish Missing CSI APIs from RBAC Failures in a Custom Kubernetes Scheduler
+7. How to Fix kube-scheduler Connecting to the Wrong API Server After a Kubeconfig Change
+8. How to Unblock Kubernetes Rolling Updates When Old Pods Reserve the Required hostPort
+9. How to Diagnose Too Many Pods Scheduling Errors When CPU and Memory Are Available
+10. How to Verify Why percentageOfNodesToScore Still Checks Every Node in a Small Kubernetes Cluster
+11. How to Restore Prometheus Scraping of kube-scheduler After kubeadm Upgrades
+12. How to Identify Slow Kubernetes Scheduling Plugins with Execution-Duration Histograms
+13. How to Resolve QueueSort Conflicts Between Kubernetes Scheduler Profiles
+14. How to Override One Scheduler Plugin Extension Point When Using MultiPoint Configuration
+15. How to Express Either-of-Two Workload Exclusions with Kubernetes Pod Anti-Affinity
+16. How to Scope Cross-Namespace Pod Affinity with Namespace Labels
+17. How to Separate Pod Affinity Placement from Application Dependency Readiness
+18. How to Find Default Topology Spread Rules That Are Absent from a Pod Manifest
+19. How to Exclude Untolerated Nodes from Topology Spread Counts with nodeTaintsPolicy
+20. How to Trace Existing Pods' Anti-Affinity Rules That Block a New Deployment
+
+## Write-Ahead Logging
+
+1. How to Reclaim SQLite WAL Disk Space After a Checkpoint Has Copied All Frames
+2. How to Find Unfinished SQLite Read Statements That Prevent WAL Checkpoint Progress
+3. How to Move SQLite WAL Checkpoints Off the Request Thread and Measure Remaining Writer Delays
+4. How to Retry a SQLite WAL Transaction After SQLITE_BUSY_SNAPSHOT
+5. How to Open a SQLite WAL Database from a Read-Only Directory
+6. How to Replace Direct Network-Share Access to a SQLite WAL Database with a Local Database Service
+7. How to Refresh SQLite WAL Read Snapshots When Attached Databases Change
+8. How to Preserve Crash Atomicity Across SQLite ATTACH Transactions When Choosing a Journal Mode
+9. How to Change SQLite page_size When a Database Is Already in WAL Mode
+10. How to Apply SQLite WAL Connection Settings Consistently in a Connection Pool
+11. How to Read SQLite wal_checkpoint Results to Measure Uncheckpointed Frames
+12. How to Diagnose SQLite WAL and SHM Files That Remain After Closing Application Connections
+13. How to Explain PostgreSQL pg_wal Growth Beyond max_wal_size with Retention Evidence
+14. How to Distinguish PostgreSQL WAL Segment Size from the max_wal_size Checkpoint Target
+15. How to Test PostgreSQL WAL Archiving on an Idle Database with pg_switch_wal
+16. How to Make PostgreSQL archive_command Retries Handle Existing WAL Files Safely
+17. How to Tell Expected End-of-WAL Messages from Corruption When Using pg_waldump
+18. How to Interpret PostgreSQL wal_buffers_full Across Workload Changes and Restarts
+19. How to Verify PostgreSQL wal_log_hints Prerequisites Before a pg_rewind Failover Drill
+20. How to Diagnose Zero WAL Write and Sync Timings in PostgreSQL 17 Statistics
