@@ -262,7 +262,6 @@
 ## OpenMetrics
 
 19. How to Backfill Prometheus TSDB from OpenMetrics Files Without Losing Custom Labels
-20. How to Migrate a Prometheus Text 0.0.4 Endpoint to OpenMetrics 1.0 Without Breaking Scrapes
 21. How to Fix “Invalid Metric Type info” When Prometheus Scrapes a Micrometer OpenMetrics Endpoint
 22. How to Expose OpenMetrics StateSet Metrics Without Conflicting State Labels
 23. How to Encode GaugeHistograms with `_bucket`, `_gcount`, and `_gsum` Correctly
