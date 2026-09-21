@@ -33,6 +33,7 @@ python -m pip install 'prometheus-client==0.26.0'
 Save this as `exporter.py`, adjusting the internal API endpoint:
 
 ```python
+import http.client
 import json
 import math
 import threading
@@ -72,6 +73,8 @@ class QueueCollector:
             if len(raw) > 1024 * 1024:
                 raise ValueError("source response too large")
             data = json.loads(raw.decode("utf-8"))
+            if not isinstance(data, dict) or not isinstance(data.get("queues"), list):
+                raise ValueError("source must contain a queues array")
             seen = set()
             for row in data["queues"]:
                 name = row["name"]
@@ -82,7 +85,7 @@ class QueueCollector:
                 seen.add(name)
                 depth.add_metric([name], number(row["depth"]))
                 processed.add_metric([name], number(row["processed_total"]))
-        except (OSError, ValueError, KeyError, TypeError, OverflowError):
+        except (OSError, http.client.HTTPException, ValueError, KeyError, TypeError, OverflowError):
             yield GaugeMetricFamily("queue_source_up", "Source collection succeeded", value=0)
             return
         yield GaugeMetricFamily("queue_source_up", "Source collection succeeded", value=1)
