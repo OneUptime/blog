@@ -1,4 +1,4 @@
-# How to Choose Between Counter, Gauge, Histogram, Summary, Info, and StateSet Metrics
+# How to Choose OpenMetrics Counter, Gauge, Histogram, Summary, Info, or StateSet
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
@@ -47,7 +47,7 @@ A gauge that only happens to increase is still a gauge when its meaning is a cur
 
 ## Histograms describe aggregatable distributions
 
-Use a histogram when you need latency or size distributions across many instances. Classic histograms expose cumulative buckets plus count and sum. Consistent bucket boundaries allow aggregation across replicas before calculating a quantile.
+Use a histogram when you need latency or size distributions across many instances. Classic histograms expose cumulative buckets and typically count and sum; OpenMetrics 1.0 permits omitting the sum and requires its omission when negative bucket thresholds are present. Consistent bucket boundaries allow aggregation across replicas before calculating a quantile.
 
 ```promql
 histogram_quantile(
