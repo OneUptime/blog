@@ -25,7 +25,6 @@
 
 
 
-9. How to Publish Selected PostgreSQL Columns While Preserving UPDATE and DELETE Replication
 10. How to Replicate Between Different PostgreSQL Partition Layouts with publish_via_partition_root
 11. How to Handle TRUNCATE Across PostgreSQL Publications with Foreign-Key Dependencies
 12. How to Enable PostgreSQL Subscriber Triggers and Measure Their Replication Overhead
