@@ -1,4 +1,4 @@
-# How to Backfill Prometheus TSDB from OpenMetrics Files Without Losing Custom Labels
+# How to Backfill Prometheus TSDB from OpenMetrics and Preserve Custom Labels
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
