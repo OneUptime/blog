@@ -278,7 +278,6 @@
 
 ## Data Residency
 
-20. How to Evaluate a SaaS Vendor’s Data Residency Claims Before Sending Customer Data
 
 ## OpenMetrics
 
