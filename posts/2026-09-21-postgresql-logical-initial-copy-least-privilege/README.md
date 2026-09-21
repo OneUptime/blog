@@ -1,4 +1,4 @@
-# How to Grant PostgreSQL Logical Replication Initial Copy Permissions Without Superuser Access
+# How to Grant PostgreSQL Logical Initial Copy Permissions Without Superuser
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
