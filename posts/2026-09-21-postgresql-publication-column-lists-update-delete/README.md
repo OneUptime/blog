@@ -1,4 +1,4 @@
-# How to Publish Selected PostgreSQL Columns While Preserving UPDATE and DELETE Replication
+# How to Select PostgreSQL Publication Columns for UPDATE and DELETE
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
@@ -132,6 +132,6 @@ Changing the list does not backfill historical values for the added column. Plan
 
 ## Recover a failed change without discarding history
 
-If an update fails on the publisher, check that the published list still includes the active identity. If apply fails on the subscriber, compare published column names, types, and subscriber constraints. Repair the contract and let replication continue from its preserved position; do not skip the failed transaction merely to clear the alert.
+If an update fails on the publisher, check that the published list still includes the active identity. If apply fails on the subscriber, compare published column names, types, and subscriber constraints. For mismatched column lists across subscribed publications, first make the lists match on the publisher, then use `ALTER SUBSCRIPTION ... DROP PUBLICATION` and `ADD PUBLICATION` to remove and re-add an offending publication, as described in the [column-list warning](https://www.postgresql.org/docs/18/logical-replication-col-lists.html). Repair the contract and let replication continue from its preserved position; do not skip the failed transaction merely to clear the alert.
 
 For sensitive data, restrict trusted replication credentials and source-side access. PostgreSQL explicitly cautions that column lists cannot contain a malicious subscriber. Review [logical replication security](https://www.postgresql.org/docs/18/logical-replication-security.html) before treating omitted columns as protected data.
