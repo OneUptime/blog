@@ -278,7 +278,6 @@
 
 ## Data Residency
 
-18. How to Propagate Data Deletion Across Replicas, Search Indexes, Queues, and Backups
 19. How to Continuously Prove Data Residency with Cloud Configuration Evidence and Data-Flow Tests
 20. How to Evaluate a SaaS Vendor’s Data Residency Claims Before Sending Customer Data
 
