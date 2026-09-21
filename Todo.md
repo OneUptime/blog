@@ -261,7 +261,6 @@
 
 ## OpenMetrics
 
-6. How to Emit HELP, TYPE, and UNIT Metadata in the Correct OpenMetrics Order
 7. How to Escape UTF-8 Metric Names, Label Names, and Label Values in OpenMetrics
 8. How to Choose Between Counter, Gauge, Histogram, Summary, Info, and StateSet Metrics
 9. How to Encode OpenMetrics Histograms with Buckets, sum, count, and the +Inf Boundary
