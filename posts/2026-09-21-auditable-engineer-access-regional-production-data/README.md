@@ -1,4 +1,4 @@
-# How to Give Engineers Auditable Production Access Without Exporting Regional Data
+# How to Audit Engineer Access Without Exporting Regional Production Data
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
