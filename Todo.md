@@ -25,7 +25,6 @@
 
 
 
-19. How to Test PostgreSQL Replication Authentication with a Replication Protocol Connection
 20. How to Prevent Replication Loops in PostgreSQL 16 with origin = none
 
 ## EdgeDB
