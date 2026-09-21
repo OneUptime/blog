@@ -25,7 +25,6 @@
 
 
 
-15. How to Reduce Logical Replication Lag from Large PostgreSQL Transactions with Parallel Apply
 16. How to Split PostgreSQL Logical Replication Across Subscriptions Without Assuming Shared Ordering
 17. How to Validate PostgreSQL Publisher and Subscriber Data Before a Migration Cutover
 18. How to Lower max_connections Across PostgreSQL Replicas in the Correct Restart Order
