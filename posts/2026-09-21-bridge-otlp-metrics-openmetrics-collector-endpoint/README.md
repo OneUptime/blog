@@ -1,4 +1,4 @@
-# How to Bridge OTLP Metrics to an OpenMetrics Scrape Endpoint with the OpenTelemetry Collector
+# How to Bridge OTLP to OpenMetrics with the OpenTelemetry Collector
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

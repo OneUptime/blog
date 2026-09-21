@@ -35,6 +35,7 @@ Tutorial / operational guide with SQL examples.
 
 ## Issues Found
 - The recovery paragraph implied that correcting the publisher contract alone was sufficient for all described failures. PostgreSQL documents an additional recovery step for subscriptions affected by different column lists across publications. Added a targeted sentence directing readers to align the lists and drop and re-add an offending publication through `ALTER SUBSCRIPTION`, with a link to the official warning. This follows the documented recovery path while retaining the existing subscription. No SQL examples or section structure were changed.
+- Qualified that recovery with a full publication-membership check. Default refresh can remove tables unique to the dropped publication, and re-adding it can initiate copying into existing data. The guide now requires a rehearsed continuity and copy strategy for those tables instead of implying that keeping the subscription preserves every table's synchronization state. Verified against PostgreSQL 18 ALTER SUBSCRIPTION documentation; no live recovery test was performed.
 
 ## Review Notes
 - Checked every SQL block against the PostgreSQL 18 syntax and documented behavior. Table definitions, grants, publication options, subscription options, catalog queries, inserts, updates, deletes, and publication alteration are consistent with the described example.

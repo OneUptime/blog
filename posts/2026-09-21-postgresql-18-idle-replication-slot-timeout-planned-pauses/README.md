@@ -1,4 +1,4 @@
-# How to Use PostgreSQL 18 idle_replication_slot_timeout Without Invalidating Planned Pauses
+# How to Set PostgreSQL 18 idle_replication_slot_timeout Around Planned Pauses
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

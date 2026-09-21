@@ -1,4 +1,4 @@
-# How to Use Region-Scoped KMS Keys Without Breaking Backup Restore or Tenant Migration
+# How to Use Regional KMS Keys for Backup Restore and Tenant Migration
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

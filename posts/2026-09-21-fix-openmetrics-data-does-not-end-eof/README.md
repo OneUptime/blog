@@ -10,7 +10,7 @@ Description: Find and repair OpenMetrics EOF failures by checking negotiated for
 
 The error “data does not end with # EOF” means an OpenMetrics parser reached the end of its input without recognizing the format's completion marker. It does not necessarily mean the exporter forgot one line. The response may be truncated, mislabeled, or transformed by an intermediary.
 
-The [OpenMetrics 1.0 specification](https://prometheus.io/docs/specs/om/open_metrics_spec/#overall-structure) requires an exposition to end with `# EOF` and recommends a trailing LF. Samples and metadata use LF line endings; carriage returns are not allowed. Treat the complete document as the unit of correctness.
+The [OpenMetrics 1.0 specification](https://prometheus.io/docs/specs/om/open_metrics_spec/#overall-structure) requires an exposition to end with `# EOF` and recommends a trailing LF. Samples and metadata use LF line endings; CRLF line endings are not allowed. Treat the complete document as the unit of correctness.
 
 ## Save exactly what the scraper receives
 
@@ -22,7 +22,7 @@ curl --fail-with-body --compressed -sS -D metrics.headers \
   http://exporter.internal:8000/metrics -o metrics.om
 ```
 
-`--compressed` allows curl to decode an HTTP-compressed response before you inspect it. Feeding raw gzip bytes to a text parser would create a different problem. Also record curl's exit status: a transfer error is evidence of truncation even if a partial file exists.
+`--compressed` allows curl to decode an HTTP-compressed response before you inspect it. Feeding raw gzip bytes to a text parser would create a different problem. Also record curl's exit status: an incomplete-transfer error can indicate truncation even if a partial file exists, while other errors can indicate HTTP failures or connection problems.
 
 Use bytes to inspect the ending rather than relying on a terminal's rendering:
 
@@ -55,6 +55,7 @@ For a small hand-written exporter, assemble the entire snapshot before committin
 ```python
 def encode_snapshot(lines):
     # Each item is a validated metadata or sample line without a terminator.
+    lines = list(lines)
     if any("\n" in line or "\r" in line for line in lines):
         raise ValueError("serialize and escape values before joining lines")
     return ("\n".join([*lines, "# EOF"]) + "\n").encode("utf-8")

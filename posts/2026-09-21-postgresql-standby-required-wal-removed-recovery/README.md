@@ -51,7 +51,7 @@ The PostgreSQL operating-system user must be able to read the archive. A missing
 
 Restore access to all required segments and timeline history, then restart or reload through your normal standby procedure as appropriate for the changed settings. Watch replay advance through the previously missing segment. One recovered file is insufficient if the next segment is also gone.
 
-If the old physical slot is invalid, replace it through a controlled slot rotation before relying on streaming retention again. Keep archive coverage available during that transition. Creating a slot now only protects its new retention boundary; it does not restore already deleted WAL.
+If the old physical slot is invalid, replace it through a controlled slot rotation before relying on streaming retention again. Keep archive coverage available during that transition. A new physical slot protects WAL only once it reserves an LSN; `pg_create_physical_replication_slot` reserves it on the first streaming connection unless `immediately_reserve` is true. It does not restore already deleted WAL.
 
 ## Rebuild when the chain is incomplete
 

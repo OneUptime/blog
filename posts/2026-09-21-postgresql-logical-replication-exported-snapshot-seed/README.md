@@ -1,4 +1,4 @@
-# How to Seed PostgreSQL Logical Replication from an Exported Snapshot Without Missing Writes
+# How to Seed PostgreSQL Logical Replication Safely from an Exported Snapshot
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
@@ -6,7 +6,7 @@ Tags: PostgreSQL, Logical Replication, Migration, Database
 
 Description: Seed a PostgreSQL logical subscriber using the snapshot exported by its replication slot, then attach the subscription without skipping concurrent writes.
 
-An ordinary dump followed by a newly created logical subscription leaves an uncertain boundary: writes can commit after the dump's snapshot but before the subscription's slot exists. A slot-exported snapshot supplies a consistent boundary between the copied rows and the later change stream.
+An ordinary dump used to seed a logical subscription with `copy_data = false` leaves an uncertain boundary if the slot is created after the dump: writes can commit after the dump's snapshot but before the subscription's slot exists. A slot-exported snapshot supplies a consistent boundary between the copied rows and the later change stream.
 
 This PostgreSQL 18 procedure seeds one ordinary table into an empty target. It assumes `wal_level = logical`, adequate replication slots and workers, authenticated connectivity, and administrative access on both databases. It deliberately excludes row filters, column lists, generated columns, DDL changes, and other concurrent consumers of the slot. Rehearse the exact schema before extending it.
 

@@ -1,4 +1,4 @@
-# How to Continuously Prove Data Residency with Cloud Configuration Evidence and Data-Flow Tests
+# How to Prove Data Residency with Cloud Evidence and Data-Flow Tests
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -1,4 +1,4 @@
-# How to Propagate Data Deletion Across Replicas, Search Indexes, Queues, and Backups
+# How to Delete Data Across Replicas, Search Indexes, Queues, and Backups
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

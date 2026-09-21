@@ -40,9 +40,7 @@ Tutorial / permissions configuration guide.
 
 ## Issues Found
 
-No technical issues found.
-
-The README.md was left unchanged by this review.
+- **The TLS subscription could negotiate GSSAPI instead.** The connection string used `sslmode=verify-full` while the example required a `hostssl` rule and TLS identity. PostgreSQL 18 libpq gives available GSSAPI encryption precedence regardless of `sslmode`. Added `gssencmode=disable` and explained why this forces the documented TLS path. Verified the correction against the versioned libpq connection documentation; no live Kerberos or TLS connection test was performed.
 
 ## Review Notes
 

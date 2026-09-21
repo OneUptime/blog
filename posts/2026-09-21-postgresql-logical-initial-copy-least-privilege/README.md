@@ -84,11 +84,11 @@ Create the subscription through a secure deployment session, supplying the provi
 
 ```sql
 CREATE SUBSCRIPTION orders_sub
-CONNECTION 'host=publisher.example.com dbname=app user=logical_reader password=REPLACE_WITH_PROVISIONED_SECRET sslmode=verify-full options=-crow_security=off'
+CONNECTION 'host=publisher.example.com dbname=app user=logical_reader password=REPLACE_WITH_PROVISIONED_SECRET sslmode=verify-full gssencmode=disable options=-crow_security=off'
 PUBLICATION orders_pub;
 ```
 
-The placeholder must be replaced with a correctly escaped secret through your provisioning tool. Non-superuser-owned subscriptions require password authentication by default. Limit access to deployment logs and subscription connection information. [CREATE SUBSCRIPTION](https://www.postgresql.org/docs/18/sql-createsubscription.html)
+The placeholder must be replaced with a correctly escaped secret through your provisioning tool. Non-superuser-owned subscriptions require password authentication by default. Limit access to deployment logs and subscription connection information. [CREATE SUBSCRIPTION](https://www.postgresql.org/docs/18/sql-createsubscription.html) The `gssencmode=disable` setting forces the TLS path required by the illustrated `hostssl` rule; otherwise available GSSAPI encryption takes precedence over `sslmode`. [libpq connection options](https://www.postgresql.org/docs/18/libpq-connect.html#LIBPQ-CONNECT-SSLMODE)
 
 ## Test the actual copy permissions
 

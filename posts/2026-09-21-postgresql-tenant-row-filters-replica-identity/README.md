@@ -1,4 +1,4 @@
-# How to Replicate Tenant Rows with PostgreSQL Row Filters and a Matching Replica Identity
+# How to Replicate PostgreSQL Tenant Rows with Filters and Replica Identity
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
@@ -31,7 +31,7 @@ CREATE PUBLICATION tenant_42_pub
 
 The default replica identity is the primary key, which includes `tenant_id`. A publication sending updates or deletes requires filter columns to be covered by replica identity. An insert-only publication can filter other columns because it does not need to evaluate an old row. See [CREATE PUBLICATION](https://www.postgresql.org/docs/18/sql-createpublication.html).
 
-If your existing table has `PRIMARY KEY (order_id)`, the fact that `tenant_id` is indexed separately is insufficient. Plan a suitable unique, nonpartial identity index whose columns are all `NOT NULL`, then select it with `REPLICA IDENTITY USING INDEX`. Do not change keys casually: foreign keys, uniqueness semantics, and subscriber lookup performance all depend on them. The eligible index requirements are defined in [ALTER TABLE](https://www.postgresql.org/docs/18/sql-altertable.html).
+If your existing table has `PRIMARY KEY (order_id)`, the fact that `tenant_id` is indexed separately is insufficient. Plan a suitable unique, nonpartial, nondeferrable identity index whose columns are all `NOT NULL`, then select it with `REPLICA IDENTITY USING INDEX`. Do not change keys casually: foreign keys, uniqueness semantics, and subscriber lookup performance all depend on them. The eligible index requirements are defined in [ALTER TABLE](https://www.postgresql.org/docs/18/sql-altertable.html).
 
 The composite key is simple for this example because order identifiers are tenant-scoped. On a real application, decide first whether tenant reassignment is valid and how identifier collisions should behave.
 
