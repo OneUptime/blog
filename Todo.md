@@ -25,7 +25,6 @@
 
 
 
-3. How to Seed PostgreSQL Logical Replication from an Exported Snapshot Without Missing Writes
 4. How to Resynchronize One PostgreSQL Logical Replication Table After a Lost Subscription
 5. How to Add a Table to a PostgreSQL Publication and Start Its Initial Copy
 6. How to Rename a PostgreSQL Table Without Dropping In-Flight Logical Replication Changes
