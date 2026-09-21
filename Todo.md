@@ -261,7 +261,6 @@
 
 ## OpenMetrics
 
-10. How to Add Trace and Span Exemplars to OpenMetrics Counters and Histograms
 11. How to Bridge OTLP Metrics to an OpenMetrics Scrape Endpoint with the OpenTelemetry Collector
 12. How to Decide Whether to Emit Sample Timestamps or Let Prometheus Stamp Scrape Time
 13. How to Design OpenMetrics Labels Without Causing a Cardinality Explosion
