@@ -261,7 +261,6 @@
 
 ## OpenMetrics
 
-17. How to Validate OpenMetrics with promtool and Locate Line-Level Parse Errors
 18. How to Expose and Scrape OpenMetrics in Kubernetes with a ServiceMonitor
 19. How to Backfill Prometheus TSDB from OpenMetrics Files Without Losing Custom Labels
 20. How to Migrate a Prometheus Text 0.0.4 Endpoint to OpenMetrics 1.0 Without Breaking Scrapes
