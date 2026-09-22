@@ -261,7 +261,6 @@
 
 ## OpenMetrics
 
-21. How to Fix “Invalid Metric Type info” When Prometheus Scrapes a Micrometer OpenMetrics Endpoint
 22. How to Expose OpenMetrics StateSet Metrics Without Conflicting State Labels
 23. How to Encode GaugeHistograms with `_bucket`, `_gcount`, and `_gsum` Correctly
 24. How to Expose Counter Start Times with `_created` Without Misnaming the Metric Family
