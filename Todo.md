@@ -262,7 +262,6 @@
 ## OpenMetrics
 
 
-44. How to Refresh Shared OpenMetrics Metadata Labels in Datadog After They Change
 45. How to Fix Datadog OpenMetrics ignore_tags Rules That Leave Dynamic Kubernetes Tags Behind
 46. How to Keep a Datadog OpenMetrics Check Within Its Per-Instance Metric Limit
 47. How to Rename OpenMetrics Metric Prefixes in Datadog Without Breaking Include Rules
