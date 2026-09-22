@@ -21,7 +21,7 @@ sudo datadog-agent configcheck
 sudo datadog-agent status
 ```
 
-In Kubernetes, run these in the Agent container responsible for the workload. A Cluster Check may execute on a runner rather than on the node Agent you happen to inspect.
+In Kubernetes, run `agent configcheck` and `agent status` without `sudo` inside the Agent container responsible for the workload. A Cluster Check may execute on a runner rather than on the node Agent you happen to inspect.
 
 Check whether another OpenMetrics instance or an official integration submits the same metric. Fixing one check cannot remove tags from a second producer. Use a temporary diagnostic namespace for a canary if overlapping configurations make attribution unclear.
 
