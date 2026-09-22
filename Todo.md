@@ -261,7 +261,6 @@
 
 ## OpenMetrics
 
-34. How to Expose Classic and Native Histograms Together Without Duplicate-Series Surprises
 35. How to Convert Classic Histogram Buckets to Native Histograms During Prometheus Scraping
 36. How to Encode OpenMetrics Units Without Duplicating or Misnaming Metric Suffixes
 37. How to Represent Stable Build and Version Metadata with OpenMetrics Info Metrics
