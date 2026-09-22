@@ -1,4 +1,4 @@
-# How to Keep OpenMetrics Exemplar Labels Within Prometheus Length and Cardinality Limits
+# How to Limit OpenMetrics Exemplar Label Length and Cardinality in Prometheus
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

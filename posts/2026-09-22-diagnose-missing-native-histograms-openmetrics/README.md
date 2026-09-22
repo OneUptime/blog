@@ -1,4 +1,4 @@
-# How to Diagnose OpenMetrics Histograms That Disappear When Native Histogram Scraping Is Disabled
+# How to Diagnose Missing Native Histograms in Prometheus Scrapes
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

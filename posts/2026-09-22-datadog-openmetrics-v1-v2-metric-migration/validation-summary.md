@@ -1,4 +1,4 @@
-# Validation Summary: How to Migrate Datadog OpenMetrics Checks from V1 to V2 Without Losing Metric Mappings
+# Validation Summary: How to Migrate Datadog OpenMetrics V1 to V2 and Preserve Metric Mappings
 
 ## Status
 validated

@@ -1,4 +1,4 @@
-# How to Serve OpenMetrics with Gzip Compression Without Breaking Scrape Negotiation
+# How to Serve Gzipped OpenMetrics with Correct Scrape Negotiation
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

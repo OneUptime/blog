@@ -1,4 +1,4 @@
-# Validation Summary: How to Exclude OpenMetrics Metric Families in the Legacy New Relic Integration While Keeping Selected Exceptions
+# Validation Summary: How to Filter Legacy New Relic OpenMetrics Families with Exceptions
 
 ## Status
 validated

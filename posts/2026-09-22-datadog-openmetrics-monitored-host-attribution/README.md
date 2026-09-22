@@ -1,4 +1,4 @@
-# How to Attribute OpenMetrics Data to the Monitored Host Instead of the Datadog Scraper
+# How to Attribute Datadog OpenMetrics Data to the Monitored Host
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

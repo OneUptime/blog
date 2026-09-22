@@ -1,4 +1,4 @@
-# How to Attach Exemplars to the Correct OpenMetrics Histogram Bucket and Preserve Trace IDs
+# How to Assign OpenMetrics Histogram Exemplars to Buckets with Trace IDs
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

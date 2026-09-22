@@ -1,4 +1,4 @@
-# Validation Summary: How to Attach Exemplars to the Correct OpenMetrics Histogram Bucket and Preserve Trace IDs
+# Validation Summary: How to Assign OpenMetrics Histogram Exemplars to Buckets with Trace IDs
 
 ## Status
 validated

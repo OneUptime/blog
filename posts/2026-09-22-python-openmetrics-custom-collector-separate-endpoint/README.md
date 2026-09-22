@@ -1,4 +1,4 @@
-# How to Expose Custom OpenMetrics Collectors on a Separate Endpoint from Python Multiprocess Metrics
+# How to Separate Custom Collectors from Python Multiprocess OpenMetrics
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

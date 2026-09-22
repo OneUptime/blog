@@ -1,4 +1,4 @@
-# Validation Summary: How to Decide Whether a Multi-Instance Gauge Should Be Summed, Averaged, or Deduplicated
+# Validation Summary: How to Choose Sum, Average, or Deduplication for Prometheus Gauges
 
 ## Status
 

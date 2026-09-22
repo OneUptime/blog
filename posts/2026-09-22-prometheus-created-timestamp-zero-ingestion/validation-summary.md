@@ -1,4 +1,4 @@
-# Validation Summary: How to Enable Created-Timestamp Zero Ingestion Without Polluting Prometheus with `_created` Series
+# Validation Summary: How to Enable Prometheus Created-Timestamp Zero Ingestion Without Extra Series
 
 ## Status
 validated

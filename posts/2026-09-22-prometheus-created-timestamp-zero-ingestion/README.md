@@ -1,4 +1,4 @@
-# How to Enable Created-Timestamp Zero Ingestion Without Polluting Prometheus with `_created` Series
+# How to Enable Prometheus Created-Timestamp Zero Ingestion Without Extra Series
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -1,4 +1,4 @@
-# Validation Summary: How to Stop Slow Go OpenMetrics Collectors from Accumulating After Scrape Timeouts
+# Validation Summary: How to Bound Slow Go OpenMetrics Collectors After Scrape Timeouts
 
 ## Status
 validated

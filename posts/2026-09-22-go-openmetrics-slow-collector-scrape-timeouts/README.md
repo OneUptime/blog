@@ -1,4 +1,4 @@
-# How to Stop Slow Go OpenMetrics Collectors from Accumulating After Scrape Timeouts
+# How to Bound Slow Go OpenMetrics Collectors After Scrape Timeouts
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -1,4 +1,4 @@
-# Validation Summary: How to Fix OpenMetrics Counters Skipped by Datadog When Their Names End in _total
+# Validation Summary: How to Fix Datadog OpenMetrics Counters Skipped by `_total` Selectors
 
 ## Status
 validated

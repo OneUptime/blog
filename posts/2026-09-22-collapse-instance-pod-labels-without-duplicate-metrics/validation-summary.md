@@ -1,4 +1,4 @@
-# Validation Summary: How to Collapse `instance` and `pod` Labels Without Losing or Duplicating Metrics
+# Validation Summary: How to Safely Aggregate Prometheus `instance` and `pod` Labels
 
 ## Status
 validated

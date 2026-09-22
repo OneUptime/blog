@@ -1,4 +1,4 @@
-# Validation Summary: How to Aggregate OpenMetrics Across Gunicorn Workers with Python Multiprocess Mode
+# Validation Summary: How to Aggregate Gunicorn OpenMetrics with Python Multiprocess Mode
 
 ## Status
 validated

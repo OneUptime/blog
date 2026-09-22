@@ -1,4 +1,4 @@
-# How to Expose Counter Start Times with `_created` Without Misnaming the Metric Family
+# How to Name OpenMetrics Counter Families and `_created` Timestamps
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

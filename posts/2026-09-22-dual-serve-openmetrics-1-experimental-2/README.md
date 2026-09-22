@@ -1,4 +1,4 @@
-# How to Dual-Serve OpenMetrics 1.0 and Experimental 2.0 During an Exporter Migration
+# How to Dual-Serve OpenMetrics 1.0 and Experimental 2.0
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

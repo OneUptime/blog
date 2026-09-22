@@ -1,4 +1,4 @@
-# Validation Summary: How to Handle an OpenMetrics `unknown` Type When the Backend Requires Gauge or Counter Semantics
+# Validation Summary: How to Map OpenMetrics `unknown` Metrics to Gauge or Counter Semantics
 
 ## Status
 

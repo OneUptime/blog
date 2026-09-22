@@ -1,4 +1,4 @@
-# How to Fix OpenMetrics Counters Skipped by Datadog When Their Names End in _total
+# How to Fix Datadog OpenMetrics Counters Skipped by `_total` Selectors
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

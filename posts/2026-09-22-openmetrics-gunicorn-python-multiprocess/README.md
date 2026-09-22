@@ -1,4 +1,4 @@
-# How to Aggregate OpenMetrics Across Gunicorn Workers with Python Multiprocess Mode
+# How to Aggregate Gunicorn OpenMetrics with Python Multiprocess Mode
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

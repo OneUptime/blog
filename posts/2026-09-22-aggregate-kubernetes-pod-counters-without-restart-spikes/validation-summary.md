@@ -1,4 +1,4 @@
-# Validation Summary: How to Aggregate Prometheus Counters Across Kubernetes Pods Without Restart Spikes
+# Validation Summary: How to Aggregate Prometheus Pod Counters Without Kubernetes Restart Spikes
 
 ## Status
 validated

@@ -1,4 +1,4 @@
-# How to Convert Classic Histogram Buckets to Native Histograms During Prometheus Scraping
+# How to Convert Classic to Native Histograms During Prometheus Scraping
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
@@ -113,4 +113,4 @@ Check alerts, recording rules, dashboards, federation, and remote-write compatib
 
 After comparison succeeds, set `always_scrape_classic_histograms: false` to stop ingesting redundant classic components for converted families. Verify that the base-name histogram continues receiving samples and migrated queries remain populated. Historical classic series remain until retention expires; conversion affects new scrapes, not existing TSDB blocks.
 
-The useful outcome is preserved measurement meaning with a different storage and query representation. Judge success by matching event accounting, acceptable quantile behavior, healthy scrapes, and verified downstream consumers—not merely by seeing fewer suffixed series.
+The useful outcome is preserved measurement meaning with a different storage and query representation. Judge success by matching event accounting, acceptable quantile behavior, healthy scrapes, and verified downstream consumers-not merely by seeing fewer suffixed series.

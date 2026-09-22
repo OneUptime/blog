@@ -1,4 +1,4 @@
-# Validation Summary: How to Keep OpenMetrics Exemplar Labels Within Prometheus Length and Cardinality Limits
+# Validation Summary: How to Limit OpenMetrics Exemplar Label Length and Cardinality in Prometheus
 
 ## Status
 

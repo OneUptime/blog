@@ -1,4 +1,4 @@
-# Validation Summary: How to Expose Classic and Native Histograms Together Without Duplicate-Series Surprises
+# Validation Summary: How to Expose Classic and Native Prometheus Histograms Together
 
 ## Status
 validated

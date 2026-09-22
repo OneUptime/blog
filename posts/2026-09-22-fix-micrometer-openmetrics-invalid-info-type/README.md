@@ -1,4 +1,4 @@
-# How to Fix “Invalid Metric Type info” When Prometheus Scrapes a Micrometer OpenMetrics Endpoint
+# How to Fix Micrometer OpenMetrics 'Invalid Metric Type info' in Prometheus
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

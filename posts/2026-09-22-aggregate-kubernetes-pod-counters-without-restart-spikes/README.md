@@ -1,4 +1,4 @@
-# How to Aggregate Prometheus Counters Across Kubernetes Pods Without Restart Spikes
+# How to Aggregate Prometheus Pod Counters Without Kubernetes Restart Spikes
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

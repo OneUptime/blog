@@ -1,4 +1,4 @@
-# How to Handle an OpenMetrics `unknown` Type When the Backend Requires Gauge or Counter Semantics
+# How to Map OpenMetrics `unknown` Metrics to Gauge or Counter Semantics
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

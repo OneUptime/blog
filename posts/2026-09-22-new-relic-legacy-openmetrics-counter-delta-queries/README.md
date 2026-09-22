@@ -1,4 +1,4 @@
-# How to Query OpenMetrics Counter Deltas Correctly in the Legacy New Relic Integration
+# How to Query Counter Deltas in Legacy New Relic OpenMetrics
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
@@ -28,15 +28,14 @@ The [New Relic PromQL-to-NRQL guide](https://docs.newrelic.com/docs/infrastructu
 
 ## Confirm the measurement and the collector
 
-Inspect the endpoint metadata and the resolved integration configuration. For example, the producer might expose an OpenMetrics counter family:
+Inspect the endpoint metadata and the resolved integration configuration. For the legacy collector, expose the counter in Prometheus text 0.0.4 format:
 
 ```text
-# TYPE worker_jobs counter
+# TYPE worker_jobs_total counter
 worker_jobs_total{service="batch",result="success"} 175
-# EOF
 ```
 
-Confirm the installed legacy integration accepts the negotiated representation and reports this family as a counter. A name ending in `_total` alone does not repair incorrect type metadata or an incompatible parser.
+In [`nri-prometheus` v2.30.4](https://github.com/newrelic/nri-prometheus/blob/v2.30.4/internal/pkg/prometheus/prometheus.go), the decoder is fixed to Prometheus text even if the response advertises OpenMetrics. The valid OpenMetrics 1.0 declaration `# TYPE worker_jobs counter` would therefore leave `worker_jobs_total` untyped; the legacy collector then treats it as a gauge. Use the full sample name in the text-format `TYPE` declaration and confirm that the deployed collector reports it as a counter. A name ending in `_total` alone does not repair incorrect type metadata.
 
 Inspect fresh data and the attributes actually attached to it. The examples below assume the exporter supplies `service="batch"` and `result`. Replace those filters with labels verified in your account rather than assuming they exist on every integration.
 

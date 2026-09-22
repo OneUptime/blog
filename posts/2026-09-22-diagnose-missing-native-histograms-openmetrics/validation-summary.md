@@ -1,4 +1,4 @@
-# Validation Summary: How to Diagnose OpenMetrics Histograms That Disappear When Native Histogram Scraping Is Disabled
+# Validation Summary: How to Diagnose Missing Native Histograms in Prometheus Scrapes
 
 ## Status
 validated

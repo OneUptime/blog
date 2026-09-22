@@ -1,4 +1,4 @@
-# Validation Summary: How to Rename OpenMetrics Metric Prefixes in Datadog Without Breaking Include Rules
+# Validation Summary: How to Rename Datadog OpenMetrics Prefixes and Preserve Include Rules
 
 ## Status
 validated

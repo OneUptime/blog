@@ -1,4 +1,4 @@
-# Validation Summary: How to Attribute OpenMetrics Data to the Monitored Host Instead of the Datadog Scraper
+# Validation Summary: How to Attribute Datadog OpenMetrics Data to the Monitored Host
 
 ## Status
 validated

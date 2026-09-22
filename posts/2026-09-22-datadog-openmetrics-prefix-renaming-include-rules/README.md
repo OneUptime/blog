@@ -1,4 +1,4 @@
-# How to Rename OpenMetrics Metric Prefixes in Datadog Without Breaking Include Rules
+# How to Rename Datadog OpenMetrics Prefixes and Preserve Include Rules
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

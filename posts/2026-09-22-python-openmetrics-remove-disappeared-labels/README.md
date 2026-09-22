@@ -43,6 +43,8 @@ Do not retain a child reference after removal and expect further updates to recr
 For a periodic inventory poller, keep the previous successful label set and remove only entries missing from the next successful snapshot:
 
 ```python
+# One-time initialization: discard children from the earlier example.
+depth.clear()
 known = set()
 
 

@@ -1,4 +1,4 @@
-# How to Migrate Datadog OpenMetrics Checks from V1 to V2 Without Losing Metric Mappings
+# How to Migrate Datadog OpenMetrics V1 to V2 and Preserve Metric Mappings
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -1,4 +1,4 @@
-# Validation Summary: How to Fix Datadog OpenMetrics ignore_tags Rules That Leave Dynamic Kubernetes Tags Behind
+# Validation Summary: How to Fix Datadog OpenMetrics `ignore_tags` for Dynamic Kubernetes Tags
 
 ## Status
 

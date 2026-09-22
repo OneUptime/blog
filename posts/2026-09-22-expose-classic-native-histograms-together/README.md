@@ -1,4 +1,4 @@
-# How to Expose Classic and Native Histograms Together Without Duplicate-Series Surprises
+# How to Expose Classic and Native Prometheus Histograms Together
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -27,7 +27,7 @@ print(math.ulp(float(n)))       # 2.0
 print(math.ulp(float(2**60)))   # 256.0
 ```
 
-At roughly `2**60`, neighboring float64 values are 256 units apart. A single extra event cannot always change the represented total. Scientific notation in an endpoint is not itself evidence of loss: it is just another way to print a number. Compare the numerical value and its representable spacing. Python's [floating-point guide](https://docs.python.org/3/tutorial/floatingpoint.html) explains the underlying representation and rounding.
+From `2**60` up to `2**61`, neighboring float64 values are 256 units apart; immediately below `2**60`, the spacing is 128 units. A single extra event cannot always change the represented total. Scientific notation in an endpoint is not itself evidence of loss: it is just another way to print a number. Compare the numerical value and its representable spacing. Python's [floating-point guide](https://docs.python.org/3/tutorial/floatingpoint.html) explains the underlying representation and rounding.
 
 ## Find the first stage that rounds
 
@@ -70,7 +70,7 @@ Go's client takes another approach: its counter keeps integer and floating-point
 
 Compare the spacing near the current total with the expected increase over your query window. A 256-unit spacing is significant when the process handles ten events per minute, but much less significant when it handles millions per second.
 
-Use `rate(counter_total[5m])` for a rate, choosing a window that contains enough samples and meaningful activity. A longer window can reduce the visible effect of staircase rounding when the source keeps an exact total. It cannot recover increments already discarded by the client's accumulator. Prometheus's [rate documentation](https://prometheus.io/docs/prometheus/latest/querying/functions/#rate) also explains reset handling and extrapolation, so a result need not be an exact integer event count.
+Use `rate(counter_total[5m])` for a rate, choosing a window that contains enough samples and meaningful activity. A longer window can reduce the visible effect of staircase rounding when the source keeps an exact total. It cannot recover increments already discarded by the client's accumulator. Prometheus's [rate documentation](https://prometheus.io/docs/prometheus/latest/querying/functions/#rate) also explains reset handling and extrapolation. The result is an average per-second rate, not an event count; even `increase(counter_total[5m])` can return a non-integer estimate because of extrapolation.
 
 Do not diagnose this solely from a dashboard with abbreviated units or rounded decimals. Query the raw metric through the API and inspect the endpoint text to separate display rounding from stored rounding.
 

@@ -1,4 +1,4 @@
-# How to Collapse `instance` and `pod` Labels Without Losing or Duplicating Metrics
+# How to Safely Aggregate Prometheus `instance` and `pod` Labels
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
