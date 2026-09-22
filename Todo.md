@@ -262,7 +262,6 @@
 ## OpenMetrics
 
 
-54. How to Expose Custom OpenMetrics Collectors on a Separate Endpoint from Python Multiprocess Metrics
 55. How to Remove Disappeared Label Sets from a Python OpenMetrics Exporter
 56. How to Require Client Certificates on a Python OpenMetrics Endpoint
 57. How to Stop Slow Go OpenMetrics Collectors from Accumulating After Scrape Timeouts
