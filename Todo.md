@@ -262,7 +262,6 @@
 ## OpenMetrics
 
 
-50. How to Migrate New Relic OpenMetrics Scrapers to the Prometheus Agent
 51. How to Query OpenMetrics Counter Deltas Correctly in the Legacy New Relic Integration
 52. How to Exclude OpenMetrics Metric Families in the Legacy New Relic Integration While Keeping Selected Exceptions
 53. How to Aggregate OpenMetrics Across Gunicorn Workers with Python Multiprocess Mode
