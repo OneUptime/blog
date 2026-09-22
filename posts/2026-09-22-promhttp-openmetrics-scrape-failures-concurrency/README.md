@@ -18,7 +18,7 @@ The following complete example targets `client_golang` v1.24.1 and Go 1.25 or ne
 
 ```bash
 go mod init example.com/instrumented-exporter
-go get github.com/prometheus/client_golang@v1.24.1
+go get github.com/prometheus/client_golang/prometheus/promhttp@v1.24.1
 ```
 
 Save `main.go`:
