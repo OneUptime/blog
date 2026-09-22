@@ -265,7 +265,6 @@
 
 ## Metric Aggregation
 
-4. How to Preserve the Labels You Need with `sum by()` and `sum without()`
 5. How to Build Recording Rules for Fast, Reusable Metric Aggregations
 6. How to Calculate a Service-Wide p95 or p99 from Prometheus Histogram Buckets
 7. How to Calculate a True Average from Histogram `_sum` and `_count` Series
