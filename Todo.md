@@ -265,7 +265,6 @@
 
 ## Metric Aggregation
 
-6. How to Calculate a Service-Wide p95 or p99 from Prometheus Histogram Buckets
 7. How to Calculate a True Average from Histogram `_sum` and `_count` Series
 8. How to Aggregate Error Rates Without Averaging Ratios
 9. How to Decide Whether a Multi-Instance Gauge Should Be Summed, Averaged, or Deduplicated
