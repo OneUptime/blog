@@ -262,7 +262,6 @@
 ## OpenMetrics
 
 
-45. How to Fix Datadog OpenMetrics ignore_tags Rules That Leave Dynamic Kubernetes Tags Behind
 46. How to Keep a Datadog OpenMetrics Check Within Its Per-Instance Metric Limit
 47. How to Rename OpenMetrics Metric Prefixes in Datadog Without Breaking Include Rules
 48. How to Diagnose Missing OpenMetrics Checks in Datadog Kubernetes Autodiscovery
