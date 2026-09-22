@@ -265,7 +265,6 @@
 
 ## Metric Aggregation
 
-2. How to Use `rate()` and `sum()` in the Right Order for Distributed Counters
 3. How to Collapse `instance` and `pod` Labels Without Losing or Duplicating Metrics
 4. How to Preserve the Labels You Need with `sum by()` and `sum without()`
 5. How to Build Recording Rules for Fast, Reusable Metric Aggregations
