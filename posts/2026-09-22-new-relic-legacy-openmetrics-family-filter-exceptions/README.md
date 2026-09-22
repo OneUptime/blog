@@ -39,7 +39,7 @@ transformations:
 
 The [official filtering documentation](https://docs.newrelic.com/docs/infrastructure/prometheus-integrations/install-configure-openmetrics/ignore-or-include-prometheus-metrics/) documents combined `prefixes` and `except` entries. These are prefix rules, not a regex allowlist. An exception such as `catalog_requests_total` can also match names beginning with that string, so review the full exported family inventory for unintended neighbors.
 
-Do not create a broad drop rule and assume a later independent rule can restore discarded data. Keep the exclusion and its exceptions together, then inspect all other transformations for overlapping drops.
+The integration combines ignore rules across transformations and checks all exceptions before applying drops. A matching exception in any rule keeps that family even if another rule would drop it; rule order does not change that priority. Keep the exclusion and its exceptions together for clarity, then inspect all other transformations for exceptions that could retain additional families.
 
 ## Distinguish group exceptions from an allowlist
 
@@ -74,6 +74,7 @@ A classic histogram appears as bucket, count, and sum series in the response, bu
 For example, all of these belong to the same selected histogram:
 
 ```text
+# TYPE catalog_request_duration_seconds histogram
 catalog_request_duration_seconds_bucket{le="0.1"} 15
 catalog_request_duration_seconds_bucket{le="+Inf"} 20
 catalog_request_duration_seconds_sum 4.2
