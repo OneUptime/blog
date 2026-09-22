@@ -262,7 +262,6 @@
 ## OpenMetrics
 
 
-55. How to Remove Disappeared Label Sets from a Python OpenMetrics Exporter
 56. How to Require Client Certificates on a Python OpenMetrics Endpoint
 57. How to Stop Slow Go OpenMetrics Collectors from Accumulating After Scrape Timeouts
 58. How to Monitor OpenMetrics Scrape Failures and Concurrent Requests with promhttp
