@@ -90,7 +90,7 @@ The native series uses the base name while the classic components use suffixed n
 
 Keep the migration job distinguishable from production jobs while testing. If both jobs feed the same remote store, preserve a distinguishing label or use an isolated test destination so the comparison itself does not create duplicate ingestion.
 
-## Expect quantiles to differ slightly
+## Expect quantiles to differ
 
 Classic and native histograms use different bucket layouts, so percentile estimates need not be numerically identical. Compare count and sum first to establish event accounting, then compare quantiles against acceptable error around operational thresholds.
 
