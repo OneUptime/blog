@@ -14,7 +14,7 @@ Keep four naming steps separate: the exported sample, the parsed family, the str
 
 ## Trace a counter from source to destination
 
-Suppose the exporter serves:
+Suppose the exporter serves this OpenMetrics payload with `Content-Type: application/openmetrics-text; version=1.0.0; charset=utf-8`:
 
 ```text
 # TYPE vendor_checkout_requests counter
@@ -64,13 +64,13 @@ Use explicit names or patterns over the stripped family instead:
 
 ```yaml
 metrics:
-  - '^requests$': http.requests
+  - requests: http.requests
   - '^queue_.*'
 exclude_metrics:
   - '^queue_debug_.*'
 ```
 
-Latest-mode patterns are regular expressions. `queue_*` means a different thing from a shell wildcard; `^queue_.*` clearly selects the intended prefix.
+Use exact family names for renaming; regex selectors retain the matched family name and ignore a supplied rename value. Latest-mode patterns are regular expressions. `queue_*` means a different thing from a shell wildcard; `^queue_.*` clearly selects the intended prefix.
 
 Review other name-based options in the same change, especially `share_labels`. If a metadata family becomes `build` after stripping, a shared-label rule referring to `vendor_checkout_build` will not locate it under the transformed name.
 
@@ -88,7 +88,7 @@ The [Datadog metric mapping documentation](https://docs.datadoghq.com/integratio
 
 ## Verify a small canary before renaming production
 
-Inspect the resolved configuration and run the check:
+After editing a static configuration file, restart the Agent to load the change. On a Linux host, inspect the resolved configuration and run the check:
 
 ```bash
 sudo datadog-agent configcheck
