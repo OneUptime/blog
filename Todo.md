@@ -261,7 +261,6 @@
 
 ## OpenMetrics
 
-38. How to Handle an OpenMetrics `unknown` Type When the Backend Requires Gauge or Counter Semantics
 39. How to Reject Truncated OpenMetrics Responses Before They Create Incomplete Scrapes
 40. How to Dual-Serve OpenMetrics 1.0 and Experimental 2.0 During an Exporter Migration
 
