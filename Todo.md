@@ -261,7 +261,6 @@
 
 ## OpenMetrics
 
-28. How to Attach Exemplars to the Correct OpenMetrics Histogram Bucket and Preserve Trace IDs
 29. How to Keep OpenMetrics Exemplar Labels Within Prometheus Length and Cardinality Limits
 30. How to Serve OpenMetrics with Gzip Compression Without Breaking Scrape Negotiation
 31. How to Implement OpenMetrics Version and Escaping Negotiation for Prometheus 3
