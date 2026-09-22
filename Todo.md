@@ -261,7 +261,6 @@
 
 ## OpenMetrics
 
-32. How to Preserve UTF-8 Metric Names When Exporters and Scrapers Use Different Escaping Schemes
 33. How to Diagnose OpenMetrics Histograms That Disappear When Native Histogram Scraping Is Disabled
 34. How to Expose Classic and Native Histograms Together Without Duplicate-Series Surprises
 35. How to Convert Classic Histogram Buckets to Native Histograms During Prometheus Scraping
