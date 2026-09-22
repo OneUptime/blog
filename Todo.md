@@ -261,7 +261,6 @@
 
 ## OpenMetrics
 
-40. How to Dual-Serve OpenMetrics 1.0 and Experimental 2.0 During an Exporter Migration
 
 41. How to Migrate Datadog OpenMetrics Checks from V1 to V2 Without Losing Metric Mappings
 42. How to Fix OpenMetrics Counters Skipped by Datadog When Their Names End in _total
