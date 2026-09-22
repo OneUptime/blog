@@ -51,20 +51,20 @@ instances:
 
 This should submit `workers.queue.depth` with `queue`, `owner`, and `region` tags. The metadata source still needs to appear in the scraped payload even though it is not selected for ordinary metric submission.
 
-Use source names appropriate to the parser and configuration. An actual OpenMetrics Info family has its own family-name rules; the sample's `_info` suffix may not be part of the parsed family. If `raw_metric_prefix` is configured, use the prefix-free family name in `share_labels` as well.
+Use source names appropriate to the parser and configuration. For an OpenMetrics 1.0 Info family, the sample name has an `_info` suffix that is not part of the family name; the gauge example above has no such suffix. If `raw_metric_prefix` is configured, use the prefix-free family name in `share_labels` as well.
 
 The [shared-label implementation](https://github.com/DataDog/integrations-core/blob/master/datadog_checks_base/datadog_checks/base/checks/openmetrics/v2/labels.py) shows how the cache is populated and how disabling it clears shared label state between payloads. Check the version bundled with the deployed Agent when behavior differs from current source.
 
 ## Validate the change without restarting the check
 
-First, confirm the resolved configuration contains the option:
+First, apply the configuration change. For a file-based configuration, [restart the Agent](https://docs.datadoghq.com/integrations/guide/prometheus-host-collection/) once to load it, then confirm the resolved configuration contains the option and run a diagnostic check:
 
 ```bash
 sudo datadog-agent configcheck
 sudo datadog-agent check openmetrics
 ```
 
-Then let the normal Agent run and change only the metadata for `billing`, for example from `owner="payments"` to `owner="finance"`. Keep the queue label and gauge value stable. After subsequent collection intervals, examine new points grouped by owner.
+The standalone `check` command does not test the cache of the running Agent. Then let the normal Agent run without further restarts and change only the metadata for `billing`, for example from `owner="payments"` to `owner="finance"`. Keep the queue label and gauge value stable. After subsequent collection intervals, examine new points grouped by owner.
 
 The next submitted samples should use the new owner. Historical points still contain the old owner, and Datadog tag menus can retain historical values. Use a recent time range and inspect actual points rather than treating an old tag suggestion as proof that the cache is still stale.
 
@@ -74,7 +74,7 @@ Repeat with the metadata source placed before and after the queue measurements. 
 
 For each queue, emit exactly one authoritative metadata row per scrape. Two rows for `billing` with different owners create an ambiguous join. Do not rely on response ordering to select the preferred owner.
 
-Ensure every metadata row includes the match key. A missing `queue` label cannot provide the identity needed to associate it safely. If the exporter covers multiple clusters where queue names repeat, include a cluster identifier in both the measurements and `match` list.
+Ensure every metadata row includes the match key. A missing `queue` label can produce an empty match set in the current implementation, causing the metadata to apply to unrelated measurements. If the exporter covers multiple clusters where queue names repeat, include a cluster identifier in both the metadata and measurement labels, and add it to the `match` list.
 
 Avoid overwriting an existing measurement label with conflicting metadata. Decide which source owns each label and use a distinct name when the meanings differ. The goal is a predictable enrichment contract, not the largest possible tag set.
 
