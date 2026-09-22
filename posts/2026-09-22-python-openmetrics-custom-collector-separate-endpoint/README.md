@@ -55,7 +55,7 @@ import os
 import threading
 from pathlib import Path
 
-if "PROMETHEUS_MULTIPROC_DIR" in os.environ:
+if any(name in os.environ for name in ("PROMETHEUS_MULTIPROC_DIR", "prometheus_multiproc_dir")):
     raise RuntimeError("Start this exporter without multiprocess mode")
 
 from prometheus_client import CollectorRegistry, start_http_server
@@ -97,7 +97,7 @@ if __name__ == "__main__":
 Launch it in its own process:
 
 ```bash
-env -u PROMETHEUS_MULTIPROC_DIR python queue_exporter.py
+env -u PROMETHEUS_MULTIPROC_DIR -u prometheus_multiproc_dir python queue_exporter.py
 ```
 
 Constructing a new metric family on each collection means only that snapshot's samples are returned. `describe()` advertises names without reading the file during registration. [Custom collector API](https://prometheus.github.io/client_python/collector/custom/)
