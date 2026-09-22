@@ -265,7 +265,6 @@
 
 ## Metric Aggregation
 
-10. How to Combine Two Prometheus Metrics When Their Labels Do Not Match
 11. How to Detect and Remove Double Counting from HA Scrapers and Duplicate Exporters
 12. How to Reduce High-Cardinality Metrics Without Creating Duplicate Time Series
 13. How to Aggregate Metrics Over Time Without Confusing `sum()` and `sum_over_time()`
