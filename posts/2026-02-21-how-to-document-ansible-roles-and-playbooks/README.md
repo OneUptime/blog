@@ -14,7 +14,7 @@ Documentation is the part of Ansible projects that everyone skips until a new te
 
 Every role should have a `README.md` at its root. Ansible Galaxy generates a template, but the default template is bloated. Here is a practical format:
 
-```markdown
+````markdown
 # nginx
 
 Installs and configures Nginx as a reverse proxy with SSL termination.
@@ -63,7 +63,7 @@ Installs and configures Nginx as a reverse proxy with SSL termination.
 - `nginx` - All nginx tasks
 - `nginx_config` - Configuration tasks only
 - `nginx_install` - Installation tasks only
-```yaml
+````
 
 ## Documenting Variables Inline
 
