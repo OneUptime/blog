@@ -262,7 +262,6 @@
 ## OpenMetrics
 
 
-53. How to Aggregate OpenMetrics Across Gunicorn Workers with Python Multiprocess Mode
 54. How to Expose Custom OpenMetrics Collectors on a Separate Endpoint from Python Multiprocess Metrics
 55. How to Remove Disappeared Label Sets from a Python OpenMetrics Exporter
 56. How to Require Client Certificates on a Python OpenMetrics Endpoint
