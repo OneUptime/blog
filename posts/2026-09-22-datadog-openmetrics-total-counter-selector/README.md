@@ -39,7 +39,7 @@ checkout_requests_total{method="POST"} 900
 # EOF
 ```
 
-The type matters. A gauge that happens to end in `_total` is an instrumentation problem, and an untyped numeric series may require a verified type override. Do not strip suffixes from every arbitrary metric name as a general repair.
+The type matters. A gauge that happens to end in `_total` has a misleading name, but its declared type still matters; an untyped numeric series may require a verified type override. Do not strip suffixes from every arbitrary metric name as a general repair.
 
 ## Select the family and map the destination
 
@@ -73,7 +73,7 @@ With namespace `shop`, that produces `shop.checkout_requests.count`. Update dash
 
 An include rule is only one part of collection. Review `exclude_metrics`, any configured `raw_metric_prefix`, and metric label filters. If `raw_metric_prefix: checkout_` is configured, the selector must use `requests` after the prefix is removed.
 
-When testing one missing counter, an exact mapping is easier to reason about than a regular expression. If you use a pattern, anchor it to the intended family and remember that latest-mode selectors are regexes rather than shell globs.
+When testing one missing counter, an exact mapping is easier to reason about than a regular expression. If you use a pattern, anchor it to the intended family and remember that latest mode supports exact metric names and regex patterns, not shell globs.
 
 The [current configuration reference](https://github.com/DataDog/integrations-core/blob/master/openmetrics/datadog_checks/openmetrics/data/conf.yaml.example) describes these filters and mapping forms. Compare against the integration bundled with your deployed Agent when diagnosing an older installation.
 
