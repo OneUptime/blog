@@ -261,7 +261,6 @@
 
 ## OpenMetrics
 
-30. How to Serve OpenMetrics with Gzip Compression Without Breaking Scrape Negotiation
 31. How to Implement OpenMetrics Version and Escaping Negotiation for Prometheus 3
 32. How to Preserve UTF-8 Metric Names When Exporters and Scrapers Use Different Escaping Schemes
 33. How to Diagnose OpenMetrics Histograms That Disappear When Native Histogram Scraping Is Disabled
