@@ -8,7 +8,7 @@ Description: Serialize OpenMetrics non-finite values correctly while respecting 
 
 ---
 
-OpenMetrics can represent non-finite numeric values, but not every metric component can use every value. A gauge containing `NaN` can be valid; a counter total containing `NaN` is not. Treat numeric serialization and metric semantics as separate checks.
+OpenMetrics 1.0 can represent non-finite numeric values, but not every metric component can use every value. A gauge containing `NaN` can be valid; a counter total containing `NaN` is not. Treat numeric serialization and metric semantics as separate checks. The examples and restrictions below follow OpenMetrics 1.0.
 
 Use the canonical spellings `NaN`, `+Inf`, and `-Inf` for portable output. Do not surround sample values with quotes or copy language-specific display strings into a metrics response without checking them.
 
@@ -71,7 +71,7 @@ Here `+Inf` means the final bucket covers every observation; its stored count is
 
 A GaugeHistogram also requires nonnegative integer buckets and a non-NaN sum. StateSet values are Boolean zero or one, and Info values are one. An explicit sample timestamp must be an actual numeric epoch time, not NaN or infinity. Validate these restrictions before the generic number formatter runs.
 
-For a summary with no observations in its relevant window, a NaN quantile value can express the undefined quantile. That does not authorize NaN in its cumulative count or sum. Preserve the distinction between an estimated result and the counters supporting it.
+For a summary with no observations in its relevant window, an exposed quantile value must be NaN to express the undefined quantile. That does not authorize NaN in its cumulative count or sum. Preserve the distinction between an estimated result and the counters supporting it.
 
 ## Verify parsing and downstream interpretation
 
