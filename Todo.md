@@ -262,7 +262,6 @@
 ## OpenMetrics
 
 
-48. How to Diagnose Missing OpenMetrics Checks in Datadog Kubernetes Autodiscovery
 49. How to Attribute OpenMetrics Data to the Monitored Host Instead of the Datadog Scraper
 50. How to Migrate New Relic OpenMetrics Scrapers to the Prometheus Agent
 51. How to Query OpenMetrics Counter Deltas Correctly in the Legacy New Relic Integration
