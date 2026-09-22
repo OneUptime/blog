@@ -54,7 +54,7 @@ print(generate_latest(registry).decode("utf-8"), end="")
 
 Pass the trace context active for the measured operation. In asynchronous code, capturing a global “last trace” after the request finishes can associate the duration with another request. Capture the immutable IDs while the relevant span is active and carry them alongside the observation.
 
-This example deliberately puts `route` on the metric and trace identifiers on the exemplar. Adding `trace_id` to ordinary histogram labels creates new time series per trace and defeats aggregation. Keep metric labels bounded, using route templates instead of request-specific URLs.
+This example deliberately puts `route` on the metric and trace identifiers on the exemplar. Adding `trace_id` to ordinary histogram labels creates new time series per trace and causes excessive cardinality. Keep metric labels bounded, using route templates instead of request-specific URLs.
 
 ## Preserve the exact trace identifier
 
@@ -66,7 +66,7 @@ The trace backend must also retain the referenced trace. Emitting context for an
 
 ## Verify the full path in stages
 
-First request OpenMetrics explicitly:
+With your application exposing its histogram registry at `http://localhost:8000/metrics`, request OpenMetrics explicitly. The Python example above only prints the exposition; it does not start an HTTP server:
 
 ```bash
 curl -fsS \
