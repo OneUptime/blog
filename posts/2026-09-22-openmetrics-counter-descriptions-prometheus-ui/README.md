@@ -12,7 +12,7 @@ OpenMetrics also has a naming detail that makes counters especially confusing: t
 
 ## Capture the format Prometheus actually receives
 
-Request the endpoint explicitly and keep both headers and body:
+Request the OpenMetrics representation explicitly and keep both headers and body. This request tests OpenMetrics support; it does not prove that Prometheus negotiates the same format. To reproduce the actual scrape, use the same target URL and Accept header as Prometheus, whose protocol preferences are controlled by `scrape_protocols`. [Scrape protocol content negotiation](https://prometheus.io/docs/instrumenting/content_negotiation/)
 
 ```bash
 curl --fail --silent --show-error \
