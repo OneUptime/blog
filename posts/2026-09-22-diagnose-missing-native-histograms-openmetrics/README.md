@@ -51,7 +51,7 @@ If a job explicitly restricts `scrape_protocols` to OpenMetrics 1.0, enabling na
 
 ## Understand what disabling native scraping leaves
 
-When `scrape_native_histograms` is false, Prometheus ignores native components and processes the available classic components. For a combined histogram with explicit classic boundaries, those classic buckets remain available.
+When `scrape_native_histograms` is false, Prometheus ignores native components and processes the available classic components. For a combined histogram with explicit classic boundaries, those classic bucket series remain available unless `convert_classic_histograms_to_nhcb` is enabled without `always_scrape_classic_histograms: true`.
 
 A native-only protobuf histogram is subtler: its count and sum can yield a degenerate classic representation with only a `+Inf` bucket. That preserves some aggregate information but provides no useful finite bucket resolution. It is therefore incorrect to promise that disabling native ingestion always drops the entire family, or that it always preserves a useful classic histogram.
 
