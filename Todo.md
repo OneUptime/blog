@@ -262,7 +262,6 @@
 ## OpenMetrics
 
 
-47. How to Rename OpenMetrics Metric Prefixes in Datadog Without Breaking Include Rules
 48. How to Diagnose Missing OpenMetrics Checks in Datadog Kubernetes Autodiscovery
 49. How to Attribute OpenMetrics Data to the Monitored Host Instead of the Datadog Scraper
 50. How to Migrate New Relic OpenMetrics Scrapers to the Prometheus Agent
