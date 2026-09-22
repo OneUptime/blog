@@ -261,7 +261,6 @@
 
 ## OpenMetrics
 
-22. How to Expose OpenMetrics StateSet Metrics Without Conflicting State Labels
 23. How to Encode GaugeHistograms with `_bucket`, `_gcount`, and `_gsum` Correctly
 24. How to Expose Counter Start Times with `_created` Without Misnaming the Metric Family
 25. How to Enable Created-Timestamp Zero Ingestion Without Polluting Prometheus with `_created` Series
