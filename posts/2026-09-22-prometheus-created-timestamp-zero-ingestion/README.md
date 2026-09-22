@@ -46,7 +46,7 @@ scrape_configs:
 
 The flag changes the default protocol preference, but an explicitly configured list can override that default. Inspect the loaded configuration instead of assuming the process flag changed every job.
 
-Protobuf support belongs to the exporter too. Asking for protobuf cannot make a text-only endpoint generate it. For a strictly OpenMetrics endpoint, verify that it returns `application/openmetrics-text; version=1.0.0` and includes valid family components:
+Protobuf support belongs to the exporter too. Asking for protobuf cannot make a text-only endpoint generate it. For a strictly OpenMetrics endpoint, verify that it returns `application/openmetrics-text; version=1.0.0; charset=utf-8` and includes valid family components:
 
 ```text
 # TYPE worker_jobs counter
