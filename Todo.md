@@ -262,7 +262,6 @@
 ## OpenMetrics
 
 
-42. How to Fix OpenMetrics Counters Skipped by Datadog When Their Names End in _total
 43. How to Turn OpenMetrics Histogram Buckets into Queryable Datadog Distributions
 44. How to Refresh Shared OpenMetrics Metadata Labels in Datadog After They Change
 45. How to Fix Datadog OpenMetrics ignore_tags Rules That Leave Dynamic Kubernetes Tags Behind
