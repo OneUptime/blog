@@ -262,7 +262,6 @@
 ## OpenMetrics
 
 
-57. How to Stop Slow Go OpenMetrics Collectors from Accumulating After Scrape Timeouts
 58. How to Monitor OpenMetrics Scrape Failures and Concurrent Requests with promhttp
 59. How to Diagnose Missing OpenMetrics Counter Descriptions in the Prometheus UI
 60. How to Diagnose Precision Loss in Large OpenMetrics Counters
