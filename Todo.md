@@ -261,7 +261,6 @@
 
 ## OpenMetrics
 
-26. How to Add Sample Timestamps to OpenMetrics Without Causing Duplicate or Out-of-Order Samples
 27. How to Encode `NaN`, `+Inf`, and `-Inf` Correctly in OpenMetrics Values
 28. How to Attach Exemplars to the Correct OpenMetrics Histogram Bucket and Preserve Trace IDs
 29. How to Keep OpenMetrics Exemplar Labels Within Prometheus Length and Cardinality Limits
