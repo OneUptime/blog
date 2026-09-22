@@ -262,7 +262,6 @@
 ## OpenMetrics
 
 
-41. How to Migrate Datadog OpenMetrics Checks from V1 to V2 Without Losing Metric Mappings
 42. How to Fix OpenMetrics Counters Skipped by Datadog When Their Names End in _total
 43. How to Turn OpenMetrics Histogram Buckets into Queryable Datadog Distributions
 44. How to Refresh Shared OpenMetrics Metadata Labels in Datadog After They Change
