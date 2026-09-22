@@ -22,7 +22,7 @@ Create a module using Go 1.25 or newer:
 
 ```bash
 go mod init example.com/bounded-exporter
-go get github.com/prometheus/client_golang@v1.24.1
+go get github.com/prometheus/client_golang/prometheus/promhttp@v1.24.1
 ```
 
 Save this as `main.go`. Its source endpoint is expected to return a JSON object such as `{"depth": 12}`:
@@ -116,7 +116,7 @@ With `CoalesceGather`, overlapping requests through this handler share one gathe
 
 `MaxRequestsInFlight` bounds admitted requests. Excess requests receive 503. A timed-out request retains its slot until the underlying gather finishes, so this option also bounds abandoned admitted requests. Coalescing keeps the shared gather count at one; it cannot rescue a permanently stuck collector. These details follow the [v1.24.1 handler implementation](https://github.com/prometheus/client_golang/blob/v1.24.1/prometheus/promhttp/http.go).
 
-Keep `CoalesceGather` version-pinned because it is experimental. A custom transactional gatherer that modifies shared metric-family objects in place is incompatible with the option. For slow sources that cannot support cancellation, isolate refresh work from scraping and expose an immutable cached snapshot with success and freshness metrics.
+Keep `CoalesceGather` version-pinned because it is experimental. A custom transactional gatherer that modifies shared metric-family objects in place after `Gather` returns and before `done` is called is incompatible with the option. For slow sources that cannot support cancellation, isolate refresh work from scraping and expose an immutable cached snapshot with success and freshness metrics.
 
 ## Verify under deliberate slowness
 
