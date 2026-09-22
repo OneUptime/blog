@@ -265,7 +265,6 @@
 
 ## Metric Aggregation
 
-8. How to Aggregate Error Rates Without Averaging Ratios
 9. How to Decide Whether a Multi-Instance Gauge Should Be Summed, Averaged, or Deduplicated
 10. How to Combine Two Prometheus Metrics When Their Labels Do Not Match
 11. How to Detect and Remove Double Counting from HA Scrapers and Duplicate Exporters
