@@ -261,7 +261,6 @@
 
 ## OpenMetrics
 
-24. How to Expose Counter Start Times with `_created` Without Misnaming the Metric Family
 25. How to Enable Created-Timestamp Zero Ingestion Without Polluting Prometheus with `_created` Series
 26. How to Add Sample Timestamps to OpenMetrics Without Causing Duplicate or Out-of-Order Samples
 27. How to Encode `NaN`, `+Inf`, and `-Inf` Correctly in OpenMetrics Values
