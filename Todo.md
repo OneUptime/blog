@@ -262,7 +262,6 @@
 ## OpenMetrics
 
 
-59. How to Diagnose Missing OpenMetrics Counter Descriptions in the Prometheus UI
 60. How to Diagnose Precision Loss in Large OpenMetrics Counters
 
 ## Metric Aggregation
