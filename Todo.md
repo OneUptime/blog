@@ -9796,3 +9796,233 @@
 18. How to Interpret PostgreSQL wal_buffers_full Across Workload Changes and Restarts
 19. How to Verify PostgreSQL wal_log_hints Prerequisites Before a pg_rewind Failover Drill
 20. How to Diagnose Zero WAL Write and Sync Timings in PostgreSQL 17 Statistics
+
+## bhyve
+
+1. How to Keep Debian bhyve UEFI Boot Entries Persistent After Reboots
+2. How to Enter bhyve UEFI Setup and Select a Guest Boot Device
+3. How to Import a Converted QCOW2 Disk into vm-bhyve
+4. How to Diagnose VNC Connection Refused When vm-bhyve Reports a Locked Guest
+5. How to Tunnel a bhyve VNC Console Through an SSH Jump Host
+6. How to Install a Headless Debian bhyve Guest Through a Serial Console
+7. How to Attach bhyve Guests to an Existing FreeBSD Bridge
+8. How to Give bhyve Guests Internet Access over Wi-Fi with PF NAT
+9. How to Troubleshoot bhyve Guests That Reach the Host but Not the Internet
+10. How to Serve DHCP to bhyve Guests on an Isolated NAT Network
+11. How to Grow a bhyve Guest Disk and Expand Its ZFS Root Pool
+12. How to Resize Nested MBR and UFS Partitions in a bhyve Guest
+13. How to Reclaim Unused bhyve Windows Disk Space with Sparse Zvols and Guest TRIM
+14. How to Move a bhyve Disk Image to a ZFS Zvol
+15. How to Take and Roll Back Offline ZFS Snapshots of a vm-bhyve Guest
+16. How to Clone vm-bhyve Guests Without Reusing Their MAC Addresses
+17. How to Migrate a Stopped vm-bhyve Guest Between FreeBSD Hosts with ZFS
+18. How to Reserve a PCI USB Controller for bhyve with pptdevs
+19. How to Switch a bhyve Passthrough Device Back to Its FreeBSD Driver
+20. How to Shut Down Multiple bhyve Guests Cleanly Before a Host Reboot
+
+## Descheduler
+
+1. How to Diagnose Descheduler PodsWithoutPDB Protection When Eligible Pods Are Never Evicted
+2. How to Exclude Namespaces from Descheduler LowNodeUtilization Evictions
+3. How to Preview Descheduler Evictions and Interpret Dry-Run Capacity Limits
+4. How to Diagnose Descheduler's Prometheus Client Not Initialized Error
+5. How to Fix Descheduler Policy Decoding Errors After Adding metricsUtilization
+6. How to Give Newly Created Pods a Descheduler Grace Period with minPodAge
+7. How to Make Descheduler Honor prefer-no-eviction as a Mandatory Rule
+8. How to Migrate Descheduler Eviction Flags to podProtections
+9. How to Limit Descheduler Evictions per Node, Namespace, and Run
+10. How to Run Multiple Descheduler Replicas with Leader Election
+11. How to Trigger a One-Off Descheduler Run from Its Kubernetes CronJob
+12. How to Diagnose Descheduler HighNodeUtilization When Every Node Is Underutilized
+13. How to Evict CrashLoopBackOff Pods with Descheduler Restart Thresholds
+14. How to Retain Failed Job Pods While Descheduler Cleans Up Other Failures
+15. How to Rotate Long-Running Pods with Descheduler PodLifeTime
+16. How to Include ScheduleAnyway Constraints in Descheduler Topology Balancing
+17. How to Diagnose Descheduler Ignoring Cluster-Default Topology Spread Rules
+18. How to Configure Descheduler topologyBalanceNodeFit Separately from nodeFit
+19. How to Explain Skipped Descheduler Evictions from DefaultEvictor Logs
+20. How to Scrape Descheduler's HTTPS Metrics Endpoint with Prometheus
+
+## Circuit Breakers
+
+1. How to Fix Resilience4j Circuit Breaker Annotations Bypassed by Calls Within the Same Bean
+2. How to Fix NoSuchMethodException from a Resilience4j Circuit Breaker Fallback Signature
+3. How to Diagnose Resilience4j Fallbacks That Run Before the Circuit Opens
+4. How to Limit a Resilience4j Fallback to CallNotPermittedException
+5. How to Count Only Selected Feign HTTP Status Codes as Resilience4j Circuit Failures
+6. How to Attach a Resilience4j Circuit Breaker to WebClient Mono Subscriptions
+7. How to Catch Exceptional CompletableFuture Completion from a Resilience4j Fallback
+8. How to Recover the Original Cause from Spring Cloud Circuit Breaker NoFallbackAvailableException
+9. How to Diagnose CallNotPermittedException During Concurrent Resilience4j Half-Open Probes
+10. How to Make an Idle Resilience4j Circuit Transition to Half Open Without a New Request
+11. How to Separate Resilience4j Sliding-Window Size from Concurrent Request Limits
+12. How to Validate Resilience4j METRICS_ONLY Alerts When FailureRateExceeded Fires Once
+13. How to Keep Opossum Circuit Breaker Statistics from Resetting on Every Request
+14. How to Set Opossum Cache Keys and TTLs for Requests with Different Arguments
+15. How to Refresh Opossum Abort Signals When a Circuit Returns to Half Open
+16. How to Validate Opossum Timeout Settings Before NaN Disables Timeout Protection
+17. How to Reuse a Polly v8 Circuit Breaker Pipeline Across Callers of the Same Dependency
+18. How to Calculate Polly v8 Circuit Break Durations with BreakDurationGenerator
+19. How to Keep Caller Cancellation Out of Polly v8 Circuit Breaker Failure Counts
+20. How to Identify the Named HttpClient Behind a Polly Circuit Breaker OnOpened Event
+
+## Registry Distribution
+
+1. How to Fix Browser UI Preflight 401 Responses from CNCF Distribution
+2. How to Recover CNCF Distribution Re-Pushes That Claim Deleted Layers Already Exist
+3. How to Diagnose Invalid Checksum Digest Errors During CNCF Distribution Garbage Collection
+4. How to Handle Empty Repositories Still Listed in the CNCF Distribution Catalog
+5. How to Fix Renovate Tag Lookups Failing with PAGINATION_NUMBER_INVALID in CNCF Distribution
+6. How to Resume Interrupted CNCF Distribution Blob Uploads with curl
+7. How to Diagnose Content-Range Errors in CNCF Distribution Chunked Upload Clients
+8. How to Fix CNCF Distribution S3 AuthorizationHeaderMalformed Errors Caused by a Region Mismatch
+9. How to Scope CNCF Distribution S3 IAM Permissions to a Bucket Prefix
+10. How to Separate Catalog Access from Repository Pull Permissions in CNCF Distribution
+11. How to Fix CNCF Distribution Manifest Pushes with Insufficient Token Scope
+12. How to Filter CNCF Distribution Webhooks to Manifest Push Events
+13. How to Investigate Growing CNCF Distribution Notification Queues
+14. How to Make CNCF Distribution Webhook Consumers Tolerate Early and Reordered Events
+15. How to Record CNCF Distribution Tag Push Times from Notifications
+16. How to Audit Denied CNCF Distribution Requests Through Access Logs
+17. How to Trust a Private CA for CNCF Distribution Notification Endpoints
+18. How to Renew Externally Managed TLS Certificates for CNCF Distribution
+19. How to Require Client Certificates for CNCF Distribution with Mutual TLS
+20. How to Estimate CNCF Distribution Memory Needs for Concurrent S3 Layer Uploads
+
+## PITR
+
+1. How to Fix PostgreSQL PITR Targets That Fall Before the Backup Consistency Point
+2. How to Set PostgreSQL recovery_target_time with an Unambiguous UTC Offset
+3. How to Diagnose PostgreSQL PITR When the Configured Recovery Target Is Never Reached
+4. How to Inspect a PostgreSQL PITR Restore While Recovery Is Paused Before Promotion
+5. How to Advance a Paused PostgreSQL PITR Restore to a Later Target
+6. How to Finish PostgreSQL PITR After recovery_target_action Is Set to shutdown
+7. How to Select current, latest, or a Specific Timeline for PostgreSQL PITR
+8. How to Catalog PostgreSQL Named Restore Points and Prevent Duplicate Recovery Names
+9. How to Exclude the Target Transaction from PostgreSQL PITR with recovery_target_inclusive
+10. How to Restore Application Connectivity After an RDS Point-in-Time Restore
+11. How to Reapply Custom RDS Parameter and Option Groups During a Point-in-Time Restore
+12. How to Check the Actual RDS PITR Window with LatestRestorableTime
+13. How to Reuse an RDS Instance Name During a PITR Cutover and Handle DNS Changes
+14. How to Fix Missing Serverless v2 Scaling Configuration After Aurora PITR
+15. How to Bring a DynamoDB PITR-Restored Table Back Under Terraform Management
+16. How to Restore DynamoDB TTL, Streams, and PITR Settings After Point-in-Time Recovery
+17. How to Exclude Unneeded DynamoDB Indexes from a PITR Restore
+18. How to Choose a Reachable SQL Server PITR Target After Bulk-Logged Operations
+19. How to Diagnose SQL Server PITR That Remains in RESTORING After STOPAT
+20. How to Recover Related SQL Server Databases to the Same Marked Transaction
+
+## Doppler
+
+1. How to Organize Doppler Projects for Many Repositories with Shared Secret References
+2. How to Authenticate Multiple DopplerSecret Resources with One Scoped Doppler Service Account
+3. How to Diagnose Doppler Secret Updates That Do Not Restart Kubernetes Deployments
+4. How to Map a Doppler JSON Secret to Kubernetes .dockerconfigjson with Operator Processors
+5. How to Sync Only Selected Doppler Keys into a Kubernetes Managed Secret
+6. How to Pass Newly Added Doppler Variables Through Docker Compose into Containers
+7. How to Diagnose Doppler Variables Lost When Docker Compose Runs Through sudo
+8. How to Give Docker Compose Services Separate Doppler Configs and Service Tokens
+9. How to Authenticate the Doppler CLI in Docker When Host Credentials Live in an OS Keyring
+10. How to Open a Doppler-Powered Subshell with Secrets Available to Interactive Commands
+11. How to Preserve Doppler Fallback Files Across Container Restarts for Offline Startup
+12. How to Fix Doppler Fallback Decryption After Changing the Access Token
+13. How to Pin a Doppler Config Snapshot for a Release Without Relying on Branch Inheritance
+14. How to Replace GitHub Actions Doppler Service Tokens with Claim-Restricted OIDC Authentication
+15. How to Avoid Escaped Doppler Secret Values When Passing Secrets Between GitHub Actions Steps
+16. How to Supply Terraform Input Variables with Doppler Name Transformers
+17. How to Trace Doppler Secret Values Stored by the Terraform Provider in State Files
+18. How to Separate Doppler Server Secrets from NEXT_PUBLIC Variables in Next.js Builds
+19. How to Fix Doppler USERPROFILE Errors Caused by Turborepo Environment Filtering on Windows
+20. How to Repair Dangling Doppler Secret References After Renaming a Shared Key
+
+## Lustre
+
+1. How to Fix Lustre Files That Do Not Inherit Their Directory Stripe Layout
+2. How to Change an Existing Lustre File Layout with lfs migrate
+3. How to Fix Lustre Writes Concentrated on One OST by Checking stripe_index
+4. How to Verify Lustre Stripe Allocation When the Requested Count Exceeds Available OSTs
+5. How to Configure Lustre Progressive File Layouts for Mixed File Sizes
+6. How to Reduce Lustre Concurrent-Append Contention with Per-Writer File Offsets
+7. How to Enable Coherent Cross-Client File Locking on Lustre with the flock Mount Option
+8. How to Batch Small Lustre Writes into Larger I/O Requests
+9. How to Match Lustre Checkpoint Striping to MPI Writer Concurrency
+10. How to Speed Up Metadata Searches in Huge Lustre Directories with lfs find
+11. How to Store Small Lustre Files on MDTs with Data on MDT Layouts
+12. How to Distinguish Lustre Inode Quotas from Block Quotas When Writes Fail
+13. How to Verify Lustre Quota Enforcement After Setting Limits with lfs setquota
+14. How to Move Existing Lustre Data onto Newly Added OSTs
+15. How to Diagnose Lustre ENOSPC When Aggregate Free Space Still Looks Healthy
+16. How to Preload S3 Training Data into FSx for Lustre Before a Job Starts
+17. How to Check Whether FSx for Lustre Files Are Hydrated or Only Imported as Metadata
+18. How to Diagnose FSx for Lustre Mount Failures Caused by Security Group Rules
+19. How to Check FSx for Lustre Client and Kernel Compatibility Before Mounting
+20. How to Separate FSx for Lustre Client Throughput Limits from Storage Bottlenecks
+
+## Database Vacuuming
+
+1. How to Run PostgreSQL VACUUM from Psycopg Without an Implicit Transaction
+2. How to Diagnose PostgreSQL VACUUM That Launches Fewer Parallel Workers Than Requested
+3. How to Avoid PostgreSQL VACUUM Tail-Truncation Locks with TRUNCATE FALSE
+4. How to Use PostgreSQL VACUUM SKIP_LOCKED and Track Tables That Were Skipped
+5. How to Diagnose Repeated Index Passes in PostgreSQL 15 VACUUM Despite Large maintenance_work_mem
+6. How to Choose AUTO, ON, or OFF for PostgreSQL VACUUM INDEX_CLEANUP
+7. How to Keep SQLite Row Identifiers Stable Across VACUUM and VACUUM INTO
+8. How to Fix SQLite VACUUM Disk-Full Errors When the Database Volume Has Free Space
+9. How to Create and Validate a Compact SQLite Backup with VACUUM INTO
+10. How to Fix SQLite VACUUM Failures Caused by Unfinished Statements and Open Cursors
+11. How to Vacuum an Attached SQLite Database by Schema Name
+12. How to Choose SQLite VACUUM INTO or the Online Backup API for a Busy Database
+13. How to Fix Redshift VACUUM That Leaves a Small Unsorted Region Unchanged
+14. How to Use Redshift Interleaved Skew to Decide Whether VACUUM REINDEX Is Needed
+15. How to Choose Redshift VACUUM SORT ONLY or DELETE ONLY After Data Changes
+16. How to Schedule Redshift VACUUM BOOST Around Concurrent Updates and Deletes
+17. How to Detect Redshift VACUUM That Succeeds Without Processing Tables Due to Permissions
+18. How to Tell Whether Redshift VACUUM Is Still Running Using Current and Historical System Views
+19. How to Resume Redshift Maintenance After Cancelling a Long VACUUM
+20. How to Diagnose Redshift VACUUM Merge Failures Caused by Insufficient Free Space
+
+## Alert Fatigue
+
+1. How to Stop Changing Metric Values in Prometheus Alert Labels from Creating New Notifications
+2. How to Remove Prometheus Replica Labels Before Alertmanager Deduplication
+3. How to Keep Resolved Development Alerts Out of Production Alertmanager Notification Groups
+4. How to Restore Alertmanager Aggregation After group_by Ellipsis Creates One Notification per Alert
+5. How to Diagnose Alertmanager Reminders Sent Before a Long repeat_interval Expires
+6. How to Explain Alertmanager Reminder Timing When Alerts Resolve Inside an Existing Group
+7. How to Diagnose Duplicate Alertmanager Notifications When HA Replicas Receive Different Alerts
+8. How to Distinguish Grafana MissingSeries Resolutions from Actual Service Recovery
+9. How to Group Grafana DatasourceError Alerts by Data Source During a Backend Outage
+10. How to Keep Grafana Alerts from Resolving and Refiring During Brief No Data Gaps
+11. How to Apply Separate Grafana Alert and Recovery Thresholds to Reduce Flapping
+12. How to Use Grafana Pending Periods to Filter Transient No Data and Error Notifications
+13. How to Reuse a Stable PagerDuty Events API Deduplication Key for Repeated Failures
+14. How to Prevent Timestamped Email Subjects from Creating Duplicate PagerDuty Incidents
+15. How to Limit Datadog Renotifications and Send a Separate Escalation Message
+16. How to Delay Datadog Alerts for Newly Created Container Groups Without Delaying Existing Groups
+17. How to Prevent Delayed CloudWatch Metrics from Creating Premature Datadog Monitor Alerts
+18. How to Diagnose Skipped Datadog Monitor Evaluations Caused by Sparse Data and Full-Window Requirements
+19. How to Find Alertmanager Sibling Routes That Notify the Same Receiver More Than Once
+20. How to Identify Duplicate Rule Ownership Between Prometheus and Thanos Ruler
+
+## Data Lake
+
+1. How to Grant Lake Formation Access Separately on a Resource Link and Its Target Table
+2. How to Fix Lake Formation DATA_LOCATION_ACCESS Errors When Creating Glue Catalog Tables
+3. How to Fix Lake Formation Reads of KMS-Encrypted S3 Data by Checking the Registration Role
+4. How to Stop AWS Glue Crawlers from Creating a Separate Table for Every Partition
+5. How to Restore a Deleted Glue Catalog Partition That an Incremental Crawler Will Not Revisit
+6. How to Reconcile Stale Glue Catalog Tables After Their S3 Source Data Is Deleted
+7. How to Fix Quoted CSV Fields Split by Commas in Glue-Cataloged Athena Tables
+8. How to Backfill an S3 Data Lake After Rewinding a Glue Bookmark Without Duplicating Output
+9. How to Detect Updates That AWS Glue JDBC Bookmarks Miss When Primary Keys Stay Unchanged
+10. How to Change a Glue Job S3 Source Path Without Reusing the Wrong Bookmark State
+11. How to Register Non-Hive S3 Partition Paths in Athena When MSCK REPAIR TABLE Finds Nothing
+12. How to Split Athena Data Lake Writes That Exceed 100 Open Partition Writers
+13. How to Keep Athena from Reading S3 Files Excluded Only by a Glue Crawler
+14. How to Propagate Changed ADLS Gen2 Directory Permissions to Existing Files
+15. How to Change One ADLS Gen2 Directory ACL Entry Without Erasing Other Principals
+16. How to Browse an ADLS Gen2 Subdirectory in Storage Explorer with Folder-Scoped Access
+17. How to Fix ADLS Gen2 Folder Access Blocked by Missing Execute Permissions on Ancestors
+18. How to Diagnose ADLS Gen2 ACL Masks That Remove Write Access from Databricks Output Files
+19. How to Resume Large ADLS Gen2 Recursive ACL Updates After Permission Failures
+20. How to Verify Data Lake Record Deletion Across Raw Data, Derived Tables, and Retained S3 Versions
