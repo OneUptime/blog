@@ -265,7 +265,6 @@
 
 ## Metric Aggregation
 
-25. How to Replace Unaggregatable Prometheus Summary Quantiles with Service-Wide Histograms
 26. How to Diagnose `histogram_quantile()` Monotonicity Warnings and Find Broken Classic Buckets
 27. How to Standardize Native Histogram Schemas Before Aggregation to Avoid Dropped Query Results
 28. How to Query a Series That Transitions from Float Samples to Native Histograms Without Silent Omissions
