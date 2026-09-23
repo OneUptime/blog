@@ -268,7 +268,6 @@
 
 ## Single-Leader
 
-13. How to Implement Leader Election for a Singleton Worker on Kubernetes
 14. How to Drain a Leader Gracefully During Rolling Deployments
 15. How to Test Leader Failover, Network Partitions, and Split-Brain Recovery
 16. How to Back Up from a Follower Without Taking an Inconsistent Snapshot
