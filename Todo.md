@@ -265,7 +265,6 @@
 
 ## Metric Aggregation
 
-29. How to Aggregate Gauges over Irregular Scrape Intervals Without Biasing the Average
 30. How to Keep `topk()` Results Stable Across Dashboard Time Ranges and Query Steps
 31. How to Count Label-Value Frequencies with `count_values()` Without Creating a New Cardinality Problem
 32. How to Enable Experimental PromQL `limitk()` and `limit_ratio()` for Deterministic Series Sampling
