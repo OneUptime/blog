@@ -265,7 +265,6 @@
 
 ## Metric Aggregation
 
-37. How to Aggregate Across a Metric Label Rename During a Rolling Deployment Without Double-Counting
 38. How to Merge Selected OpenTelemetry Attribute Values into One Rollup with OTTL
 39. How to Detect `otel.metric.overflow=true` and Quantify Measurements Sent to the Overflow Series
 40. How to Aggregate OpenTelemetry Histograms in OTTL While Preserving Service and Resource Boundaries
