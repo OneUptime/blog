@@ -265,7 +265,6 @@
 
 ## Metric Aggregation
 
-23. How to Aggregate Sparse Counters Whose Label Sets Appear and Disappear Between Scrapes
 24. How to Compute a Weighted Average in PromQL from Separate Sum and Count Metrics
 25. How to Replace Unaggregatable Prometheus Summary Quantiles with Service-Wide Histograms
 26. How to Diagnose `histogram_quantile()` Monotonicity Warnings and Find Broken Classic Buckets
