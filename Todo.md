@@ -268,7 +268,6 @@
 
 ## Single-Leader
 
-18. How to Design Cross-Region Single-Leader Replication Without Surprise Latency
 19. How to Set a Follower-Read Staleness Budget and Fall Back to the Leader
 20. How to Monitor Leader Changes and Diagnose Election Flapping
 
