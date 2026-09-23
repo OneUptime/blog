@@ -265,7 +265,6 @@
 
 ## Metric Aggregation
 
-13. How to Aggregate Metrics Over Time Without Confusing `sum()` and `sum_over_time()`
 14. How to Aggregate Metrics Across Kubernetes Clusters with Federation, Remote Write, or Thanos
 15. How to Pre-Aggregate OpenTelemetry Metrics Across Service Instances in the Collector
 16. How to Convert Delta and Cumulative Metrics Safely Before Aggregation
