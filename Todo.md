@@ -265,7 +265,6 @@
 
 ## Metric Aggregation
 
-40. How to Aggregate OpenTelemetry Histograms in OTTL While Preserving Service and Resource Boundaries
 
 ## Single-Leader
 
