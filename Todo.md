@@ -265,7 +265,6 @@
 
 ## Metric Aggregation
 
-14. How to Aggregate Metrics Across Kubernetes Clusters with Federation, Remote Write, or Thanos
 15. How to Pre-Aggregate OpenTelemetry Metrics Across Service Instances in the Collector
 16. How to Convert Delta and Cumulative Metrics Safely Before Aggregation
 17. How to Choose Histogram Buckets That Produce Useful Aggregated Percentiles
