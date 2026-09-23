@@ -268,7 +268,6 @@
 
 ## Single-Leader
 
-1. How to Decide When Single-Leader Replication Is the Right Architecture
 2. How to Choose Between Synchronous, Semi-Synchronous, and Asynchronous Follower Replication
 3. How to Route Writes to the Leader and Reads to Followers Safely
 4. How to Guarantee Read-Your-Writes Consistency When Reads Use Replicas
