@@ -268,7 +268,6 @@
 
 ## Single-Leader
 
-6. How to Measure and Alert on Replication Lag Before It Breaks the Application
 7. How to Perform Automatic Failover Without Creating Split Brain
 8. How to Use Quorum and Fencing Tokens to Stop a Stale Leader from Writing
 9. How to Promote the Most Up-to-Date Follower Without Losing Acknowledged Writes
