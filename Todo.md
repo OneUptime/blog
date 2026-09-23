@@ -268,7 +268,6 @@
 
 ## Single-Leader
 
-14. How to Drain a Leader Gracefully During Rolling Deployments
 15. How to Test Leader Failover, Network Partitions, and Split-Brain Recovery
 16. How to Back Up from a Follower Without Taking an Inconsistent Snapshot
 17. How to Run Schema Migrations Safely with Single-Leader Replication
