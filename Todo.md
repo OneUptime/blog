@@ -265,7 +265,6 @@
 
 ## Metric Aggregation
 
-12. How to Reduce High-Cardinality Metrics Without Creating Duplicate Time Series
 13. How to Aggregate Metrics Over Time Without Confusing `sum()` and `sum_over_time()`
 14. How to Aggregate Metrics Across Kubernetes Clusters with Federation, Remote Write, or Thanos
 15. How to Pre-Aggregate OpenTelemetry Metrics Across Service Instances in the Collector
