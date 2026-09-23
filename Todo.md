@@ -268,7 +268,6 @@
 
 ## Single-Leader
 
-2. How to Choose Between Synchronous, Semi-Synchronous, and Asynchronous Follower Replication
 3. How to Route Writes to the Leader and Reads to Followers Safely
 4. How to Guarantee Read-Your-Writes Consistency When Reads Use Replicas
 5. How to Prevent Stale Reads After a User Switches Between Followers
