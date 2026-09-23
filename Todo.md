@@ -265,7 +265,6 @@
 
 ## Metric Aggregation
 
-33. How to Aggregate Metrics by Calendar Day When PromQL Has No Dynamic Offset
 34. How to Total Counter Increases over a Grafana Dashboard Range Without Summing Raw Samples
 35. How to Enable Experimental PromQL `histogram_quantiles()` and Fall Back to Multiple `histogram_quantile()` Queries
 36. How to Build Hierarchical Prometheus Rollups Without Mixing Raw and Pre-Aggregated Series
