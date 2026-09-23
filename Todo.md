@@ -268,7 +268,6 @@
 
 ## Single-Leader
 
-16. How to Back Up from a Follower Without Taking an Inconsistent Snapshot
 17. How to Run Schema Migrations Safely with Single-Leader Replication
 18. How to Design Cross-Region Single-Leader Replication Without Surprise Latency
 19. How to Set a Follower-Read Staleness Budget and Fall Back to the Leader
