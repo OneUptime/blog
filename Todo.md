@@ -268,7 +268,6 @@
 
 ## Single-Leader
 
-10. How to Handle Client Writes That Time Out During a Leader Failover
 11. How to Rejoin a Recovered Former Leader Without Overwriting Newer Data
 12. How to Tune Leader-Election Lease, Renew, and Retry Timeouts
 13. How to Implement Leader Election for a Singleton Worker on Kubernetes
