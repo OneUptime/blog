@@ -265,7 +265,6 @@
 
 ## Metric Aggregation
 
-21. How to Count Unique Active Series per Label with Nested PromQL Aggregations
 22. How to Return Zero for Missing Prometheus Series Without Masking a Failed Scrape
 23. How to Aggregate Sparse Counters Whose Label Sets Appear and Disappear Between Scrapes
 24. How to Compute a Weighted Average in PromQL from Separate Sum and Count Metrics
