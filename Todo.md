@@ -265,7 +265,6 @@
 
 ## Metric Aggregation
 
-28. How to Query a Series That Transitions from Float Samples to Native Histograms Without Silent Omissions
 29. How to Aggregate Gauges over Irregular Scrape Intervals Without Biasing the Average
 30. How to Keep `topk()` Results Stable Across Dashboard Time Ranges and Query Steps
 31. How to Count Label-Value Frequencies with `count_values()` Without Creating a New Cardinality Problem
