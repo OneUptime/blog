@@ -265,7 +265,6 @@
 
 ## Metric Aggregation
 
-19. How to Test Prometheus Recording Rules and Aggregation Logic with `promtool`
 20. How to Decide Which Labels to Keep Before Aggregating Metrics
 21. How to Count Unique Active Series per Label with Nested PromQL Aggregations
 22. How to Return Zero for Missing Prometheus Series Without Masking a Failed Scrape
