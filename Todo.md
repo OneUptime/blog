@@ -265,7 +265,6 @@
 
 ## Metric Aggregation
 
-16. How to Convert Delta and Cumulative Metrics Safely Before Aggregation
 17. How to Choose Histogram Buckets That Produce Useful Aggregated Percentiles
 18. How to Roll Up Long-Range Metrics Without Making Grafana Queries Slow
 19. How to Test Prometheus Recording Rules and Aggregation Logic with `promtool`
