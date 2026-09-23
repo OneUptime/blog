@@ -265,7 +265,6 @@
 
 ## Metric Aggregation
 
-35. How to Enable Experimental PromQL `histogram_quantiles()` and Fall Back to Multiple `histogram_quantile()` Queries
 36. How to Build Hierarchical Prometheus Rollups Without Mixing Raw and Pre-Aggregated Series
 37. How to Aggregate Across a Metric Label Rename During a Rolling Deployment Without Double-Counting
 38. How to Merge Selected OpenTelemetry Attribute Values into One Rollup with OTTL
