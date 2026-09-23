@@ -265,7 +265,6 @@
 
 ## Metric Aggregation
 
-31. How to Count Label-Value Frequencies with `count_values()` Without Creating a New Cardinality Problem
 32. How to Enable Experimental PromQL `limitk()` and `limit_ratio()` for Deterministic Series Sampling
 33. How to Aggregate Metrics by Calendar Day When PromQL Has No Dynamic Offset
 34. How to Total Counter Increases over a Grafana Dashboard Range Without Summing Raw Samples
