@@ -268,7 +268,6 @@
 
 ## Single-Leader
 
-3. How to Route Writes to the Leader and Reads to Followers Safely
 4. How to Guarantee Read-Your-Writes Consistency When Reads Use Replicas
 5. How to Prevent Stale Reads After a User Switches Between Followers
 6. How to Measure and Alert on Replication Lag Before It Breaks the Application
