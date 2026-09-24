@@ -271,7 +271,6 @@
 
 ## PCI DSS
 
-30. How to Set and Verify a PCI DSS Cardholder-Data Retention and Deletion Schedule
 31. How to Handle PAN in Backups, Snapshots, and Disaster-Recovery Copies
 32. How to Scope Call Recordings, DTMF Tones, and VoIP Systems Under PCI DSS—and Reduce Stored Card Data
 33. How to Meet PCI DSS 4.0.1 Requirement 3.5.1.2 When PAN Resides on Non-Removable Media
