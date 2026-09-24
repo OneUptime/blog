@@ -274,7 +274,6 @@
 
 ## Quotas
 
-2. How to Find Which Pending and Terminating Pods Are Still Consuming Namespace Quota
 3. How to Pair LimitRange Defaults with ResourceQuota Without Surprise Pod Rejections
 4. How to Predict ResourceQuota Accounting When a Container Sets Limits but Omits Requests
 5. How to Recover Job Object Quota by Expiring Finished Kubernetes Jobs Automatically
