@@ -274,7 +274,6 @@
 
 ## Quotas
 
-10. How to Audit Hard and Used Quota Across Every Namespace with kubectl and jq
 11. How to Alert Before a Namespace Hits ResourceQuota Using kube-state-metrics and Prometheus
 12. How to Size Namespace Quotas for HPA Bursts Without Defeating Multi-Tenant Fairness
 13. How to Roll Out ResourceQuota Changes Safely When Existing Workloads Already Exceed the New Limit
