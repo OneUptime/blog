@@ -67,7 +67,7 @@ Do not judge every fix by the upstream version number alone. Red Hat explains it
 
 Run the appropriate vulnerability recheck and investigate disagreement between inventory, vendor evidence, and scanner output. Keep the reasoned resolution, rather than dismissing all remaining findings as scanner noise.
 
-Completion should mean every affected target is patched, removed, or handled through a valid documented resolution—not merely that the deployment job ran.
+Completion should mean every affected target is patched, removed, or handled through a valid documented resolution-not merely that the deployment job ran.
 
 ## Escalate blockers before they become overdue
 

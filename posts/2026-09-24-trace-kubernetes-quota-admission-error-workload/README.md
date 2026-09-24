@@ -1,4 +1,4 @@
-# How to Trace a Kubernetes “exceeded quota” Admission Error Back to the Exact Workload
+# How to Trace Kubernetes Quota Admission Errors to the Exact Workload
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

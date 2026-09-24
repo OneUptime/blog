@@ -1,4 +1,4 @@
-# How to Diagnose `histogram_quantile()` Monotonicity Warnings and Find Broken Classic Buckets
+# Diagnose histogram_quantile() Monotonicity Warnings and Broken Buckets
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

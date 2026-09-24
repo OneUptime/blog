@@ -1,4 +1,4 @@
-# Validation Summary: How to Scope Call Recordings, DTMF Tones, and VoIP Systems Under PCI DSS—and Reduce Stored Card Data
+# Validation Summary: How to Scope Call Recordings, DTMF, and VoIP for PCI DSS and Reduce Card Data
 
 ## Status
 validated

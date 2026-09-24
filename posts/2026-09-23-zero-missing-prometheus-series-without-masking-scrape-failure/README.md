@@ -84,12 +84,12 @@ Detecting one missing target among many requires an expected-target inventory or
 
 Similarly, a successful scrape containing the wrong metrics still gives `up=1`. For an application where the error metric is mandatory, alert on its absence instead of filling it. For intentionally sparse instrumentation, consider a separate always-present application metrics readiness signal and require it before permitting zeros.
 
-Startup is another policy decision. An existing counter with only one sample yields no rate, so the generic fallback would show zero. If that would mislead an alert or SLO, require a warm-up condition or initialize and verify sufficient samples before treating the rate as known. A counter's first nonzero sample is not evidence that no errors happened beforehand.
+Startup is another policy decision. Under default Prometheus behavior, an existing counter with only one sample in the range yields no rate, so the generic fallback would show zero. With experimental start-timestamp usage enabled and a suitable start timestamp inside the window, a rate can be calculated from one sample. If that would mislead an alert or SLO, require a warm-up condition or initialize and verify sufficient samples before treating the rate as known. A counter's first nonzero sample is not evidence that no errors happened beforehand.
 
 ## Match the output dimensions intentionally
 
 `up` cannot invent missing `route`, `status`, or `kind` combinations. The example aggregates those dimensions away before matching on target identity. For a per-route result, use an authoritative bounded route inventory or initialize the corresponding application series.
 
-By contrast, `or vector(0)` adds a label-less result; it does not synthesize one zero per service or target. It may be suitable for a deliberately global scalar with a separately verified coverage policy, but it is not a general per-label fill operation.
+By contrast, `or vector(0)` adds a label-less result when no matching label-less result exists; it does not synthesize one zero per service or target. It may be suitable for a deliberately global, label-less instant vector with a separately verified coverage policy, but it is not a general per-label fill operation.
 
 Test healthy absence, healthy traffic, a failed scrape with historical samples, missing target discovery, and a just-started counter. The desired output should be explicit for each case. A zero becomes useful when it communicates known inactivity while collection failures remain distinguishable.

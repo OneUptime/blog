@@ -1,4 +1,4 @@
-# How to Detect and Remove Double Counting from HA Scrapers and Duplicate Exporters
+# How to Remove Double Counting from HA Scrapers and Duplicate Exporters
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
@@ -33,7 +33,7 @@ count without (replica) (
 ) > 1
 ```
 
-This finds repeated identities after removing the chosen replica label. It does not prove the sources are interchangeable. Review the scrape configuration and target addresses for each result. Prometheus defines a series through its metric name and complete labels, so distinct replica labels keep both observations stored separately. [Prometheus data model](https://prometheus.io/docs/concepts/data_model/)
+This finds repeated identities after removing the chosen replica label. It does not prove the sources are interchangeable. Review the scrape configuration and target addresses for each result. Prometheus defines a series through its metric name and complete labels, so distinct replica labels distinguish both observations in the global view. The external labels configured below are added when communicating with external systems; they are not added to locally stored series in each Prometheus replica. [Prometheus data model](https://prometheus.io/docs/concepts/data_model/)
 
 ## Configure the HA boundary explicitly
 
@@ -95,4 +95,4 @@ Keep gauges separate in the investigation. A shared queue depth reported by mult
 
 Use a staging workload with a known request rate. Compare the result with one scraper, both scrapers, replica A unavailable, replica B unavailable, and one scraper returning after a gap. Differences around scrape boundaries are possible, but the sustained total should not scale with the number of observers.
 
-Compare deduplicated and diagnostic raw queries over identical times. Check backend warnings and missing-source alerts independently: a plausible total can still be incomplete. Finally, confirm that doubling the number of application workers carrying independent traffic does increase the total. That last check catches configurations that accidentally deduplicate the workload itself.
+For query-time deduplication, compare deduplicated and diagnostic raw queries over identical times (in Thanos, use `dedup=false` for the diagnostic query). If the backend deduplicates at ingestion, discarded replica samples cannot be recovered by disabling query-time deduplication; inspect the source Prometheus replicas instead. Check backend warnings and missing-source alerts independently: a plausible total can still be incomplete. Finally, confirm that doubling the number of application workers carrying independent traffic does increase the total. That last check catches configurations that accidentally deduplicate the workload itself.

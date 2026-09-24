@@ -1,4 +1,4 @@
-# How to Control Copy, Export, and Relocation of PAN from the Cardholder Data Environment
+# How to Control PAN Copying, Export, and Relocation from the CDE
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
@@ -41,11 +41,11 @@ A VPN connection alone does not restrict what an authorized user can copy after 
 
 ## Implement a restricted default session
 
-Start with a normal support role that receives masked payment information and cannot request a raw PAN export. Remove direct database access unless the user's responsibilities justify it; application permissions should enforce allowed actions independently of the user interface.
+Start with a normal support role that receives masked payment information and cannot request a raw PAN export. Restrict direct access to query stored cardholder data to the responsible administrators; other users should access it through applications or other programmatic methods that enforce allowed actions and least privilege independently of the user interface.
 
 For remote desktops, configure both the service and the session host where required. Microsoft documents how clipboard policy interacts with host-pool properties and client behavior in its [clipboard-redirection guidance](https://learn.microsoft.com/en-us/azure/virtual-desktop/redirection-configure-clipboard). Use the product's effective configuration and supported-client matrix rather than assuming the setting displayed in one console is decisive.
 
-Retest after policy refresh and reconnecting sessions. A policy change that affects only newly established sessions can leave existing users with different behavior.
+Retest after policy refresh, any required session-host restart, and reconnecting sessions. Microsoft’s clipboard-redirection guidance requires restarting session hosts after applying the cited Intune or Group Policy settings. A policy change that affects only newly established sessions can leave existing users with different behavior.
 
 Keep authorized export sessions distinct enough that their permissions can be reviewed and revoked reliably. This might be a dedicated role, application workflow, or access gateway policy.
 

@@ -46,7 +46,7 @@ evidence: integration version and reviewed test capture
 owner: payments engineering
 ```
 
-Keep raw captures containing account data inside the appropriately controlled environment. A scoping workshop should not create a new card-data repository in a shared document.
+Keep any permitted captures containing real account data inside the appropriately controlled environment and subject to retention and secure-deletion controls. Merchants must not retain real sensitive authentication data, including card verification codes, after authorization, even in encrypted captures. A scoping workshop should not create a new card-data repository in a shared document.
 
 Now look for data leaving the expected path. Review request logging, distributed traces, browser session replay, crash reports, database exports, analytics events, backups, and support tickets. An architecture diagram describes intent; these checks establish what actually happens.
 

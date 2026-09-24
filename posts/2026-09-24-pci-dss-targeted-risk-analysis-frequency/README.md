@@ -1,4 +1,4 @@
-# How to Write a PCI DSS 4.0.1 Targeted Risk Analysis for Controls with Flexible Frequencies
+# How to Write PCI DSS Targeted Risk Analyses for Flexible Control Frequencies
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 

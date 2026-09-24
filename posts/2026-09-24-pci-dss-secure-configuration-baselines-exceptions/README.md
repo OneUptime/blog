@@ -1,4 +1,4 @@
-# How to Build and Maintain PCI DSS Secure-Configuration Baselines with Documented Exceptions
+# How to Maintain PCI DSS Secure Configuration Baselines and Exceptions
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
@@ -75,7 +75,7 @@ Do not label the third case a routine exception and close it.
 
 ## Treat insecure services explicitly
 
-Requirement 2.2.5 addresses insecure services, protocols, or daemons that remain present: document the business justification and implement additional security features that reduce their risk.
+Requirement 2.2.5 addresses insecure services, protocols, or daemons that remain present: document the business justification and document and implement additional security features that reduce their risk.
 
 That is a specific requirement, not permission to disregard stricter requirements elsewhere. For example, a documented legacy dependency does not nullify applicable requirements for strong cryptography.
 

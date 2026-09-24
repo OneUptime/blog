@@ -1,4 +1,4 @@
-# How to Aggregate Gauges over Irregular Scrape Intervals Without Biasing the Average
+# How to Average Gauges over Irregular Scrape Intervals Without Bias
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
@@ -10,7 +10,7 @@ Description: Reduce sample-density bias in gauge averages with fixed-grid subque
 
 `avg_over_time()` calculates the mean of collected samples. It does not give a sample more weight because it represents a longer period of time. If scrape frequency changes, a heavily sampled interval contributes more heavily to the result even when the underlying process spends equal time in two states.
 
-For an approximate time average, evaluate the gauge on a regular grid first. For an exact time integral, instrument the accumulated quantity or use a calculation that explicitly incorporates timestamps and a chosen interpolation policy.
+For an approximate time average, evaluate the gauge on a regular grid first. For an exact time integral, instrument the accumulated quantity. A calculation that explicitly incorporates timestamps and a chosen interpolation policy can be exact for that model, but cannot recover unobserved state changes.
 
 ## Define the quantity you want
 
@@ -30,7 +30,7 @@ avg_over_time(queue_depth{queue="billing"}[1h:30s])
 
 The colon is significant. `queue_depth[1h]` reads the original samples, while `queue_depth[1h:30s]` evaluates the instant selector at regular 30-second steps over an hour. The latter approximates a time-weighted average by giving each grid point equal weight.
 
-The [subquery syntax](https://prometheus.io/docs/prometheus/latest/querying/basics/#subquery) describes the independent resolution. Specify it explicitly so dashboard pixel width does not silently become the definition of the calculation.
+The [subquery syntax](https://prometheus.io/docs/prometheus/latest/querying/basics/#subquery) describes the independent resolution. If omitted, the resolution defaults to the global evaluation interval, not the dashboard query step. Specify it explicitly to keep the calculation on a fixed grid; a dashboard variable used as the resolution can otherwise make that grid depend on dashboard settings.
 
 At each step, the instant selector selects a recent sample according to lookback and staleness behavior. This is effectively a bounded hold of the last usable observation, not linear interpolation. It cannot recover a brief spike that happened entirely between scrapes.
 
@@ -50,7 +50,7 @@ avg_over_time(
 )
 ```
 
-The comparison filters away points older than 90 seconds. Because the same selector appears on both sides of `and`, the labels align. Choose the threshold relative to the actual collection interval and expected delivery delay.
+The comparison filters away points that are 90 seconds old or older. Because the same selector appears on both sides of `and`, the labels align. Choose the threshold relative to the actual collection interval and expected delivery delay.
 
 This policy does not turn missing grid points into zero. The average uses the remaining points, so it becomes an average over observed coverage. The [lookback and staleness rules](https://prometheus.io/docs/prometheus/latest/querying/basics/#staleness) still matter: a series can disappear sooner because of a stale marker.
 
@@ -92,6 +92,6 @@ The order matters when membership changes. Summing each target's independently c
 
 ## Use instrumentation for stronger accuracy
 
-When the application knows every state change, it can maintain an accumulated queue-depth-times-seconds counter. The increase in that integral divided by elapsed seconds estimates average occupancy without depending on scrape density, subject to counter resets and collection coverage.
+When the application knows every state change, it can maintain an accumulated queue-depth-times-seconds counter. The increase in that integral divided by elapsed seconds estimates average occupancy without depending on scrape density, subject to counter resets and collection coverage. PromQL `increase()` and `rate()` extrapolate to window boundaries, so their results remain estimates even when the underlying integral is accurate.
 
 Keep the ordinary gauge for current-state debugging and compare the integral-derived result against the grid approximation on controlled workloads. For a dashboard, the grid approach is often sufficient; for capacity accounting, the instrumented integral provides a more defensible measurement than assigning guessed durations to irregular scrapes.

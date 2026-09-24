@@ -1,4 +1,4 @@
-# How to Detect `otel.metric.overflow=true` and Quantify Measurements Sent to the Overflow Series
+# How to Detect OpenTelemetry Metric Overflow and Count Overflow Measurements
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

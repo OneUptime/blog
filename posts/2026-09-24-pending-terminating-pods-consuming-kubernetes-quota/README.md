@@ -1,4 +1,4 @@
-# How to Find Which Pending and Terminating Pods Are Still Consuming Namespace Quota
+# How to Find Pending and Terminating Pods Consuming Namespace Quota
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

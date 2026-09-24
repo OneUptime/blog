@@ -1,4 +1,4 @@
-# Validation Summary: How to Meet PCI DSS 4.0.1 Requirements for Payment-Page Scripts and Change Detection
+# Validation Summary: PCI DSS 4.0.1: Payment-Page Scripts and Change Detection
 
 ## Status
 

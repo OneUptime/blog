@@ -18,7 +18,7 @@ Define a successful operation as one for which the client received a durable suc
 
 If your configuration promises no loss of acknowledged writes, every successful operation must remain after recovery. With asynchronous replication, measure acknowledged-write loss against the agreed recovery-point objective instead of pretending every failover is lossless. PostgreSQL documents that asynchronous streaming can leave a promoted standby missing committed transactions in its [standby architecture guide](https://www.postgresql.org/docs/18/warm-standby.html).
 
-Also define exclusivity at the destination: after a new ownership epoch is accepted, a request carrying an older epoch must be rejected. Two processes logging that they are leader is a diagnostic clue; two unauthorized writers committing effects is the correctness failure.
+Also define exclusivity at the destination: after a new ownership epoch is accepted, a request carrying an older epoch must be rejected. Two processes logging that they are leader is a diagnostic clue; a stale writer committing unauthorized effects is the correctness failure.
 
 ## Build an independent client ledger
 
@@ -68,6 +68,6 @@ Count lost acknowledged IDs independently of downtime. Fast promotion can have p
 
 ## Complete the recovery experiment
 
-Reconnect the old leader while the new leader is handling writes. Keep the former writer isolated until it is safely demoted and reconciled. PostgreSQL's [failover documentation](https://www.postgresql.org/docs/18/warm-standby-failover.html) describes rebuilding the standby relationship; divergent storage cannot be merged by simply changing the client endpoint.
+Reconnect the old leader while the new leader is handling writes. Keep the former writer fenced from client writes while restoring the connectivity needed to demote and reconcile it safely. PostgreSQL's [failover documentation](https://www.postgresql.org/docs/18/warm-standby-failover.html) describes rebuilding the standby relationship; divergent storage cannot be merged by simply changing the client endpoint.
 
 Repeat the ledger comparison after redundancy is restored. Archive fault timings, effective configuration, log excerpts, and counterexamples. A drill passes when its assertions pass under the tested conditions, not when a replacement process becomes healthy.

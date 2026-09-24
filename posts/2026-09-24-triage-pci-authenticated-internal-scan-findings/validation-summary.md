@@ -1,4 +1,4 @@
-# Validation Summary: How to Triage Thousands of Findings from PCI DSS Authenticated Internal Vulnerability Scans
+# Validation Summary: How to Triage PCI DSS Authenticated Internal Vulnerability Scan Findings
 
 ## Status
 validated

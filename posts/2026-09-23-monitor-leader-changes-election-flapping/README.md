@@ -16,7 +16,7 @@ This example uses Patroni's Prometheus endpoint. Adapt the metric names and sema
 
 Scrape every Patroni member's `/metrics` endpoint directly. A single load-balanced scrape address can hide a failed node and mix multiple members' histories. Add stable environment and cluster labels so two clusters with the same Patroni scope are not aggregated together.
 
-Patroni documents metrics such as `patroni_primary`, `patroni_postgres_running`, `patroni_postmaster_start_time`, `patroni_timeline`, and `patroni_dcs_last_seen` in its [REST API reference](https://patroni.readthedocs.io/en/latest/rest_api.html). Inspect the actual endpoint and deployed version before installing rules.
+Patroni documents metrics such as `patroni_primary`, `patroni_postgres_running`, `patroni_postmaster_start_time`, `patroni_postgres_timeline`, and `patroni_dcs_last_seen` in its [REST API reference](https://patroni.readthedocs.io/en/latest/rest_api.html). Inspect the actual endpoint and deployed version before installing rules.
 
 Count observed primary roles:
 
@@ -87,6 +87,6 @@ A cluster can have one stable database primary while a bad proxy configuration m
 
 ## Change the responsible control, then repeat the drill
 
-Patroni's [dynamic configuration](https://patroni.readthedocs.io/en/latest/dynamic_configuration.html) requires `loop_wait + 2 * retry_timeout <= ttl` and documents the minimum values. Increasing the TTL can absorb transient delays but also delays some failure detection. It cannot repair a broken DCS quorum, missing fencing, or a repeatedly crashing database.
+Patroni's [dynamic configuration](https://patroni.readthedocs.io/en/latest/dynamic_configuration.html) requires `loop_wait + 2 * retry_timeout <= ttl` and documents the minimum values. Increasing `retry_timeout` can tolerate longer transient DCS or network failures before demotion; increasing `ttl` may be needed to preserve this constraint, but also delays failover that depends on leader-lock expiry. It cannot repair a broken DCS quorum, missing fencing, or a repeatedly crashing database.
 
 Use a representative staging drill to verify the proposed change. Measure completed client operations, interruption duration, stale-session failures, and replica recovery in addition to role transitions. A quieter leadership graph is useful only if the system still meets its recovery and data-integrity requirements.

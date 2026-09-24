@@ -1,4 +1,4 @@
-# How to Standardize Native Histogram Schemas Before Aggregation to Avoid Dropped Query Results
+# How to Standardize Native Histogram Schemas for Reliable Aggregation
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

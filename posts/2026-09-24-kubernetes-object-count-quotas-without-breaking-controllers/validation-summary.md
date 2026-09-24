@@ -1,4 +1,4 @@
-# Validation Summary: How to Set Object-Count Quotas for Jobs, Secrets, Services, and PVCs Without Breaking Controllers
+# Validation Summary: How to Set Kubernetes Object-Count Quotas Without Breaking Controllers
 
 ## Status
 validated

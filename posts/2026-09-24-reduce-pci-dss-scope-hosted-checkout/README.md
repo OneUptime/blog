@@ -45,7 +45,7 @@ A customer returning to your success URL does not prove that money was collected
 
 For webhooks, verify the provider's signature using its documented request format. Stripe's [signature verification documentation](https://docs.stripe.com/webhooks/signature) requires the unmodified request body, the signature header, and the correct endpoint secret. Avoid logging the body merely to debug a verification failure.
 
-Make event handling idempotent. Store the event identifier or enforce an order-state transition so retries cannot ship an order twice. Reconcile delayed and failed events through a scheduled status check using provider transaction references.
+Make event handling idempotent. Store processed event identifiers to detect repeat deliveries, and enforce an atomic order-state transition with idempotent fulfillment so separate events or concurrent status checks cannot ship an order twice. Reconcile delayed and failed events through a scheduled status check using provider transaction references.
 
 ## Remove the old card-data paths
 

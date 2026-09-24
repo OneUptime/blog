@@ -1,4 +1,4 @@
-# How to Review PCI DSS Security-Awareness Training Annually and Prove It Reflects New Threats
+# How to Review PCI DSS Security Awareness Training Annually for New Threats
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

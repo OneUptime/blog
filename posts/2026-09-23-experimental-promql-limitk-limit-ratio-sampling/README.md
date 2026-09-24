@@ -1,4 +1,4 @@
-# How to Enable Experimental PromQL `limitk()` and `limit_ratio()` for Deterministic Series Sampling
+# How to Enable Experimental PromQL limitk() and limit_ratio() for Series Sampling
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

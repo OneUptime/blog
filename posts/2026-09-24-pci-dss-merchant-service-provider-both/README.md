@@ -1,4 +1,4 @@
-# How to Determine Whether Your Company Is a Merchant, Service Provider, or Both Under PCI DSS
+# How to Identify PCI DSS Merchant and Service Provider Roles
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 

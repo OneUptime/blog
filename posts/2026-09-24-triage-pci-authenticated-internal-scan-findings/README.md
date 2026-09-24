@@ -1,4 +1,4 @@
-# How to Triage Thousands of Findings from PCI DSS Authenticated Internal Vulnerability Scans
+# How to Triage PCI DSS Authenticated Internal Vulnerability Scan Findings
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 

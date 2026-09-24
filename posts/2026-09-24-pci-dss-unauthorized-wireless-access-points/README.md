@@ -1,4 +1,4 @@
-# How to Detect Unauthorized Wireless Access Points for PCI DSS Without Chasing Every Nearby SSID
+# How to Detect Unauthorized Wireless Access Points Within PCI DSS Scope
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

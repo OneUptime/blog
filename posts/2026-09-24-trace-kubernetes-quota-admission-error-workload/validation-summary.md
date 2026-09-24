@@ -1,4 +1,4 @@
-# Validation Summary: How to Trace a Kubernetes “exceeded quota” Admission Error Back to the Exact Workload
+# Validation Summary: How to Trace Kubernetes Quota Admission Errors to the Exact Workload
 
 ## Status
 validated

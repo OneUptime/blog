@@ -1,4 +1,4 @@
-# How to Scope Call Recordings, DTMF Tones, and VoIP Systems Under PCI DSS—and Reduce Stored Card Data
+# How to Scope Call Recordings, DTMF, and VoIP for PCI DSS and Reduce Card Data
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

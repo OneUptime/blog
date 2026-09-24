@@ -1,4 +1,4 @@
-# How to Predict ResourceQuota Accounting When a Container Sets Limits but Omits Requests
+# How ResourceQuota Accounts for Container Limits Without Requests
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

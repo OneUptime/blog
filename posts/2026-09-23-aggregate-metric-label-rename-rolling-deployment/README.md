@@ -1,4 +1,4 @@
-# How to Aggregate Across a Metric Label Rename During a Rolling Deployment Without Double-Counting
+# Aggregate Metric Label Renames in Rolling Deployments Without Double Counting
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

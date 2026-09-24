@@ -1,4 +1,4 @@
-# How to Aggregate OpenTelemetry Histograms in OTTL While Preserving Service and Resource Boundaries
+# How to Aggregate OTel Histograms in OTTL Within Service and Resource Boundaries
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
@@ -55,7 +55,7 @@ The attribute list is an allowlist: attributes not listed are removed from the p
 
 ## Require compatible intervals and shapes
 
-For an explicit histogram, consider two route points with identical bounds `[0.1, 0.5]`, identical interval timestamps, and these noncumulative bucket counts:
+For an explicit histogram, consider two route points with identical bounds `[0.1, 0.5]`, identical interval timestamps, matching min/max presence and data-point flags, and these noncumulative bucket counts:
 
 ```text
 route=/checkout  buckets=[2, 3, 1]  count=6  sum=1.9
@@ -64,7 +64,7 @@ route=/cart      buckets=[1, 4, 0]  count=5  sum=1.5
 
 After removing route, the combined histogram should contain buckets `[3, 7, 1]`, count 11, and sum 3.4. OTLP explicit buckets hold counts for individual intervals, unlike Prometheus classic cumulative `le` buckets.
 
-The current [aggregation implementation](https://github.com/open-telemetry/opentelemetry-collector-contrib/blob/v0.160.0/internal/coreinternal/aggregateutil/aggregate.go) groups by point attributes, timestamp, and histogram shape. Delta histograms additionally require matching start timestamps. Exponential histogram grouping also considers scale. Require matching zero thresholds as part of the producer contract rather than assuming this processor reconciles them.
+The current [aggregation implementation](https://github.com/open-telemetry/opentelemetry-collector-contrib/blob/v0.160.0/internal/coreinternal/aggregateutil/aggregate.go) groups explicit histogram points by point attributes, timestamp, explicit bounds, min/max presence, and data-point flags. Delta histograms additionally require matching start timestamps. Exponential histogram grouping uses scale instead of explicit bounds; bucket offsets and lengths need not match. Require matching zero thresholds as part of the producer contract rather than assuming this processor reconciles them.
 
 Do not assume the processor automatically reconciles all incompatible bucket layouts or resamples different intervals. Points with different shape or timestamps can remain separate after their distinguishing attributes are removed. That can leave identities unsuitable for the destination even though a configuration parses successfully.
 
@@ -80,7 +80,7 @@ For service-wide dashboards, preserving per-instance streams and aggregating com
 
 ## Verify conservation and separation
 
-Send a fixture with two routes in one resource, then the same two routes in a second resource. Expect one combined histogram per resource for the chosen remaining attributes, not one combined histogram across both services or instances.
+Send a fixture with two compatible route points in one metric object and scope in one resource, then the same two points in a second resource. Expect one combined histogram per resource for the chosen remaining attributes, not one combined histogram across both services or instances.
 
 Check every bucket, total count, sum, unit, temporality, timestamps, resource attributes, and scope. Test a mismatched-boundary point and a mismatched delta interval deliberately. The test should reveal how those points remain distinct instead of assuming they were safely merged.
 

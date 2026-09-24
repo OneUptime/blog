@@ -25,7 +25,7 @@ jq '{name: .metadata.name, uid: .metadata.uid,
   spec: .spec, status: .status}' quota-before.json
 ```
 
-Keep the timestamp of collection in the incident notes. `resourceVersion` is an opaque version marker, not a timestamp or a numeric measure of lag. Separately fetched Pod and quota lists do not represent one atomic cross-resource snapshot.
+Keep the timestamp of collection in the incident notes. `resourceVersion` identifies an object version, not a timestamp or a numeric measure of lag. In Kubernetes 1.35 and later, resource versions for types served by kube-apiserver can be ordered within the same API group and resource type; do not compare Pod and quota resource versions to measure reconciliation lag. Separately fetched Pod and quota lists do not represent one atomic cross-resource snapshot.
 
 Compare `spec.hard` with `status.hard`. The spec is the desired policy; status shows the control plane's observed accounting state. A recently edited spec can temporarily differ from status. Missing usage is not equivalent to zero, particularly while a newly created quota is initializing.
 

@@ -1,4 +1,4 @@
-# How to Meet PCI DSS 4.0.1 Requirement 3.5.1.2 When PAN Resides on Non-Removable Media
+# PCI DSS 4.0.1 Requirement 3.5.1.2: PAN on Non-Removable Media
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

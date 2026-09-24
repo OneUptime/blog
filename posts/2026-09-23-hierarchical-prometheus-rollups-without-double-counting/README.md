@@ -1,4 +1,4 @@
-# How to Build Hierarchical Prometheus Rollups Without Mixing Raw and Pre-Aggregated Series
+# How to Build Hierarchical Prometheus Rollups Without Double Counting
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
@@ -86,7 +86,7 @@ sum by (service, status) (
 service_status:http_requests:rate5m
 ```
 
-Evaluate at a timestamp where the relevant rule cycle has completed and all inputs are available. Near-zero differences are expected apart from numeric effects when both paths use the same data. A mismatch may reveal a missing cluster, duplicate replica, different selector, or delayed recording layer.
+After the relevant rule cycle has completed, evaluate the comparison at that cycle's exact evaluation timestamp, accounting for any configured rule query offset, with all inputs available. Querying at a later timestamp can compare a newly calculated raw rate with an older recorded rate even when the hierarchy is correct. Near-zero differences are expected apart from numeric effects when both paths use the same data. A mismatch may reveal a missing cluster, duplicate replica, different selector, or delayed recording layer.
 
 An empty subtraction result is not proof of equality: vector matching drops groups missing on one side. Check set differences too:
 

@@ -1,4 +1,4 @@
-# How to Meet PCI DSS 4.0.1 Requirements for Payment-Page Scripts and Change Detection
+# PCI DSS 4.0.1: Payment-Page Scripts and Change Detection
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 

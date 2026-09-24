@@ -15,7 +15,7 @@ Reconnect and retry is therefore only a transport strategy. The application also
 | Observed result | Interpretation | Application action |
 | --- | --- | --- |
 | Request rejected before execution | No protected effect started | Correct or retry according to the error |
-| Confirmed transaction abort | This attempt did not commit | Retry the whole operation within its deadline |
+| Confirmed transaction abort | This attempt did not commit | If the error is retryable, retry the whole operation within its deadline; otherwise correct or report the error |
 | Successful commit response | Acknowledged under the active durability policy | Preserve the result |
 | Connection lost or timeout around commit | Outcome unknown | Reconcile using the original operation identity |
 

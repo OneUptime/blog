@@ -16,7 +16,7 @@ This example uses a PostgreSQL physical replica and an application-managed heart
 
 Suppose a catalog endpoint permits data up to five seconds behind the authoritative primary. Define the limit when the server sends the response, not just when a background health check ran. Reserve some of the budget for query execution and serialization. If the contract applies when the client receives the response, also budget a defensible delivery bound or have the client reject an expired response; a server-only check cannot bound an arbitrary network delay.
 
-Other endpoints may require read-your-writes or current authorization decisions. Those need a session replication barrier or the leader; a generic five-second age limit is insufficient.
+Other endpoints may require read-your-writes or current authorization decisions. Read-your-writes needs a session replication barrier or a fresh snapshot on the leader. Current authorization decisions need a fresh authoritative read; a session barrier alone does not cover changes made by other sessions. A generic five-second age limit is insufficient.
 
 Maintain an authoritative topology identity outside the replica being evaluated. If a failover changes the primary's history, stop using cached eligibility until the routing layer establishes that the replica follows the accepted history. A disconnected old primary must not authenticate its own authority.
 
@@ -85,7 +85,7 @@ Similarly, time since the last replayed transaction grows on an idle database ev
 
 ## Make fallback a bounded operation
 
-If the gate fails, discard the replica result and retry this read-only operation once against the authoritative leader within the remaining deadline. Apply a concurrency limit so an entire replica pool falling behind cannot overwhelm the primary.
+If the gate fails, discard the replica result and retry this read-only operation once against the authoritative leader within the remaining deadline. Use a fresh snapshot and bound its age through response sending by the same freshness budget; a slow leader query can also outlive that budget. Apply a concurrency limit so an entire replica pool falling behind cannot overwhelm the primary.
 
 If the leader is unavailable or the fallback budget is exhausted, return the endpoint's documented error or explicitly stale response policy. Do not silently relax a required freshness limit. Never replay a write through this read-fallback path.
 

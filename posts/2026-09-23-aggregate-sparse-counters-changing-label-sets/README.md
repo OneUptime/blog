@@ -1,4 +1,4 @@
-# How to Aggregate Sparse Counters Whose Label Sets Appear and Disappear Between Scrapes
+# How to Aggregate Sparse Counters with Changing Label Sets
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

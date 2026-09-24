@@ -1,4 +1,4 @@
-# How to Secure Card Data in Transit—and Why HTTPS Alone Does Not Make a Site PCI Compliant
+# How to Secure Card Data in Transit Beyond HTTPS for PCI DSS
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

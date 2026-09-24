@@ -1,4 +1,4 @@
-# How to Aggregate Metrics Across Kubernetes Clusters with Federation, Remote Write, or Thanos
+# Aggregate Kubernetes Metrics with Federation, Remote Write, or Thanos
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

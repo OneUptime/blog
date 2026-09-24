@@ -22,7 +22,7 @@ Use a direct connection to the selected standby so a load balancer does not chan
 
 ## Prepare a physical standby backup
 
-The standby must have `hot_standby` enabled, accept replication connections, have sufficient `max_wal_senders`, and allow the backup account through `pg_hba.conf`. The account needs `REPLICATION` permission or superuser rights. Keep `full_page_writes` enabled on the primary. A streaming base backup uses a connection for the copy and another for WAL streaming, so account for both alongside existing replicas.
+The standby must have `hot_standby` enabled, accept replication connections, have sufficient `max_wal_senders`, and allow the backup account through `pg_hba.conf`. The account needs `REPLICATION` permission or superuser rights. Keep `full_page_writes` enabled on the primary. A streaming base backup uses a connection for the copy and another for WAL streaming, so account for both alongside existing replicas. The command below also creates a temporary replication slot for WAL streaming, so the standby needs a free slot under `max_replication_slots`.
 
 These requirements and the behavior when a standby is promoted are described in the [pg_basebackup reference](https://www.postgresql.org/docs/18/app-pgbasebackup.html). Promotion during the standby backup causes the backup to fail; discard that incomplete attempt and restart against an appropriate source.
 
@@ -68,7 +68,7 @@ pg_dump \
   --file=/backup/postgresql/app-20260923.dump
 ```
 
-Grant the account access to the objects being exported. [pg_dump](https://www.postgresql.org/docs/18/app-pgdump.html) provides a consistent database export while other sessions continue working. It does not include cluster-wide roles, all databases, or a continuous WAL history. Restore global dependencies separately and test with `pg_restore` into an isolated database.
+Grant the account access to the objects being exported. [pg_dump](https://www.postgresql.org/docs/18/app-pgdump.html) provides a consistent database export while other sessions continue working. It does not include cluster-wide roles, all databases, or a continuous WAL history. When dumping from a standby, it also excludes data in unlogged tables and sequences, although their definitions are included. Restore global dependencies separately and test with `pg_restore` into an isolated database.
 
 On a standby, a long export may conflict with WAL replay. PostgreSQL's [hot standby documentation](https://www.postgresql.org/docs/18/hot-standby.html) explains query cancellation and recovery conflicts. Increasing standby delay settings or enabling feedback changes the tradeoff: it can increase replica lag or retain dead tuples on the primary. Treat those as workload decisions, not automatic backup fixes.
 

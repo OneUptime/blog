@@ -1,4 +1,4 @@
-# How to Replace Unaggregatable Prometheus Summary Quantiles with Service-Wide Histograms
+# How to Replace Summary Quantiles with Service-Wide Prometheus Histograms
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
@@ -63,7 +63,7 @@ histogram_quantile(
 
 Rates are calculated on each original bucket counter before aggregation. `le` remains until the quantile is calculated. Retain `route` as another grouping label if the consumer needs route-specific latency rather than the service's combined traffic mix. [Histogram quantile query contract](https://prometheus.io/docs/prometheus/latest/querying/functions/#histogram_quantile)
 
-The returned p99 is estimated within the bucket containing the percentile. Tighten boundaries around the decision threshold when classic-bucket interpolation would otherwise be too coarse. If the actual question is the fraction of requests below 300 milliseconds, use the `le="0.3"` bucket divided by the count instead of converting a percentile into an SLO estimate.
+The returned p99 is estimated within the finite bucket containing the percentile. If the percentile falls in the `+Inf` bucket, Prometheus returns the highest finite boundary (5 seconds in this example), so choose finite boundaries that cover the tail you need to measure. Tighten boundaries around the decision threshold when classic-bucket interpolation would otherwise be too coarse. If the actual question is the fraction of requests taking at most 300 milliseconds, divide the summed `le="0.3"` bucket rates by the summed count rates over the same window, using identical filters and grouping labels such as `(cluster, service)`, instead of converting a percentile into an SLO estimate.
 
 ## Validate counts before comparing percentiles
 

@@ -1,4 +1,4 @@
-# How to Pre-Aggregate OpenTelemetry Metrics Across Service Instances in the Collector
+# Pre-Aggregate OpenTelemetry Metrics Across Service Instances in the Collector
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

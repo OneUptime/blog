@@ -1,4 +1,4 @@
-# How to Document a PCI DSS Customized Approach with a Controls Matrix and Testing Plan
+# PCI DSS Customized Approach: Controls Matrix and Testing Plan
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 

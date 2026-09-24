@@ -1,4 +1,4 @@
-# How to Total Counter Increases over a Grafana Dashboard Range Without Summing Raw Samples
+# How to Total Counter Increases over a Grafana Dashboard Range
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
@@ -22,7 +22,7 @@ sum by (service) (
 )
 ```
 
-Grafana replaces `$__range` with a duration based on the dashboard's selected interval. The [Prometheus variable documentation](https://grafana.com/docs/grafana/latest/datasources/prometheus/template-variables/) includes range-aware query patterns, and the [global variable reference](https://grafana.com/docs/grafana/latest/visualizations/dashboards/variables/add-template-variables/) describes the built-in range variables.
+Grafana replaces `$__range` with a duration based on the dashboard's selected interval. The [Prometheus variable documentation](https://grafana.com/docs/grafana/latest/datasources/prometheus/template-variables/) includes range-aware query patterns, and the [global variable reference](https://grafana.com/docs/grafana/latest/visualizations/dashboards/variables/global-variables/) describes the built-in range variables.
 
 Configure the query as **Instant** for this panel. The expression then returns one value per service at the endpoint Grafana sends. Inspect the Query Inspector to verify the expanded duration and evaluation timestamp, especially when panel time overrides or time shifts are enabled.
 
@@ -65,13 +65,13 @@ curl -fsSG http://localhost:9090/api/v1/query \
 
 This isolates query semantics from panel transformations. Compare the result with the Stat panel using the same selectors, timestamp, and backend. Differences can come from panel overrides, timezone display, stale cached responses, or selecting a different data source.
 
-Changing the time-series panel's maximum data points should not change this instant total. Changing the dashboard interval should change it because the requested population of events changed.
+Changing the time-series panel's maximum data points should not change this instant total. Changing the dashboard time range changes the interval being measured, although the resulting total can remain the same.
 
 ## Account for missing and short-lived series
 
 A counter needs enough samples for a rate or increase estimate. A process that starts, handles requests, and disappears between scrapes can contribute no observable counter history. A newly discovered series may not reveal events that occurred before its first sample.
 
-Inspect scrape health and expected producer coverage separately. An empty result is not automatically zero traffic. Avoid unconditional `or vector(0)` when it would hide missing collection or erase service labels.
+Inspect scrape health and expected producer coverage separately. An empty result is not automatically zero traffic. Avoid unconditional `or vector(0)` when it would hide missing collection or introduce an unlabeled zero alongside service-labeled results.
 
 If instances are scraped by multiple HA collectors into the queried backend, deduplicate them before interpreting the total. Summing identical replicas correctly computes the sum of the input series but incorrectly counts the same requests more than once.
 

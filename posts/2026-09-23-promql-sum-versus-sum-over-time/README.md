@@ -1,4 +1,4 @@
-# How to Aggregate Metrics Over Time Without Confusing `sum()` and `sum_over_time()`
+# How to Aggregate Metrics with PromQL sum() and sum_over_time()
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

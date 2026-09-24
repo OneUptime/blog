@@ -24,7 +24,7 @@ http_requests_total{
 }
 ```
 
-`instance` separates process lifecycles. A service traffic graph may not display it, but rate calculation should still operate on each original counter:
+`instance` distinguishes scrape targets, but can remain unchanged across process restarts. A service traffic graph may not display it, but rate calculation should still operate on each original counter:
 
 ```promql
 sum by (cluster, namespace, service) (
@@ -103,6 +103,6 @@ count(
 
 This estimates current series reduction, not future churn or every stored historical series. Cardinality products are useful upper bounds, but actual label combinations often constrain one another.
 
-Keep a small number of intentional rollup levels and retain raw data for a suitable diagnostic period. A recording rule adds derived series; it does not reduce raw ingestion cost by itself. To reduce that cost, change instrumentation, filtering, or retention separately. Prometheus's [label guidance](https://prometheus.io/docs/practices/naming/#labels) recommends bounded dimensions that support meaningful aggregation.
+Keep a small number of intentional rollup levels and retain raw data for a suitable diagnostic period. A recording rule adds derived series; it does not reduce raw ingestion cost by itself. To reduce ingestion cost, change instrumentation or filtering; adjust retention separately to reduce stored data. Prometheus's [label guidance](https://prometheus.io/docs/practices/naming/#labels) recommends bounded dimensions that support meaningful aggregation.
 
 Before publishing the rollup, verify two services, two clusters, unequal traffic, a source restart, and a newly added instrumentation label. Review the resulting labels alongside the numbers. That combination tests whether the aggregate still answers the operational question after the system changes.

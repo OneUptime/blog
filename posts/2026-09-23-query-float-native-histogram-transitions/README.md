@@ -1,4 +1,4 @@
-# How to Query a Series That Transitions from Float Samples to Native Histograms Without Silent Omissions
+# How to Query Float-to-Native-Histogram Transitions Without Omissions
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
@@ -61,7 +61,7 @@ curl -fsSG http://localhost:9090/api/v1/query \
   | jq '{warnings, infos, result: .data.result}'
 ```
 
-Do not use `or vector(0)` to cover the gap. That changes an invalid or absent calculation into a success-looking zero and usually loses the affected series' labels.
+Do not use `or vector(0)` to cover the gap. That can make an empty result look like zero traffic. It adds a zero with no labels unless an unlabeled result already exists; it does not fill missing labeled series and can add the zero even when other series have valid results.
 
 ## Prefer separate identities during migration
 
@@ -83,7 +83,7 @@ When both representations describe the same traffic, select an authoritative one
 
 ## Handle a transition already in storage
 
-For a historical report, split the evaluation interval at the known transition and apply an appropriate expression to each homogeneous segment. Rate calculations still need enough samples on each side. Events between the last old scrape and first new scrape may not be recoverable exactly.
+For a historical report, split the evaluation interval at the known transition and apply an appropriate expression to each homogeneous segment. Each rate calculation must use a lookback window containing only one sample type; splitting the report at the transition alone does not prevent later evaluations from looking back across it. Rate calculations still need enough samples on each side. Events between the last old scrape and first new scrape may not be recoverable exactly.
 
 A shorter range can temporarily avoid the transition, but it changes smoothing and may leave too few samples. It is not a durable repair for dashboards whose users can choose any range. Long windows will continue encountering the transition until it ages out or the query explicitly separates formats.
 

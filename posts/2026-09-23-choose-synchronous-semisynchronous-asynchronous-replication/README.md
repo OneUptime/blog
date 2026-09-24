@@ -1,4 +1,4 @@
-# How to Choose Between Synchronous, Semi-Synchronous, and Asynchronous Follower Replication
+# How to Choose Synchronous, Semi-Synchronous, or Asynchronous Replication
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

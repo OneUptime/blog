@@ -1,4 +1,4 @@
-# How to Count Label-Value Frequencies with `count_values()` Without Creating a New Cardinality Problem
+# How to Use PromQL count_values() Without Excessive Cardinality
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

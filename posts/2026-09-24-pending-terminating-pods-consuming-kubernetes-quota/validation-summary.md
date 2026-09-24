@@ -1,4 +1,4 @@
-# Validation Summary: How to Find Which Pending and Terminating Pods Are Still Consuming Namespace Quota
+# Validation Summary: How to Find Pending and Terminating Pods Consuming Namespace Quota
 
 ## Status
 validated

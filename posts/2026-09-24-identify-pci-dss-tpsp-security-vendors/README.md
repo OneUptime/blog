@@ -1,4 +1,4 @@
-# How to Decide Whether an Identity, DNS, Code-Hosting, or Monitoring Vendor Is a PCI DSS TPSP
+# How to Identify PCI DSS TPSPs Among Identity, DNS, Code, and Monitoring Vendors
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 

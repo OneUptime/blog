@@ -1,4 +1,4 @@
-# How to Enable Experimental PromQL `histogram_quantiles()` and Fall Back to Multiple `histogram_quantile()` Queries
+# Experimental PromQL histogram_quantiles() and histogram_quantile() Fallbacks
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
