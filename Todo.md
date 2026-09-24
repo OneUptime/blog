@@ -271,7 +271,6 @@
 
 ## PCI DSS
 
-6. How to Tokenize Card Data So Your Application Never Stores the PAN
 7. How to Store a PAN Safely When Business Requirements Make It Unavoidable
 8. How to Prevent CVV and Full Card Numbers from Leaking into Logs
 9. How to Mask PANs Correctly in Admin Screens, Receipts, and Support Tools
