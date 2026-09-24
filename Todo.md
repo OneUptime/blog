@@ -271,7 +271,6 @@
 
 ## PCI DSS
 
-29. How to Prove That Your Systems Do Not Store PAN with Data-Discovery Sampling
 30. How to Set and Verify a PCI DSS Cardholder-Data Retention and Deletion Schedule
 31. How to Handle PAN in Backups, Snapshots, and Disaster-Recovery Copies
 32. How to Scope Call Recordings, DTMF Tones, and VoIP Systems Under PCI DSS—and Reduce Stored Card Data
