@@ -361,6 +361,26 @@
 38. How to Prioritize and Install Critical PCI DSS Security Patches Within One Month
 39. How to Protect Application and System Account Credentials Under PCI DSS 4.0.1
 40. How to Review PCI DSS Security-Awareness Training Annually and Prove It Reflects New Threats
+41. How to Choose Sufficient Scan-Account Privileges for PCI DSS Authenticated Vulnerability Scans
+42. How to Assess PCI DSS Authenticated Scanning When a Vendor Appliance Provides No OS Credentials
+43. How to Document PCI DSS Scan Remediation When a Rescan Finds Newly Disclosed Vulnerabilities
+44. How to Resolve PCI DSS ASV Scan Interference from IPS Rate Limits and Dynamic Blocking
+45. How to Submit Evidence for a Disputed Cross-Site Scripting Finding in a PCI DSS ASV Scan
+46. How to Validate WAF Blocking or Immediate Alert Investigation for PCI DSS Requirement 6.4.2
+47. How to Keep PCI DSS Audit Logs Available Across SIEM and Separate Archive Storage
+48. How to Respond When Sensitive Authentication Data Appears in PCI DSS Audit Logs
+49. How to Turn Firewall Rule Exports into PCI DSS Six-Month Review Evidence
+50. How to Build a PCI DSS Cryptography Inventory from TLS, SSH, and Application Configurations
+51. How to Evaluate TLS Cipher Suites for PCI DSS When TLS 1.2 Is Already Enabled
+52. How to Introduce Keyed PAN Hashing While Handling Legacy Hashes Under PCI DSS
+53. How to Prevent Correlation Between Hashed and Truncated PAN Values Under PCI DSS
+54. How to Decide Which PCI DSS User Accounts Still Need Password Rotation After MFA Rollout
+55. How to Address PCI DSS Password-Length Gaps in a Cloud-Only Microsoft Entra Deployment
+56. How to Validate FIDO2 Authentication Factors for PCI DSS Remote and Administrative Access
+57. How to Test PCI DSS Idle-Session Reauthentication Across Workstations and Jump Hosts
+58. How to Preserve Individual Accountability for sudo and Emergency Root Access Under PCI DSS
+59. How to Separate PCI DSS Internal Vulnerability Risk Rankings from ASV Passing-Score Rules
+60. How to Distinguish PCI DSS Assessor Sampling from Required Vulnerability Scan Coverage
 
 ## Quotas
 
@@ -10026,3 +10046,210 @@
 18. How to Diagnose ADLS Gen2 ACL Masks That Remove Write Access from Databricks Output Files
 19. How to Resume Large ADLS Gen2 Recursive ACL Updates After Permission Failures
 20. How to Verify Data Lake Record Deletion Across Raw Data, Derived Tables, and Retained S3 Versions
+
+## ShardingSphere
+
+1. How to Configure Binding Tables for Order and Order-Item Joins in ShardingSphere
+2. How to Replicate Shared Reference Tables with ShardingSphere Broadcast Rules
+3. How to Load Unsharded Tables After a ShardingSphere Upgrade Reports Table Not Found
+4. How to Trace Rewritten SQL and Physical Shards with ShardingSphere SQL Logging
+5. How to Enable Range Queries in ShardingSphere Inline Sharding and Measure Query Fan-Out
+6. How to Handle Integer and Long Sharding Values in a Custom ShardingSphere Algorithm
+7. How to Register a Custom ShardingSphere Key Generator Through Java SPI
+8. How to Fix Spring Placeholder Conflicts in ShardingSphere Inline Expressions
+9. How to Keep ShardingSphere Inline Division Expressions from Producing Fractional Shard Names
+10. How to Diagnose Hibernate Updates That Trigger ShardingSphere Sharding-Key Errors
+11. How to Diagnose SnakeYAML NoSuchMethodError in a Spring Boot ShardingSphere Application
+12. How to Configure ShardingSphere-JDBC in Spring Boot Through the JDBC Driver
+13. How to Make Related Writes Roll Back Together on One ShardingSphere Database
+14. How to Choose XA Transactions for Writes That Span Multiple ShardingSphere Databases
+15. How to Route Load-Test Requests to a ShardingSphere Shadow Database
+16. How to Supply a Sharding Key with HintManager When It Is Missing from SQL
+17. How to Verify Generated Keys After Changing Hint-Based Routing in ShardingSphere
+18. How to Fix ShardingSphere-Proxy YAML Rule Type Errors During Startup
+19. How to Evaluate ShardingSphere SQL Federation for Joins Across Database Instances
+20. How to Diagnose Timestamp Mapping Failures in ShardingSphere Join Queries
+
+## MTTA
+
+1. How to Calculate MTTA from Alert Creation and First Acknowledgement Timestamps
+2. How to Recover MTTA History When Resolved PagerDuty Incidents Have Empty Acknowledgement Lists
+3. How to Backfill a Year of Acknowledgement Times Without Querying Every PagerDuty Incident Separately
+4. How to Export Team MTTA into a Python Report with the PagerDuty Analytics API
+5. How to Reconcile Delayed PagerDuty MTTA Reports with the Live Incident Timeline
+6. How to Reconcile MTTA When One Tool Counts Closed Alerts That Were Never Acknowledged
+7. How to Report Median and P95 Acknowledgement Time Alongside MTTA
+8. How to Calculate Business-Hours MTTA from an Alert Export
+9. How to Handle Holidays and Time Zones in Business-Hours Acknowledgement Metrics
+10. How to Separate Initial MTTA from Later Responder Engagement Time in PagerDuty
+11. How to Measure Team Acknowledgement Delay When an Alert Arrives Through a Later Escalation Step
+12. How to Set Separate Targets for Acknowledging a Page and Starting Investigation
+13. How to Pair MTTA with the Percentage of Incidents That Were Actually Acknowledged
+14. How to Include Still-Unacknowledged Alerts in an Acknowledgement-Time Review
+15. How to Keep Repeated Acknowledgements from Double-Counting MTTA
+16. How to Diagnose Missing Email Acknowledgements That Inflate MTTA
+17. How to Distinguish an Acknowledgement Timeout from a Slow Initial Response
+18. How to Break Down MTTA by Alert Priority and Source to Find Slow Response Paths
+19. How to Calculate Incident MTTA When Several Responder Alerts Acknowledge at Different Times
+20. How to Compare Monthly MTTA Without Averaging Daily Averages
+
+## GoCD
+
+1. How to Set Working Directories for GoCD Tasks That Fail on cd
+2. How to Expand Environment Variables in GoCD Exec Task Arguments
+3. How to Override Runtime Variables for a Manual GoCD Pipeline Run
+4. How to Create One GoCD Deployment Pipeline per Git Branch Using Shared Templates
+5. How to Keep Multiple Git Materials in Separate GoCD Checkout Directories
+6. How to Chain Manually Started GoCD Releases Through Pipeline Dependency Materials
+7. How to Promote Matching Build Revisions Through GoCD Fan-In Gates
+8. How to Pass a GoCD Job Workspace to the Next Stage as a Build Artifact
+9. How to Diagnose Missing Build Files by Publishing GoCD Workspace Diagnostics
+10. How to Stop Pipeline-Definition-Only Commits from Triggering GoCD Builds
+11. How to Load YAML Pipelines from a GoCD Configuration Repository
+12. How to Restrict GoCD Configuration Repositories to Specific Pipeline Groups
+13. How to Inject External Secrets into GoCD YAML Pipeline Variables
+14. How to Separate Kubernetes Pod Variables from GoCD Configuration-Time Secrets
+15. How to Fix SSH Host-Key Verification for Dockerized GoCD Servers and Agents
+16. How to Diagnose GoCD Jobs Stuck Waiting for an Idle Agent
+17. How to Prevent Docker Builds from Leaving Root-Owned Files in GoCD Workspaces
+18. How to Run Testcontainers from a Containerized GoCD Agent
+19. How to Reuse Maven's Local Repository Across GoCD Test Runs
+20. How to Trigger GoCD Git Materials with GitHub Push Webhooks
+
+## Fedora CoreOS
+
+1. How to Fix Butane Variant and Version Errors Before Booting Fedora CoreOS
+2. How to Pass Ignition to a Fedora CoreOS QEMU VM That Reports No User Config
+3. How to Build an Unattended Fedora CoreOS Installer ISO with Embedded Ignition
+4. How to Configure a Static IP Before Fedora CoreOS Fetches Its Ignition File
+5. How to Reinstall Fedora CoreOS While Preserving a Separate Application Data Partition
+6. How to Mount an Existing Filesystem with Fedora CoreOS Ignition Without Reformatting It
+7. How to Fix Fedora CoreOS Mount Failures Caused by Creating Directories at the Filesystem Root
+8. How to Reserve Space for Container Data Beside the Fedora CoreOS Root Partition
+9. How to Restore Early-Boot Networking for Tang-Encrypted Fedora CoreOS Disks
+10. How to Verify Both Boot Disks After Installing Fedora CoreOS with a Mirrored Boot Device
+11. How to Schedule Fedora CoreOS Update Reboots in a Local-Time Maintenance Window
+12. How to Roll Back a Fedora CoreOS Update That Breaks Container Networking
+13. How to Diagnose a Fedora CoreOS Node That Zincati No Longer Updates
+14. How to Remove Layered Package Conflicts That Block Fedora CoreOS Upgrades
+15. How to Enable a Newly Layered Service on Fedora CoreOS After Its First Reboot
+16. How to Persist Fedora CoreOS Kernel Arguments Across Operating System Updates
+17. How to Run Host Diagnostics with Toolbox on a Minimal Fedora CoreOS Installation
+18. How to Apply a Fedora CoreOS Configuration Change After Ignition Has Already Run
+19. How to Troubleshoot SSH Public-Key Login to Fedora CoreOS on Google Compute Engine
+20. How to Capture Fedora CoreOS Ignition Failures on a Serial Console
+
+## incident.io
+
+1. How to Turn Incident Discussion into Assigned Follow-Ups with incident.io Chat
+2. How to Route incident.io Follow-Ups to Different Jira Projects with Export Templates
+3. How to Set Priority-Based Follow-Up Deadlines in incident.io
+4. How to Find Overdue Incident Follow-Ups by Team in incident.io
+5. How to Build an incident.io Post-Mortem Template That Includes the Timeline and Follow-Ups
+6. How to Use incident.io Post-Incident Flows to Require a Debrief Checklist
+7. How to Route incident.io Alerts to the Owning Team Using Service Catalog Data
+8. How to Keep Staging Alerts out of a Production Escalation Route in incident.io
+9. How to Choose Fixed or Rolling Alert Grouping Windows in incident.io
+10. How to Page Once for an Alert Group Before Creating an Incident in incident.io
+11. How to Limit Security Incident Access to Invited Responders and Teams in incident.io
+12. How to Enable Follow-Up Policies for Private Security Incidents in incident.io
+13. How to Scope incident.io Terraform Workflows to Private Incidents Owned by a Team
+14. How to Announce a Private Incident to an Authorized Channel in incident.io
+15. How to Send Severity-Based Stakeholder Announcements to Slack with incident.io
+16. How to Keep incident.io Status Updates in Announcement Threads to Reduce Channel Noise
+17. How to Broadcast Critical incident.io Incidents to a Customer Support Channel in Microsoft Teams
+18. How to Hand Over the Incident Lead Role Mid-Incident in incident.io
+19. How to Exclude Test PagerDuty Services from incident.io Escalation Choices
+20. How to Receive incident.io On-Call Escalations inside Microsoft Teams
+
+## InnerSource
+
+1. How to Define an InnerSource Pilot with a Time Limit and Measurable Outcomes
+2. How to Set GitHub Repository Access Defaults for an InnerSource Program
+3. How to Build a Searchable InnerSource Project Catalog from Internal Repositories
+4. How to Agree on InnerSource Contribution Time with Engineering Managers
+5. How to Write InnerSource Contribution Guides for Developers Outside the Owning Team
+6. How to Set Review Turnaround Expectations for InnerSource Pull Requests
+7. How to Define a Bug-Fix Warranty for Contributions to an InnerSource Project
+8. How to Assign Production Support Responsibilities for an InnerSource Service or Library
+9. How to Promote Regular InnerSource Contributors to Trusted Committers
+10. How to Keep an InnerSource Project Maintained After Its Original Team Moves On
+11. How to Choose InnerSource Metrics That Show Cross-Team Collaboration
+12. How to Find Drop-Off Points in an InnerSource Contributor's First Pull Request
+13. How to Publish Clear Ownership and Contribution Levels for InnerSource Projects
+14. How to Include Designers and Documentation Writers in an InnerSource Contribution Process
+15. How to Promote an InnerSource Project with Demos and Concrete Contribution Requests
+16. How to Publish an InnerSource Spring Boot Starter for Other Teams to Consume with Maven
+17. How to Align Competing Team Requirements Before Forking an InnerSource Component
+18. How to Use Extensions to Reduce an InnerSource Core Team's Review Backlog
+19. How to Document InnerSource Support Channels and Escalation Paths
+20. How to Budget Community Leadership Time for an InnerSource Program
+
+## Affinity
+
+1. How to Unblock a Kubernetes Rolling Update When Required Pod Anti-Affinity Leaves No Surge Capacity
+2. How to Restrict Pod Anti-Affinity to the Current Deployment Revision with matchLabelKeys
+3. How to Separate Tenant Pods with mismatchLabelKeys in Kubernetes Anti-Affinity Rules
+4. How to Keep DaemonSet Pods from Blocking Tenant Anti-Affinity with an Exists Selector
+5. How to Detect Stale Pod-Affinity Selectors After Changing a matchLabelKeys Label
+6. How to Bootstrap the First Kubernetes Pod in a Group with Required Self-Affinity
+7. How to Diagnose Multiple Required Pod-Affinity Terms That Match Different Dependency Pods
+8. How to Weight Same-Node and Same-Zone Preferences in Kubernetes Pod Affinity
+9. How to Make Pod Affinity Match Every Namespace with namespaceSelector Instead of an Empty namespaces List
+10. How to Find Nodes Missing the Topology Label Used by Pod Anti-Affinity
+11. How to Diagnose LimitPodHardAntiAffinityTopology Rejections for Custom Rack Labels
+12. How to Fix an Empty topologyKey Error When Converting Pod Anti-Affinity from Required to Preferred
+13. How to Tighten Node Affinity on a Scheduling-Gated Pod Before Releasing It
+14. How to Change Node Affinity on a Suspended Kubernetes Job Before Its First Run
+15. How to Keep Jenkins Agent Pods off the Controller Node with Pod Anti-Affinity
+16. How to Diagnose Broad Pod-Affinity Selectors That Fail to Pair StatefulSet Replicas by Ordinal
+17. How to Measure InterPodAffinity Scheduler Latency Before Expanding Rules Across a Large Cluster
+18. How to Catch Invalid Node-Affinity Label Values Before They Leave Pods Pending
+19. How to Resolve Cilium Operator Anti-Affinity Conflicts on a Single-Node Cluster
+20. How to Replace Pod-Affinity Minimum-Replica Assumptions with Kueue Workload Admission
+
+## SigNoz
+
+1. How to Fix an Empty PostgreSQL Dashboard in SigNoz When the Receiver Is Configured
+2. How to Send Logs and Metrics from Several Docker Hosts to One Self-Hosted SigNoz Instance
+3. How to Make the SigNoz Docker Collector Report Host Metrics Instead of Its Own Container
+4. How to Adapt SigNoz Cloud Ingestion Examples for a Self-Hosted Collector
+5. How to Send Diagnostic OTLP Telemetry to SigNoz When No Services Appear
+6. How to Fix HTTP and gRPC Exporter Mismatches When Sending Traces to SigNoz
+7. How to Correlate SigNoz Logs When Trace IDs Are Stored in Nested Attributes
+8. How to Populate Blank Severity Fields in SigNoz from Structured Application Logs
+9. How to Alert in SigNoz When a Heartbeat Metric Stops Arriving
+10. How to Detect One Missing Host in a Grouped SigNoz Alert While Other Hosts Still Report
+11. How to Size SigNoz ClickHouse Memory After Repeated Out-of-Memory Failures
+12. How to Change SigNoz Retention and Check Which Data the New Policy Applies To
+13. How to Migrate a Legacy SigNoz Docker Compose Deployment to Foundry While Reusing Data Volumes
+14. How to Preserve Custom SigNoz Docker Settings Across Foundry Regeneration
+15. How to Monitor HTTP Response Bodies and Status Codes Together in SigNoz
+16. How to Add TLS Certificate Expiry Alerts to SigNoz HTTP Endpoint Monitoring
+17. How to Find Failed Backend Request Steps with SigNoz Trace Funnels
+18. How to Show One Result per Request in SigNoz Instead of One Row per Span
+19. How to Share a SigNoz Dashboard with Its Current Service and Environment Selections
+20. How to Migrate Terraform-Managed SigNoz Dashboards to the V2 API Schema
+
+## Docker Buildx
+
+1. How to Load a Docker Buildx Result That Is Missing from docker image ls
+2. How to Fix Docker Buildx FROM Failures When the Base Image Exists Only in the Local Docker Daemon
+3. How to Add a Private Registry CA to a Docker Buildx Container Builder
+4. How to Resolve Private Hostnames in Docker Buildx When Host Networking Ignores /etc/hosts
+5. How to Connect a Docker Buildx Builder to a Service on a Custom Docker Network
+6. How to Recreate a Docker Buildx Builder While Keeping Its Existing Cache Volume
+7. How to Identify Which Docker Buildx Builder Is Filling Its Cache Storage
+8. How to Limit Docker Buildx Step Parallelism on a CPU-Constrained CI Runner
+9. How to Fix Empty TARGETARCH Values Inside Docker Buildx RUN Instructions
+10. How to Select ARMv6 Build Artifacts in Docker Buildx When QEMU Reports ARMv7
+11. How to Merge Attestation-Bearing Buildx Images When docker manifest Rejects a Manifest List
+12. How to Preserve Buildx Provenance When Loading Images into a Local Docker Image Store
+13. How to Start Compose Services from Images Built with Docker Buildx Bake
+14. How to Override a Dockerfile Base Image with a Docker Buildx Named Context
+15. How to Reuse a Buildx Bake Target as Another Target's Build Context Without Publishing an Intermediate Image
+16. How to Pass Shell-Computed Values into Docker Buildx Bake Variables
+17. How to Fix Docker Buildx Bake Matrix Targets That Overwrite Another Environment's Tags
+18. How to Override a List Variable in Docker Buildx Bake from a CI Environment Variable
+19. How to Fix Docker Buildx Cache Export Errors by Checking the Driver and Image Store
+20. How to Rerun One Docker Buildx Stage with no-cache-filter While Reusing Earlier Layers
