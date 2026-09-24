@@ -271,7 +271,6 @@
 
 ## PCI DSS
 
-24. How to Build a PCI DSS Responsibility Matrix for Cloud Providers and Other TPSPs
 25. How to Decide Whether an Identity, DNS, Code-Hosting, or Monitoring Vendor Is a PCI DSS TPSP
 26. How to Triage Thousands of Findings from PCI DSS Authenticated Internal Vulnerability Scans
 27. How to Scope a PCI DSS Penetration Test After a Significant Change
