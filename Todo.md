@@ -271,7 +271,6 @@
 
 ## PCI DSS
 
-36. How to Detect Unauthorized Wireless Access Points for PCI DSS Without Chasing Every Nearby SSID
 37. How to Build and Maintain PCI DSS Secure-Configuration Baselines with Documented Exceptions
 38. How to Prioritize and Install Critical PCI DSS Security Patches Within One Month
 39. How to Protect Application and System Account Credentials Under PCI DSS 4.0.1
