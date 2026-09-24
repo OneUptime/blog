@@ -271,7 +271,6 @@
 
 ## PCI DSS
 
-40. How to Review PCI DSS Security-Awareness Training Annually and Prove It Reflects New Threats
 
 ## Quotas
 
