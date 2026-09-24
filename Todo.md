@@ -271,7 +271,6 @@
 
 ## PCI DSS
 
-22. How to Document a PCI DSS Customized Approach with a Controls Matrix and Testing Plan
 23. How to Determine Whether Your Company Is a Merchant, Service Provider, or Both Under PCI DSS
 24. How to Build a PCI DSS Responsibility Matrix for Cloud Providers and Other TPSPs
 25. How to Decide Whether an Identity, DNS, Code-Hosting, or Monitoring Vendor Is a PCI DSS TPSP
