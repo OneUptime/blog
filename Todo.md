@@ -10153,3 +10153,233 @@
 18. How to Override a List Variable in Docker Buildx Bake from a CI Environment Variable
 19. How to Fix Docker Buildx Cache Export Errors by Checking the Driver and Image Store
 20. How to Rerun One Docker Buildx Stage with no-cache-filter While Reusing Earlier Layers
+
+## Encryption
+
+1. How to Exchange AES-GCM Ciphertext and Authentication Tags Between Node.js and Java
+2. How to Fix Invalid AES Key Length Errors Caused by Base64 and Hex Encoding
+3. How to Bind Encrypted Database Fields to Their Rows with AEAD Associated Data
+4. How to Store Password-Based Encryption Salts and AES-GCM IVs Beside Ciphertext
+5. How to Prevent AES-GCM Nonce Reuse Across Concurrent Encryption Workers
+6. How to Keep AES-GCM Plaintext Private Until Authentication Succeeds
+7. How to Derive a Fernet Encryption Key from a Password with Argon2id
+8. How to Change a Master Password Without Re-Encrypting Every Stored File
+9. How to Rotate Fernet Tokens Without Resetting Their Original Expiration Time
+10. How to Diagnose Fernet InvalidToken Errors from Wrong Keys, Corruption, and Expiration
+11. How to Encrypt Large Files with Bounded Memory Using Libsodium Secretstream
+12. How to Detect Missing Final Chunks in Libsodium Secretstream Decryption
+13. How to Choose Between AES-GCM and XChaCha20-Poly1305 for Random Nonces
+14. How to Match RSA-OAEP and MGF1 Hashes When Unwrapping AES Keys Across Java and Node.js
+15. How to Replace RSA Data-Too-Large Errors with Hybrid File Encryption
+16. How to Migrate Stored AES-CBC Records to Authenticated Encryption
+17. How to Use Tink Deterministic Encryption While Accounting for Equality Leakage
+18. How to Import and Export AES Encryption Keys Between Web Crypto and Node.js
+19. How to Persist Non-Extractable Web Crypto Keys in IndexedDB Across Browser Sessions
+20. How to Combine File Compression and Encryption While Managing Length Leakage
+
+## Replication Lag
+
+1. How to Detect a Disconnected PostgreSQL Standby When Received and Replayed LSNs Still Match
+2. How to Classify PostgreSQL Replay Stalls with pg_stat_database_conflicts and Recovery Wait Logs
+3. How to Diagnose PostgreSQL Replay Conflicts That Persist with hot_standby_feedback Enabled
+4. How to Tune PostgreSQL Standby Query Grace Periods When Earlier Conflicts Consume the Replay Delay Budget
+5. How to Test Whether recovery_prefetch Improves PostgreSQL WAL Replay Throughput
+6. How to Estimate PostgreSQL Replica Catch-Up Time from WAL Backlog and Net Replay Throughput
+7. How to Check Whether a PostgreSQL Replica Is Lagging Because WAL Replay Was Explicitly Paused
+8. How to Resume PostgreSQL Recovery Paused by Primary and Standby Parameter Mismatches
+9. How to Reproduce PostgreSQL Replication Delay in Application Tests with recovery_min_apply_delay
+10. How to Identify EBS IOPS Limits Behind PostgreSQL Replica Lag After a Bulk Load
+11. How to Find MySQL Tables Whose Missing Primary Keys Make Row-Based Replication Fall Behind
+12. How to Trace MySQL Replica Lag to Metadata Locks Introduced by Foreign-Key DDL
+13. How to Diagnose MyISAM Table Locks That Serialize MySQL Replica Workers
+14. How to Measure MySQL Replication Delay with pt-heartbeat When the Native Lag Metric Misses Receiver Stalls
+15. How to Account for Intermediate Apply Delay in a Cascading MySQL Replication Topology
+16. How to Remove an Intentional MySQL Replication Delay While Preserving Downloaded Relay Logs
+17. How to Diagnose MariaDB Replica Lag When Workers Wait for Room in the Event Queue
+18. How to Stop a Delayed MySQL Replica Before It Applies an Accidental DELETE
+19. How to Keep pg_dump on a PostgreSQL Standby from Causing Unbounded Replay Lag
+20. How to Reduce Low-Traffic PostgreSQL Archive-Shipping Delay with archive_timeout
+
+## Pulumi ESC
+
+1. How to Replace Shared Developer Dotenv Files with Pulumi ESC Commands
+2. How to Expose 1Password Secrets as Pulumi Stack Configuration Through ESC
+3. How to Store Multiline PEM Private Keys in Pulumi ESC Without Breaking Newlines
+4. How to Restrict GitHub Actions OIDC Access to a Specific Pulumi ESC Environment
+5. How to Update Pulumi ESC Secret Values Programmatically with the TypeScript SDK
+6. How to Reuse Pulumi Stack Outputs as Application Environment Variables in ESC
+7. How to Supply Terraform Provider Credentials from Pulumi ESC
+8. How to Synchronize Pulumi ESC Secrets to External Platforms with Pulumi IaC
+9. How to Load Pulumi ESC Secrets at Application Startup with the TypeScript SDK
+10. How to Compose Shared and Environment-Specific Configuration with Pulumi ESC Imports
+11. How to Debug Pulumi ESC Interpolations That Keep Values from an Imported Environment
+12. How to Promote Pulumi ESC Configuration with Version Tags
+13. How to Restore a Previous Pulumi ESC Environment Revision After a Bad Change
+14. How to Audit Who Opened or Changed a Pulumi ESC Environment
+15. How to Deliver Pulumi ESC Values to Kubernetes with External Secrets Operator
+16. How to Pass Pulumi ESC Secrets to Tools That Require Credential Files
+17. How to Migrate Pulumi ESC Scripts from the Standalone CLI to Pulumi Env
+18. How to Extract Individual JSON Secret Fields in Pulumi ESC with fn::fromJSON
+19. How to Run AWS CLI Commands with Short-Lived Credentials from Pulumi ESC
+20. How to Separate Pulumi ESC Definition Access from Permission to Decrypt Secrets
+
+## Datree
+
+1. How to Keep Existing Datree Checks Running Offline After the Hosted Service Shutdown
+2. How to Restore Kubernetes Schema Validation in Offline Datree with Vendored Schemas
+3. How to Recover a Legacy Datree Installation When get.datree.io No Longer Resolves
+4. How to Fix Datree Command Not Found in an Existing Windows Installation
+5. How to Disable a Datree Built-In Rule Locally Without Dashboard Access
+6. How to Maintain Separate Staging and Production Policies in Offline Datree
+7. How to Validate Helm Rendered Manifests with an Existing Datree CLI Pipeline
+8. How to Trace Datree Failures Back to Saved Kustomize Rendered Manifests
+9. How to Diagnose Custom Schema Paths Ignored by Datree Pre-Commit Hooks
+10. How to Debug a Custom Rego Rule That Never Reports Violations in Datree
+11. How to Scope Datree JSON Schema Rules to Workload Kinds and Avoid Service False Positives
+12. How to Handle Datree Offline Notices That Break JSON Output Parsing
+13. How to Map Datree Container Array Index Errors to Container Names
+14. How to Extract Private CRD Schemas for an Existing Offline Datree Workflow
+15. How to Limit Datree Scans to Kubernetes Files in a Mixed Configuration Repository
+16. How to Pin an Archived Datree Binary and Policy File for Reproducible CI Checks
+17. How to Replace a Datree CI Gate with Kubeconform and Conftest
+18. How to Migrate Datree Rules to Kyverno with Passing and Failing Manifest Fixtures
+19. How to Check Newer Kubernetes APIs When Archived Datree Rules Stop Keeping Up
+20. How to Build Regression Fixtures for Custom Rules in an Existing Datree Policy File
+
+## Knative Serving
+
+1. How to Mirror Knative Serving Control Plane and Queue Proxy Images for Offline Installation
+2. How to Persist Knative ConfigMap Changes When the Operator Keeps Reverting Them
+3. How to Make the Knative Serving Controller Trust a Private Registry CA
+4. How to Skip Knative Image Tag Resolution for an HTTP-Only Development Registry
+5. How to Enable Init Containers for Knative Serving Startup Tasks
+6. How to Enable Persistent Volume Claims and Write Access in Knative Serving
+7. How to Choose PVC Access Modes Before Scaling a Knative Service Across Nodes
+8. How to Probe Every User Container in a Knative Service with Sidecars
+9. How to Align Knative Startup Probes with the Revision Progress Deadline
+10. How to Fix Knative Readiness Failures Caused by the Wrong Container Listening Port
+11. How to Create Knative Services with the Kubernetes Python CustomObjectsApi
+12. How to Patch Knative Autoscaling Annotations Through the Kubernetes REST API
+13. How to Diagnose Knative Revisions That Survive Configured Garbage Collection
+14. How to Wait for Knative Service Dependents to Disappear After Deletion
+15. How to Resolve Knative DomainAlreadyClaimed Errors When Moving a Domain Between Namespaces
+16. How to Call a Cluster-Local Knative Service from Another Namespace
+17. How to Expose Knative Services to VPC Clients Through an Internal Gateway
+18. How to Apply Istio Authorization to Knative Services Without Blocking System Probes
+19. How to Set a Knative HPA Memory Target in Mi with Revision Annotations
+20. How to Diagnose Knative Pods Stuck Pending When EKS Has No Node Autoscaling
+
+## Model Routing
+
+1. How to Route LLM Requests by Task Type with Arch-Router Policies
+2. How to Calibrate RouteLLM Thresholds for Your Own Prompt Distribution
+3. How to Choose Strong and Weak Models for a RouteLLM Deployment
+4. How to Measure LLM Routing Cost per Accepted Result Across Retries and Escalations
+5. How to Add Application-Specific Evaluation Tasks to RouteLLM Benchmarks
+6. How to Route Requests Between Local LLMs and Hosted Model APIs with RouteLLM
+7. How to Keep LLM Fallback Routes Compatible with Tools and Structured Outputs
+8. How to Route Oversized Prompts to Larger Context Windows with LiteLLM
+9. How to Configure Same-Model Provider Failover Before Cross-Model Fallbacks in LiteLLM
+10. How to Test LLM Router Behavior When Streaming Responses Fail Midway
+11. How to Bound LLM Router Latency with Retry Limits and End-to-End Timeouts
+12. How to Share LiteLLM Routing Rate-Limit State Across Proxy Replicas with Redis
+13. How to Stop LiteLLM from Repeatedly Routing Requests to Failing Deployments
+14. How to Preserve Prompt Cache Locality with LiteLLM Session Affinity
+15. How to Record Requested Models, Selected Deployments, and Fallbacks in LLM Routing Logs
+16. How to Tune LiteLLM Latency-Based Routing Without Overloading One Deployment
+17. How to Prioritize Low-Cost OpenRouter Providers with Latency Preferences
+18. How to Enforce Data-Retention Requirements Across OpenRouter Fallback Routes
+19. How to Keep LiteLLM Fallback Models Within a User's Access and Budget Limits
+20. How to Expose RouteLLM Through a Self-Hosted API for Existing Chat Clients
+
+## M3DB
+
+1. How to Choose Which M3DB, Coordinator, Query, and Aggregator Processes to Run
+2. How to Model M3DB Namespaces Around Metric Resolution and Retention
+3. How to Make a Bootstrapped M3DB Namespace Ready for Reads and Writes
+4. How to Inspect M3DB Shard States During a Slow Peer Bootstrap
+5. How to Diagnose M3DB Host-ID Mismatches Behind Not Responsible for Shard Errors
+6. How to Spread M3DB Replicas Across Zones Without Losing Read and Write Quorum
+7. How to Shorten M3DB Recovery When Commit-Log Replay Delays Bootstrapping
+8. How to Set M3DB Query Limits from Observed Disk Reads and Matched Series
+9. How to Choose M3DB Block Sizes Before Creating a Long-Retention Namespace
+10. How to Diagnose M3DB Memory-Allocation Errors When the Host Still Has Free RAM
+11. How to Collect M3DB CPU, Heap, Namespace, and Placement Diagnostics with debug/dump
+12. How to Fix Snappy Corrupt Input When Posting Metrics to M3DB Remote Write
+13. How to Diagnose Prometheus Remote-Write Queue Backlogs When Sending to M3DB
+14. How to Map InfluxDB Measurement Fields to Queryable M3DB Metric Names
+15. How to Query M3DB Metrics by Tag Values with the Prometheus HTTP API
+16. How to Connect Grafana to M3DB Through Its Prometheus-Compatible Query Endpoint
+17. How to Evaluate Prometheus Alert Rules Against Metrics Stored in M3DB
+18. How to Configure M3DB Aggregated Namespaces Without Downsampling Metrics Twice
+19. How to Reduce M3DB Query Fan-Out with Ingestion-Time Metric Rollups
+20. How to Diagnose Historical M3DB Writes Rejected Outside the Namespace Time Buffers
+
+## Policy Enforcement
+
+1. How to Enforce Kubernetes Replica Caps on Both Deployments and the Scale Subresource
+2. How to Cover Init and Ephemeral Containers in Kubernetes Admission Security Rules
+3. How to Map PodSpec Validation Across Deployments, Jobs, CronJobs, and Custom Workloads
+4. How to Validate Label Keys Containing Dots and Slashes in Kubernetes CEL Policies
+5. How to Prevent Missing Optional Fields from Crashing CEL Admission Expressions
+6. How to Compare Old and New Kubernetes Objects Without Treating Typed Specs as CEL Maps
+7. How to Diagnose Missing ConfigMap Parameters in ValidatingAdmissionPolicy Bindings
+8. How to Recover Namespace Deletion Blocked by Missing Admission Policy Parameters
+9. How to Stage CRD Parameter Types Before Enabling a ValidatingAdmissionPolicy
+10. How to Diagnose Transient Admission Denials After Recreating Policy Parameters
+11. How to Detect Admission Policy Bindings That Reference a Missing Policy
+12. How to Reduce API Server Memory Used by Duplicated CEL Admission Policies
+13. How to Diagnose CEL Runtime Cost Limits in Kubernetes Admission Policies
+14. How to Test Identity-Dependent Admission Policies with Complete Request Context
+15. How to Build Admission Policy Regression Cases for Create Update Delete and Subresources
+16. How to Choose Between Policy Parameters and a Webhook for Cross-Resource Validation
+17. How to Limit ConfigMap Value Size with CEL Without Confusing Map Size and Byte Length
+18. How to Gate Admission Policy Break-Glass Access with CEL Authorization Checks
+19. How to Protect Admission Policy Parameter Resources from Unauthorized Rule Changes
+20. How to Capture Admission Policy Warning Headers in CI Validation Results
+
+## CloudNativePG
+
+1. How to Make CloudNativePG Apply Rotated Application Passwords Immediately with the cnpg.io/reload Label
+2. How to Map CloudNativePG Secret Keys to the Environment Variables an Application Expects
+3. How to Diagnose CloudNativePG DataGrip Login Failures Caused by Secret Encoding and Connection Settings
+4. How to Expose CloudNativePG Through a Managed LoadBalancer Service That Follows the Primary
+5. How to Restore CloudNativePG API Server Access Under Default-Deny NetworkPolicies
+6. How to Diagnose CloudNativePG initdb Permission Denied Errors on CSI Volumes
+7. How to Resolve CloudNativePG PVC Expansion Stuck in FileSystemResizePending on AKS
+8. How to Plan Independent Data and WAL Volume Growth in CloudNativePG
+9. How to Hibernate and Resume CloudNativePG Clusters While Retaining Their PVCs
+10. How to Diagnose CloudNativePG Pods Still Running After an Argo CD Suspend Action
+11. How to Drain a Node Hosting a Single-Instance CloudNativePG Cluster with a Planned Downtime Window
+12. How to Present a Custom Server Certificate from a CloudNativePG PgBouncer Pooler
+13. How to Diagnose CloudNativePG Pooler auth_query Failures After Supplying Custom Certificate Secrets
+14. How to Create Separate Read-Only and Read-Write PgBouncer Endpoints in CloudNativePG
+15. How to Diagnose CloudNativePG Pooler Deletion Stuck During Argo CD Foreground Pruning
+16. How to Restore Missing Shared Preload Libraries After CloudNativePG Recovery
+17. How to Add pgvector to CloudNativePG PostgreSQL 18 with Image Volume Extensions
+18. How to Install CloudNativePG Extension SQL Objects Declaratively After Mounting an Extension Image
+19. How to Suspend CloudNativePG ScheduledBackups During Planned Cluster Hibernation
+20. How to Diagnose CloudNativePG Webhook Certificate Errors After an Operator Version Change
+
+## Buffer Cache
+
+1. How to Measure Used and Unused PostgreSQL Shared Buffers with pg_buffercache
+2. How to Attribute PostgreSQL Cached Pages to Relations Without Mixing Database OIDs
+3. How to Check What Fraction of a PostgreSQL Index Is Resident in the Buffer Cache
+4. How to Explain Dirty Buffers Produced by a PostgreSQL SELECT Query
+5. How to Monitor Dirty and Pinned PostgreSQL Buffers with pg_buffercache_summary
+6. How to Investigate PostgreSQL Cache Eviction Pressure with Buffer Usage Counts
+7. How to Let a PostgreSQL Monitoring Role Inspect pg_buffercache Without Granting Superuser
+8. How to Fix pg_buffercache_pages Record-Type Errors by Using the Extension View
+9. How to Evict PostgreSQL Shared Buffers for Repeatable Tests with pg_buffercache
+10. How to Prewarm a Bounded PostgreSQL Block Range Instead of Loading an Entire Table
+11. How to Choose pg_prewarm Modes for PostgreSQL Shared Buffers and the Operating System Cache
+12. How to Reload PostgreSQL Buffer Cache Contents After Restart with Autoprewarm
+13. How to Prewarm a PostgreSQL Index Without Assuming Its Pages Will Stay Pinned
+14. How to Explain Repeated PostgreSQL Sequential-Scan Cache Misses Caused by Buffer Rings
+15. How to Diagnose PostgreSQL Sequential Scans That Start Mid-Table with synchronize_seqscans
+16. How to Count PostgreSQL EXPLAIN Buffer Accesses Without Double-Counting Parent and Child Nodes
+17. How to Set effective_cache_size Without Double-Counting PostgreSQL Shared Buffers
+18. How to Diagnose Slower PostgreSQL Scans After Increasing shared_buffers
+19. How to Save and Reload MySQL InnoDB Buffer Pool State and Verify Background Load Completion
+20. How to Protect the MySQL InnoDB Buffer Pool from One-Off Full-Table Scans
