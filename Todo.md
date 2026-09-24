@@ -271,7 +271,6 @@
 
 ## PCI DSS
 
-1. How to Map Cardholder Data Flows and Define Your PCI DSS Scope
 2. How to Choose the Correct PCI DSS SAQ: A, A-EP, C, or D
 3. How to Reduce PCI DSS Scope with a Fully Hosted Checkout Page
 4. How to Keep an Embedded Payment iFrame Eligible for SAQ A
