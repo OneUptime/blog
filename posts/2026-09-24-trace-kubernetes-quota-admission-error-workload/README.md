@@ -10,7 +10,7 @@ Description: Trace a rejected Pod creation through Events and owner references t
 
 A Deployment can be accepted while every Pod it tries to create is rejected. Looking for the missing Pod then produces a misleading result: there is no Pod object to describe. Start with the admission failure and follow the controller that attempted the creation.
 
-This procedure uses `kubectl`, `jq`, and permission to read workloads, Events, and ResourceQuotas in the affected namespace. The [Kubernetes quota documentation](https://kubernetes.io/docs/concepts/policy/resource-quotas/) describes this distinction between accepting a workload object and admitting its Pods.
+This procedure uses `kubectl`, `jq`, and permission to read workloads, Events, ResourceQuotas, and LimitRanges in the affected namespace. The [Kubernetes quota documentation](https://kubernetes.io/docs/concepts/policy/resource-quotas/) describes this distinction between accepting a workload object and admitting its Pods.
 
 ## Preserve the rejection before changing anything
 
@@ -25,7 +25,7 @@ kubectl get events -n "$ns" --sort-by=.metadata.creationTimestamp
 
 A quota rejection identifies the quota and resource, with the proposed increment, recorded usage, and allowed maximum. For example, `requested: requests.cpu=500m, used: requests.cpu=2, limited: requests.cpu=2` means that the new object needs another half core of request budget. It does not mean the containers are currently consuming two cores.
 
-Distinguish `exceeded quota` from errors saying a resource must be specified. The first needs capacity or workload changes; the second usually needs explicit resource settings or suitable defaults. Node pressure and `FailedScheduling` happen at a different stage, after a Pod exists.
+Distinguish `exceeded quota` from errors saying a resource must be specified. The first needs capacity or workload changes; the second usually needs explicit resource settings or suitable defaults. Node-pressure eviction and `FailedScheduling` happen at a different stage, after a Pod exists.
 
 ## Find the object that emitted FailedCreate
 
@@ -73,6 +73,6 @@ Admission can add defaults or sidecars to the eventual Pod. CPU and memory accou
 
 ## Fix the owning workload and verify recovery
 
-Change the controller template when requests are wrong. If the requested capacity is intentional, adjust the relevant quota through its normal management path after checking cluster capacity. Inspect every matching quota: a generous unscoped budget cannot override a tighter applicable scoped budget.
+Change the owning workload's template when requests are wrong. For an existing Job, resource changes require a suspended Job and cluster support for mutable Pod resources; otherwise, create a replacement Job with the corrected template. Updating a CronJob's job template affects only future Jobs. If the requested capacity is intentional, adjust the relevant quota through its normal management path after checking cluster capacity. Inspect every matching quota: a generous unscoped budget cannot override a tighter applicable scoped budget.
 
 After the change, watch the owning controller and new Events. Confirm that a new Pod object appears, then confirm scheduling and readiness separately. A successful admission is progress, but the Pod can still fail scheduling, image pulls, or health checks. Capture the original Event, controller UID, quota name, and successful replacement Pod in the incident record so the diagnosis remains reproducible.
