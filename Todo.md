@@ -271,7 +271,6 @@
 
 ## PCI DSS
 
-18. How to Validate a Payment Provider’s PCI Status and Collect AOC Evidence
 19. How to Build a PCI DSS Incident-Response Playbook for Cardholder Data Exposure
 20. How to Turn PCI DSS Evidence Collection into a Repeatable Engineering Workflow
 21. How to Write a PCI DSS 4.0.1 Targeted Risk Analysis for Controls with Flexible Frequencies
