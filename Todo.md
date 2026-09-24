@@ -271,7 +271,6 @@
 
 ## PCI DSS
 
-32. How to Scope Call Recordings, DTMF Tones, and VoIP Systems Under PCI DSS—and Reduce Stored Card Data
 33. How to Meet PCI DSS 4.0.1 Requirement 3.5.1.2 When PAN Resides on Non-Removable Media
 34. How to Control Copy, Export, and Relocation of PAN from the Cardholder Data Environment
 35. How to Apply PCI DSS Anti-Malware Controls to Linux and Container Hosts
