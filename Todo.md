@@ -271,7 +271,6 @@
 
 ## PCI DSS
 
-15. How to Determine Whether Your E-Commerce Site Needs Quarterly ASV Scans
 16. How to Remediate Failed PCI Scans Without Disabling Security Controls
 17. How to Meet PCI DSS 4.0.1 Requirements for Payment-Page Scripts and Change Detection
 18. How to Validate a Payment Provider’s PCI Status and Collect AOC Evidence
