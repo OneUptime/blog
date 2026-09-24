@@ -274,7 +274,6 @@
 
 ## Quotas
 
-3. How to Pair LimitRange Defaults with ResourceQuota Without Surprise Pod Rejections
 4. How to Predict ResourceQuota Accounting When a Container Sets Limits but Omits Requests
 5. How to Recover Job Object Quota by Expiring Finished Kubernetes Jobs Automatically
 6. How to Diagnose a ResourceQuota Whose status.used Appears Stale or Incorrect
