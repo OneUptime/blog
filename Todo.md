@@ -271,7 +271,6 @@
 
 ## PCI DSS
 
-28. How to Define the IP Inventory for Quarterly PCI DSS ASV Scans
 29. How to Prove That Your Systems Do Not Store PAN with Data-Discovery Sampling
 30. How to Set and Verify a PCI DSS Cardholder-Data Retention and Deletion Schedule
 31. How to Handle PAN in Backups, Snapshots, and Disaster-Recovery Copies
