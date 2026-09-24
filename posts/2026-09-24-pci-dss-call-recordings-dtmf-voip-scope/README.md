@@ -28,7 +28,7 @@ A PAN may be stored for a justified purpose if applicable protections are met. C
 
 PCI SSC [FAQ 1210, updated June 2025](https://www.pcisecuritystandards.org/faqs/1210/), states that retaining these codes in digital audio after authorization violates Requirement 3.3.1, even if encrypted. The FAQ prioritizes suppressing the data during collection and immediate secure deletion if prevention is not possible.
 
-It also describes a compensating-control process when legitimate technical or business constraints prevent secure deletion. That involves documented justification, risk assessment, controls restricting access and queries, and assessment validation. It is not a blanket exemption for recordings that are difficult to search, nor permission to retain CVV for convenience.
+It also describes a compensating-control process when legitimate technical or business constraints prevent secure deletion. That involves documented justification, risk assessments annually and after significant changes, securing SAD under applicable PCI DSS requirements, controls preventing SAD access and call recording queries, and validation during annual PCI DSS assessments. It is not a blanket exemption for recordings that are difficult to search, nor permission to retain CVV for convenience.
 
 Treat any such constraint as an assessment issue requiring a defensible resolution. Do not build a routine payment process around keeping SAD.
 
