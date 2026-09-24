@@ -271,7 +271,6 @@
 
 ## PCI DSS
 
-9. How to Mask PANs Correctly in Admin Screens, Receipts, and Support Tools
 10. How to Secure Card Data in Transit—and Why HTTPS Alone Does Not Make a Site PCI Compliant
 11. How to Store, Rotate, and Restrict Access to Card-Encryption Keys
 12. How to Segment the Cardholder Data Environment and Validate the Segmentation
