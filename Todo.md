@@ -271,7 +271,6 @@
 
 ## PCI DSS
 
-20. How to Turn PCI DSS Evidence Collection into a Repeatable Engineering Workflow
 21. How to Write a PCI DSS 4.0.1 Targeted Risk Analysis for Controls with Flexible Frequencies
 22. How to Document a PCI DSS Customized Approach with a Controls Matrix and Testing Plan
 23. How to Determine Whether Your Company Is a Merchant, Service Provider, or Both Under PCI DSS
