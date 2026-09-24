@@ -22,7 +22,7 @@ Record location owners, formats, access methods, retention periods, and discover
 
 ## Test the detector before trusting its results
 
-Use approved synthetic payment test values in an isolated test dataset. Exercise the actual formats your systems produce: JSON fields, delimiters, line wrapping, compressed archives, structured database columns, and supported document formats. Verify that the detector recognizes the expected cases and avoids logging the full matched values.
+Use approved synthetic test values that the selected detector is documented to recognize in an isolated test dataset. Some detectors deliberately exclude reserved payment test numbers, so confirm the expected behavior before using them as positive controls. [Microsoft Purview credit card detector](https://learn.microsoft.com/en-us/purview/sit-defn-credit-card-number) Exercise the actual formats your systems produce: JSON fields, delimiters, line wrapping, compressed archives, structured database columns, and supported document formats. Verify that the detector recognizes the expected cases and avoids logging the full matched values.
 
 A digit pattern and Luhn checksum can identify candidates, but they are neither complete proof of PAN nor a complete detector. Some ordinary identifiers pass a checksum. Data can be encoded, split, embedded in images, or stored in a format the tool does not parse. Record supported formats and known blind spots.
 
