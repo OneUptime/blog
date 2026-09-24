@@ -274,7 +274,6 @@
 
 ## Quotas
 
-8. How to Set Object-Count Quotas for Jobs, Secrets, Services, and PVCs Without Breaking Controllers
 9. How to Split Kubernetes Quota by PriorityClass Using ResourceQuota Scope Selectors
 10. How to Audit Hard and Used Quota Across Every Namespace with kubectl and jq
 11. How to Alert Before a Namespace Hits ResourceQuota Using kube-state-metrics and Prometheus
