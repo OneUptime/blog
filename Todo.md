@@ -274,7 +274,6 @@
 
 ## Quotas
 
-6. How to Diagnose a ResourceQuota Whose status.used Appears Stale or Incorrect
 7. How to Reserve Rolling-Update Headroom in a Namespace with Strict CPU and Memory Quotas
 8. How to Set Object-Count Quotas for Jobs, Secrets, Services, and PVCs Without Breaking Controllers
 9. How to Split Kubernetes Quota by PriorityClass Using ResourceQuota Scope Selectors
