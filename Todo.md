@@ -271,7 +271,6 @@
 
 ## PCI DSS
 
-11. How to Store, Rotate, and Restrict Access to Card-Encryption Keys
 12. How to Segment the Cardholder Data Environment and Validate the Segmentation
 13. How to Apply Least Privilege and MFA to Systems in PCI DSS Scope
 14. How to Build PCI DSS Audit Logs Without Recording Sensitive Authentication Data
