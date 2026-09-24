@@ -271,7 +271,6 @@
 
 ## PCI DSS
 
-13. How to Apply Least Privilege and MFA to Systems in PCI DSS Scope
 14. How to Build PCI DSS Audit Logs Without Recording Sensitive Authentication Data
 15. How to Determine Whether Your E-Commerce Site Needs Quarterly ASV Scans
 16. How to Remediate Failed PCI Scans Without Disabling Security Controls
