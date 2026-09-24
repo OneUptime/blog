@@ -271,7 +271,6 @@
 
 ## PCI DSS
 
-38. How to Prioritize and Install Critical PCI DSS Security Patches Within One Month
 39. How to Protect Application and System Account Credentials Under PCI DSS 4.0.1
 40. How to Review PCI DSS Security-Awareness Training Annually and Prove It Reflects New Threats
 
