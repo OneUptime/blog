@@ -271,7 +271,6 @@
 
 ## PCI DSS
 
-5. How to Determine Whether Hosted Fields Put Your E-Commerce Site in SAQ A or A-EP
 6. How to Tokenize Card Data So Your Application Never Stores the PAN
 7. How to Store a PAN Safely When Business Requirements Make It Unavoidable
 8. How to Prevent CVV and Full Card Numbers from Leaking into Logs
