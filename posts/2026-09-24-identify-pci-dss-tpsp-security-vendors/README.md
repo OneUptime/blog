@@ -56,7 +56,7 @@ For non-data-handling providers, the assessment scope still includes the people,
 
 ## Apply the specific exclusions carefully
 
-PCI SSC identifies a narrow exclusion for third-party script providers: their only service must be unrelated to payment processing and their scripts must be unable to affect cardholder-data or sensitive-authentication-data security. Both conditions matter. A script's marketing purpose alone does not establish the second condition. [PCI SSC FAQ 1592](https://www.pcisecuritystandards.org/faqs/1592/)
+PCI SSC identifies a narrow exclusion for third-party script providers for Requirements 12.8 and 12.9 in an entity's e-commerce assessment: their only service must be providing scripts unrelated to payment processing and their scripts must be unable to affect cardholder-data or sensitive-authentication-data security. Both conditions matter. A script's marketing purpose alone does not establish the second condition. [PCI SSC FAQ 1592](https://www.pcisecuritystandards.org/faqs/1592/)
 
 ASVs and QSAs are also not TPSPs for Requirements 12.8 and 12.9 when their only services are ASV scanning and PCI DSS assessments respectively. Additional services can change that conclusion. Normal supplier due diligence still applies. [PCI SSC FAQ 1598](https://www.pcisecuritystandards.org/faqs/1598/)
 
