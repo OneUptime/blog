@@ -271,7 +271,6 @@
 
 ## PCI DSS
 
-3. How to Reduce PCI DSS Scope with a Fully Hosted Checkout Page
 4. How to Keep an Embedded Payment iFrame Eligible for SAQ A
 5. How to Determine Whether Hosted Fields Put Your E-Commerce Site in SAQ A or A-EP
 6. How to Tokenize Card Data So Your Application Never Stores the PAN
