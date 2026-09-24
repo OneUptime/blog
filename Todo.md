@@ -271,7 +271,6 @@
 
 ## PCI DSS
 
-26. How to Triage Thousands of Findings from PCI DSS Authenticated Internal Vulnerability Scans
 27. How to Scope a PCI DSS Penetration Test After a Significant Change
 28. How to Define the IP Inventory for Quarterly PCI DSS ASV Scans
 29. How to Prove That Your Systems Do Not Store PAN with Data-Discovery Sampling
