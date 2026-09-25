@@ -277,7 +277,6 @@
 
 ## Pod Scheduling
 
-9. How to Rebalance Pods After Adding Nodes When the Scheduler Will Not Move Running Workloads
 10. How to Schedule One Pod on Every Eligible Node: DaemonSet vs Anti-Affinity
 11. How to Explain Why Kubernetes Scheduled a Pod on an Apparently Busier Node
 12. How to Bin-Pack Pods with the NodeResourcesFit MostAllocated Scheduler Strategy
