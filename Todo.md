@@ -274,7 +274,6 @@
 
 ## Quotas
 
-15. How to Identify the Exact Regional Cloud Quota Blocking an AWS, Azure, or GCP Deployment
 16. How to Automate AWS Service Quota Increase Requests and Track Their Approval Status
 17. How to Troubleshoot an AWS Service Quota Increase That Is Rejected or Stuck Pending
 18. How to Distinguish a Service Quota Error from Rate Limiting and Regional Capacity Exhaustion
