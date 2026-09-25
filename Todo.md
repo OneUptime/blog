@@ -274,7 +274,6 @@
 
 ## Quotas
 
-14. How to Preflight Kubernetes Manifests Against Remaining Namespace Quota in CI
 15. How to Identify the Exact Regional Cloud Quota Blocking an AWS, Azure, or GCP Deployment
 16. How to Automate AWS Service Quota Increase Requests and Track Their Approval Status
 17. How to Troubleshoot an AWS Service Quota Increase That Is Rejected or Stuck Pending
