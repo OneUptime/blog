@@ -271,7 +271,6 @@
 
 ## PCI DSS
 
-60. How to Distinguish PCI DSS Assessor Sampling from Required Vulnerability Scan Coverage
 
 ## Quotas
 
