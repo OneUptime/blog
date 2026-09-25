@@ -277,7 +277,6 @@
 
 ## Pod Scheduling
 
-15. How to Fix “Volume Node Affinity Conflict” by Delaying PVC Binding Until Scheduling
 16. How to Design Preferred Fallback Scheduling Across On-Demand and Spot Node Pools
 17. How to Schedule GPU Pods When Taints, Device Plugins, and Extended Resources Interact
 18. How to Make Cluster Autoscaler React to Pods Blocked by Affinity or Topology Rules
