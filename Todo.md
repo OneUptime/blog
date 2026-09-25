@@ -277,7 +277,6 @@
 
 ## Pod Scheduling
 
-4. How to Keep a Toleration from Sending Pods to the Wrong Node Pool
 5. How to Choose Between nodeSelector and Required or Preferred Node Affinity
 6. How to Spread Deployment Replicas Across Both Zones and Hosts Without Making Pods Unschedulable
 7. How to Fix Topology Spread Constraints When Labels Do Not Match Their Own Pods
