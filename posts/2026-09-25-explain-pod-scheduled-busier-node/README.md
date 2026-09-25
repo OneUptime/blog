@@ -62,7 +62,7 @@ A toleration does not force placement on a particular pool. A preferred affinity
 
 ## Inspect the scheduler profile
 
-Eligible nodes receive scores from enabled plugins. Resource allocation, topology distribution, preferred affinity, taint preferences, and image locality can all contribute. The selected node reflects the combined result, not one isolated CPU score.
+The scheduler scores the feasible nodes it found using enabled plugins; it can stop searching after finding enough feasible nodes, so not every eligible node is necessarily scored. Resource allocation, topology distribution, preferred affinity, taint preferences, and image locality can all contribute. The selected node reflects the combined result, not one isolated CPU score.
 
 Check `.spec.schedulerName` and obtain the configuration for that scheduler or profile from the cluster operator. Do not assume every cluster uses an unchanged default. The [scheduler configuration reference](https://kubernetes.io/docs/reference/scheduling/config/) lists plugins and their extension points.
 
