@@ -50,7 +50,7 @@ A default event that records `sudo /bin/bash` may show who started the shell whi
 
 Sudo supports options including command-event logging, I/O logging, and, on supported systems, subcommand logging. The [versioned sudoers manual](https://www.sudo.ws/docs/man/1.9.14/sudoers.man.pdf) documents `log_subcmds` and its platform and version limitations. Verify the installed version and distribution behavior rather than copying a flag into every host.
 
-Collect the submitting identity, effective identity, host, session identifier, time, command or action, target, and result where appropriate. Forward evidence to storage protected from the administrator performing the action, with monitoring for forwarding failures and tampering.
+For each auditable event, Requirement 10.2.2 requires user identification, event type, date and time, success or failure, event origin, and the identity or name of the affected data, system component, resource, or service. Also collect the submitting identity, effective identity, host, and session identifier to preserve the attribution chain. Forward evidence to storage protected from the administrator performing the action, with monitoring for forwarding failures and tampering.
 
 Do not enable unrestricted input/output recording without understanding the data it captures. Passwords, tokens, PAN, and prohibited sensitive authentication data can appear in terminal streams. Design redaction and permitted workflows carefully; logging creates its own data-protection obligations.
 
@@ -70,6 +70,6 @@ Run an approved exercise using synthetic data. A named engineer should perform a
 
 Then exercise emergency checkout, expiration, and recovery. Verify that normal access is restored, temporary permissions are removed, reusable secrets are changed as appropriate, and the activity is reviewed against the authorized purpose.
 
-Include account termination and role removal in testing. A departed employee's SSH key, cached session, or vault access must not preserve administrative access indefinitely.
+Include account termination and role removal in testing. Under Requirement 8.2.5, access for terminated users must be revoked immediately, including access through SSH keys, cached sessions, and vaults.
 
 Retain the permissions review, authentication evidence, action records, exception approval, and closure together. The resulting trail should answer who acted, under which authority, on which system, and what they changed without relying on the administrator's memory.
