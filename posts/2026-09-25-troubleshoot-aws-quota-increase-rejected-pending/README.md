@@ -26,15 +26,15 @@ aws service-quotas get-requested-service-quota-change \
 
 The [GetRequestedServiceQuotaChange API](https://docs.aws.amazon.com/servicequotas/2019-06-24/apireference/API_GetRequestedServiceQuotaChange.html) returns the request's status and context. Save the full response as restricted operational evidence if more fields are needed. If the lookup fails, inspect the error rather than converting it into “still pending.” A wrong account, region, ID, or permission can all invalidate that conclusion.
 
-If the ID was lost, list request history for the specific service and quota:
+If the ID was lost, list request history for the specific service and quota. The examples below use EC2 quota `L-1216C47A`; replace the service and quota codes with those for your request:
 
 ```bash
 aws service-quotas list-requested-service-quota-change-history-by-quota \
   --service-code ec2 --quota-code L-1216C47A --region "$region" \
-  --output json
+  --quota-requested-at-level ALL --output json
 ```
 
-Match the desired value, submission time, and resource context. Keep CLI pagination enabled so an older request is not accidentally omitted.
+Match the desired value, submission time, and resource context. `ALL` includes resource-level requests that the default `ACCOUNT` filter omits. Keep CLI pagination enabled so an older request is not accidentally omitted.
 
 ## Interpret the state before choosing an action
 
