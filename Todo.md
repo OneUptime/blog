@@ -271,7 +271,6 @@
 
 ## PCI DSS
 
-54. How to Decide Which PCI DSS User Accounts Still Need Password Rotation After MFA Rollout
 55. How to Address PCI DSS Password-Length Gaps in a Cloud-Only Microsoft Entra Deployment
 56. How to Validate FIDO2 Authentication Factors for PCI DSS Remote and Administrative Access
 57. How to Test PCI DSS Idle-Session Reauthentication Across Workstations and Jump Hosts
