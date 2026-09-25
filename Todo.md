@@ -277,7 +277,6 @@
 
 ## Pod Scheduling
 
-1. How to Read “0/n Nodes Are Available” Events and Pinpoint Every Failed Scheduling Reason
 2. How to Identify Which Nodes Failed Each Constraint in a FailedScheduling Event
 3. How to Combine Taints, Tolerations, and Node Affinity for a Truly Dedicated Node Pool
 4. How to Keep a Toleration from Sending Pods to the Wrong Node Pool
