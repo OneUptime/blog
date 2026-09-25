@@ -277,7 +277,6 @@
 
 ## Pod Scheduling
 
-20. How to Debug Resource Fragmentation When Cluster Capacity Exists but No Single Node Fits the Pod
 
 ## Network Automation
 
