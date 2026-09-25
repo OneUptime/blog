@@ -271,7 +271,6 @@
 
 ## PCI DSS
 
-41. How to Choose Sufficient Scan-Account Privileges for PCI DSS Authenticated Vulnerability Scans
 42. How to Assess PCI DSS Authenticated Scanning When a Vendor Appliance Provides No OS Credentials
 43. How to Document PCI DSS Scan Remediation When a Rescan Finds Newly Disclosed Vulnerabilities
 44. How to Resolve PCI DSS ASV Scan Interference from IPS Rate Limits and Dynamic Blocking
