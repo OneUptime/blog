@@ -271,7 +271,6 @@
 
 ## PCI DSS
 
-53. How to Prevent Correlation Between Hashed and Truncated PAN Values Under PCI DSS
 54. How to Decide Which PCI DSS User Accounts Still Need Password Rotation After MFA Rollout
 55. How to Address PCI DSS Password-Length Gaps in a Cloud-Only Microsoft Entra Deployment
 56. How to Validate FIDO2 Authentication Factors for PCI DSS Remote and Administrative Access
