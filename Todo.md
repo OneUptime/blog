@@ -277,7 +277,6 @@
 
 ## Pod Scheduling
 
-18. How to Make Cluster Autoscaler React to Pods Blocked by Affinity or Topology Rules
 19. How to Prevent Control-Plane Taints from Stranding Essential Cluster Add-ons
 20. How to Debug Resource Fragmentation When Cluster Capacity Exists but No Single Node Fits the Pod
 
