@@ -70,7 +70,7 @@ Attach `depends_on = [terraform_data.quota_gate]` to the affected resource or mo
 
 ## Supply fresh, attributable usage
 
-Populate the budget from a controlled CI step that queries the deployment account and region. Use a service-specific inventory or a supported quota usage metric, preserving units and dimensions. [AWS quota monitoring](https://docs.aws.amazon.com/servicequotas/latest/userguide/monitoring-cloudwatch.html) documents the available CloudWatch integration; not every quota exposes a suitable immediate usage metric.
+Populate the budget from a controlled CI step that queries the deployment account and region. Use a service-specific inventory or a supported quota usage metric, preserving units and dimensions. [AWS quota monitoring](https://docs.aws.amazon.com/AmazonCloudWatch/latest/monitoring/CloudWatch-Quotas-Visualize-Alarms.html) documents the available CloudWatch integration; not every quota exposes a suitable immediate usage metric.
 
 Retain the raw response, collection time, identity, and calculation with the plan. Consider metric lag and concurrent deployments when choosing the margin. Failure to read usage must block the gate rather than substituting zero.
 

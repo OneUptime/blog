@@ -84,7 +84,7 @@ Resource fit uses requests, not the CPU utilization displayed by `kubectl top`. 
 
 A suffix such as `Preemption is not helpful for scheduling` describes a subsequent attempt to find room by removing lower-priority pods. It does not replace the original failure reasons. Eviction cannot make a node acquire a missing label or move a zonal volume.
 
-Investigate preemption only after identifying a node that could satisfy the non-resource constraints. The [priority and preemption documentation](https://kubernetes.io/docs/concepts/scheduling-eviction/pod-priority-preemption/) describes limitations including lower-priority victims and cross-node constraints.
+Investigate preemption after identifying a node that satisfies constraints eviction cannot fix, such as required node labels and volume topology. Removing lower-priority pods on that node can also resolve some pod anti-affinity conflicts; preemption is not limited to resource shortages. The [priority and preemption documentation](https://kubernetes.io/docs/concepts/scheduling-eviction/pod-priority-preemption/) describes limitations including lower-priority victims and cross-node constraints.
 
 ## Verify a complete scheduling path
 
