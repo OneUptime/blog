@@ -274,7 +274,6 @@
 
 ## Quotas
 
-20. How to Forecast Quota Needs and Request Increases Before a Multi-Region Launch
 
 ## Pod Scheduling
 
