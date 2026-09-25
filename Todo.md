@@ -277,7 +277,6 @@
 
 ## Pod Scheduling
 
-13. How to Fix “Preemption Is Not Helpful for Scheduling” for a High-Priority Pod
 14. How to Use PriorityClasses Without Causing Cascading Pod Preemptions
 15. How to Fix “Volume Node Affinity Conflict” by Delaying PVC Binding Until Scheduling
 16. How to Design Preferred Fallback Scheduling Across On-Demand and Spot Node Pools
