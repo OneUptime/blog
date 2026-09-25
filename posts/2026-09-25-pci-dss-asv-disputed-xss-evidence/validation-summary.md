@@ -1,4 +1,4 @@
-# Validation Summary: How to Submit Evidence for a Disputed Cross-Site Scripting Finding in a PCI DSS ASV Scan
+# Validation Summary: How to Submit Evidence for Disputed XSS Findings in PCI DSS ASV Scans
 
 ## Status
 validated

@@ -1,4 +1,4 @@
-# How to Build a PCI DSS Cryptography Inventory from TLS, SSH, and Application Configurations
+# How to Inventory TLS, SSH, and Application Cryptography for PCI DSS
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -1,4 +1,4 @@
-# How to Choose Pod Anti-Affinity vs Topology Spread Constraints for High Availability
+# How to Choose Pod Anti-Affinity vs Topology Spread for High Availability
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

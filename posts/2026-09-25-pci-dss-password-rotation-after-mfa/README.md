@@ -1,4 +1,4 @@
-# How to Decide Which PCI DSS User Accounts Still Need Password Rotation After MFA Rollout
+# How to Identify PCI DSS Password Rotation Requirements After MFA
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
@@ -44,7 +44,7 @@ Use a representative test identity for each access population and attempt the no
 
 Check whether “remember this device,” trusted-location exclusions, existing sessions, or administrator exemptions alter the security boundary. Their effect depends on the implementation; record what is actually required before protected access is granted.
 
-For required MFA, verify independent factor types, replay resistance, completion of all factors before access, and controlled, time-limited bypasses under [PCI DSS v4.0.1 Requirement 8.5.1](https://www.pcisecuritystandards.org/document_library/). Enrollment in MFA is not proof that MFA was enforced for the tested access.
+For required MFA, verify independent factor types, replay resistance, completion of all factors before access, and bypasses permitted only as documented, management-authorized exceptions for a limited time under [PCI DSS v4.0.1 Requirement 8.5.1](https://www.pcisecuritystandards.org/document_library/). Enrollment in MFA is not proof that MFA was enforced for the tested access.
 
 Retain sign-in evidence identifying the user, target, authentication method, policy result, and time. Avoid storing passwords, OTPs, or recovery secrets in the evidence packet.
 
@@ -60,6 +60,6 @@ Keep uncovered systems on the applicable rotation policy while the dynamic appro
 
 MFA does not exempt passwords used as authentication factors from the length and complexity requirements in 8.3.6. It also does not eliminate identity verification for resets, protection of authentication factors, or instructions to change suspected compromised passwords.
 
-Automated application and system accounts need their own review under Requirement 8.6, including risk-based credential changes and changes on suspected compromise under 8.6.3. Do not force a machine account into a human MFA classification or infer that removing staff password expiration changes its obligations.
+Automated application and system accounts need their own review under Requirement 8.6, including periodic password/passphrase changes at a frequency defined by a targeted risk analysis under 12.3.1, and changes on suspected or confirmed compromise under 8.6.3. Do not force a machine account into a human MFA classification or infer that removing staff password expiration changes its obligations.
 
 Finally, obtain a documented applicability decision per population, preserve unresolved paths, and assign an owner for drift detection. Revisit the decision when an application adds a local login, a vendor changes federation behavior, or an emergency account is used.

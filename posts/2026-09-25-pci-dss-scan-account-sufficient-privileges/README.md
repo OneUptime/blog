@@ -1,4 +1,4 @@
-# How to Choose Sufficient Scan-Account Privileges for PCI DSS Authenticated Vulnerability Scans
+# How to Choose Scan-Account Privileges for PCI DSS Authenticated Scans
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

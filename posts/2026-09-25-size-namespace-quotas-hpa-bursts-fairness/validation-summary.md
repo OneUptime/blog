@@ -1,4 +1,4 @@
-# Validation Summary: How to Size Namespace Quotas for HPA Bursts Without Defeating Multi-Tenant Fairness
+# Validation Summary: How to Size Namespace Quotas for HPA Bursts and Multi-Tenant Fairness
 
 ## Status
 

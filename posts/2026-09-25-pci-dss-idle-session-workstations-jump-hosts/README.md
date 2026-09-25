@@ -1,4 +1,4 @@
-# How to Test PCI DSS Idle-Session Reauthentication Across Workstations and Jump Hosts
+# How to Test PCI DSS Idle-Session Reauthentication on Workstations and Jump Hosts
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

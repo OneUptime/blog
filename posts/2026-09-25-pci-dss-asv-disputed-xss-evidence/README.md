@@ -1,4 +1,4 @@
-# How to Submit Evidence for a Disputed Cross-Site Scripting Finding in a PCI DSS ASV Scan
+# How to Submit Evidence for Disputed XSS Findings in PCI DSS ASV Scans
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

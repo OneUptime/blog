@@ -1,4 +1,4 @@
-# Validation Summary: How to Validate WAF Blocking or Immediate Alert Investigation for PCI DSS Requirement 6.4.2
+# Validation Summary: How to Validate WAF Blocking and Alert Investigation for PCI DSS 6.4.2
 
 ## Status
 validated

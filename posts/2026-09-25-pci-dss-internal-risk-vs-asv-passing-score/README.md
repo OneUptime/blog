@@ -1,4 +1,4 @@
-# How to Separate PCI DSS Internal Vulnerability Risk Rankings from ASV Passing-Score Rules
+# How to Separate PCI DSS Internal Risk Rankings from ASV Passing Rules
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

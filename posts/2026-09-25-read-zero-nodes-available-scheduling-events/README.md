@@ -1,4 +1,4 @@
-# How to Read “0/n Nodes Are Available” Events and Pinpoint Every Failed Scheduling Reason
+# How to Diagnose Every Scheduling Failure in Kubernetes Node Availability Events
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

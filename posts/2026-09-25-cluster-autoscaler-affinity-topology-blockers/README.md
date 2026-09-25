@@ -1,4 +1,4 @@
-# How to Make Cluster Autoscaler React to Pods Blocked by Affinity or Topology Rules
+# How to Make Cluster Autoscaler React to Affinity and Topology Blockers
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

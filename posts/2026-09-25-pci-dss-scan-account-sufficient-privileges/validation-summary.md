@@ -1,4 +1,4 @@
-# Validation Summary: How to Choose Sufficient Scan-Account Privileges for PCI DSS Authenticated Vulnerability Scans
+# Validation Summary: How to Choose Scan-Account Privileges for PCI DSS Authenticated Scans
 
 ## Status
 

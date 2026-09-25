@@ -1,4 +1,4 @@
-# Validation Summary: How to Assess PCI DSS Authenticated Scanning When a Vendor Appliance Provides No OS Credentials
+# Validation Summary: How to Assess PCI DSS Scans of Appliances Without OS Credentials
 
 ## Status
 

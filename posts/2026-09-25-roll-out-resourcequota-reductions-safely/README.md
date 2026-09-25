@@ -1,4 +1,4 @@
-# How to Roll Out ResourceQuota Changes Safely When Existing Workloads Already Exceed the New Limit
+# How to Reduce ResourceQuotas Safely When Workloads Exceed the New Limit
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

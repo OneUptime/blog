@@ -1,4 +1,4 @@
-# Validation Summary: How to Add Cloud Quota Prechecks to Terraform Before Provisioning Fails Mid-Apply
+# Validation Summary: How to Add Cloud Quota Prechecks Before Terraform Apply
 
 ## Status
 

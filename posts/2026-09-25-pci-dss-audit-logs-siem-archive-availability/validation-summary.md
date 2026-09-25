@@ -1,4 +1,4 @@
-# Validation Summary: How to Keep PCI DSS Audit Logs Available Across SIEM and Separate Archive Storage
+# Validation Summary: How to Keep PCI DSS Audit Logs Available Across SIEM and Archives
 
 ## Status
 validated

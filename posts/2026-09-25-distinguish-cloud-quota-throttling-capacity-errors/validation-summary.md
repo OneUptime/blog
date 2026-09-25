@@ -1,4 +1,4 @@
-# Validation Summary: How to Distinguish a Service Quota Error from Rate Limiting and Regional Capacity Exhaustion
+# Validation Summary: How to Distinguish Cloud Quota, Rate Limit, and Regional Capacity Errors
 
 ## Status
 

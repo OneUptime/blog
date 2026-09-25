@@ -1,4 +1,4 @@
-# How to Size Namespace Quotas for HPA Bursts Without Defeating Multi-Tenant Fairness
+# How to Size Namespace Quotas for HPA Bursts and Multi-Tenant Fairness
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

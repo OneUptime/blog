@@ -1,4 +1,4 @@
-# Validation Summary: How to Troubleshoot an AWS Service Quota Increase That Is Rejected or Stuck Pending
+# Validation Summary: How to Troubleshoot Rejected or Pending AWS Service Quota Increases
 
 ## Status
 validated

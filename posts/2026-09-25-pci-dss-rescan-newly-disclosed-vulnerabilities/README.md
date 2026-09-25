@@ -1,4 +1,4 @@
-# How to Document PCI DSS Scan Remediation When a Rescan Finds Newly Disclosed Vulnerabilities
+# How to Document New Vulnerabilities Found During PCI DSS Rescans
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

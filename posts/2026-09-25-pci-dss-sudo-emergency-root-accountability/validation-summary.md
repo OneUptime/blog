@@ -1,4 +1,4 @@
-# Validation Summary: How to Preserve Individual Accountability for sudo and Emergency Root Access Under PCI DSS
+# Validation Summary: How to Preserve PCI DSS Accountability for sudo and Emergency Root Access
 
 ## Status
 

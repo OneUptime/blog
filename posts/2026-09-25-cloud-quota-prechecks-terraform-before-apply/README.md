@@ -1,4 +1,4 @@
-# How to Add Cloud Quota Prechecks to Terraform Before Provisioning Fails Mid-Apply
+# How to Add Cloud Quota Prechecks Before Terraform Apply
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

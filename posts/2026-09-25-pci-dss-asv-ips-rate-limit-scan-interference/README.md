@@ -1,4 +1,4 @@
-# How to Resolve PCI DSS ASV Scan Interference from IPS Rate Limits and Dynamic Blocking
+# How to Resolve PCI DSS ASV Scan Interference from IPS and Rate Limits
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

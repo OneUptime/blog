@@ -1,4 +1,4 @@
-# How to Preserve Individual Accountability for sudo and Emergency Root Access Under PCI DSS
+# How to Preserve PCI DSS Accountability for sudo and Emergency Root Access
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

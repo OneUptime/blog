@@ -1,4 +1,4 @@
-# How to Troubleshoot an AWS Service Quota Increase That Is Rejected or Stuck Pending
+# How to Troubleshoot Rejected or Pending AWS Service Quota Increases
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

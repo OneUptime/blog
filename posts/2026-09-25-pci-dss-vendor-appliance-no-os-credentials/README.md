@@ -1,4 +1,4 @@
-# How to Assess PCI DSS Authenticated Scanning When a Vendor Appliance Provides No OS Credentials
+# How to Assess PCI DSS Scans of Appliances Without OS Credentials
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

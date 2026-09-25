@@ -1,4 +1,4 @@
-# How to Keep PCI DSS Audit Logs Available Across SIEM and Separate Archive Storage
+# How to Keep PCI DSS Audit Logs Available Across SIEM and Archives
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

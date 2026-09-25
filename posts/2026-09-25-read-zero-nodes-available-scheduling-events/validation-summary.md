@@ -1,4 +1,4 @@
-# Validation Summary: How to Read “0/n Nodes Are Available” Events and Pinpoint Every Failed Scheduling Reason
+# Validation Summary: How to Diagnose Every Scheduling Failure in Kubernetes Node Availability Events
 
 ## Status
 validated

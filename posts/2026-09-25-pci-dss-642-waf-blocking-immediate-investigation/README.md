@@ -1,4 +1,4 @@
-# How to Validate WAF Blocking or Immediate Alert Investigation for PCI DSS Requirement 6.4.2
+# How to Validate WAF Blocking and Alert Investigation for PCI DSS 6.4.2
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

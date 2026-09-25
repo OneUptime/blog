@@ -1,4 +1,4 @@
-# How to Identify the Exact Regional Cloud Quota Blocking an AWS, Azure, or GCP Deployment
+# How to Identify the Regional Cloud Quota Blocking Your Deployment
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

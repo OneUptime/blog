@@ -1,4 +1,4 @@
-# Validation Summary: How to Resolve PCI DSS ASV Scan Interference from IPS Rate Limits and Dynamic Blocking
+# Validation Summary: How to Resolve PCI DSS ASV Scan Interference from IPS and Rate Limits
 
 ## Status
 validated

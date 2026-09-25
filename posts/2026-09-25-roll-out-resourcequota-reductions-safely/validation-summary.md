@@ -1,4 +1,4 @@
-# Validation Summary: How to Roll Out ResourceQuota Changes Safely When Existing Workloads Already Exceed the New Limit
+# Validation Summary: How to Reduce ResourceQuotas Safely When Workloads Exceed the New Limit
 
 ## Status
 

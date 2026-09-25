@@ -1,4 +1,4 @@
-# How to Distinguish a Service Quota Error from Rate Limiting and Regional Capacity Exhaustion
+# How to Distinguish Cloud Quota, Rate Limit, and Regional Capacity Errors
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

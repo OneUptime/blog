@@ -1,4 +1,4 @@
-# How to Validate FIDO2 Authentication Factors for PCI DSS Remote and Administrative Access
+# How to Validate FIDO2 Factors for PCI DSS Remote and Admin Access
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
@@ -19,7 +19,7 @@ Use [PCI DSS v4.0.1](https://www.pcisecuritystandards.org/document_library/) to 
 | Requirement | Relevant access |
 | --- | --- |
 | 8.4.1 | Non-console access into the CDE by personnel with administrative access |
-| 8.4.2 | Access into the CDE, subject to its applicability notes |
+| 8.4.2 | Non-console access into the CDE, subject to its applicability notes |
 | 8.4.3 | Remote network access from outside the entity's network that could access or impact the CDE |
 
 [PCI SSC FAQ 1595](https://www.pcisecuritystandards.org/faqs/1595/) permits FIDO2-compliant synced passkeys as phishing-resistant authentication under the 8.4.2 applicability note. [FAQ 1596](https://www.pcisecuritystandards.org/faqs/1596/) makes clear that 8.4.1 and 8.4.3 still require an additional factor, such as a PIN, password, or biometric.

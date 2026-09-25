@@ -1,4 +1,4 @@
-# Validation Summary: How to Document PCI DSS Scan Remediation When a Rescan Finds Newly Disclosed Vulnerabilities
+# Validation Summary: How to Document New Vulnerabilities Found During PCI DSS Rescans
 
 ## Status
 
