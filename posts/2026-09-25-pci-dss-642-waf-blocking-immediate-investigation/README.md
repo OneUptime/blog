@@ -47,7 +47,7 @@ Test identifier -> request route -> matched rule and version
                -> effective action -> application observation -> audit event
 ```
 
-For a blocking case, confirm the response was blocked by the intended security control and the protected action did not complete. An application returning an error for unrelated reasons is not evidence of WAF enforcement.
+For a blocking case, confirm the request was blocked by the intended security control and the protected action did not complete. An application returning an error for unrelated reasons is not evidence of WAF enforcement.
 
 Test a permitted request as well. The goal is to establish the policy's behavior, including that tuning has not broken the business flow. Repeat across distinct enforcement points rather than assuming one edge test covers every regional path.
 
