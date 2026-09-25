@@ -271,7 +271,6 @@
 
 ## PCI DSS
 
-48. How to Respond When Sensitive Authentication Data Appears in PCI DSS Audit Logs
 49. How to Turn Firewall Rule Exports into PCI DSS Six-Month Review Evidence
 50. How to Build a PCI DSS Cryptography Inventory from TLS, SSH, and Application Configurations
 51. How to Evaluate TLS Cipher Suites for PCI DSS When TLS 1.2 Is Already Enabled
