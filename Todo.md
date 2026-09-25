@@ -277,7 +277,6 @@
 
 ## Pod Scheduling
 
-12. How to Bin-Pack Pods with the NodeResourcesFit MostAllocated Scheduler Strategy
 13. How to Fix “Preemption Is Not Helpful for Scheduling” for a High-Priority Pod
 14. How to Use PriorityClasses Without Causing Cascading Pod Preemptions
 15. How to Fix “Volume Node Affinity Conflict” by Delaying PVC Binding Until Scheduling
