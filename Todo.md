@@ -274,7 +274,6 @@
 
 ## Quotas
 
-13. How to Roll Out ResourceQuota Changes Safely When Existing Workloads Already Exceed the New Limit
 14. How to Preflight Kubernetes Manifests Against Remaining Namespace Quota in CI
 15. How to Identify the Exact Regional Cloud Quota Blocking an AWS, Azure, or GCP Deployment
 16. How to Automate AWS Service Quota Increase Requests and Track Their Approval Status
