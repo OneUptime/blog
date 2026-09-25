@@ -277,7 +277,6 @@
 
 ## Pod Scheduling
 
-3. How to Combine Taints, Tolerations, and Node Affinity for a Truly Dedicated Node Pool
 4. How to Keep a Toleration from Sending Pods to the Wrong Node Pool
 5. How to Choose Between nodeSelector and Required or Preferred Node Affinity
 6. How to Spread Deployment Replicas Across Both Zones and Hosts Without Making Pods Unschedulable
