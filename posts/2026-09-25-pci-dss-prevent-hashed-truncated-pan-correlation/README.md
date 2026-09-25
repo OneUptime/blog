@@ -37,7 +37,7 @@ Use synthetic records to trace one payment across the graph. List each place whe
 
 ## Reduce the information being retained
 
-Ask which operation requires each representation. Support staff may only need a processor reference and last-four display value. An aggregate report may need no card identifier at all. Removing an unnecessary dataset also removes its replicas, exports, access reviews, and deletion burden.
+Ask which operation requires each representation. Support staff may only need a processor reference and last-four display value. An aggregate report may need no card identifier at all. Removing an unnecessary dataset reduces its ongoing access-review and deletion burden only after its replicas, backups, and exports are also securely deleted or rendered unrecoverable under the retention policy.
 
 Standardize permitted truncation formats for each use case, following the relevant PAN lengths and payment-brand rules. [FAQ 1117](https://www.pcisecuritystandards.org/faqs/1117/) warns that different truncation formats can expose additional original digits when combined. Two independently approved formats can still create an unacceptable combined view.
 
