@@ -32,7 +32,7 @@ For example, this synthetic response displays markup as text in an HTML body:
 
 That observation only addresses this output context. It does not establish that the same parameter is safely handled inside an inline script or later assigned to an unsafe DOM sink. Capture the response and relevant rendered behavior, not just a screenshot showing that the page looks normal.
 
-If the disputed response came from a WAF block page, identify that explicitly. Show whether the application was reached, which rule acted, and whether ordinary requests remain available. A dynamic block that prevents inspection may require separate resolution as scan interference.
+If the disputed response came from a WAF block page, identify that explicitly. Show whether the application was reached, which rule acted, and whether ordinary requests remain available. If the ASV detects that an active protection system has blocked or filtered the scan, it must handle this under Section 7.6, “Resolving Inconclusive Scans.”
 
 ## Choose the correct disposition
 
@@ -64,7 +64,7 @@ Requested disposition and supporting retest
 
 Explain any redactions so the reviewer understands what was removed and can request a secure alternative if it affects validation. Preserve originals in restricted evidence storage when appropriate. Hashing an artifact can help detect later changes, but does not prove that the original capture was complete or accurate.
 
-Section 7.7 expects written supporting evidence with its collection context. It also requires disputes to be reevaluated for each scan period rather than automatically carried forward. Retain the ASV's conclusion and the evidence it references. [ASV Program Guide, Section 7.7](https://www.pcisecuritystandards.org/document_library/)
+Section 7.7 requires written supporting evidence describing when, where, and how it was collected, and the scan customer must attest within the ASV scan solution that the evidence is accurate and complete. For each scan period, the customer must verify and resubmit dispute evidence for the ASV to evaluate again rather than automatically carrying the finding forward. Retain the ASV's conclusion and the evidence it references. [ASV Program Guide, Section 7.7](https://www.pcisecuritystandards.org/document_library/)
 
 ## Close the engineering work as well as the dispute
 
