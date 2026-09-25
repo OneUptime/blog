@@ -271,7 +271,6 @@
 
 ## PCI DSS
 
-57. How to Test PCI DSS Idle-Session Reauthentication Across Workstations and Jump Hosts
 58. How to Preserve Individual Accountability for sudo and Emergency Root Access Under PCI DSS
 59. How to Separate PCI DSS Internal Vulnerability Risk Rankings from ASV Passing-Score Rules
 60. How to Distinguish PCI DSS Assessor Sampling from Required Vulnerability Scan Coverage
