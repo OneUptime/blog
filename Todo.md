@@ -274,7 +274,6 @@
 
 ## Quotas
 
-17. How to Troubleshoot an AWS Service Quota Increase That Is Rejected or Stuck Pending
 18. How to Distinguish a Service Quota Error from Rate Limiting and Regional Capacity Exhaustion
 19. How to Add Cloud Quota Prechecks to Terraform Before Provisioning Fails Mid-Apply
 20. How to Forecast Quota Needs and Request Increases Before a Multi-Region Launch
