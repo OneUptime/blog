@@ -271,7 +271,6 @@
 
 ## PCI DSS
 
-59. How to Separate PCI DSS Internal Vulnerability Risk Rankings from ASV Passing-Score Rules
 60. How to Distinguish PCI DSS Assessor Sampling from Required Vulnerability Scan Coverage
 
 ## Quotas
