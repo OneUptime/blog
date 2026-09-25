@@ -271,7 +271,6 @@
 
 ## PCI DSS
 
-51. How to Evaluate TLS Cipher Suites for PCI DSS When TLS 1.2 Is Already Enabled
 52. How to Introduce Keyed PAN Hashing While Handling Legacy Hashes Under PCI DSS
 53. How to Prevent Correlation Between Hashed and Truncated PAN Values Under PCI DSS
 54. How to Decide Which PCI DSS User Accounts Still Need Password Rotation After MFA Rollout
