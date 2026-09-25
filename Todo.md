@@ -277,7 +277,6 @@
 
 ## Pod Scheduling
 
-7. How to Fix Topology Spread Constraints When Labels Do Not Match Their Own Pods
 8. How to Choose Pod Anti-Affinity vs Topology Spread Constraints for High Availability
 9. How to Rebalance Pods After Adding Nodes When the Scheduler Will Not Move Running Workloads
 10. How to Schedule One Pod on Every Eligible Node: DaemonSet vs Anti-Affinity
