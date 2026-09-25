@@ -274,7 +274,6 @@
 
 ## Quotas
 
-19. How to Add Cloud Quota Prechecks to Terraform Before Provisioning Fails Mid-Apply
 20. How to Forecast Quota Needs and Request Increases Before a Multi-Region Launch
 
 ## Pod Scheduling
