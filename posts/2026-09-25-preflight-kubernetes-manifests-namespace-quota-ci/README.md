@@ -81,6 +81,6 @@ Use a Kubernetes Quantity-aware implementation. Compare CPU in a consistent unit
 
 Emit a per-quota report containing the hard value, observed use, planned additional peak, margin, result, and data timestamp. Block on a negative balance, unreadable inventory, or unsupported critical accounting. Route a scoped exception through the deployment's normal owner rather than mutating quota automatically.
 
-Serialize competing releases where practical and repeat the snapshot near deployment time. Another controller can consume resources after CI passes, and the API server remains authoritative. A quota preflight also says nothing about whether a node has the resources, volume topology, or tolerations needed to schedule the admitted Pod.
+Serialize competing releases where practical and repeat the snapshot near deployment time. Another controller can consume resources after CI passes, and the API server remains authoritative. A quota preflight also says nothing about whether the admitted Pod can be scheduled given node resources, volume topology, and node taints and Pod tolerations.
 
 Test the calculator with a multi-replica overflow, injected sidecar, overlapping scopes, stale or missing status, and mixed quantity units. The desired result is an early, explainable refusal when the planned transition cannot fit, followed by normal admission and health monitoring during deployment.
