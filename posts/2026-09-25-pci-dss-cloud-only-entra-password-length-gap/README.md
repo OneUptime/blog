@@ -38,7 +38,7 @@ Select a supported authentication method suited to the access, such as appropria
 
 Use [Conditional Access authentication strengths](https://learn.microsoft.com/en-us/entra/identity/authentication/concept-authentication-strengths) to require the allowed method combination for the relevant users and resources. Confirm licensing and platform prerequisites, pilot the policy, inspect report-only results, and then enforce it with a tested recovery process.
 
-For administrative and external remote access, verify that the actual method satisfies the applicable MFA requirements. A product being phishing resistant does not by itself establish every required factor.
+For all access into the cardholder data environment (CDE), including administrative access, and for external remote network access that could access or impact the CDE, verify that the actual method satisfies the applicable MFA requirements in 8.4.1–8.4.3. A product being phishing resistant does not by itself establish every required factor.
 
 ## Test the routes users actually take
 
