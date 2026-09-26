@@ -1,4 +1,4 @@
-# Which Cloudability Cost Metric Should You Use? List, Total, Adjusted, Amortized, and Adjusted Amortized Compared
+# Cloudability Cost Metrics Compared: List Through Adjusted Amortized
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

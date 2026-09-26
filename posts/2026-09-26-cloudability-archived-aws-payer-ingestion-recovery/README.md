@@ -1,4 +1,4 @@
-# Why Cloudability Cost Ingestion Stops When You Archive an AWS Payer Account—and How to Recover It
+# How to Restore Cloudability Ingestion After Archiving an AWS Payer
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

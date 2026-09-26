@@ -1,4 +1,4 @@
-# How to Test Jinja2-Generated Switch Configurations in CI Before Touching Production
+# How to Test Jinja2 Switch Configurations in CI Before Production
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

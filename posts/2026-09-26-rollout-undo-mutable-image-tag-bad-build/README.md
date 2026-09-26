@@ -1,4 +1,4 @@
-# How to Fix kubectl rollout undo When a Mutable Image Tag Re-deploys the Bad Build
+# How to Fix kubectl rollout undo When Mutable Tags Restore the Bad Build
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -1,4 +1,4 @@
-# How to Normalize Saved Configurations Before Git Diffing to Eliminate False Drift
+# How to Normalize Network Configurations for Git Diffs Without False Drift
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
@@ -105,7 +105,7 @@ For two individual files:
 git diff --no-index --no-ext-diff --no-textconv -- old.cfg new.cfg
 ```
 
-Git documents exit status `0` for equality and `1` for differences; treat other failures as comparison errors. `--no-index` compares filesystem paths and implies exit-code behavior. If a wrapper uses `set -e`, capture and classify the result explicitly so ordinary drift does not abort evidence collection. [Git diff reference](https://git-scm.com/docs/git-diff)
+Git documents exit status `0` for equality and `1` for differences, but `--no-index` can also return `1` for an operational error such as a missing input file. Validate both input files and capture stderr as well as the exit status; conservatively treat any stderr output or a status outside `0` and `1` as a comparison error, not drift. `--no-index` compares filesystem paths and implies exit-code behavior. If a wrapper uses `set -e`, capture and classify the result explicitly so ordinary drift does not abort evidence collection. [Git diff reference](https://git-scm.com/docs/git-diff), [Git no-index implementation](https://github.com/git/git/blob/v2.55.0/diff-no-index.c)
 
 Ansible users can also configure `diff_ignore_lines` for an `ios_config` comparison. That option accepts regexes or exact lines and is intended for automatically changing output. Keep its rules aligned with your capture policy so a scheduled scan and a Git review do not disagree. [Cisco IOS configuration module](https://docs.ansible.com/projects/ansible/latest/collections/cisco/ios/ios_config_module.html)
 

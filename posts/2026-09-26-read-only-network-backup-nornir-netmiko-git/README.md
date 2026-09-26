@@ -1,4 +1,4 @@
-# How to Build a Read-Only Network Configuration Backup Pipeline with Nornir, Netmiko, and Git
+# How to Build Read-Only Network Backup Pipelines with Nornir, Netmiko, and Git
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
@@ -102,7 +102,7 @@ for host in nr.inventory.hosts.values():
 try:
     results = nr.run(task=collect)
 finally:
-    nr.close_connections()
+    nr.close_connections(on_failed=True)
 
 if not results or results.failed:
     failed = sorted(results.failed_hosts) if results else ["empty inventory"]
@@ -133,9 +133,13 @@ set -euo pipefail
 umask 077
 python3 backup.py
 git add -- configs
-if ! git diff --cached --quiet -- configs; then
-  git commit -m "Capture validated network configuration backups" -- configs
-fi
+diff_status=0
+git diff --cached --quiet -- configs || diff_status=$?
+case "$diff_status" in
+  0) ;;
+  1) git commit -m "Capture validated network configuration backups" -- configs ;;
+  *) exit "$diff_status" ;;
+esac
 ```
 
 Initialize and secure the checkout before scheduling this wrapper. Git's [`diff --quiet`](https://git-scm.com/docs/git-diff) provides the exit status used for the no-change decision. Publish to a protected remote only after local success, and monitor push failures separately.

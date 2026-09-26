@@ -38,11 +38,11 @@ def guarded_change(device, candidate, verify, save_backup):
     verify("before")
     save_backup(device.get_config(retrieve="running")["running"])
 
-    loaded = False
+    attempted_load = False
     attempted_commit = False
     try:
+        attempted_load = True
         device.load_merge_candidate(config=candidate)
-        loaded = True
         if not device.compare_config().strip():
             device.discard_config()
             return "unchanged"
@@ -61,9 +61,12 @@ def guarded_change(device, candidate, verify, save_backup):
             raise RuntimeError("Confirmed-commit state changed unexpectedly")
         device.confirm_commit()
         return "confirmed; final verification still required"
-    except Exception:
-        if not attempted_commit and loaded:
-            device.discard_config()
+    except Exception as original_error:
+        if not attempted_commit and attempted_load:
+            try:
+                device.discard_config()
+            except Exception as cleanup_error:
+                raise original_error from cleanup_error
         # After any commit attempt, let the device's timer protect recovery.
         # A separate reconciliation step must determine the actual outcome.
         raise

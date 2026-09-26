@@ -25,7 +25,7 @@ Do not assume those NetBox slugs exist in your instance. Create or adapt the map
 
 ## Use the Ansible Inventory Plugin for Direct Queries
 
-Install `netbox.netbox` and the network collections you need. The following `netbox.yml` assumes a NetBox v2 API token injected as `NETBOX_TOKEN`:
+Install `netbox.netbox` and the network collections you need. The following `netbox.yml` assumes NetBox 4.5 or later and a complete v2 API token (`nbt_<key>.<token>`) injected as `NETBOX_TOKEN`:
 
 ```yaml
 plugin: netbox.netbox.nb_inventory
@@ -47,6 +47,7 @@ group_by:
   - platforms
   - sites
 compose:
+  ansible_host: "(primary_ip4 or primary_ip6).address.split('/')[0]"
   ansible_network_os: >-
     {'ios-xe': 'cisco.ios.ios', 'eos': 'arista.eos.eos'}[platform.slug]
   ansible_connection: "'ansible.netcommon.network_cli'"
@@ -61,7 +62,7 @@ ansible-inventory -i netbox.yml --host branch-r1
 
 The [inventory plugin reference](https://docs.ansible.com/projects/ansible/latest/collections/netbox/netbox/nb_inventory_inventory.html) documents filters, composition, strict handling, and token dictionaries. NetBox's [API authentication reference](https://netbox.readthedocs.io/en/stable/integrations/rest-api/#authenticating-to-the-api) distinguishes v2 Bearer tokens from legacy v1 Token authentication. Match the scheme to your token rather than blindly copying an old example.
 
-A filter that excludes devices with missing IPs can also hide bad source data. Compare the number of all approved active devices with the number eligible for automation, and fail a deployment when the difference is unexpected.
+A filter that excludes devices with missing IPs can also hide bad source data. Compare the number of all approved active devices with the number eligible for automation, and fail a deployment when the difference is unexpected. Validate nonempty, globally unique names across the selected records before using this direct inventory: `strict: true` checks composition errors, but does not enforce that name contract. NetBox permits names to repeat across sites or tenants, and the plugin can merge duplicate names or generate a UUID for an unnamed device.
 
 ## Export a Validated Snapshot for Nornir
 
@@ -116,13 +117,13 @@ output.mkdir(exist_ok=True)
 (output / "defaults.yaml").write_text("{}\n")
 ```
 
-Install `requests`, `PyYAML`, and `nornir`. Use HTTPS for `NETBOX_URL`; for an internal CA, configure the Requests trust bundle rather than disabling verification. The example prefers IPv4 when both families exist, an intentional policy that should match the Ansible job's preference.
+Install `requests`, `PyYAML`, and `nornir`. Use HTTPS for `NETBOX_URL`; for an internal CA, configure the Requests trust bundle rather than disabling verification. The example prefers IPv4 when both families exist, matching the explicit `ansible_host` composition above. Without that override, the Ansible plugin uses NetBox's `primary_ip`, which prefers IPv6 by default.
 
 The exporter consumes every page before writing inventory and rejects incomplete records. Configure `InitNornir` with the three generated files as shown in the [Nornir inventory documentation](https://nornir.readthedocs.io/en/latest/tutorial/inventory.html). Inject device credentials at runtime.
 
 ## Keep Both Consumers Consistent
 
-Direct Ansible inventory and a Nornir snapshot can differ if NetBox changes between queries. For approved writes, generate one snapshot and derive both inventories from it, or freeze and hash the resolved target list before approval. Compare NetBox IDs, addresses, and platform mappings, not just host counts.
+Direct Ansible inventory and a Nornir snapshot can differ if NetBox changes between queries. The Ansible plugin also skips non-master virtual-chassis members when a master is recorded, while this exporter includes every selected device; tag only the intended management target for each chassis consistently. For approved writes, generate one snapshot and derive both inventories from it, or freeze and hash the resolved target list before approval. Compare NetBox IDs, addresses, and platform mappings, not just host counts.
 
 Record the export time, source URL, selection filters, and inventory digest with the job. Set an explicit freshness limit. If NetBox is unavailable, fail a new deployment rather than silently falling back to an unbounded stale cache.
 

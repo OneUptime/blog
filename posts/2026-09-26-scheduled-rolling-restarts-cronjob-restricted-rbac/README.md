@@ -1,4 +1,4 @@
-# How to Schedule Periodic Rolling Restarts with a Kubernetes CronJob and Least-Privilege RBAC
+# How to Schedule Rolling Restarts with Kubernetes CronJobs and Scoped RBAC
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -1,4 +1,4 @@
-# How to Manage Cloudability Business Mappings as Code with the REST API and Match-Expression DSL
+# How to Manage Cloudability Business Mappings as Code with REST and DSL Rules
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
@@ -48,7 +48,7 @@ python3 -m json.tool service-owner.json > /dev/null
 
 It does not validate Cloudability expressions. The DSL uses typed lookups such as `TAG[...]` and `DIMENSION[...]`; literal result strings belong inside expression quotes. Text comparisons are case-insensitive. Regular-expression `FIND` uses Java pattern syntax and searches for a match, so whole-value patterns need anchors. [Business Mapping expression language](https://www.ibm.com/docs/en/cloudability-commercial/cloudability-premium/saas?topic=point-business-mapping-expression-language)
 
-For this definition, review at least four cases: a Payments item in the research account, a non-Commerce item in that account, an item in another account, and a missing service tag. The expected results are Commerce, Research, Unallocated, and an account-dependent fallback respectively.
+For this definition, review at least four cases: a Payments item in the research account, a non-Commerce item in that account, a non-Commerce item in another account, and a missing service tag. The expected results are Commerce, Research, Unallocated, and an account-dependent fallback respectively.
 
 Add fixtures when a defect is found. Keep their expected owner labels independent of the code that generates the mapping, so the test can expose an incorrect generator.
 

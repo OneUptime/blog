@@ -1,4 +1,4 @@
-# How to Keep Network Device Passwords, Enable Secrets, and SSH Keys Out of Automation Logs
+# How to Keep Network Passwords, Enable Secrets, and SSH Keys Out of Logs
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
@@ -116,4 +116,4 @@ Test the full runner using synthetic credentials that are safe to disclose and e
 
 Include values returned by the simulated device, not just the credentials supplied by the controller. A library may mask known passwords while leaving an unrelated secret from command output untouched.
 
-When temporary diagnostics are necessary, collect the narrowest evidence, restrict who can access it, and expire it promptly. Preserve enough nonsecret metadata to diagnose the normal path—device ID, command category, latency, and error classification—so detailed transcripts remain an exception rather than the everyday debugging method.
+When temporary diagnostics are necessary, collect the narrowest evidence, restrict who can access it, and expire it promptly. Preserve enough nonsecret metadata to diagnose the normal path-device ID, command category, latency, and error classification-so detailed transcripts remain an exception rather than the everyday debugging method.

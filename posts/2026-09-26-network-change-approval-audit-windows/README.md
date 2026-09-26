@@ -1,4 +1,4 @@
-# How to Build a Network Change Pipeline with Peer Approval, Audit Logs, and Maintenance Windows
+# How to Audit and Approve Network Changes Within Maintenance Windows
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
@@ -75,6 +75,7 @@ def require_window(start_text, end_text, required_seconds, now=None):
     now = now or datetime.now(timezone.utc)
     if now.utcoffset() is None:
         raise ValueError("Current time must include a timezone")
+    now = now.astimezone(timezone.utc)
     if not start <= now < end:
         raise RuntimeError("Outside the approved maintenance window")
     if now + timedelta(seconds=required_seconds) > end:
@@ -103,4 +104,4 @@ Send audit records to storage with independent retention and restricted modifica
 
 After deployment, read configuration and test the intended service path. Confirm any device-side rollback timer only after the checks succeed. Persist configuration according to the platform's semantics and verify that step too.
 
-Close the change record only when all targeted devices have known outcomes. If a device is unreachable after an attempted write, retain the lock or hand it to the recovery workflow and mark the result uncertain. The useful output of this pipeline is an approved, traceable, verified network state—not merely an approval button followed by a green job.
+Close the change record only when all targeted devices have known outcomes. If a device is unreachable after an attempted write, retain the lock or hand it to the recovery workflow and mark the result uncertain. The useful output of this pipeline is an approved, traceable, verified network state-not merely an approval button followed by a green job.

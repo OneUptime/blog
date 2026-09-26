@@ -1,4 +1,4 @@
-# How to Retry Configuration Pushes Safely When Remote Network Devices Are Frequently Offline
+# How to Retry Network Configuration Safely for Frequently Offline Devices
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
@@ -50,7 +50,7 @@ def connect_with_backoff(device, attempts=4):
             time.sleep(delay)
 ```
 
-This helper handles only connection construction. Do not wrap configuration submission in the same function. Review the actual error before treating every timeout as transient: a wrong port, stale address, or broken inventory will not improve with repeated attempts. Set connection and authentication timeouts so each attempt has a finite duration.
+This helper handles connection construction, which also runs platform-specific session preparation. Verify that the selected driver and options do not make persistent configuration changes during setup before treating these retries as mutation-free; keep `allow_auto_change` disabled. Do not wrap configuration submission in the same function. Review the actual error before treating every timeout as transient: a wrong port, stale address, or broken inventory will not improve with repeated attempts. Set connection and authentication timeouts so each attempt has a finite duration.
 
 Netmiko's [exception definitions](https://ktbyers.github.io/netmiko/docs/netmiko/exceptions.html) distinguish authentication, connection, and read-related errors. Preserve the phase of execution in your job record rather than classifying only by exception text.
 

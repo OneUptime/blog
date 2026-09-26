@@ -1,4 +1,4 @@
-# How to Update a Deployment Image Safely with kubectl set image and Verify the Result
+# How to Safely Update and Verify Deployment Images with kubectl set image
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

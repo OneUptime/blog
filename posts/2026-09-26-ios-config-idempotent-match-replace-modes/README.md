@@ -1,4 +1,4 @@
-# How to Make cisco.ios.ios_config Idempotent with the Right Match and Replace Modes
+# How to Make cisco.ios.ios_config Idempotent with Match and Replace Modes
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
@@ -53,9 +53,9 @@ For example, a desired list containing only a description will never equal an in
 
 ## Choose the Size of the Command Submission
 
-With `replace: line`, the module sends proposed lines that need to change. With `replace: block`, a detected difference causes the entire proposed block to be sent. The current [module source](https://github.com/ansible-collections/cisco.ios/blob/main/plugins/modules/ios_config.py) shows this comparison-to-command flow.
+With `replace: line`, the module sends proposed lines that need to change. With `replace: block`, a detected difference causes the affected proposed configuration block to be sent; separate top-level commands do not become one block merely because they share a `lines` list. The current [module source](https://github.com/ansible-collections/cisco.ios/blob/main/plugins/modules/ios_config.py) shows this comparison-to-command flow.
 
-Block submission can help when the commands logically belong together:
+Block submission can help when commands share a configuration parent. Independent top-level commands, such as these logging destinations, remain separate:
 
 ```yaml
 - name: Maintain a complete logging destination pair
@@ -67,7 +67,7 @@ Block submission can help when the commands logically belong together:
     replace: block
 ```
 
-This example intentionally ensures two destinations exist. It does not remove a third logging destination. If one line is missing, both proposed lines may be sent, subject to the platform's command behavior.
+This example intentionally ensures two destinations exist. It does not remove a third logging destination. With `match: line`, if one destination line is already present and the other is missing, only the missing line is sent, even with `replace: block`.
 
 The distinction matters most for ACLs and route policies. Detecting an unexpected rule and resending the desired rules does not necessarily delete that unexpected rule. `replace: block` means “send the proposed block,” not “erase the old section.” Do not rely on it as a pruning mechanism.
 
@@ -97,6 +97,6 @@ Use a small test matrix:
 4. Add an unrelated line to the section and confirm the ownership policy still holds.
 5. Remove a managed line and verify the task restores it.
 
-Run `--check --diff` as a preview where supported, and inspect `commands` or `updates` for the proposed changes. A preview is not a substitute for the real second execution.
+Run `ansible-playbook` with `--check` and inspect `commands` or `updates` for the proposed changes. The `--diff` flag enables supported comparisons, but `ios_config` cannot produce a before-and-after running-config diff with `diff_against: running` in check mode. A preview is not a substitute for the real second execution.
 
 Never solve the problem by adding `changed_when: false` to the configuration task. That changes reporting while the device may still receive commands. Correct idempotency means that the comparison matches the intended ownership model and that a stable device no longer needs a mutation.

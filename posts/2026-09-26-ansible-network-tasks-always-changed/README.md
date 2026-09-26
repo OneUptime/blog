@@ -83,7 +83,7 @@ The [`ios_interfaces` documentation](https://docs.ansible.com/projects/ansible/l
 
 A device can have correct running configuration but different startup configuration. Saving that state is a real change, even when no new interface command is required.
 
-If a particular `ios_config` task should persist only its own successful changes, `save_when: changed` on that task is appropriate. A separate save-only task with the same setting does not inherit the changed status of an earlier task. To reconcile running and startup state independently, use a documented persistence policy such as `save_when: modified` and understand that it may save other unsaved changes too.
+To save only when a particular `ios_config` task changes the device, use `save_when: changed` on that task. A separate save-only task with the same setting does not inherit the changed status of an earlier task. To reconcile running and startup state independently, use a documented persistence policy such as `save_when: modified`. Both settings copy the entire running configuration to startup configuration when they trigger, including unrelated unsaved changes.
 
 Write this policy explicitly. A playbook whose purpose is a read-only audit should not casually persist running configuration just to make startup match.
 

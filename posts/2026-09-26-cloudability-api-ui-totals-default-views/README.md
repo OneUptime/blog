@@ -1,4 +1,4 @@
-# Cloudability API Totals Do Not Match the UI: Debugging Default Views and `view_id=0`
+# Cloudability API vs. UI Totals: Debugging Default Views and `view_id=0`
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

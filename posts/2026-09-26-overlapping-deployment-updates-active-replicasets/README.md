@@ -1,4 +1,4 @@
-# How to Diagnose Overlapping Deployment Updates That Leave Multiple ReplicaSets Active
+# How to Diagnose Overlapping Deployment Updates and Active ReplicaSets
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
@@ -20,7 +20,7 @@ Start with one named Deployment. Store these artifacts in a restricted working d
 umask 077
 ns=production
 deployment=api
-kubectl -n "$ns" get deployment "$deployment" -o json > deployment.json
+kubectl -n "$ns" get deployment "$deployment" -o json --show-managed-fields=true > deployment.json
 kubectl -n "$ns" get replicasets -o json > replicasets.json
 kubectl -n "$ns" get pods -o json > pods.json
 ```

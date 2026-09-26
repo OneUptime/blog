@@ -83,7 +83,7 @@ try:
         print(name, "failed" if result.failed else "collected")
     results.raise_on_error()
 finally:
-    nr.close_connections()
+    nr.close_connections(on_failed=True)
 ```
 
 Here, `site` is inventory data you define. Nornir's [inventory tutorial](https://nornir.readthedocs.io/en/latest/tutorial/inventory.html) describes host attributes and filtering. Design result schemas, error classes, and tests as you would for any maintained application.

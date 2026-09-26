@@ -1,4 +1,4 @@
-# How to Credential an AWS Organization in Cloudability Without Losing Utilization or Commitment Data
+# How to Credential AWS in Cloudability for Utilization and Commitment Data
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

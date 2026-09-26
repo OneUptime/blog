@@ -1,4 +1,4 @@
-# How to Zero-Touch Provision New Switches from DHCP, NetBox, and Generated Configurations
+# How to Zero-Touch Provision Switches with DHCP, NetBox, and Templates
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
@@ -102,4 +102,4 @@ Verify persistence through the platform's supported startup configuration proces
 
 On success, retire temporary enrollment access and mark the artifact assignment complete. On failure, retain the last successful stage and a bounded retry policy. A failed download should be retried without repeatedly rewriting intent or wiping an already configured switch.
 
-Keep console access available during rollout. Troubleshoot in order—boot mode, DHCP offer, route to artifact service, artifact validation, configuration acceptance, and final health—so each failure has a specific owner and a clear recovery step.
+Keep console access available during rollout. Troubleshoot in order-boot mode, DHCP offer, route to artifact service, artifact validation, configuration acceptance, and final health-so each failure has a specific owner and a clear recovery step.

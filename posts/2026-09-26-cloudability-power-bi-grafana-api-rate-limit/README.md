@@ -1,4 +1,4 @@
-# How to Feed Cloudability Data into Power BI or Grafana Without Hitting the V3 API’s 300-Request-per-Minute Limit
+# How to Feed Cloudability Data to Power BI and Grafana Within API Limits
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
@@ -93,13 +93,13 @@ CREATE TABLE cloudability_daily_vendor (
 
 `report_key` identifies a versioned query definition, including metric, view, and allocation policy. If you add account or team dimensions, include them in the table's grain and uniqueness constraint. Do not collapse distinct rows just because their dates and vendors match.
 
-Replace each refreshed partition transactionally. Append-only ingestion duplicates costs when the same period is extracted again, and billing data often needs correction or reprocessing.
+Replace each refreshed partition transactionally. Append-only ingestion either duplicates costs when uniqueness is not enforced or fails on the primary key above when the same rows are inserted again; billing data often needs correction or reprocessing.
 
 ## Connect the dashboards to the published data
 
 Power BI can read PostgreSQL through its Power Query connector. Configure its server, database, authentication, and the appropriate gateway or connectivity path for the deployment. Import the published table or a curated database view rather than the intermediate staging tables. [Microsoft PostgreSQL connector](https://learn.microsoft.com/en-us/power-query/connectors/postgresql)
 
-Grafana's PostgreSQL datasource supports SQL queries and time-series output. A daily graph can query the same curated data, with a time column and numeric amount, while filtering to one report definition and currency. [Grafana PostgreSQL query editor](https://grafana.com/docs/grafana/latest/datasources/postgres/query-editor/)
+Grafana's PostgreSQL datasource supports SQL queries and time-series output. A daily graph can query the same curated data, with a timestamp column named `time` and a numeric amount, sorted by `time`, while filtering to one report definition and currency. Cast `usage_date` to a timestamp for this output and select the Time series query format. [Grafana PostgreSQL query editor](https://grafana.com/docs/grafana/latest/datasources/postgres/query-editor/)
 
 Give dashboard identities read access only to the published dataset. Keep the Cloudability key in the extractor's secret store. If the extracted view contains sensitive team costs, enforce equivalent access controls in the reporting store.
 

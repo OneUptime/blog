@@ -1,4 +1,4 @@
-# How to Tell What a PodDisruptionBudget Protects During a Deployment Rollout—and What It Does Not
+# PodDisruptionBudgets and Deployment Rollouts: Protection and Limits
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

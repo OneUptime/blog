@@ -1,4 +1,4 @@
-# How to Debug Netmiko ReadTimeout and “Prompt Not Found” Errors on Unsupported CLIs
+# Debug Netmiko ReadTimeout and 'Prompt Not Found' Errors on Unsupported CLIs
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

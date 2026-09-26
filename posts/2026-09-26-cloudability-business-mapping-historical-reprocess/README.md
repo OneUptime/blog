@@ -1,4 +1,4 @@
-# How to Apply a Cloudability Business Mapping Change to Prior Months Without Waiting for Normal Ingestion
+# How to Reprocess Prior Months After Cloudability Business Mapping Changes
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

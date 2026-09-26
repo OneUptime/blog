@@ -1,4 +1,4 @@
-# How to Model Multi-Vendor Network Intent Without Duplicating Every Jinja2 Template
+# How to Model Multi-Vendor Network Intent Without Duplicating Jinja2 Templates
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

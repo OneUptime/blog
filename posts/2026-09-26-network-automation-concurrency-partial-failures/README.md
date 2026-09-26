@@ -1,4 +1,4 @@
-# How to Run Network Automation Concurrently Without Overloading Devices or Hiding Partial Failures
+# How to Bound Network Automation Concurrency and Report Partial Failures
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
@@ -76,10 +76,12 @@ try:
                 else:
                     report[name] = {"status": "collected"}
         finally:
-            scoped.close_connections()
+            scoped.close_connections(on_failed=True)
 finally:
-    nr.close_connections()
-    print(json.dumps(report, indent=2, sort_keys=True))
+    try:
+        nr.close_connections(on_failed=True)
+    finally:
+        print(json.dumps(report, indent=2, sort_keys=True))
 
 if any(item["status"] != "collected" for item in report.values()):
     raise SystemExit(1)
@@ -99,7 +101,7 @@ Do not clear the failure set globally just to make every host appear in a later 
 
 ## Apply Equivalent Controls in Ansible
 
-For an Ansible change workflow, batch size and task concurrency are different controls:
+For an Ansible change workflow, batch size and task concurrency are different controls. This example requires the `cisco.ios` and `ansible.netcommon` collections and inventory variables `ansible_connection: ansible.netcommon.network_cli` and `ansible_network_os: cisco.ios.ios`, along with credentials and any required enable-mode settings:
 
 ```yaml
 - name: Change approved branch switches in small batches
@@ -108,7 +110,7 @@ For an Ansible change workflow, batch size and task concurrency are different co
   serial: 4
   any_errors_fatal: true
   tasks:
-    - name: Gather interface state before the change
+    - name: Gather interface configuration before the change
       cisco.ios.ios_interfaces:
         state: gathered
       throttle: 2
@@ -122,4 +124,4 @@ A stop policy cannot undo tasks already in flight. For critical changes, begin w
 
 Measure total duration, connection latency, command latency, authentication errors, and device load at several small concurrency settings. Choose the lowest setting that meets the operational window with room for degraded conditions.
 
-Test one offline device and one command rejection in each batch. Confirm the process exits unsuccessfully and the report still contains every approved target. The outcome should be an honest fleet result whose completeness is independent of how quickly its successful devices finished.
+Test one offline device and, after adding platform-aware output validation, one command rejection in each batch. Confirm the process exits unsuccessfully and the report still contains every approved target. The minimal collector above treats a nonempty CLI error response as `collected`, so command rejection alone does not necessarily cause a nonzero exit until those checks are added. The outcome should be an honest fleet result whose completeness is independent of how quickly its successful devices finished.

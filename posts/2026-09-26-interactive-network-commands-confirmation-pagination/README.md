@@ -1,4 +1,4 @@
-# How to Automate Interactive Network Commands That Pause for Confirmation or Pagination
+# How to Automate Network Commands with Confirmation Prompts and Pagination
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
@@ -81,24 +81,32 @@ import time
 def read_paged(connection, command, literal_prompt, timeout=90, max_pages=100):
     if "\n" in command or "\r" in command:
         raise ValueError("Expected one approved command")
+    if timeout <= 0 or max_pages < 1:
+        raise ValueError("Expected positive timeout and page limit")
+    if connection.read_timeout_override is not None:
+        raise ValueError("Set read_timeout_override=None for per-read deadlines")
     prompt = re.escape(literal_prompt) + r"[ \t]*$"
     marker = r"--More--"
     pattern = rf"(?:{marker}|{prompt})"
     deadline = time.monotonic() + timeout
     chunks = []
     connection.write_channel(command + "\n")
-    for _ in range(max_pages):
+    for page in range(max_pages):
         remaining = deadline - time.monotonic()
         if remaining <= 0:
             raise TimeoutError("Pager deadline exceeded")
         chunk = connection.read_until_pattern(
             pattern=pattern, read_timeout=remaining
         )
+        if time.monotonic() >= deadline:
+            raise TimeoutError("Pager deadline exceeded")
         chunks.append(chunk)
         if re.search(prompt, chunk):
             return "".join(chunks)
         if marker not in chunk:
             raise RuntimeError("Unexpected pager state")
+        if page + 1 == max_pages:
+            raise RuntimeError("Pager limit exceeded")
         connection.write_channel(" ")
     raise RuntimeError("Pager limit exceeded")
 ```

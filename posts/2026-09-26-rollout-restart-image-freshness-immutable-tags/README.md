@@ -1,4 +1,4 @@
-# How to Make kubectl rollout restart Pull Fresh Bytes—and Why Immutable Tags Are Safer
+# kubectl rollout restart: Image Freshness and Safer Immutable Tags
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -1,4 +1,4 @@
-# How to Detect and Remediate Network Configuration Drift Against an Intended State
+# How to Detect and Remediate Network Drift Against Intended State
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

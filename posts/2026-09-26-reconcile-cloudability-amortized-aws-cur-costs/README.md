@@ -1,4 +1,4 @@
-# How to Reconcile Cloudability’s Amortized AWS Costs with CUR Line Items, RIs, and Savings Plans
+# Reconcile Cloudability Amortized AWS Costs with CUR, RIs, and Savings Plans
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
@@ -68,7 +68,7 @@ Retain commitment identifiers, owner account, consuming account, and period in t
 
 IBM states that consumed AWS commitment costs follow the account or resource that used the commitment, while unused amounts remain with the commitment holder. Consequently, owner-account totals and consuming-account totals answer different questions. [IBM amortized cost behavior](https://www.ibm.com/support/pages/node/7283570)
 
-Build two controls: one grouped by commitment identity and one by consuming account. First verify that each commitment balances. Then verify that consumed account allocations plus the unused owner residual equal the payer total.
+Build two controls: one grouped by commitment identity and one by consuming account. First verify that each commitment balances. Then verify that consumed account allocations plus the unused owner residual equal the payer’s amortized commitment subtotal for the same period and scope.
 
 A filtered view that excludes the commitment owner can legitimately omit unused cost. That is a scope difference, not necessarily an amortization defect.
 

@@ -1,4 +1,4 @@
-# Why Cloudability Business Mapping Rules Return the Wrong Owner: First-Match Order, Boolean Logic, and Defaults
+# How to Debug Cloudability Mapping Owners: Rule Order, Logic, and Defaults
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

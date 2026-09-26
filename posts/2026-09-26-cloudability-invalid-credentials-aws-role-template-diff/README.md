@@ -1,4 +1,4 @@
-# Cloudability Shows “Invalid Credentials”: How to Diff an AWS Role Against the Latest Permission Template
+# How to Fix Cloudability Invalid Credentials with AWS Role Template Diffs
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
