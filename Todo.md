@@ -283,7 +283,6 @@
 
 ## Rollouts
 
-3. How to Fix a Rollout Stuck on ProgressDeadlineExceeded
 4. How to Trace a Stalled Deployment Through Conditions, Events, ReplicaSets, and Pods
 5. How to Use kubectl rollout status with a Timeout That Fails CI Correctly
 6. How to Trigger a Rolling Restart Without Changing a Deployment’s Container Image
