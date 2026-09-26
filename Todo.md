@@ -280,7 +280,6 @@
 
 ## Network Automation
 
-19. How to Zero-Touch Provision New Switches from DHCP, NetBox, and Generated Configurations
 20. How to Expose Routine Network Changes as a Guardrailed Self-Service Workflow
 
 ## Rollouts
