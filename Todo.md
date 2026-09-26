@@ -280,7 +280,6 @@
 
 ## Network Automation
 
-4. How to Model Multi-Vendor Network Intent Without Duplicating Every Jinja2 Template
 5. How to Make cisco.ios.ios_config Idempotent with the Right Match and Replace Modes
 6. How to Stop Ansible Network Tasks from Reporting Changed on Every Run
 7. How to Debug Netmiko ReadTimeout and “Prompt Not Found” Errors on Unsupported CLIs
