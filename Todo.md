@@ -280,7 +280,6 @@
 
 ## Network Automation
 
-9. How to Run Network Automation Concurrently Without Overloading Devices or Hiding Partial Failures
 10. How to Retry Configuration Pushes Safely When Remote Network Devices Are Frequently Offline
 11. How to Normalize Saved Configurations Before Git Diffing to Eliminate False Drift
 12. How to Detect and Remediate Network Configuration Drift Against an Intended State
