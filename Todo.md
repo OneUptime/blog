@@ -286,7 +286,6 @@
 
 ## Cloudability
 
-1. Cloudability Shows “Invalid Credentials”: How to Diff an AWS Role Against the Latest Permission Template
 2. Why Cloudability Cost Ingestion Stops When You Archive an AWS Payer Account—and How to Recover It
 3. How to Credential an AWS Organization in Cloudability Without Losing Utilization or Commitment Data
 4. Which Cloudability Cost Metric Should You Use? List, Total, Adjusted, Amortized, and Adjusted Amortized Compared
