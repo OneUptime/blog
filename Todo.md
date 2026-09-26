@@ -283,7 +283,6 @@
 
 ## Rollouts
 
-12. How to Prevent ResourceQuota from Blocking the Surge Pod During a Rolling Update
 13. How to Break the maxUnavailable: 0 Deadlock When the Cluster Has No Room for a Surge Pod
 14. How to Tune Startup and Readiness Probes So Slow Boots Do Not Stall a Rollout
 15. How to Drain Existing Connections with preStop and terminationGracePeriodSeconds During Rollout
