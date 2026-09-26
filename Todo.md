@@ -280,7 +280,6 @@
 
 ## Network Automation
 
-12. How to Detect and Remediate Network Configuration Drift Against an Intended State
 13. How to Add Pre-Checks, Post-Checks, and Automatic Rollback to a Network Change
 14. How to Test Jinja2-Generated Switch Configurations in CI Before Touching Production
 15. How to Build a Network Change Pipeline with Peer Approval, Audit Logs, and Maintenance Windows
