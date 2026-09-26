@@ -280,7 +280,6 @@
 
 ## Network Automation
 
-15. How to Build a Network Change Pipeline with Peer Approval, Audit Logs, and Maintenance Windows
 16. How to Keep Network Device Passwords, Enable Secrets, and SSH Keys Out of Automation Logs
 17. How to Parse Unstructured Show Command Output Reliably with TextFSM or Genie
 18. How to Prefer NETCONF, RESTCONF, or gNMI While Keeping a Safe CLI Fallback
