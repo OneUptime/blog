@@ -280,7 +280,6 @@
 
 ## Network Automation
 
-20. How to Expose Routine Network Changes as a Guardrailed Self-Service Workflow
 
 ## Rollouts
 
