@@ -283,7 +283,6 @@
 
 ## Rollouts
 
-10. How to Fix kubectl rollout undo When a Mutable Image Tag Re-deploys the Bad Build
 11. How to Pause and Resume a Kubernetes Deployment for a Controlled Partial Rollout
 12. How to Prevent ResourceQuota from Blocking the Surge Pod During a Rolling Update
 13. How to Break the maxUnavailable: 0 Deadlock When the Cluster Has No Room for a Surge Pod
