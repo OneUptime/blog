@@ -280,7 +280,6 @@
 
 ## Network Automation
 
-6. How to Stop Ansible Network Tasks from Reporting Changed on Every Run
 7. How to Debug Netmiko ReadTimeout and “Prompt Not Found” Errors on Unsupported CLIs
 8. How to Automate Interactive Network Commands That Pause for Confirmation or Pagination
 9. How to Run Network Automation Concurrently Without Overloading Devices or Hiding Partial Failures
