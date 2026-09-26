@@ -280,7 +280,6 @@
 
 ## Network Automation
 
-5. How to Make cisco.ios.ios_config Idempotent with the Right Match and Replace Modes
 6. How to Stop Ansible Network Tasks from Reporting Changed on Every Run
 7. How to Debug Netmiko ReadTimeout and “Prompt Not Found” Errors on Unsupported CLIs
 8. How to Automate Interactive Network Commands That Pause for Confirmation or Pagination
