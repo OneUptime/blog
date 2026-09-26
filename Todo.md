@@ -283,7 +283,6 @@
 
 ## Rollouts
 
-4. How to Trace a Stalled Deployment Through Conditions, Events, ReplicaSets, and Pods
 5. How to Use kubectl rollout status with a Timeout That Fails CI Correctly
 6. How to Trigger a Rolling Restart Without Changing a Deployment’s Container Image
 7. How to Make kubectl rollout restart Pull Fresh Bytes—and Why Immutable Tags Are Safer
