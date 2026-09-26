@@ -283,7 +283,6 @@
 
 ## Rollouts
 
-20. How to Diagnose Overlapping Deployment Updates That Leave Multiple ReplicaSets Active
 
 ## Cloudability
 
