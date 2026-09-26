@@ -280,7 +280,6 @@
 
 ## Network Automation
 
-11. How to Normalize Saved Configurations Before Git Diffing to Eliminate False Drift
 12. How to Detect and Remediate Network Configuration Drift Against an Intended State
 13. How to Add Pre-Checks, Post-Checks, and Automatic Rollback to a Network Change
 14. How to Test Jinja2-Generated Switch Configurations in CI Before Touching Production
