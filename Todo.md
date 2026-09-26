@@ -286,7 +286,6 @@
 
 ## Cloudability
 
-6. Cloudability API Totals Do Not Match the UI: Debugging Default Views and `view_id=0`
 7. How to Feed Cloudability Data into Power BI or Grafana Without Hitting the V3 API’s 300-Request-per-Minute Limit
 8. Why Cloudability Business Mapping Rules Return the Wrong Owner: First-Match Order, Boolean Logic, and Defaults
 9. How to Apply a Cloudability Business Mapping Change to Prior Months Without Waiting for Normal Ingestion
