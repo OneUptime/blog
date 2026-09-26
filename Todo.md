@@ -283,7 +283,6 @@
 
 ## Rollouts
 
-15. How to Drain Existing Connections with preStop and terminationGracePeriodSeconds During Rollout
 16. How to Schedule Periodic Rolling Restarts with a Kubernetes CronJob and Least-Privilege RBAC
 17. How to Trigger a Deployment Rollout When a ConfigMap or Secret Changes
 18. How to Tell What a PodDisruptionBudget Protects During a Deployment Rollout—and What It Does Not
