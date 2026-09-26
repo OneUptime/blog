@@ -280,7 +280,6 @@
 
 ## Network Automation
 
-2. How to Choose Ansible, Nornir, or Netmiko for a Real Network Automation Workflow
 3. How to Turn NetBox into the Source of Truth for Ansible and Nornir Inventories
 4. How to Model Multi-Vendor Network Intent Without Duplicating Every Jinja2 Template
 5. How to Make cisco.ios.ios_config Idempotent with the Right Match and Replace Modes
