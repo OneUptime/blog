@@ -283,7 +283,6 @@
 
 ## Rollouts
 
-6. How to Trigger a Rolling Restart Without Changing a Deployment’s Container Image
 7. How to Make kubectl rollout restart Pull Fresh Bytes—and Why Immutable Tags Are Safer
 8. How to Update a Deployment Image Safely with kubectl set image and Verify the Result
 9. How to Roll Back to a Specific Deployment Revision and Confirm the Old Version Is Healthy
