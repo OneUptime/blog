@@ -283,7 +283,6 @@
 
 ## Rollouts
 
-14. How to Tune Startup and Readiness Probes So Slow Boots Do Not Stall a Rollout
 15. How to Drain Existing Connections with preStop and terminationGracePeriodSeconds During Rollout
 16. How to Schedule Periodic Rolling Restarts with a Kubernetes CronJob and Least-Privilege RBAC
 17. How to Trigger a Deployment Rollout When a ConfigMap or Secret Changes
