@@ -286,7 +286,6 @@
 
 ## Cloudability
 
-3. How to Credential an AWS Organization in Cloudability Without Losing Utilization or Commitment Data
 4. Which Cloudability Cost Metric Should You Use? List, Total, Adjusted, Amortized, and Adjusted Amortized Compared
 5. How to Reconcile Cloudability’s Amortized AWS Costs with CUR Line Items, RIs, and Savings Plans
 6. Cloudability API Totals Do Not Match the UI: Debugging Default Views and `view_id=0`
