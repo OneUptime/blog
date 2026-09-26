@@ -286,7 +286,6 @@
 
 ## Cloudability
 
-2. Why Cloudability Cost Ingestion Stops When You Archive an AWS Payer Account—and How to Recover It
 3. How to Credential an AWS Organization in Cloudability Without Losing Utilization or Commitment Data
 4. Which Cloudability Cost Metric Should You Use? List, Total, Adjusted, Amortized, and Adjusted Amortized Compared
 5. How to Reconcile Cloudability’s Amortized AWS Costs with CUR Line Items, RIs, and Savings Plans
