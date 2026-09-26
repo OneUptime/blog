@@ -283,7 +283,6 @@
 
 ## Rollouts
 
-8. How to Update a Deployment Image Safely with kubectl set image and Verify the Result
 9. How to Roll Back to a Specific Deployment Revision and Confirm the Old Version Is Healthy
 10. How to Fix kubectl rollout undo When a Mutable Image Tag Re-deploys the Bad Build
 11. How to Pause and Resume a Kubernetes Deployment for a Controlled Partial Rollout
