@@ -283,7 +283,6 @@
 
 ## Rollouts
 
-19. How to Auto-Roll Back a Failed Kubernetes Deployment from CI After a Rollout Timeout
 20. How to Diagnose Overlapping Deployment Updates That Leave Multiple ReplicaSets Active
 
 ## Cloudability
