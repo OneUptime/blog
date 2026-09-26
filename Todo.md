@@ -280,7 +280,6 @@
 
 ## Network Automation
 
-14. How to Test Jinja2-Generated Switch Configurations in CI Before Touching Production
 15. How to Build a Network Change Pipeline with Peer Approval, Audit Logs, and Maintenance Windows
 16. How to Keep Network Device Passwords, Enable Secrets, and SSH Keys Out of Automation Logs
 17. How to Parse Unstructured Show Command Output Reliably with TextFSM or Genie
