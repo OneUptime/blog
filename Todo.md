@@ -286,7 +286,6 @@
 
 ## Cloudability
 
-8. Why Cloudability Business Mapping Rules Return the Wrong Owner: First-Match Order, Boolean Logic, and Defaults
 9. How to Apply a Cloudability Business Mapping Change to Prior Months Without Waiting for Normal Ingestion
 10. How to Manage Cloudability Business Mappings as Code with the REST API and Match-Expression DSL
 11. How to Allocate Shared Platform Costs in Cloudability with Even Splits, Fixed Weights, and Telemetry
