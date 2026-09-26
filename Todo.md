@@ -280,7 +280,6 @@
 
 ## Network Automation
 
-1. How to Build a Read-Only Network Configuration Backup Pipeline with Nornir, Netmiko, and Git
 2. How to Choose Ansible, Nornir, or Netmiko for a Real Network Automation Workflow
 3. How to Turn NetBox into the Source of Truth for Ansible and Nornir Inventories
 4. How to Model Multi-Vendor Network Intent Without Duplicating Every Jinja2 Template
