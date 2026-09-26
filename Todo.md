@@ -155,6 +155,27 @@
 ## OpenSearch Observability
 
 
+1. How to Sort the Top Ten OpenSearch Error Groups by Count in PPL
+2. How to Cast Extracted Response Times to Numbers Before OpenSearch PPL Aggregation
+3. How to Quote Timestamp and Dotted OpenTelemetry Fields in OpenSearch PPL
+4. How to Query Nested Log Arrays in OpenSearch Without Confusing Object and Nested Mappings
+5. How to Keep Missing Service Names Visible in OpenSearch Log Aggregations
+6. How to Extract Fields from Multiline Log Bodies with OpenSearch PPL parse
+7. How to Filter OpenSearch Log Events by Timestamp with PPL Date Functions
+8. How to Compare OpenSearch PPL API Results with Log Explorer When Rows Disappear
+9. How to Diagnose Missing Trace Groups When Upstream Root Spans Never Reach Data Prepper
+10. How to Enrich Late-Arriving Spans with otel_traces_group in Data Prepper
+11. How to Keep Each Trace on One Data Prepper Node with Peer Forwarding
+12. How to Diagnose Data Prepper Peer Forwarding That Falls Back to Local Processing
+13. How to Reduce Duplicate Peer Forwarding in OpenSearch Trace Pipelines
+14. How to Migrate Legacy Data Prepper Trace Processor Names to the Event Model
+15. How to Diagnose Span ClassCastException After Replacing a Data Prepper Kafka Buffer with a Source
+16. How to Filter Health-Check Spans with the Correct Data Prepper Attribute Paths
+17. How to Diagnose Dotted OpenTelemetry Attribute Mapping Conflicts in Data Prepper
+18. How to Size Data Prepper Buffers for Bursty OpenSearch Trace Ingestion
+19. How to Confirm Rejected OpenSearch Telemetry Reaches the Dead-Letter Queue
+20. How to Validate Service-Map Index Selection for Separate OpenSearch Applications
+
 ## Recovery Engineering
 
 
@@ -5017,6 +5038,27 @@
 18. How to Sunset Legacy Delivery Paths After Platform Adoption Reaches a Safe Threshold
 19. How to Recover Platform Adoption After a Failed or Overpromised First Launch
 20. How to Prevent Early Adopters from Becoming the De Facto Support Queue for an Internal Platform
+
+21. How to Test Developer Portal Accessibility Before Expanding Platform Adoption
+22. How to Budget Application Team Time for Internal Platform Adoption
+23. How to Secure Security-Team Sponsorship Before Launching a Developer Portal
+24. How to Give Platform Adopters a Working Reference Service for Their Application Stack
+25. How to Tailor Platform Onboarding for Frontend Teams That Rarely Manage Infrastructure
+26. How to Run Platform Onboarding Exercises That Include a Failed Deployment
+27. How to Let Teams Adopt One Internal Platform Capability at a Time
+28. How to Introduce Platform Capabilities During Product Team Planning
+29. How to Publish a Platform Roadmap That Shows What Happened to Developer Feedback
+30. How to Announce New Platform Features in the Tools Developers Already Use
+31. How to Turn Repeated Platform Office-Hour Questions into Searchable Troubleshooting Guides
+32. How to Test Whether Developers Can Discover Platform Capabilities Without a Guided Demo
+33. How to Explain Platform Operating Responsibilities Before Onboarding a Service
+34. How to Verify Developer Portal Login and Team Access Before Launch Announcements
+35. How to Create a Contribution Review Path for Teams Needing Unsupported Platform Capabilities
+36. How to Make Platform Adoption Possible from Existing Developer Workflows
+37. How to Distinguish Staffing Gaps from Tooling Gaps in a Developer Portal Rollout
+38. How to Present Platform Migration Benefits in Application-Team Business Terms
+39. How to Decide Which Existing Team Tools to Integrate into a Developer Portal
+40. How to Validate Platform Onboarding Instructions with Newly Hired Engineers
 
 ## Uptime Monitoring
 
@@ -10395,6 +10437,27 @@
 19. How to Detect Traffic-Mix Changes That Improve an Aggregate Availability SLI While Every Route Gets Worse
 20. How to Distinguish Synthetic-Probe Failure from Probe-Infrastructure Failure in an Availability SLI
 
+21. How to Apply rate Before sum in Availability SLIs So Replica Restarts Do Not Distort Results
+22. How to Fix Availability Counters Scraped Through a Round-Robin Load Balancer
+23. How to Align Availability Numerators and Denominators on Request Completion
+24. How to Explain Fractional Failure Counts in Prometheus Availability Reports
+25. How to Deduplicate HA Prometheus Replicas Before Calculating Availability SLIs
+26. How to Define GraphQL Availability from Required Fields and Partial Error Responses
+27. How to Classify gRPC Status Codes for an Availability SLI
+28. How to Measure Streaming RPC Availability After the Final Status Arrives
+29. How to Calculate Business-Hours Availability Across Time Zones and Daylight-Saving Changes
+30. How to Include Circuit-Breaker Rejections in the Availability SLI at the Calling Boundary
+31. How to Separate CDN Cache Success from Origin Availability in Service Reports
+32. How to Distinguish Graceful Degradation from Unavailability in SLI Success Criteria
+33. How to Keep Bot and Scanner Requests from Distorting a Customer Availability SLI
+34. How to Display Five-Nines Availability Without Rounding Away Real Failures
+35. How to Fix Availability Ratios Lost to PromQL Label-Matching Mismatches
+36. How to Record Availability Failures Once When Exceptions Cross Multiple Middleware Layers
+37. How to Keep Current Task Gauges Out of Historical Availability Calculations
+38. How to Set Thanos Partial-Response Behavior for Availability Recording Rules
+39. How to Keep Availability Ratios and Percentage Display Units Consistent in Grafana
+40. How to Count Per-Item Failures in Bulk API Availability SLIs
+
 ## Traces
 
 1. How to Fix Context Has No Attribute trace_id When Creating Python Span Links
@@ -10509,3 +10572,164 @@
 18. How to Validate WebSocket Origin Headers to Prevent Cross-Site Use of Session Cookies
 19. How to Match Concurrent WebSocket Requests to Responses with JSON-RPC IDs
 20. How to Diagnose Missing Cookies in Cross-Site WebSocket Handshakes
+
+## SPDX
+
+1. How to Add Undiscovered Vendor Libraries to an SPDX 2.3 SBOM with Python
+2. How to Generate a New SPDX Document Namespace When Correcting an Existing SBOM
+3. How to Link Supplier SPDX 2.3 SBOMs with ExternalDocumentRef and Document Checksums
+4. How to Extract Direct Dependencies from an SPDX Relationship Graph Without Deleting Transitive Packages
+5. How to Set filesAnalyzed Correctly in SPDX 2.3 When Only Package Metadata Is Available
+6. How to Preserve Unknown License Information in SPDX Using NOASSERTION Instead of NONE
+7. How to Represent a Proprietary License in SPDX with LicenseRef and Extracted Text
+8. How to Encode License Choices and Exceptions with SPDX AND, OR, and WITH Expressions
+9. How to Attach SPDX License Metadata to Binary and UTF-16 Files with REUSE Sidecar Files
+10. How to Catch Missing SPDX License Headers in Pull Requests with reuse lint
+11. How to Find Dangling SPDX 2.3 Relationship IDs with the Python Document Validator
+12. How to Diagnose Unknown Version @context Errors When Validating SPDX 3 JSON-LD
+13. How to Check SPDX 3 Read and Write Support Before Migrating a Python SBOM Pipeline
+14. How to Choose SPDX 2.2 or SPDX 3.0 Output Explicitly in Microsoft sbom-tool
+15. How to Point Microsoft sbom-tool at Separate Source and Build Output Directories
+16. How to Diagnose Missing-File Validation Errors in SPDX SBOMs Moved to Another Build Agent
+17. How to Aggregate Multiple SPDX 2.2 Release SBOMs with Microsoft sbom-tool
+18. How to Diagnose Missing SPDX License Fields in Microsoft sbom-tool Metadata and ClearlyDefined Lookups
+19. How to Validate SPDX 3 Documents with Both JSON Schema and SHACL in CI
+20. How to Reject Malformed SPDXRef Values Before Converting SPDX 2 Documents to SPDX 3
+
+## Green Software
+
+1. How to Check Which CodeCarbon Energy Readings Are Available Inside a Cloud VM
+2. How to Choose CodeCarbon Process or Machine Tracking on a Shared Server
+3. How to Estimate Energy Use of Short Python Functions with CodeCarbon Using Repeated Batches
+4. How to Quantify CodeCarbon Instrumentation Overhead Before Comparing Energy Results
+5. How to Interpret Watts, Kilowatt-Hours, and Kilograms of CO2e in CodeCarbon Output
+6. How to Override CodeCarbon Grid Carbon Intensity with a Documented Local Emissions Factor
+7. How to Separate Measured Apple Silicon Power from CodeCarbon RAM Estimates
+8. How to Account for Data Center PUE Without Treating It as a Correction for Every Missing Power Source
+9. How to Compare ORM and Raw SQL Energy Consumption Using the Same Database Workload
+10. How to Report Energy Savings Separately from Changes in Grid Carbon Intensity
+11. How to Allocate Embodied Hardware Emissions to a Software Workload by Time and Resource Share
+12. How to Choose a Stable Functional Unit for Comparing Software Carbon Intensity Across Releases
+13. How to Convert Component Carbon Intensities to One Functional Unit Before Adding Them
+14. How to Include Idle and Failover Capacity in a Software Carbon Intensity Calculation
+15. How to Choose Average or Marginal Grid Emissions Data for a Green Software Measurement
+16. How to Document Network Energy Assumptions in a Software Carbon Footprint Estimate
+17. How to Diagnose NVML Not Supported Errors When Measuring GPU Energy with CodeCarbon
+18. How to Choose Between Local Energy Tracking and Hosted LLM Emissions Estimation
+19. How to Keep CodeCarbon Benchmarks Comparable When RAM Estimation Models Change
+20. How to Choose Per-Token or Per-Request Carbon Metrics for an AI Service
+
+## Meshery
+
+1. How to Connect a Docker-Based Meshery Server to EKS When the AWS Credential Plugin Is Missing
+2. How to Fix Meshery Minikube Certificate Errors with a Portable Kubeconfig
+3. How to Access the Meshery Dashboard on Kind with Kubernetes Port Forwarding
+4. How to Switch mesheryctl Between Local and Remote Meshery Deployments
+5. How to Diagnose Meshery Startup Failures with Preflight Checks
+6. How to Troubleshoot a Meshery Broker Connection That Leaves Cluster Discovery Offline
+7. How to Resolve Helm Ownership Conflicts When Reinstalling Meshery
+8. How to Upgrade mesheryctl and Meshery Server in the Correct Order
+9. How to Recover MeshSync and Broker Resources Stuck Terminating During a Meshery Upgrade
+10. How to Diagnose Meshery Login Failures Caused by the Wrong Server Endpoint
+11. How to Troubleshoot Docker Compose Design Imports That Fail with Permission Denied in Meshery
+12. How to Import Kubernetes Manifests into Meshery from Raw GitHub URLs
+13. How to Turn a Helm Chart into a Meshery Design for Visual Review
+14. How to Export Meshery Designs as OCI Artifacts for Portable Sharing
+15. How to Keep Reviewable Meshery Design Snapshots in Git
+16. How to Diagnose Meshery Design Deployments That Report an Unavailable Kubernetes Cluster
+17. How to Dry-Run a Meshery Design and Interpret Component Validation Errors
+18. How to Diagnose Meshery Cluster Discovery When a Kubeconfig Upload Appears to Succeed
+19. How to Choose Embedded or Operator Mode for Meshery Cluster Discovery
+20. How to Diagnose a Meshery Adapter Container That Exits Before Connecting
+
+## Uptime Kuma
+
+1. How to Back Up and Restore Uptime Kuma v2 After JSON Export Was Removed
+2. How to Upgrade Uptime Kuma from v1 to v2 and Verify the Database Migration
+3. How to Fix Uptime Kuma WebSocket Disconnects Behind Nginx Proxy Manager
+4. How to Serve an Uptime Kuma Status Page at the Root of a Custom Domain
+5. How to Diagnose DNS Failures Inside the Uptime Kuma Docker Container
+6. How to Trust a Private Certificate Authority in Uptime Kuma HTTPS Monitors
+7. How to Configure TLS Expiry Alerts and Certificate Badges in Uptime Kuma
+8. How to Prevent Missed-Heartbeat Alerts When Monitoring Cron Jobs with Uptime Kuma
+9. How to Send Disk-Space Threshold Alerts to Uptime Kuma with a Push Monitor
+10. How to Detect Stale Generated Files with an Uptime Kuma Push Monitor
+11. How to Detect a Home Internet Outage with an Offsite Uptime Kuma Push Monitor
+12. How to Monitor Uptime Kuma Itself with an External Dead Man's Switch
+13. How to Delay Uptime Kuma Alerts Until a Service Has Failed Several Checks
+14. How to Repeat Uptime Kuma Down Notifications at an Hourly Interval
+15. How to Schedule All-Day Maintenance in Uptime Kuma Without a Midnight Alert Gap
+16. How to Export Uptime Kuma Metrics to Prometheus with a Dedicated API Key
+17. How to Automate Uptime Kuma Monitor Creation Through Its Internal Socket.IO API
+18. How to Monitor a Remote Docker Host from Uptime Kuma over Mutual TLS
+19. How to Route Uptime Kuma HTTP Checks Through an Outbound Proxy
+20. How to Monitor IPv6-Only Services from Uptime Kuma Running in Docker
+
+## LLM Monitoring
+
+1. How to Recover Missing Langfuse Token Counts in Short-Lived Worker Processes
+2. How to Account for Cache Reads and Cache Writes Separately in Langfuse Costs
+3. How to Diagnose Missing Langfuse Costs for Reasoning Models Without Usage Metadata
+4. How to Match Custom Model Names to the Correct Langfuse Pricing Definition
+5. How to Track Audio and Text Token Costs Separately in Multimodal LLM Calls
+6. How to Fix Langfuse OTLP 404 Errors by Separating Trace, Log, and Metric Exports
+7. How to Configure HTTP Protobuf and the Correct OTLP Path for Langfuse Traces
+8. How to Handle Langfuse Read-After-Flush Delays When Verifying LLM Telemetry
+9. How to Diagnose Missing LLM Traces Even When Langfuse Sampling Is Set to One
+10. How to Measure vLLM Queue Backlog Separately from Running Requests
+11. How to Distinguish Active KV Cache Pressure from Idle Prefix Cache in vLLM
+12. How to Calculate vLLM Prefix Cache Hit Rates from Token Counters
+13. How to Separate vLLM Queue, Prefill, and Decode Time When Diagnosing Slow Responses
+14. How to Distinguish vLLM Inter-Token Latency from Per-Request Time per Output Token
+15. How to Update LLM Dashboards When vLLM Metrics Are Renamed or Removed
+16. How to Correlate vLLM Preemptions with KV Cache Pressure and Tail Latency
+17. How to Compare vLLM Scheduler Queues with Ray Serve Queues During Throughput Collapse
+18. How to Interpret vLLM Request Completion Metrics by Finish Reason
+19. How to Measure Speculative Decoding Acceptance Alongside User-Visible Token Throughput
+20. How to Diagnose Low vLLM Throughput When GPU Utilization and Queue Depth Disagree
+
+## Developer Self-Service
+
+1. How to Run Backstage Self-Service Actions for Existing Services Without Creating Repositories
+2. How to Add Dry-Run Support to Custom Backstage Self-Service Actions
+3. How to Preview Files Generated by a Backstage Template Before Publishing a Repository
+4. How to Validate Service Name Availability Before Submitting a Backstage Form
+5. How to Repeat Backstage Scaffolder Actions for Array Inputs and Collect Their Outputs
+6. How to Diagnose Backstage Task Logs That Appear Only After a Proxy Timeout
+7. How to Diagnose Request Entity Too Large Errors in Backstage Template Dry Runs
+8. How to Constrain Backstage Repository Pickers to Approved Hosts and Owners
+9. How to Request User OAuth Scopes for GitHub Repository Creation in Backstage
+10. How to Return Repository and Dashboard Links from a Backstage Self-Service Task
+11. How to Authenticate Rundeck Remote Option Lists with Credentials from Key Storage
+12. How to Chain Environment and Artifact Pickers in a Rundeck Self-Service Form
+13. How to Link Catalog Resources to Prefilled Rundeck Self-Service Jobs
+14. How to Auto-Approve Read-Only Database Access Requests in Port While Reviewing Write Access
+15. How to Route Port Self-Service Approvals to the Manager of the Service Owning Team
+16. How to Prevent Requesters from Approving Their Own Port Self-Service Actions
+17. How to Diagnose Port Actions That Are Visible but Cannot Be Executed
+18. How to Fix Empty Approver Lists in Port Dynamic Permission Policies
+19. How to Restrict Port Rollback Actions to the Engineer Currently on Call
+20. How to Limit Organization-Wide Visibility of Port Self-Service Action Runs
+
+## OVN
+
+1. How to Bind Libvirt VM Interfaces to OVN Logical Switch Ports
+2. How to Connect an OVN Logical Switch to a Physical Network with Localnet Ports
+3. How to Diagnose ARP Failures Between OVN VMs on a Provider VLAN
+4. How to Trace a Packet Through OVN Logical Switches and Routers with ovn-trace
+5. How to Diagnose Asymmetric Routing and Conntrack Drops in OVN
+6. How to Troubleshoot Missing DHCP Offers from ovn-controller
+7. How to Explain Unexpected Internal DNS Answers in an OVN Tenant Network
+8. How to Fix OVN Geneve MTU Mismatches When Pings Work but Large Transfers Fail
+9. How to Diagnose High CPU Usage in ovn-controller During Network Changes
+10. How to Debug OVN ACL Rules When allow-related Traffic Bypasses an Expected Drop
+11. How to Log OVN ACL Matches to Find the Rule Blocking a Connection
+12. How to Diagnose Missing SNAT Across Nested OVN Logical Routers
+13. How to Check dnat_and_snat Placement on OVN Distributed Gateway Routers
+14. How to Troubleshoot an OVN VM That Cannot Reach Its Own Floating IP
+15. How to Configure OVN Gateway Failover with HA Chassis Groups and BFD
+16. How to Diagnose OVN Database TLS Failures with Intermediate Certificates
+17. How to Check Leader Elections and Quorum in OVN Northbound and Southbound Raft Clusters
+18. How to Fix OVN Port Binding Failures Caused by Compute Hostname Mismatches
+19. How to Find Where OVN Configuration Changes Stop Propagating to Chassis
+20. How to Collect Useful Diagnostics for Failed OVN Hardware Offload
