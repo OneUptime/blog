@@ -280,7 +280,6 @@
 
 ## Network Automation
 
-18. How to Prefer NETCONF, RESTCONF, or gNMI While Keeping a Safe CLI Fallback
 19. How to Zero-Touch Provision New Switches from DHCP, NetBox, and Generated Configurations
 20. How to Expose Routine Network Changes as a Guardrailed Self-Service Workflow
 
