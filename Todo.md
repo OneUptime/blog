@@ -283,7 +283,6 @@
 
 ## Rollouts
 
-17. How to Trigger a Deployment Rollout When a ConfigMap or Secret Changes
 18. How to Tell What a PodDisruptionBudget Protects During a Deployment Rollout—and What It Does Not
 19. How to Auto-Roll Back a Failed Kubernetes Deployment from CI After a Rollout Timeout
 20. How to Diagnose Overlapping Deployment Updates That Leave Multiple ReplicaSets Active
