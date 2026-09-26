@@ -286,7 +286,6 @@
 
 ## Cloudability
 
-5. How to Reconcile Cloudability’s Amortized AWS Costs with CUR Line Items, RIs, and Savings Plans
 6. Cloudability API Totals Do Not Match the UI: Debugging Default Views and `view_id=0`
 7. How to Feed Cloudability Data into Power BI or Grafana Without Hitting the V3 API’s 300-Request-per-Minute Limit
 8. Why Cloudability Business Mapping Rules Return the Wrong Owner: First-Match Order, Boolean Logic, and Defaults
