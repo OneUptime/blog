@@ -289,7 +289,6 @@
 
 
 
-39. How to Explain Different Totals for Cloudability Anomalies on the Same Service
 40. How to Combine Cloudability Cost and Utilization Exports Without Misstating Billed Spend
 
 ## EFS
