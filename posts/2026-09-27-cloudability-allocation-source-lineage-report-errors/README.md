@@ -48,7 +48,7 @@ This is why an apparently successful save is not sufficient evidence that the re
 
 Make a copy of the failing report and reduce it to the supported minimum for its reporting surface. Confirm that the allocation toggle or projection is correct. Add the destination dimension, metric, and required companion dimension before adding lineage.
 
-If that works, reintroduce the remaining fields individually. Maintain a short diagnostic record:
+If that works, reintroduce the remaining fields individually. Maintain a short diagnostic record; this example uses Apptio BI, where the native report companion-dimension requirement does not apply:
 
 | Change | Result | Interpretation |
 | --- | --- | --- |
