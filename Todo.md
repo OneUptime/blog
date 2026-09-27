@@ -287,7 +287,6 @@
 
 ## Cloudability
 
-13. How to Allocate Kubernetes Idle Node Cost in Cloudability by Namespace, Label, and Business Dimension
 14. How to Join Kubernetes Costs with Load Balancers and Databases in One Cloudability Report
 15. Cloudability Has No Container Data: Debugging FinOps Agent RBAC, 30-Second Scrapes, and 10-Minute Exports
 16. How to Find Azure VMs That Are Powered On but Idle Using Cloudability CPU, Memory, and Network Metrics
