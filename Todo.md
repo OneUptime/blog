@@ -155,7 +155,6 @@
 ## OpenSearch Observability
 
 
-6. How to Extract Fields from Multiline Log Bodies with OpenSearch PPL parse
 7. How to Filter OpenSearch Log Events by Timestamp with PPL Date Functions
 8. How to Compare OpenSearch PPL API Results with Log Explorer When Rows Disappear
 9. How to Diagnose Missing Trace Groups When Upstream Root Spans Never Reach Data Prepper
