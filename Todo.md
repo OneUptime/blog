@@ -289,7 +289,6 @@
 
 
 
-34. How to Sync ServiceNow CMDB Ownership into Cloudability Business Dimensions
 35. How to Allocate OpenSearch Serverless OCU Costs by Application in Cloudability
 36. How to Scope Cloudability Budgets to Individual IBM Cloud Projects
 37. How to Exclude Credits and One-Time Charges from a Cloudability Enhanced Forecast
