@@ -155,7 +155,6 @@
 ## OpenSearch Observability
 
 
-8. How to Compare OpenSearch PPL API Results with Log Explorer When Rows Disappear
 9. How to Diagnose Missing Trace Groups When Upstream Root Spans Never Reach Data Prepper
 10. How to Enrich Late-Arriving Spans with otel_traces_group in Data Prepper
 11. How to Keep Each Trace on One Data Prepper Node with Peer Forwarding
