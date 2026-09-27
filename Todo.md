@@ -155,7 +155,6 @@
 ## OpenSearch Observability
 
 
-20. How to Validate Service-Map Index Selection for Separate OpenSearch Applications
 
 ## Recovery Engineering
 
