@@ -289,7 +289,6 @@
 
 
 
-30. How to Diagnose 404 Errors When Looking Up Saved Cloudability Reports by ID
 31. How to Isolate Invalid Query Parameters Behind Cloudability Cost Reporting API Errors
 32. How to Resolve Cloudability Business Metric Creation Errors Caused by the Wrong API Endpoint
 33. How to Calculate Cloudability Cost Ratios After Aggregation with Calculated Metrics
