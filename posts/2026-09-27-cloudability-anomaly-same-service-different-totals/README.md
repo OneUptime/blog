@@ -41,7 +41,7 @@ Record when the anomaly was observed. Billing data and mappings can be updated a
 
 ## Compare the same measure
 
-Choose the cost measure corresponding to the anomaly total, then match its date, account, service, usage family, and available segment dimensions in a report. Do not compare the anomaly's total-cost field directly with an amortized or adjusted cost metric.
+Choose the cost measure corresponding to the anomaly total, then match its date, service, usage family, and applicable segment dimensions in a report. Apply account and tag or Business Mapping filters for configurable segments; do not narrow a service-level segment to a single account unless its scope requires it. Do not compare the anomaly's total-cost field directly with an amortized or adjusted cost metric.
 
 Inspect the requested View and the user behind an API export. Anomaly Detection supports only certain View dimensions according to the compatibility reference, so confirm that the selected View is meaningful for that feature instead of assuming every report filter applies identically.
 
@@ -68,6 +68,6 @@ Compare anomalies by their complete segment and measure definitions. The same se
 ## Official Documentation
 
 - [IBM anomaly record fields](https://www.ibm.com/docs/en/cloudability-commercial/cloudability-enterprise/saas?topic=api-anomaly-detection-endpoint)
-- [IBM anomaly segmentation and configuration](https://www.ibm.com/docs/en/cloudability-commercial/cloudability-standard/saas?topic=SSVCLNQ%2Fcloudability%2Fproduct%2Fidentify-unusual-spending-patterns-with-anomaly-detection.htm)
+- [IBM anomaly segmentation and configuration](https://www.ibm.com/docs/en/cloudability-commercial/cloudability-standard/saas?topic=insights-anomaly-detection)
 - [IBM Views feature compatibility](https://www.ibm.com/docs/en/cloudability-commercial/cloudability-enterprise/saas?topic=views-feature-compatibility)
 - [IBM cost reporting](https://www.ibm.com/docs/en/cloudability-commercial/cloudability-essentials/saas?topic=api-cost-reporting-end-point)
