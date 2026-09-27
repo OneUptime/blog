@@ -287,7 +287,6 @@
 
 ## Cloudability
 
-12. How to Audit Cloudability Shared-Cost Lineage with `Allocation Source` Without Triggering Multi-Dimension Report Errors
 13. How to Allocate Kubernetes Idle Node Cost in Cloudability by Namespace, Label, and Business Dimension
 14. How to Join Kubernetes Costs with Load Balancers and Databases in One Cloudability Report
 15. Cloudability Has No Container Data: Debugging FinOps Agent RBAC, 30-Second Scrapes, and 10-Minute Exports
