@@ -29,6 +29,7 @@ import requests
 response = requests.get(
     "https://api.cloudability.com/v3/reporting/reports/cost",
     auth=(os.environ["CLOUDABILITY_API_KEY"], ""),
+    headers={"Accept": "application/json"},
     timeout=(10, 60),
 )
 print("HTTP status:", response.status_code)
@@ -49,6 +50,7 @@ import requests
 
 login = requests.post(
     "https://frontdoor.apptio.com/service/apikeylogin",
+    headers={"Accept": "application/json"},
     json={
         "keyAccess": os.environ["FRONTDOOR_KEY_ACCESS"],
         "keySecret": os.environ["FRONTDOOR_KEY_SECRET"],
