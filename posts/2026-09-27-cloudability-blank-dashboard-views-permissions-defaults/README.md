@@ -31,7 +31,7 @@ Consider this original example:
 | Finance | Production | No |
 | Engineering | Missing | No |
 
-If the Environment mapping was recently renamed, a seemingly reasonable View may now select no rows. Compare filter values with actual report values, including missing and unallocated buckets.
+If the Environment mapping now produces a different value instead of Production, a View still filtering for Production may select no rows. Compare filter values with actual report values, including missing and unallocated buckets.
 
 Treat a filter correction as a data-scoping change. Do not broaden the View to all accounts merely to make charts populate.
 
@@ -45,9 +45,9 @@ For a hierarchical View, check whether access is inherited from a parent and whe
 
 ## Separate defaults from the current selection
 
-The configured default is not always the View restored in an existing browser session. IBM documents that Cloudability remembers the last accessed View in browser cache. Deleting a default View or removing access can also cause fallback to the organization default, or leave the default blank when none exists. [Default View behavior](https://www.ibm.com/docs/en/cloudability-commercial/cloudability-enterprise/saas?topic=administration-cloudability-create-manage-views)
+The configured default is not always the View restored in an existing browser session. IBM documents that Cloudability remembers the last accessed View in browser cache. Deleting a default View or removing access can also cause fallback to the organization default, or leave the default blank when none exists. [Default View behavior](https://www.ibm.com/docs/en/cloudability-commercial/cloudability-premium/saas?topic=administration-cloudability-create-manage-views)
 
-First select the intended accessible View explicitly and retest the simple report. Then set the appropriate default through the user's preferences or administrative controls. A fresh browser session can help distinguish a remembered selection from a persistent access issue.
+First select the intended accessible View explicitly and retest the simple report. Then set the appropriate default through the user's preferences or administrative controls. Clear the browser cache and sign in again to test the configured default without the remembered selection.
 
 A blank default field alone does not prove the billing dataset is empty. Record what is selected on the actual report page rather than inferring it from the user's profile.
 
@@ -68,7 +68,7 @@ Use a small diagnostic matrix:
 
 ## Confirm the fix as the affected user
 
-Verify that the intended report now contains the expected accounts and excludes unrelated scope. Reload the dashboard and check the default behavior after signing in again. Record the precise assignment, permission, or filter that changed.
+Verify that the intended report now contains the expected accounts and excludes unrelated scope. Reload the dashboard and check the default behavior after clearing the browser cache and signing in again. Record the precise assignment, permission, or filter that changed.
 
 ## Conclusion
 
