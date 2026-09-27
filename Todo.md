@@ -289,7 +289,6 @@
 
 
 
-23. How to Consolidate Inconsistent Tag Keys into One Cloudability Reporting Dimension
 24. How to Diagnose IBM Cloud Account Verification Failures Before Billing Files Arrive in Cloudability
 25. How to Export Readable Business Mapping Headers from Cloudability with useDimensionNames
 26. How to Inventory Saved Cloudability Reports and Their Sharing Settings with the API
