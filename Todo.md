@@ -155,7 +155,6 @@
 ## OpenSearch Observability
 
 
-17. How to Diagnose Dotted OpenTelemetry Attribute Mapping Conflicts in Data Prepper
 18. How to Size Data Prepper Buffers for Bursty OpenSearch Trace Ingestion
 19. How to Confirm Rejected OpenSearch Telemetry Reaches the Dead-Letter Queue
 20. How to Validate Service-Map Index Selection for Separate OpenSearch Applications
