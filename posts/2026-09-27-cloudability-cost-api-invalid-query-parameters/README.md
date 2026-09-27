@@ -16,7 +16,7 @@ The cost-report endpoint requires dates, dimensions, and metrics. Its documented
 
 Other V3 endpoint examples use conventions such as singular `filter` and prefixed sort directions. Do not transfer those conventions to cost reporting. Likewise, a browser network request can use internal parameters that the public endpoint does not document.
 
-Here is a small Python request using `requests`. Select the documented API host for your region and an authorized view ID.
+Here is a small Python request using `requests` and a Cloudability API key for a commercial environment. Select the documented API host for your region and an authorized view ID. GovCloud requires Access Administration `apptio-opentoken` authentication instead of a Cloudability API key.
 
 ```python
 import os
@@ -47,7 +47,7 @@ Query `/reporting/cost/measures` to inspect the current dimension and metric nam
 
 Also retrieve `/reporting/cost/filters` when checking operators. Use one simple filter before adding a compound set. Confirm the measure exists for the requested reporting mode, especially when cost sharing is enabled.
 
-The measures endpoint documents `apply_allocations`, while the report execution endpoint documents `applyAllocations`. Their different spellings are intentional in their respective references; copying one across endpoints can undermine the diagnosis.
+The measures endpoint documents `apply_allocations`, while the report execution endpoint documents `applyAllocations`. These are the spellings documented in their respective references; copying one across endpoints can undermine the diagnosis.
 
 ## Encode filters once and preserve repetition
 
