@@ -287,7 +287,6 @@
 
 ## Cloudability
 
-11. How to Allocate Shared Platform Costs in Cloudability with Even Splits, Fixed Weights, and Telemetry
 12. How to Audit Cloudability Shared-Cost Lineage with `Allocation Source` Without Triggering Multi-Dimension Report Errors
 13. How to Allocate Kubernetes Idle Node Cost in Cloudability by Namespace, Label, and Business Dimension
 14. How to Join Kubernetes Costs with Load Balancers and Databases in One Cloudability Report
