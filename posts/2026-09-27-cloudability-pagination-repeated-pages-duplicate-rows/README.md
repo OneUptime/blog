@@ -20,7 +20,7 @@ Do not interpret `limit=0` as unlimited output. IBM documents a larger automatic
 
 ## Make the loop fail visibly
 
-This Python example uses `requests` and the cost-report response shape shown in the endpoint documentation. It stages rows in memory for clarity; a large export should use per-page durable staging with the same checks.
+This Python example uses `requests` and the cost-report response shape shown in the endpoint documentation. It stages rows in memory for clarity and writes a staging file after traversal; reconcile that file before publishing it. A large export should use per-page durable staging with the same checks.
 
 ```python
 import hashlib
@@ -57,8 +57,13 @@ for page_number in range(1, 10001):
         raise RuntimeError("Repeated nonempty page; export not published")
     seen_pages.add(digest)
     rows.extend(page)
-    next_token = (payload.get("pagination") or {}).get("next")
-    if not next_token:
+    pagination = payload.get("pagination")
+    if pagination is None:
+        pagination = {}
+    if not isinstance(pagination, dict):
+        raise ValueError("Expected pagination object; export not published")
+    next_token = pagination.get("next")
+    if next_token is None or next_token == "":
         break
     if not isinstance(next_token, str) or next_token in seen_tokens:
         raise RuntimeError("Invalid or repeated next token")
@@ -66,8 +71,8 @@ for page_number in range(1, 10001):
     token = next_token
 else:
     raise RuntimeError("Page budget exhausted")
-Path("cost-rows.json.tmp").write_text(json.dumps(rows), encoding="utf-8")
-Path("cost-rows.json.tmp").replace("cost-rows.json")
+Path("cost-rows.staged.json.tmp").write_text(json.dumps(rows), encoding="utf-8")
+Path("cost-rows.staged.json.tmp").replace("cost-rows.staged.json")
 ```
 
 The repeated-page check deliberately stops on suspicious output instead of removing rows. Review a flagged case against the complete grouping key before deciding whether rows are duplicates.
