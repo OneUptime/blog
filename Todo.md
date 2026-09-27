@@ -155,7 +155,6 @@
 ## OpenSearch Observability
 
 
-4. How to Query Nested Log Arrays in OpenSearch Without Confusing Object and Nested Mappings
 5. How to Keep Missing Service Names Visible in OpenSearch Log Aggregations
 6. How to Extract Fields from Multiline Log Bodies with OpenSearch PPL parse
 7. How to Filter OpenSearch Log Events by Timestamp with PPL Date Functions
