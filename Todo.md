@@ -289,7 +289,6 @@
 
 
 
-31. How to Isolate Invalid Query Parameters Behind Cloudability Cost Reporting API Errors
 32. How to Resolve Cloudability Business Metric Creation Errors Caused by the Wrong API Endpoint
 33. How to Calculate Cloudability Cost Ratios After Aggregation with Calculated Metrics
 34. How to Sync ServiceNow CMDB Ownership into Cloudability Business Dimensions
