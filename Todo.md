@@ -287,7 +287,6 @@
 
 ## Cloudability
 
-20. A Cloudability User Sees Blank Dashboards: Fixing View Assignment, Feature Permissions, and Default Views
 
 
 21. How to Diagnose Missing Owner Tags in Cloudability Tag Explorer
