@@ -155,7 +155,6 @@
 ## OpenSearch Observability
 
 
-2. How to Cast Extracted Response Times to Numbers Before OpenSearch PPL Aggregation
 3. How to Quote Timestamp and Dotted OpenTelemetry Fields in OpenSearch PPL
 4. How to Query Nested Log Arrays in OpenSearch Without Confusing Object and Nested Mappings
 5. How to Keep Missing Service Names Visible in OpenSearch Log Aggregations
