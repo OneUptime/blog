@@ -41,7 +41,7 @@ Cloudability's Views compatibility documentation states that Budgets are scoped 
 
 Select the project View, open Plan > Budgets, and create a budget with a clear period and cost basis. Review the View again in the creation flow and in the saved budget.
 
-Record whether the budget tracks cash, amortized, adjusted, or another supported basis. A project with prepaid commitments can have materially different monthly figures under different metrics, even when the project filter is identical.
+Record whether the budget tracks cash, amortized, adjusted, or another supported basis. Cost-metric behavior varies by cloud provider; verify how the selected basis represents your IBM Cloud charges rather than assuming the prepaid-commitment amortization documented for AWS and Azure applies to IBM Cloud.
 
 For an illustrative quarterly budget, finance might approve 12,000, 14,000, and 16,000 for three months. Enter those amounts as the target, then compare actuals using the same project View and basis. Do not replace the approved target merely because a forecast changes.
 
@@ -57,7 +57,7 @@ If several project budgets overlap, summing them is not necessarily an organizat
 
 Open the project budget as an intended consumer and confirm the same scope and actuals. Feature permission and View access are separate checks when a user cannot find the budget.
 
-Configure supported budget notifications for the chosen View and budget if required. Verify recipients and delivery preferences in the UI, and test the operational response with the owner. A budget is a monitoring target, not a cloud resource spending cap.
+Have each intended recipient subscribe to budget notifications for the chosen View and budget if required. Each user configures their own subscription and email delivery preferences; test the operational response with the owner. A budget is a monitoring target, not a cloud resource spending cap.
 
 ## Conclusion
 
