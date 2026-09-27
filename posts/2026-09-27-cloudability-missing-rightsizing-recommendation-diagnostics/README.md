@@ -22,9 +22,9 @@ Also establish whether the resource's service is supported in that engine. Use t
 
 Keep a record of the selected View, cloud account filters, service tab, risk selection, and cost basis. Search by resource ID where available and inspect snoozed recommendations using the supported controls.
 
-An administrator should compare the intended scope without expanding the affected user's permissions unnecessarily. A missing row under one View can be correct if the resource does not match that View's account or Business Mapping criteria.
+An administrator should compare the intended scope without expanding the affected user's permissions unnecessarily. A missing row under one View can be correct if the resource does not match that View's account or Business Mapping criteria. Container rightsizing supports only Views based on Account Id, Account Name, Account groups, and Vendor dimensions; check the feature's View support before relying on Business Mapping criteria. [Views compatibility](https://www.ibm.com/docs/en/cloudability-commercial/cloudability-premium/saas?topic=views-feature-compatibility)
 
-Global Basic preferences can exclude resource families, enforce minimum savings, or remove long-inactive resources. In Premium, the Basic tab can also be hidden without stopping its recommendation generation. [Rightsizing preferences](https://www.ibm.com/docs/en/cloudability-commercial/cloudability-premium/saas?topic=ar-rightsizing-preferences)
+Global Basic preferences can exclude recommended instance types, enforce minimum savings, or exclude recommendations for long-inactive resources. [Rightsizing preferences](https://www.ibm.com/docs/en/cloudability-commercial/cloudability-premium/saas?topic=rightsizing-preferences)
 
 Treat “generated but hidden” differently from “never generated.” Record a preference change before making it, because a global adjustment can affect every team's opportunity list.
 
