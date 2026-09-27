@@ -287,7 +287,6 @@
 
 ## Cloudability
 
-15. Cloudability Has No Container Data: Debugging FinOps Agent RBAC, 30-Second Scrapes, and 10-Minute Exports
 16. How to Find Azure VMs That Are Powered On but Idle Using Cloudability CPU, Memory, and Network Metrics
 17. Why Cloudability Shows No Rightsizing Recommendation: Permissions, Resource Age, and Missing Utilization Data
 18. How to Tune Cloudability Rightsizing Preferences Without Breaking Commitment Coverage or CPU Architecture
