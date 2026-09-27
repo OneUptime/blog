@@ -14,7 +14,7 @@ Cloudability's cost-report API supports JSON and CSV responses. Its examples rep
 
 Capture a fixed period, one metric, the same view, the same grouping dimensions, and the same allocation setting. Start with a small vendor-level report to avoid pagination during the first comparison. Record the exact request and extraction time.
 
-Request JSON and CSV from the same documented endpoint by changing the `Accept` header. A CSV downloaded from a dashboard can include visualization formatting or a different selected measure, so keep that as a separate comparison until the API pair agrees.
+Request JSON and CSV from the same documented endpoint by changing the `Accept` header. A dashboard can display formatted amounts or use a different selected measure; inspect its downloaded CSV independently rather than assuming it preserves the display formatting. Keep that as a separate comparison until the API pair agrees.
 
 Inspect the CSV in a text editor before opening it in a spreadsheet. A spreadsheet may infer number formats, scientific notation, or locale-dependent separators. Retain the raw bytes and use a CSV parser; splitting each line on commas breaks quoted fields.
 
@@ -36,7 +36,7 @@ assert round_total == Decimal("0.01")
 print(round_each, round_total)
 ```
 
-Use the precision appropriate to the report's currency and your accounting policy; not every currency uses two fractional digits. Keep full supplied precision through aggregation, then format the result at the presentation boundary.
+Use the precision appropriate to the report's currency and your accounting policy; not every currency uses two fractional digits. Keep full supplied precision through aggregation, then format the result at the presentation boundary. Python decimal arithmetic uses a context precision of 28 significant digits by default; increase it as needed for your amounts and intermediate results to avoid rounding during aggregation or subtraction.
 
 ## Compare a normalized small report
 
