@@ -289,7 +289,6 @@
 
 
 
-24. How to Diagnose IBM Cloud Account Verification Failures Before Billing Files Arrive in Cloudability
 25. How to Export Readable Business Mapping Headers from Cloudability with useDimensionNames
 26. How to Inventory Saved Cloudability Reports and Their Sharing Settings with the API
 27. How to Stop Repeated Pages and Duplicate Rows in Cloudability API Exports
