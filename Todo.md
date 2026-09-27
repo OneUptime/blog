@@ -155,7 +155,6 @@
 ## OpenSearch Observability
 
 
-5. How to Keep Missing Service Names Visible in OpenSearch Log Aggregations
 6. How to Extract Fields from Multiline Log Bodies with OpenSearch PPL parse
 7. How to Filter OpenSearch Log Events by Timestamp with PPL Date Functions
 8. How to Compare OpenSearch PPL API Results with Log Explorer When Rows Disappear
