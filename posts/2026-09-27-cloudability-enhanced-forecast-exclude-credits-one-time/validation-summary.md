@@ -1,4 +1,4 @@
-# Validation Summary: How to Exclude Credits and One-Time Charges from a Cloudability Enhanced Forecast
+# Validation Summary: How to Exclude Credits and One-Time Charges in Cloudability Enhanced Forecast
 
 ## Status
 validated

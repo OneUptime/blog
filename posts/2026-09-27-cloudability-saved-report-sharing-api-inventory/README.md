@@ -1,4 +1,4 @@
-# How to Inventory Saved Cloudability Reports and Their Sharing Settings with the API
+# How to Inventory Cloudability Reports and Sharing Settings with the API
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

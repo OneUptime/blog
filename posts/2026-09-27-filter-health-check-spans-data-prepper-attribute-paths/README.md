@@ -77,8 +77,8 @@ processor:
       drop_when: >-
         /serviceName == "checkout" and
         (
-          "/attributes/span.attributes.http@route" == """/healthz""" or
-          "/attributes/span.attributes.http@route" == """/readyz"""
+        "/attributes/span.attributes.http@route" == """/healthz""" or
+        "/attributes/span.attributes.http@route" == """/readyz"""
         )
       handle_failed_events: skip
 ```

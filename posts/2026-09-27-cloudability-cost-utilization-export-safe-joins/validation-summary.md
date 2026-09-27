@@ -1,4 +1,4 @@
-# Validation Summary: How to Combine Cloudability Cost and Utilization Exports Without Misstating Billed Spend
+# Validation Summary: How to Join Cloudability Cost and Utilization Exports Without Double Counting
 
 ## Status
 validated

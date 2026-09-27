@@ -33,8 +33,9 @@ raw-trace-pipeline:
     - otel_trace_group:
         hosts: ["https://opensearch.example.com:9200"]
         cert: /etc/data-prepper/certs/opensearch-ca.pem
-        username: trace-reader
-        password: "REPLACE_WITH_LOOKUP_CREDENTIAL"
+        authentication:
+          username: trace-reader
+          password: "REPLACE_WITH_LOOKUP_CREDENTIAL"
   sink:
     - opensearch:
         hosts: ["https://opensearch.example.com:9200"]
@@ -79,7 +80,7 @@ These release-specific details are visible in the [2.16.0 implementation](https:
 
 In a test pipeline, send a root and wait until its enriched document is searchable. Then send a child from the same trace after the relevant in-memory state is no longer available. Inspect the newly indexed child's `traceGroup` and `traceGroupFields`.
 
-Include two negative cases: a child whose root never arrives, and a child arriving before its root is searchable. Those cases should not be counted as successful backend enrichment. Do not force a refresh on every production batch just to make this test pass; search visibility and indexing throughput must be balanced.
+Include two negative cases: a child whose root never arrives, and a child still missing its trace group when the lookup runs before its root is searchable. Arrival before search visibility alone is not sufficient: `otel_traces` can buffer the child until the root arrives or becomes searchable. These negative cases should not be counted as successful backend enrichment. Do not force a refresh on every production batch just to make this test pass; search visibility and indexing throughput must be balanced.
 
 If repairing previously stored children is required, plan a separate controlled replay or backfill. Evaluate document IDs, duplicate handling, retention, and load first. Enabling the processor alone does not revisit existing index contents.
 

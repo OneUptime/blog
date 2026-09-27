@@ -1,4 +1,4 @@
-# How to Diagnose Span ClassCastException After Replacing a Data Prepper Kafka Buffer with a Source
+# How to Diagnose Data Prepper Kafka Source Span ClassCastException
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
@@ -14,10 +14,10 @@ A Kafka source and Kafka buffer occupy different places in the Data Prepper life
 
 ## Compare the two data paths
 
-With a buffer, the trace-aware source decodes OTLP into span events before persistence:
+The Kafka-buffer path retains trace-aware decoding. In the referenced implementation, `otel_trace_source` [writes OTLP request bytes to the byte buffer](https://github.com/opensearch-project/data-prepper/blob/0c8acd7ffc0328b1f9dbd9bc7161ed673a59be42/data-prepper-plugins/otel-trace-source/src/main/java/org/opensearch/dataprepper/plugins/source/oteltrace/OTelTraceGrpcService.java#L108-L115) and [supplies the decoder](https://github.com/opensearch-project/data-prepper/blob/0c8acd7ffc0328b1f9dbd9bc7161ed673a59be42/data-prepper-plugins/otel-trace-source/src/main/java/org/opensearch/dataprepper/plugins/source/oteltrace/OTelTraceSource.java#L75-L80) that reconstructs typed spans for downstream processors:
 
 ```text
-otel_trace_source -> typed Span -> kafka buffer -> otel_traces
+otel_trace_source -> kafka buffer envelope -> trace decoder -> typed Span -> otel_traces
 ```
 
 With a generic Kafka source, the Kafka consumer is responsible for constructing the event:
@@ -71,7 +71,7 @@ Seeing a `traceId` in stdout establishes field presence, not Java object type. J
 
 ## Choose a repair that preserves span semantics
 
-If the original design required Data Prepper to persist its own typed events, restore the Kafka buffer behind `otel_trace_source`. Keep the trace-aware source as the decoder and use a compatible buffer configuration for the installed release. The upstream [Kafka buffer OpenTelemetry integration test](https://github.com/opensearch-project/data-prepper/blob/0c8acd7ffc0328b1f9dbd9bc7161ed673a59be42/data-prepper-plugins/kafka-plugins/src/integrationTest/java/org/opensearch/dataprepper/plugins/kafka/buffer/KafkaBufferOTelIT.java) checks round trips involving OpenTelemetry event types.
+If the original design required a durable buffer inside a trace-aware Data Prepper pipeline, restore the Kafka buffer behind `otel_trace_source`. Keep the trace-aware source as the decoder and use a compatible buffer configuration for the installed release. The upstream [Kafka buffer OpenTelemetry integration test](https://github.com/opensearch-project/data-prepper/blob/0c8acd7ffc0328b1f9dbd9bc7161ed673a59be42/data-prepper-plugins/kafka-plugins/src/integrationTest/java/org/opensearch/dataprepper/plugins/kafka/buffer/KafkaBufferOTelIT.java) checks round trips involving OpenTelemetry event types.
 
 If Kafka is intentionally an external transport boundary, use a consumer that understands the producer's trace encoding and exports valid OTLP to a trace-aware Data Prepper source. Verify the exact receiver/exporter support in that consumer's installed release.
 

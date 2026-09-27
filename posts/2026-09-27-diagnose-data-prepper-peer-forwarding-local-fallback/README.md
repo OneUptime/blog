@@ -57,7 +57,8 @@ Use the request counters and the relevant logs to choose the next check:
 | TLS handshake failure | Certificate validity, hostname, trust configuration, client authentication |
 | `requestsTooLarge` / HTTP 413 | Forwarded request size and peer receive-buffer capacity |
 | `requestTimeouts` / HTTP 408 | Receive-buffer pressure and downstream processing latency |
-| `requestsUnprocessable` / HTTP 422 | Destination pipeline/plugin availability and release compatibility |
+| `badRequests` / HTTP 400 | Request format and destination pipeline/plugin availability; the referenced implementation returns 400 for a missing target |
+| `requestsUnprocessable` / HTTP 422 | Receiver exception logs and release compatibility; the referenced implementation maps `NullPointerException` to 422 |
 
 An OTLP source health check tests a different listener. Likewise, an HTTP 200 from the OpenSearch cluster proves nothing about Data Prepper peer reachability.
 
@@ -67,7 +68,7 @@ Perform a TLS connection check from the same network context as Data Prepper, us
 
 The upstream [RemotePeerForwarder implementation](https://github.com/opensearch-project/data-prepper/blob/0c8acd7ffc0328b1f9dbd9bc7161ed673a59be42/data-prepper-core/src/main/java/org/opensearch/dataprepper/core/peerforwarder/RemotePeerForwarder.java) contains several fallback paths: inability to batch records, inability to submit or send requests, and unsuccessful forwarding responses. Check the source for the deployed version when investigating an exact log message.
 
-Fallback is not unlimited protection. In the referenced implementation, failed forwarded records are written back to the local receive buffer; if that write fails, a log explicitly reports dropped records. Therefore, distinguish “processed on the wrong owner” from “failed to re-enter the local processing path.”
+Fallback is not unlimited protection. In the referenced implementation, batching failures return records directly for local processing, while records from failed forwarding requests are written back to the local receive buffer; if that write fails, a log explicitly reports dropped records. Therefore, distinguish “processed on the wrong owner” from “failed to re-enter the local processing path.”
 
 Capture the first transport error, subsequent fallback message, and any local-buffer error together. A dashboard displaying indexed documents can conceal both partial correlation and partial loss.
 

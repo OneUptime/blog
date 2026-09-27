@@ -1,4 +1,4 @@
-# How to Diagnose IBM Cloud Account Verification Failures Before Billing Files Arrive in Cloudability
+# How to Diagnose IBM Cloud Verification Failures in Cloudability
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
@@ -61,7 +61,7 @@ base = os.environ["CLOUDABILITY_API_BASE"].rstrip("/")
 account = quote(os.environ["IBM_CLOUD_ACCOUNT_ID"], safe="")
 response = requests.get(
     f"{base}/vendors/ibm/accounts/{account}",
-    params={"include": "permissions"},
+    params={"include": "permissions", "viewId": 0},
     auth=(os.environ["CLOUDABILITY_API_KEY"], ""),
     timeout=(10, 60),
 )
@@ -70,11 +70,11 @@ response.raise_for_status()
 account_details = response.json()
 ```
 
-Set `CLOUDABILITY_API_BASE` to your regional API base including `/v3`. Inspect returned details in a controlled environment instead of printing the full credential object into shared logs.
+Set `CLOUDABILITY_API_BASE` to your regional API base including `/v3`. The `viewId=0` parameter prevents your default Cloudability view from filtering the credential request. Inspect returned details in a controlled environment instead of printing the full credential object into shared logs.
 
 ## Retry the right operation
 
-For the documented delayed-file case, IBM recommends retrying verification later. The Deployable Architecture can also skip that deployment check through its optional `skip_verification` setting; skipping the check does not prove that cost ingestion works. IBM recommends requesting help if the account still cannot verify after more than 24 hours. [Verification retry and skip guidance](https://cloud.ibm.com/docs/track-spend-with-cloudability?topic=track-spend-with-cloudability-troubleshoot-cldy-verification-failed)
+For the documented delayed-file case, IBM recommends retrying verification later. The Deployable Architecture can also skip that deployment check by setting its optional `skip_verification` parameter to `true` when `cloudability_auth_type` is `api_key`; skipping the check does not prove that cost ingestion works. IBM recommends requesting help if the account still cannot verify after more than 24 hours. [Verification retry and skip guidance](https://cloud.ibm.com/docs/track-spend-with-cloudability?topic=track-spend-with-cloudability-troubleshoot-cldy-verification-failed)
 
 Keep a follow-through item to verify the account and inspect the first cost report. A clean infrastructure deployment and an operational billing feed are separate acceptance criteria.
 

@@ -1,4 +1,4 @@
-# How to Join Kubernetes Costs with Load Balancers and Databases in One Cloudability Report
+# How to Combine Kubernetes and Off-Cluster Costs in Cloudability
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

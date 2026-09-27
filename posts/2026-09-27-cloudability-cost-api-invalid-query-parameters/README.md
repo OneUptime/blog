@@ -1,4 +1,4 @@
-# How to Isolate Invalid Query Parameters Behind Cloudability Cost Reporting API Errors
+# How to Diagnose Invalid Query Parameters in Cloudability Cost APIs
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

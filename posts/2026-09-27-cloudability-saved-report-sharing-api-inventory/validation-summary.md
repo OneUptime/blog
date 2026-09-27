@@ -1,4 +1,4 @@
-# Validation Summary: How to Inventory Saved Cloudability Reports and Their Sharing Settings with the API
+# Validation Summary: How to Inventory Cloudability Reports and Sharing Settings with the API
 
 ## Status
 validated

@@ -1,4 +1,4 @@
-# How to Query Nested Log Arrays in OpenSearch Without Confusing Object and Nested Mappings
+# How to Query OpenSearch Log Arrays with Object and Nested Mappings
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

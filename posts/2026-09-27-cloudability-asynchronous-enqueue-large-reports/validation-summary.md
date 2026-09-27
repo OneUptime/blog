@@ -1,4 +1,4 @@
-# Validation Summary: How to Retrieve Large Cloudability Reports with the Asynchronous Enqueue Workflow
+# Validation Summary: How to Retrieve Large Cloudability Reports with Asynchronous Enqueue
 
 ## Status
 validated

@@ -1,4 +1,4 @@
-# How to Export Readable Business Mapping Headers from Cloudability with useDimensionNames
+# How to Export Cloudability Mapping Headers with useDimensionNames
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

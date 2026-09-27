@@ -1,4 +1,4 @@
-# How to Diagnose Missing Trace Groups When Upstream Root Spans Never Reach Data Prepper
+# How to Diagnose Missing Root Spans and Trace Groups in Data Prepper
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

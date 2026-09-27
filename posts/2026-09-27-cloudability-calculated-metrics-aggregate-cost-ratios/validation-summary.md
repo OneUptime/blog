@@ -1,4 +1,4 @@
-# Validation Summary: How to Calculate Cloudability Cost Ratios After Aggregation with Calculated Metrics
+# Validation Summary: How to Calculate Aggregated Cloudability Cost Ratios with Calculated Metrics
 
 ## Status
 validated

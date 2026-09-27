@@ -1,4 +1,4 @@
-# Validation Summary: How to Resolve Cloudability Business Metric Creation Errors Caused by the Wrong API Endpoint
+# Validation Summary: How to Fix Cloudability Business Metric Creation Endpoint Errors
 
 ## Status
 validated

@@ -1,4 +1,4 @@
-# How to Exclude Credits and One-Time Charges from a Cloudability Enhanced Forecast
+# How to Exclude Credits and One-Time Charges in Cloudability Enhanced Forecast
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

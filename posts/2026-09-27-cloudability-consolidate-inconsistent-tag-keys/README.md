@@ -1,4 +1,4 @@
-# How to Consolidate Inconsistent Tag Keys into One Cloudability Reporting Dimension
+# How to Unify Inconsistent Tag Keys in Cloudability Reporting
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

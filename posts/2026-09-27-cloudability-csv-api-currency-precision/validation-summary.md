@@ -1,4 +1,4 @@
-# Validation Summary: How to Investigate Currency Precision Differences Between Cloudability CSV and API Results
+# Validation Summary: How to Diagnose Currency Precision Differences in Cloudability Exports
 
 ## Status
 validated

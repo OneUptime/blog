@@ -1,4 +1,4 @@
-# How to Retrieve Large Cloudability Reports with the Asynchronous Enqueue Workflow
+# How to Retrieve Large Cloudability Reports with Asynchronous Enqueue
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

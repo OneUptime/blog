@@ -1,4 +1,4 @@
-# Validation Summary: How to Audit Cloudability Shared-Cost Lineage with `Allocation Source` Without Triggering Multi-Dimension Report Errors
+# Validation Summary: How to Audit Cloudability Shared Costs with Allocation Source
 
 ## Status
 validated

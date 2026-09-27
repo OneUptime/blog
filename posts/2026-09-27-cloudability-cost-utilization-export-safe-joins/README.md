@@ -1,4 +1,4 @@
-# How to Combine Cloudability Cost and Utilization Exports Without Misstating Billed Spend
+# How to Join Cloudability Cost and Utilization Exports Without Double Counting
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

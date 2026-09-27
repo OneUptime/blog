@@ -1,4 +1,4 @@
-# How to Resolve Cloudability Business Metric Creation Errors Caused by the Wrong API Endpoint
+# How to Fix Cloudability Business Metric Creation Endpoint Errors
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

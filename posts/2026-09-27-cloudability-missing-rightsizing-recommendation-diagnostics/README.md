@@ -1,4 +1,4 @@
-# Why Cloudability Shows No Rightsizing Recommendation: Permissions, Resource Age, and Missing Utilization Data
+# How to Diagnose Missing Cloudability Rightsizing Recommendations
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
@@ -25,6 +25,8 @@ Keep a record of the selected View, cloud account filters, service tab, risk sel
 An administrator should compare the intended scope without expanding the affected user's permissions unnecessarily. A missing row under one View can be correct if the resource does not match that View's account or Business Mapping criteria. Container rightsizing supports only Views based on Account Id, Account Name, Account groups, and Vendor dimensions; check the feature's View support before relying on Business Mapping criteria. [Views compatibility](https://www.ibm.com/docs/en/cloudability-commercial/cloudability-premium/saas?topic=views-feature-compatibility)
 
 Global Basic preferences can exclude recommended instance types, enforce minimum savings, or exclude recommendations for long-inactive resources. [Rightsizing preferences](https://www.ibm.com/docs/en/cloudability-commercial/cloudability-premium/saas?topic=rightsizing-preferences)
+
+In Premium, check Settings > Rightsizing Preferences > Advanced. The Hide Basic setting grays out the Basic tab for all users while Cloudability continues generating Basic recommendations. [Advanced rightsizing preferences](https://www.ibm.com/docs/en/cloudability-commercial/cloudability-premium/saas?topic=rightsizing-advanced-preferences)
 
 Treat “generated but hidden” differently from “never generated.” Record a preference change before making it, because a global adjustment can affect every team's opportunity list.
 

@@ -1,4 +1,4 @@
-# Validation Summary: How to Tune Cloudability Rightsizing Preferences Without Breaking Commitment Coverage or CPU Architecture
+# Validation Summary: Cloudability Rightsizing: Preserve Commitments and CPU Compatibility
 
 ## Status
 validated

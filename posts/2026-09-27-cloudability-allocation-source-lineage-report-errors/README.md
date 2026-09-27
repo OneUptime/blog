@@ -1,4 +1,4 @@
-# How to Audit Cloudability Shared-Cost Lineage with `Allocation Source` Without Triggering Multi-Dimension Report Errors
+# How to Audit Cloudability Shared Costs with Allocation Source
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

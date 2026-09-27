@@ -1,4 +1,4 @@
-# How to Allocate Kubernetes Idle Node Cost in Cloudability by Namespace, Label, and Business Dimension
+# How to Allocate Kubernetes Idle Node Costs by Owner in Cloudability
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

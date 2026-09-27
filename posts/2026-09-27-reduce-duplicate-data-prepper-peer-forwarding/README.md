@@ -88,7 +88,7 @@ Capture a baseline using the same node count, trace mix, Collector batching, and
 
 Then send the same bounded trace fixture through the changed topology. For traces requiring remote routing, expect fewer redundant forwarded copies. Do not require HTTP request counts to fall by exactly half: request batching, locally owned records, timeouts, and traffic distribution affect that metric.
 
-Verify both outputs independently. Compare the unique span IDs in the raw index against the fixture. Check that the service map retains the expected caller-to-callee relationships after the configured processing window. If network traffic drops because the map branch became disconnected, the optimization has failed.
+Verify both outputs independently. Compare the unique `(traceId, spanId)` pairs in the raw index against the fixture. Check that the service map retains the expected caller-to-callee relationships after the configured processing window. If network traffic drops because the map branch became disconnected, the optimization has failed.
 
 ## Roll out without hiding routing failures
 

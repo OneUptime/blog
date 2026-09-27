@@ -1,4 +1,4 @@
-# How to Find Azure VMs That Are Powered On but Idle Using Cloudability CPU, Memory, and Network Metrics
+# How to Find Powered-On but Idle Azure VMs with Cloudability Metrics
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -1,4 +1,4 @@
-# How to Reduce Cloudability Anomaly Alert Noise with Thresholds, Business Dimensions, and Ticket Routing
+# How to Reduce Cloudability Anomaly Noise with Thresholds and Routing
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

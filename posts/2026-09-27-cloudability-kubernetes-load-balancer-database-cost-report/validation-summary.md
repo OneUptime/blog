@@ -1,4 +1,4 @@
-# Validation Summary: How to Join Kubernetes Costs with Load Balancers and Databases in One Cloudability Report
+# Validation Summary: How to Combine Kubernetes and Off-Cluster Costs in Cloudability
 
 ## Status
 validated

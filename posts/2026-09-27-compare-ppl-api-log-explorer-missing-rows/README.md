@@ -60,9 +60,9 @@ Compare these facts directly:
 | --- | --- |
 | Different source or cluster | Dataset selection and data-source connection |
 | Extra time condition | Time picker, selected time field, and zone conversion |
-| Extra filters | Saved search state or active UI filters |
-| Same request, different authorization | Role, document-level security, or tenant context |
-| Same response, fewer displayed rows | Presentation limits, selected columns, or rendering error |
+| Extra filters | Saved search state, active UI filters, or tenant-specific saved objects in older interfaces |
+| Same request, different authorization | Role or document-level security |
+| Same response, fewer displayed rows | Presentation limits or rendering error |
 
 Protect captured requests because they can contain log content or authentication context. For a bug report, retain only the minimal sanitized query, mapping, fixture, response, and version information needed to reproduce the difference.
 

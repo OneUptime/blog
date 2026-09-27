@@ -1,4 +1,4 @@
-# How to Cast Extracted Response Times to Numbers Before OpenSearch PPL Aggregation
+# How to Cast Extracted Response Times Before OpenSearch PPL Aggregation
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
@@ -28,12 +28,12 @@ The official [parse reference](https://docs.opensearch.org/latest/sql-and-ppl/pp
 
 ```text
 source=`access-logs`
-| parse body '.*response_time_ms=(?<responsetimetext>[0-9]+(?:[.][0-9]+)?)(?:[ ]+.*)?'
+| parse body '(?:.*[ ])?response_time_ms=(?<responsetimetext>[0-9]+(?:[.][0-9]+)?)(?:[ ]+.*)?'
 | fields body, responsetimetext
 | head 20
 ```
 
-This pattern assumes a single-line message, ordinary spaces after the value, and the exact field name shown above. It accepts integers and decimal fractions; it intentionally does not accept scientific notation, negative durations, or a unit suffix. Update the log contract and expression together if your producer uses another format.
+This pattern assumes a single-line message, the exact field name at the start or after an ordinary space, and ordinary spaces after the value. It accepts integers and decimal fractions; it intentionally does not accept scientific notation, negative durations, or a unit suffix. Update the log contract and expression together if your producer uses another format.
 
 Test at least one valid integer, one decimal, one missing value, and one malformed value. A message ending in `response_time_ms=80ms` should not quietly contribute `80` to this calculation. Requiring the value to end at the message boundary or before a space prevents that partial interpretation.
 
@@ -41,7 +41,7 @@ Test at least one valid integer, one decimal, one missing value, and one malform
 
 ```text
 source=`access-logs`
-| parse body '.*response_time_ms=(?<responsetimetext>[0-9]+(?:[.][0-9]+)?)(?:[ ]+.*)?'
+| parse body '(?:.*[ ])?response_time_ms=(?<responsetimetext>[0-9]+(?:[.][0-9]+)?)(?:[ ]+.*)?'
 | where isnotnull(responsetimetext) and responsetimetext != ''
 | eval response_time_ms = cast(responsetimetext as double)
 | fields body, responsetimetext, response_time_ms
@@ -58,7 +58,7 @@ Once the preview is correct, replace the final projection with aggregation:
 
 ```text
 source=`access-logs`
-| parse body '.*response_time_ms=(?<responsetimetext>[0-9]+(?:[.][0-9]+)?)(?:[ ]+.*)?'
+| parse body '(?:.*[ ])?response_time_ms=(?<responsetimetext>[0-9]+(?:[.][0-9]+)?)(?:[ ]+.*)?'
 | where isnotnull(responsetimetext) and responsetimetext != ''
 | eval response_time_ms = cast(responsetimetext as double)
 | stats count() as measured_requests,

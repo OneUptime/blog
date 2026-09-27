@@ -1,4 +1,4 @@
-# How to Allocate Shared Platform Costs in Cloudability with Even Splits, Fixed Weights, and Telemetry
+# Cloudability Shared Costs: Even Splits, Fixed Weights, and Telemetry
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

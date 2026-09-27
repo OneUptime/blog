@@ -36,7 +36,7 @@ source=`application-logs`
 | head 20
 ```
 
-The intended values are `4821` and `payment timeout`. The reason capture stops at the first line terminator, while the final character class consumes everything that remains. It also accepts a header-only event because `*` allows an empty remainder.
+The intended values are `4821` and `payment timeout`. The reason capture stops at the first CR or LF character, while the final character class consumes everything that remains. These examples assume LF, CRLF, or CR line endings; other Unicode line separators are not excluded from the reason capture. It also accepts a header-only event because `*` allows an empty remainder.
 
 Named groups use letters and digits here, which satisfies Java's group-name rules. The resulting fields are strings. Use a separate numeric alias if you need to calculate with an extracted measurement; an order identifier normally belongs in a string field.
 

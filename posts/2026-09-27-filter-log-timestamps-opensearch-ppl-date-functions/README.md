@@ -30,7 +30,7 @@ In these examples, `@timestamp` is mapped as `date` and contains event times nor
 
 ## Use typed absolute boundaries
 
-For a ten-minute window in a UTC session:
+For a ten-minute window in UTC:
 
 ```text
 source=`logs-prod`
@@ -43,7 +43,7 @@ source=`logs-prod`
 
 The event at exactly 09:00 is included. The event at exactly 09:10 belongs in the next window. Fractional-second events before 09:10 remain included without inventing an upper bound such as `09:09:59.999`.
 
-These literals intentionally use the documented timestamp format and assume UTC session interpretation. Confirm the time zone of your query environment before comparing with a browser display. A label reading 10:00 in a local zone can represent the same instant as 09:00 UTC.
+These literals intentionally use the documented timestamp format. PPL date and time functions interpret input and output values as UTC. Confirm the browser display time zone before comparing it with the query boundaries. A label reading 10:00 in a local zone can represent the same instant as 09:00 UTC.
 
 Do not compare a date field to a casually formatted string and rely on implicit conversion. Explicit types make the intended comparison easier to review and avoid confusing lexical ordering with chronological ordering.
 

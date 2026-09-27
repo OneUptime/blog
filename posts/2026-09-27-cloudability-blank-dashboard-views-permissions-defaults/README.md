@@ -1,4 +1,4 @@
-# A Cloudability User Sees Blank Dashboards: Fixing View Assignment, Feature Permissions, and Default Views
+# How to Fix Blank Cloudability Dashboards with Views and Permissions
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

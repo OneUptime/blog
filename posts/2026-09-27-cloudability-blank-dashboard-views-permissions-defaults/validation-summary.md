@@ -1,4 +1,4 @@
-# Validation Summary: A Cloudability User Sees Blank Dashboards: Fixing View Assignment, Feature Permissions, and Default Views
+# Validation Summary: How to Fix Blank Cloudability Dashboards with Views and Permissions
 
 ## Status
 validated

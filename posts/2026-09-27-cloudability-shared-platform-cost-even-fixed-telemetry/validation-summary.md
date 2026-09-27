@@ -1,4 +1,4 @@
-# Validation Summary: How to Allocate Shared Platform Costs in Cloudability with Even Splits, Fixed Weights, and Telemetry
+# Validation Summary: Cloudability Shared Costs: Even Splits, Fixed Weights, and Telemetry
 
 ## Status
 validated

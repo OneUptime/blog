@@ -41,7 +41,7 @@ OpenTelemetry is a telemetry model, not a guarantee that every exporter writes i
 GET logs-prod-2026.09.27/_search
 {
   "size": 1,
-  "_source": ["@timestamp", "time", "resource", "service", "body"]
+  "_source": ["@timestamp", "time", "resource", "service", "serviceName", "body"]
 }
 
 GET logs-prod-2026.09.27/_mapping

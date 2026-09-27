@@ -1,4 +1,4 @@
-# Validation Summary: How to Allocate Kubernetes Idle Node Cost in Cloudability by Namespace, Label, and Business Dimension
+# Validation Summary: How to Allocate Kubernetes Idle Node Costs by Owner in Cloudability
 
 ## Status
 

@@ -1,4 +1,4 @@
-# How to Calculate Cloudability Cost Ratios After Aggregation with Calculated Metrics
+# How to Calculate Aggregated Cloudability Cost Ratios with Calculated Metrics
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

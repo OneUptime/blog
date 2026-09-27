@@ -1,4 +1,4 @@
-# Validation Summary: How to Isolate Invalid Query Parameters Behind Cloudability Cost Reporting API Errors
+# Validation Summary: How to Diagnose Invalid Query Parameters in Cloudability Cost APIs
 
 ## Status
 validated

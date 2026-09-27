@@ -1,4 +1,4 @@
-# How to Tune Cloudability Rightsizing Preferences Without Breaking Commitment Coverage or CPU Architecture
+# Cloudability Rightsizing: Preserve Commitments and CPU Compatibility
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

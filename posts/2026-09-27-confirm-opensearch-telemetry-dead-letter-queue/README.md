@@ -30,13 +30,13 @@ PUT dp-dlq-probe
   "mappings": {
     "properties": {
       "probe_id": { "type": "keyword" },
-      "durationInNanos": { "type": "long" }
+      "durationInNanos": { "type": "long", "ignore_malformed": false }
     }
   }
 }
 ```
 
-A document containing a nonnumeric duration will fail this mapping. Use a fresh diagnostic index so an existing template or prior dynamic mapping does not change the test.
+A document containing a nonnumeric duration will fail this mapping. Use a fresh diagnostic index to avoid prior dynamic mappings, and check matching index templates and inherited ingest pipelines so they do not change the test. Setting `ignore_malformed: false` explicitly ensures the invalid duration rejects the document instead of being ignored.
 
 ## Connect the test pipeline to persistent storage
 

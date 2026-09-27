@@ -1,4 +1,4 @@
-# Validation Summary: How to Export Readable Business Mapping Headers from Cloudability with useDimensionNames
+# Validation Summary: How to Export Cloudability Mapping Headers with useDimensionNames
 
 ## Status
 validated

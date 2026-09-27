@@ -1,4 +1,4 @@
-# Validation Summary: How to Reduce Cloudability Anomaly Alert Noise with Thresholds, Business Dimensions, and Ticket Routing
+# Validation Summary: How to Reduce Cloudability Anomaly Noise with Thresholds and Routing
 
 ## Status
 validated

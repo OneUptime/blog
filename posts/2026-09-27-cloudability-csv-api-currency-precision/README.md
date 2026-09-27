@@ -1,4 +1,4 @@
-# How to Investigate Currency Precision Differences Between Cloudability CSV and API Results
+# How to Diagnose Currency Precision Differences in Cloudability Exports
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
