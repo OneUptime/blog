@@ -289,7 +289,6 @@
 
 
 
-21. How to Diagnose Missing Owner Tags in Cloudability Tag Explorer
 22. How to Bring AWS Account-Level Tags into Cloudability Cost Reports
 23. How to Consolidate Inconsistent Tag Keys into One Cloudability Reporting Dimension
 24. How to Diagnose IBM Cloud Account Verification Failures Before Billing Files Arrive in Cloudability
