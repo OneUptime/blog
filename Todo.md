@@ -287,7 +287,6 @@
 
 ## Cloudability
 
-16. How to Find Azure VMs That Are Powered On but Idle Using Cloudability CPU, Memory, and Network Metrics
 17. Why Cloudability Shows No Rightsizing Recommendation: Permissions, Resource Age, and Missing Utilization Data
 18. How to Tune Cloudability Rightsizing Preferences Without Breaking Commitment Coverage or CPU Architecture
 19. How to Reduce Cloudability Anomaly Alert Noise with Thresholds, Business Dimensions, and Ticket Routing
