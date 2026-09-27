@@ -289,7 +289,6 @@
 
 
 
-40. How to Combine Cloudability Cost and Utilization Exports Without Misstating Billed Spend
 
 ## EFS
 
