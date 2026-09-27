@@ -289,7 +289,6 @@
 
 
 
-38. How to Fix Cloudability Basic Auth 401 Errors Caused by a Frontdoor API Key
 39. How to Explain Different Totals for Cloudability Anomalies on the Same Service
 40. How to Combine Cloudability Cost and Utilization Exports Without Misstating Billed Spend
 
