@@ -289,7 +289,6 @@
 
 
 
-35. How to Allocate OpenSearch Serverless OCU Costs by Application in Cloudability
 36. How to Scope Cloudability Budgets to Individual IBM Cloud Projects
 37. How to Exclude Credits and One-Time Charges from a Cloudability Enhanced Forecast
 38. How to Fix Cloudability Basic Auth 401 Errors Caused by a Frontdoor API Key
