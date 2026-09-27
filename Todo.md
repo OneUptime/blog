@@ -155,7 +155,6 @@
 ## OpenSearch Observability
 
 
-19. How to Confirm Rejected OpenSearch Telemetry Reaches the Dead-Letter Queue
 20. How to Validate Service-Map Index Selection for Separate OpenSearch Applications
 
 ## Recovery Engineering
