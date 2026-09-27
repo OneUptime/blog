@@ -155,7 +155,6 @@
 ## OpenSearch Observability
 
 
-12. How to Diagnose Data Prepper Peer Forwarding That Falls Back to Local Processing
 13. How to Reduce Duplicate Peer Forwarding in OpenSearch Trace Pipelines
 14. How to Migrate Legacy Data Prepper Trace Processor Names to the Event Model
 15. How to Diagnose Span ClassCastException After Replacing a Data Prepper Kafka Buffer with a Source
