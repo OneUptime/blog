@@ -155,7 +155,6 @@
 ## OpenSearch Observability
 
 
-14. How to Migrate Legacy Data Prepper Trace Processor Names to the Event Model
 15. How to Diagnose Span ClassCastException After Replacing a Data Prepper Kafka Buffer with a Source
 16. How to Filter Health-Check Spans with the Correct Data Prepper Attribute Paths
 17. How to Diagnose Dotted OpenTelemetry Attribute Mapping Conflicts in Data Prepper
