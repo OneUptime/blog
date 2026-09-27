@@ -14,7 +14,7 @@ This workflow has three distinct phases: enqueue a query, wait for its state to 
 
 Start with the same parameters used by a working synchronous report. Keep dates fixed and make the view explicit so another operator can reconstruct its scope. The cost endpoint is `/reporting/cost/enqueue`; utilization reports have a separate `/reporting/util/enqueue` path.
 
-The following Python example requires `requests`. It uses the US host and a Cloudability product API key. Replace the host for your tenant's region and supply credentials through your normal secret injection mechanism.
+The following Python example requires `requests`. It uses the US host and a Cloudability product API key. Replace the host for your commercial tenant's region and supply credentials through your normal secret injection mechanism. GovCloud requires Access Administration authentication with `apptio-opentoken` and `apptio-environmentid` headers instead of this product API key.
 
 ```python
 import json
@@ -41,7 +41,7 @@ Path("report-job.json").write_text(json.dumps({
     "id": job_id, "query": params, "base": base
 }), encoding="utf-8")
 
-deadline = time.monotonic() + 1800  # Local 30-minute operating budget.
+deadline = time.monotonic() + 1800  # Soft 30-minute polling budget, checked between requests.
 while time.monotonic() < deadline:
     response = session.get(
         f"{base}/reporting/reports/{job_id}/state", timeout=(10, 60)
@@ -65,7 +65,7 @@ response.raise_for_status()
 Path("first-result-page.json").write_text(response.text, encoding="utf-8")
 ```
 
-The polling interval and deadline are local choices, not Cloudability service guarantees. The first result file is explicitly a page, not a complete financial dataset.
+The polling interval and deadline are local choices, not Cloudability service guarantees. The deadline is checked between requests; an in-flight request or sleep can overrun it, and Requests timeouts are not total wall-clock limits. The first result file is explicitly a page, not a complete financial dataset.
 
 ## Retain the identity of the job
 
