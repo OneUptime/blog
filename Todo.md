@@ -1414,6 +1414,27 @@
 39. How to Choose YDB Row Tables or Column Tables for Mixed OLTP and OLAP Workloads
 40. How to Restore YDB Autopartition Merging on Pre-22.2 Row Tables by Setting a Minimum Partition Count
 
+41. How to Choose Nullable and NOT NULL Columns in a Modern YDB Schema
+42. How to Add a Required YDB Column with a Literal Default During Schema Evolution
+43. How to Grant YDB Table and Directory Permissions to the Correct User or Group
+44. How to Trace Inherited YDB Permissions When Revoking Direct Access Is Not Enough
+45. How to Extract Every Element of a YDB JSON Array with JSON_QUERY Wrappers
+46. How to Distinguish Missing JSON Paths from Invalid Values in YDB Queries
+47. How to Index JsonDocument Fields with YDB JSON Indexes in Supported Releases
+48. How to Diagnose YDB JSON Filters That Do Not Use a JSON Index
+49. How to Plan YDB JSON Search When a Table Also Needs TTL Expiration
+50. How to Choose a YDB CDC Format When Downstream Consumers Need Column Types
+51. How to Set YDB Changefeed Retention for Consumers That Fall Behind
+52. How to Enable the YDB Kafka Listener and Publish Its Port from Docker
+53. How to Configure Authentication for Kafka Clients Connecting to YDB Topics
+54. How to Configure Kafka Consumer CRC Checking for YDB Topic Compatibility
+55. How to Investigate Unknown Topic or Partition Errors on YDB CDC Kafka Reads
+56. How to Deliver Managed YDB Changes to an Apache Kafka Cluster with Data Transfer
+57. How to Set YDB_PDISK_SIZE for a Fresh Local YDB Development Container
+58. How to Preserve Local YDB Data Across Docker Container Recreation
+59. How to Separate YDB Application Connectivity Checks from Cluster SelfCheck Results
+60. How to Evaluate TypeDORM Compatibility Before Connecting a YDB Application
+
 ## Direct Connect
 
 1. AWS Direct Connect BGP Is Stuck in Idle: A Layer-by-Layer Troubleshooting Checklist
@@ -5352,6 +5373,27 @@
 19. How to Diagnose Skopeo Copy Failures When Zot Converts Docker Manifests to OCI
 20. How to Diagnose Slow or Stalled Zot Image Pulls With Trace Logs and Prometheus Metrics
 
+21. How to Diagnose Zot 400 Errors When Docker Buildx Pushes an Image Index
+22. How to Investigate Missing Architectures in Zot On-Demand Image Pulls
+23. How to Make Digest-Pinned Helm Images Pull Through a Zot Cache
+24. How to Verify That containerd Actually Uses a Zot Registry Mirror
+25. How to Diagnose Zot Docker Authentication Failures When Public and Private Repositories Share a Registry
+26. How to Diagnose Zot Uploads That Stall While Restoring Deduplicated Blobs
+27. How to Investigate Zot S3 Blob Read Failures Immediately After a Successful Push
+28. How to Explain Missing Upstream Tags in a Zot Pull-Through Cache
+29. How to Diagnose a Zot Explore Page That Hangs with a Large DynamoDB Catalog
+30. How to Troubleshoot Repeated Trivy Database Downloads in Zot
+31. How to Keep Zot Image Lint Rules from Blocking Third-Party Cache Pulls
+32. How to Scrape Authenticated Zot Metrics When Prometheus or zxp Receives 401
+33. How to Verify Zot Startup Readiness Before Running Registry Initialization Jobs
+34. How to Distinguish Zot Signature Verification Badges from Enforcement of Unsigned Image Policies
+35. How to Profile Zot Memory Growth with Go Heap and Goroutine Dumps
+36. How to Investigate Zot Invalid Database Errors After a Kubernetes Node Reboot
+37. How to Diagnose Zot Image Layer Uploads Aborted After Sixty Seconds
+38. How to Configure Immutable Release Tags in Zot
+39. How to Diagnose Zot Trivy Temporary Files Filling the Container Filesystem
+40. How to Distinguish Zot Registry Rate Limits from Docker Hub 429 Responses
+
 ## AWS Organizations
 
 1. How to Migrate a Standalone AWS Account Into an Organization Without Breaking Existing Workloads
@@ -7173,6 +7215,27 @@
 19. How to Sign and Verify OCI Artifacts in GitHub Actions with `notaryproject/notation-action`
 20. How to Enforce Notation-Signed Images at Kubernetes Admission with Ratify and Gatekeeper
 
+21. How to Choose Index or Platform Digests When Signing Multi-Architecture Images with Notation
+22. How to Sign an SBOM Stored as an OCI Artifact with Notation
+23. How to Sign a Local Container Image with Notation Experimental OCI Layout Support
+24. How to Verify Extracted OCI Archives with Notation Experimental OCI Layout Support
+25. How to Copy Container Images and Their Notation Signatures Between Registries
+26. How to Delete One Notation Signature Without Deleting Its Container Image
+27. How to Add RFC 3161 Timestamps to Notation Signatures
+28. How to Diagnose Notation Timestamp Failures with an Intermediate Certificate Authority
+29. How to Compare Strict, Permissive, and Audit Verification Policies in Notation
+30. How to Restrict Notation Verification to an Expected X.509 Signer Identity
+31. How to Check Enterprise CA Certificates Against Notation Key-Usage Requirements
+32. How to Use Notation on Linux with a Registry Secured by a Private TLS Certificate Authority
+33. How to Troubleshoot Notation Credential Helper Failures in Windows Subsystem for Linux
+34. How to Control OCI Referrers API and Fallback Tag Storage for Notation Signatures
+35. How to Investigate Notation Signatures That Cannot Be Found in Google Artifact Registry
+36. How to Capture Notation Verification Debug Logs Without Confusing Warnings with the Final Result
+37. How to Require a Build Identifier in Notation Signature User Metadata
+38. How to Select JWS or COSE Signature Envelopes When Signing with Notation
+39. How to Set and Test a Notation Signature Expiry Independently of Certificate Expiration
+40. How to Isolate Notation Trust Policies for Separate Linux CI Jobs
+
 ## Proxmox Ceph
 
 1. How to Build a Three-Node Proxmox VE Ceph Cluster with `pveceph` and Separate Public/Cluster Networks
@@ -8388,6 +8451,27 @@
 18. How to Verify That Temporary AWS Access Exceptions End for Existing Role Sessions
 19. How to Constrain AWS Actions That Require Resource Wildcards with Supported Condition Keys
 20. How to Build Allowed-and-Denied Workflow Checks Before Removing Broad AWS Admin Access
+
+21. How to Delegate Azure Role Assignments Only for Approved Roles and Principals
+22. How to Find Azure Permissions That Remain Allowed After Adding NotActions to a Custom Role
+23. How to Review Azure RBAC Wildcard Permissions for Newly Added Resource Operations
+24. How to Give Azure Blob Readers Portal Access Without Granting Storage Account Keys
+25. How to Inventory Azure Key Vault Key and Secret Metadata Without Reading Secret Values
+26. How to Restrict Google Cloud Token Creator Grants to One Service Account
+27. How to Grant Google Cloud ID Token Creation Without OAuth Access Token Creation
+28. How to Audit the Cloud API Access a User Gains Through SSH to a Google Compute Engine VM
+29. How to Choose Between Service Account User and Token Creator for Google Cloud Deployment Identities
+30. How to Scope AWS Read Permissions When an API Does Not Support Resource-Level ARNs
+31. How to Let an S3 Client Read One Bucket Without Listing Every Bucket in the Account
+32. How to Scope KMS Decryption for S3 When RequestAlias Conditions Do Not Match
+33. How to Review Seasonal and Emergency AWS Permissions Before Removing Unused Access
+34. How to Keep Delegated AWS Role Creators from Removing or Replacing Required Permissions Boundaries
+35. How to Allow One systemd Service Restart Without a Sudoers Argument Wildcard
+36. How to Keep Privileged systemd Status Commands from Exposing an Interactive Pager
+37. How to Test Sudoers Rules That Allow a Command Only Without Arguments
+38. How to Delegate Editing of One Root-Owned File with sudoedit and an Exact Path
+39. How to Find New AWS API Actions Automatically Covered by Existing IAM Wildcards
+40. How to Audit Resource Policies That Grant Direct Access to AWS Role Sessions
 
 ## Apache Ignite
 
@@ -10683,3 +10767,141 @@
 18. How to Fix OVN Port Binding Failures Caused by Compute Hostname Mismatches
 19. How to Find Where OVN Configuration Changes Stop Propagating to Chassis
 20. How to Collect Useful Diagnostics for Failed OVN Hardware Offload
+
+## Ganglia
+
+1. How to Restore Missing Ganglia Metrics After a Unicast Collector Restart
+2. How to Fix Ganglia Host Graphs That Disappear Because Hostname Case Does Not Match
+3. How to Expire Stale Ganglia Custom Metrics with gmetric TMAX and DMAX
+4. How to Convert Application Counters into Rates Before Sending Them to Ganglia
+5. How to Prevent Large Memory Metrics from Overflowing uint32 in Ganglia
+6. How to Diagnose Double-Counted Network Traffic on Bonded and Team Interfaces in Ganglia
+7. How to Tune Ganglia value_threshold as a Change in Value
+8. How to Trace Missing Ganglia Python Metrics from Module Loading to Collection Groups
+9. How to Aggregate Multiple Ganglia Clusters Through Receive-Only gmond Collectors
+10. How to Fix Ganglia Graph Access Through a Restricted rrdcached Socket
+11. How to Investigate NaN Gaps in Ganglia RRD Data
+12. How to Control Ganglia Metric Names When Forwarding Data to Graphite
+13. How to Keep Separate Ganglia Cluster Names in a Unicast Collection Topology
+14. How to Trace Ganglia Traffic Across UDP 8649 and TCP Collector Ports
+15. How to Move Ganglia RRD Storage Without Losing Existing Graph History
+16. How to Size Ganglia RRA Retention for Two Years of Metrics
+17. How to Investigate High Ganglia CPU Usage Caused by Aggressive Polling
+18. How to Export Ganglia RRD History for Offline Analysis
+19. How to Investigate Unbounded Ganglia RRD File Growth from Dynamic Metric Names
+20. How to Read Ganglia Cluster Summary RRDs as Sums and Reporting-Host Counts
+
+## Azure AppService
+
+1. How to Distinguish Azure App Service SNAT Port Exhaustion from Database Connection-Pool Exhaustion
+2. How to Reduce Azure App Service SNAT Pressure by Reusing Outbound HTTP Connections
+3. How to Verify Azure App Service Outbound Traffic Uses Your NAT Gateway Public IP
+4. How to Keep Azure App Service Key Vault References and Identities Aligned During Slot Swaps
+5. How to Make Azure App Service Slot Swaps Wait for a Successful Warm-Up Status Code
+6. How to Keep Staging-Slot WebJobs from Processing Production Work in Azure App Service
+7. How to Refresh Rotated Azure App Service Key Vault References Without Waiting for the Cache Interval
+8. How to Resolve Azure App Service Key Vault References During Provisioning with a User-Assigned Identity
+9. How to Fix Private Azure App Service Deployments by Resolving the SCM Hostname Inside the VNet
+10. How to Diagnose Azure App Service Deployment 403 Errors from Separate SCM Access Restrictions
+11. How to Repair Azure App Service Session Affinity When a Reverse Proxy Changes the Hostname
+12. How to Test Azure App Service Session State Before Disabling ARR Affinity
+13. How to Correct Azure App Service Easy Auth Redirects Behind Azure Front Door
+14. How to Return API Authentication Errors Instead of Browser Login Redirects with Azure App Service Easy Auth
+15. How to Relocate Runtime Writes When Azure App Service Run-From-Package Makes wwwroot Read-Only
+16. How to Preserve Runtime Files Across Azure App Service Linux Container Restarts
+17. How to Diagnose Azure App Service Container Startup Timeouts During Persistent-Storage Initialization
+18. How to Troubleshoot Azure App Service Image Pulls from a Network-Protected Azure Container Registry
+19. How to Fix Azure App Service Container Port Routing After Enabling Sidecar Support
+20. How to Isolate a Reporting App's Worker Count with Azure App Service Per-App Scaling
+
+## Node Exporter
+
+1. How to Calculate Node Exporter Disk Usage When Free and Available Bytes Differ
+2. How to Fix Missing Node Exporter systemd Metrics When Unit Filters Are Configured
+3. How to Alert on Failed systemd Units with Node Exporter State Metrics
+4. How to Diagnose Node Exporter Textfile Metrics Missing from a Docker Deployment
+5. How to Fix Node Exporter Textfile Rejection of Client-Side Sample Timestamps
+6. How to Write Node Exporter Textfile Metrics Atomically to Prevent Partial Scrapes
+7. How to Alert When a Node Exporter Textfile Job Timestamp Stops Advancing
+8. How to Export Individual Directory Sizes Through Node Exporter Textfiles
+9. How to Add Hostname Labels to Node Exporter Queries with node_uname_info
+10. How to Fix Grafana No Data After Switching Node Exporter Variables to Hostnames
+11. How to Normalize Node Exporter CPU Utilization Across Logical Cores
+12. How to Report Daily Average and Peak CPU Usage from Node Exporter Counters
+13. How to Reconcile Node Exporter CPU Usage with kubectl top nodes
+14. How to Fix Node Exporter Exec Format Errors on ARM and Linux Hosts
+15. How to Find Duplicate Node Exporter Services Causing Port 9100 Bind Failures
+16. How to Make Node Exporter systemd Flag Overrides Survive EnvironmentFile Settings
+17. How to Restore Missing Node Exporter Mount Metrics After an Exclusion Rule Change
+18. How to Measure Node Exporter Collector Overhead Before Setting CPU and Memory Limits
+19. How to Inventory Linux Distribution Versions with Node Exporter os_release Metrics
+20. How to Trace Disk Wakeups to SMART Textfile Scripts Used Alongside Node Exporter
+
+## Data Observability
+
+1. How to Stop a dbt Job Before Building Models When Source Freshness Fails
+2. How to Normalize Local Timestamps to UTC for dbt Freshness Checks
+3. How to Detect Missing Event-Time Intervals in Redshift with dbt Data Tests
+4. How to Monitor Event Age Separately from Load Time with Elementary
+5. How to Detect Missing Event Types When Total Table Volume Looks Normal
+6. How to Reduce Weekend Data Volume False Alarms with Elementary Seasonality
+7. How to Diagnose Elementary Anomaly Tests That Have Too Little Training Data
+8. How to Tune Elementary Detection Delay for Loads That Finish After Midnight
+9. How to Set Elementary Anomaly Sensitivity Without Confusing It with dbt Failure Counts
+10. How to Suppress Repeated Elementary Alerts for the Same Failing Data Test
+11. How to Route Elementary Cloud Data Quality Alerts to Dataset Owners
+12. How to Disable Elementary Failed-Row Samples for Sensitive Datasets
+13. How to Detect Source Schema Drift Against a Declared Baseline in Elementary
+14. How to Alert on Sudden Null-Rate Increases in Partially Populated Columns
+15. How to Limit dbt Data Quality Checks to Recent Partitions with Test Filters
+16. How to Diagnose Missing Failure Rows in dbt Audit Tables
+17. How to Build a Historical Data Quality Scorecard from dbt Test Artifacts
+18. How to Catch Empty Data Batches That Pass Non-Null Checks in Great Expectations
+19. How to Validate Column Names and Data Types Together in Great Expectations
+20. How to Apply Required BigQuery Partition Filters to Great Expectations Query Assets
+
+## Longhorn
+
+1. How to Stop multipathd from Claiming Longhorn Volume Devices
+2. How to Reduce Longhorn Mount Delays Caused by Recursive fsGroup Ownership Changes
+3. How to Diagnose Longhorn XFS Mount Failures Across Different Node Kernel Versions
+4. How to Diagnose Concurrent Writer Hangs on a Longhorn RWX Volume
+5. How to Trace Longhorn RWX Protocol Not Supported Errors to an NFS Kernel Regression
+6. How to Diagnose Longhorn RWX Mount Timeouts Caused by Flannel Checksum Offloading
+7. How to Diagnose SELinux Denials Blocking Longhorn iSCSI Volume Attachment
+8. How to Recover Longhorn Manager from Webhook Connectivity Crash Loops
+9. How to Trace Longhorn Instance Manager Restarts to Resource Pressure and Probe Failures
+10. How to Unblock Longhorn Recurring Job Pods Stuck in Pending
+11. How to Resolve Encrypted Longhorn RWX Volumes That Expand in the UI but Not in the Filesystem
+12. How to Recover Longhorn Workloads Stuck Terminating After a NoExecute Taint
+13. How to Remove Stale Longhorn iSCSI Sessions After an Instance Manager IP Changes
+14. How to Fix Longhorn CSI Startup with a Nonstandard Kubelet Root Directory
+15. How to Restart a Stalled Longhorn Backing Image Download After a Node Outage
+16. How to Evict Longhorn Replicas Before Cluster API Replaces a Worker Node
+17. How to Diagnose SPDK Buffer Pool Exhaustion in Longhorn V2 Sharded Volumes
+18. How to Diagnose CNI Network Policies Blocking Longhorn V1 Host iSCSI Traffic
+19. How to Recover Longhorn Data from Orphaned Replica Directories After Losing a Cluster
+20. How to Resolve Longhorn Backing Image Manager Name Collisions on Older Releases
+
+## Cloud Computing
+
+1. How to Compare Cloud VM Performance When Identical vCPU Counts Represent Different Hardware
+2. How to Benchmark Burstable Cloud VMs Beyond Their Initial Credit Boost
+3. How to Compare Cloud Disk Offers Using Both Volume and VM Throughput Limits
+4. How to Calculate a Serverless-to-Always-On Break-Even Point from Real Request Durations
+5. How to Check Background Execution and Request Limits Before Moving a Worker to Cloud PaaS
+6. How to Estimate the Cloud Charges That Continue After All Virtual Machines Are Stopped
+7. How to Account for Billing Data Delays When Setting Cloud Budget Alert Thresholds
+8. How to Assess Data-Loss and Restart Risks Before Enabling Cloud Budget Stop Actions
+9. How to Budget a Full Cloud Archive Restore Including Retrieval, Temporary Copies, and Egress
+10. How to Estimate Small-Object Overhead Before Moving a Dataset to Cloud Archive Storage
+11. How to Price Every Network Hop in an Application Split Across Two Clouds
+12. How to Measure Database Round-Trip Amplification Before Splitting an App Across Cloud Providers
+13. How to Compare Moving Compute to Cloud Data with Repeated Dataset Downloads
+14. How to Align AWS Availability Zones Across Accounts Using Zone IDs
+15. How to Separate Cloud Compute Discount Commitments from Capacity Reservations in Recovery Plans
+16. How to Compare Primary and Recovery Region Quotas Before a Full-Scale Cloud Failover Drill
+17. How to Rehearse Cloud Application Recovery When Resource-Creation APIs Are Unavailable
+18. How to Verify Cloud Recovery Can Access Deployment Artifacts Outside the Failed Region
+19. How to Forecast a Cloud Bill After Startup Credits Expire
+20. How to Estimate the Temporary Dual-Run Cost of a Cloud Migration
