@@ -292,7 +292,6 @@
 
 ## EFS
 
-36. How to Stop `efs-proxy` OOMKills by Sizing EFS CSI Node Memory for Volume Count and Concurrent Mounts
 37. How to Configure Cross-Account EFS CSI Provisioning with `awsRoleArn`, `externalId`, and AZ-Resilient DNS Resolution
 38. How to Enable FIPS-Compliant EFS CSI TLS Without Calling Unsupported Regional STS FIPS Endpoints
 39. Why EFS Lifecycle Policies Ignore POSIX `atime`: How the Internal Last-Access Timer Moves Files to IA and Archive
