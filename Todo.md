@@ -292,7 +292,6 @@
 
 ## EFS
 
-30. How to Migrate from EFS One Zone to Regional EFS Without Losing POSIX Ownership or Permissions
 31. How to Mount Amazon EFS from On-Premises Linux over Direct Connect or VPN with TLS
 32. How to Copy On-Premises or S3 Data into EFS with DataSync While Preserving UID, GID, Timestamps, and Permissions
 33. How to Isolate Multiple Kubernetes Tenants on One EFS File System with Separate Access-Point Roots and POSIX Identities
