@@ -8,7 +8,7 @@ Description: Diagnose EFS DNS failures by separating resolver configuration, Ava
 
 A failed EFS DNS lookup happens before an NFS authorization decision. Changing the application's POSIX permissions cannot repair it. The useful question is which resolver answered the query, from which VPC and Availability Zone, and whether EFS has a usable mount target there.
 
-This procedure assumes a Linux client in the same VPC as the file system. Cross-VPC clients need additional DNS design; ordinary peering does not make the standard EFS name resolve automatically. [Cross-VPC EFS mounting](https://docs.aws.amazon.com/efs/latest/ug/mount-fs-different-vpc.html)
+This procedure assumes a Linux client in the same VPC as the file system and mount targets with IPv4 addresses. Cross-VPC clients need additional DNS design or a mount-target IP address, supplied explicitly or discovered by the EFS mount helper; ordinary peering does not make the standard EFS name resolve automatically. [Cross-VPC EFS mounting](https://docs.aws.amazon.com/efs/latest/ug/mount-fs-different-vpc.html)
 
 ## Capture the actual resolver result
 
@@ -62,13 +62,15 @@ A newly created target may need time for its records to propagate. Use bounded d
 
 ## Investigate overlapping private hosted zones
 
-List the private zones associated with the affected VPC:
+List the private zones directly associated with the affected VPC:
 
 ```bash
 aws route53 list-hosted-zones-by-vpc \
   --vpc-id vpc-0123456789abcdef0 \
   --vpc-region us-east-1
 ```
+
+This command does not include associations through Route 53 Profiles. If the VPC uses a Profile, also inspect its hosted-zone associations using `ListProfileResourceAssociations`. [Hosted-zone listing limitations](https://docs.aws.amazon.com/cli/latest/reference/route53/list-hosted-zones-by-vpc.html)
 
 Look for zones that intercept the exact file-system name or a parent such as `efs.us-east-1.amazonaws.com`. In an associated private zone, a missing matching record can return `NXDOMAIN`; Route 53 does not automatically fall back to a public answer. [Private hosted-zone considerations](https://docs.aws.amazon.com/Route53/latest/DeveloperGuide/hosted-zone-private-considerations.html)
 
