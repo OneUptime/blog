@@ -292,7 +292,6 @@
 
 ## EFS
 
-3. How to Mount EFS Across AWS Accounts or VPCs with Peering, Resolver Rules, and Mount-Target IPs
 4. EFS Says “Access Denied by Server While Mounting 127.0.0.1:/”: A TLS, IAM, and Access-Point Checklist
 5. EFS Is Mounted but Writes Return “Permission Denied”: Separating IAM Authorization from POSIX UID/GID Permissions
 6. How to Require `tls`, `iam`, and a Specific EFS Access Point in a File-System Policy
