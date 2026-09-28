@@ -292,7 +292,6 @@
 
 ## EFS
 
-22. How to Find Restored EFS Data When AWS Backup Places It Under an `aws-backup-restore_*` Directory
 23. How to Copy EFS Backups Across AWS Accounts and Regions and Prove They Can Be Restored
 24. How to Verify EFS Replication Initial Sync and Recovery-Point Readiness Before a Disaster-Recovery Test
 25. How to Fail Over to an EFS Replica by Removing Replication, Making the Destination Writable, and Switching Clients
