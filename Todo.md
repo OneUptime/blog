@@ -292,7 +292,6 @@
 
 ## EFS
 
-1. Amazon EFS Mount Times Out: Checking Mount Targets, Port 2049, Security Groups, Routes, and NACLs
 2. EFS DNS Name Does Not Resolve: Debugging VPC DNS Attributes, Mount Targets, and Conflicting Hosted Zones
 3. How to Mount EFS Across AWS Accounts or VPCs with Peering, Resolver Rules, and Mount-Target IPs
 4. EFS Says “Access Denied by Server While Mounting 127.0.0.1:/”: A TLS, IAM, and Access-Point Checklist
