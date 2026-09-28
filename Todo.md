@@ -1523,6 +1523,27 @@
 19. How to Correlate PostgreSQL Checkpoint Spikes with Query Latency in pgBadger
 20. How to Export pgBadger JSON, Raw CSV, and Normalized Query Fingerprints into an Observability Pipeline
 
+21. How to Build a Monthly pgBadger Report from Existing Binary Data
+22. How to Rebuild pgBadger HTML Reports After an Upgrade Without Reprocessing Logs
+23. How to Keep pgBadger Binary Data Separate from Published HTML Reports
+24. How to Generate Per-Database pgBadger Reports and Verify Their Calendar Links
+25. How to Preserve SQL Comments in pgBadger to Trace Queries Back to Application Code
+26. How to Separate Parse, Bind, and Execute Time in pgBadger Prepared Query Reports
+27. How to Include auto_explain Plans in pgBadger Reports
+28. How to Connect pgBadger Explain Plan Links to a Private Visualization Service
+29. How to Align Log Timestamps and JavaScript Chart Time Zones in pgBadger
+30. How to Customize Query and Session Duration Histogram Buckets in pgBadger
+31. How to Interpret pgBadger Connection Counts Without Mistaking Them for Concurrent Sessions
+32. How to Retain More Slow Query Examples per Normalized Statement in pgBadger
+33. How to Troubleshoot Truncated Multiline SQL in pgBadger Reports
+34. How to Produce pgBadger HTML and JSON Reports from One Saved Binary Analysis
+35. How to Resolve Perl 5.42 Precedence Errors When Running pgBadger
+36. How to Configure PostgreSQL Log Message Language for pgBadger Compatibility
+37. How to Restrict pgBadger Analysis to an Incident Window Spanning Multiple Days
+38. How to Analyze PgBouncer Pool Activity Alongside PostgreSQL Queries with pgBadger
+39. How to Check pgBadger Exit Status and Report Freshness in Scheduled Jobs
+40. How to Generate EXPLAIN Scripts for the Slowest Queries with pgbadger_tools
+
 ## Kubernetes
 
 1. How to Fix Kubernetes 1.36 Rejections of Non-Canonical IP Addresses and CIDRs
@@ -8657,6 +8678,27 @@
 20. How to Compare Files in Two Ceph RBD Snapshots Before Pruning Backups
 
 
+21. How to Isolate Ceph RBD Clients Within One Pool Using Namespaces and CephX
+22. How to Schedule Local Ceph RBD Snapshots Without a Mirroring Peer
+23. How to Fix Ceph CSI Provisioning When the Configured RBD Namespace Does Not Exist
+24. How to Investigate Apparently Orphaned RBD Objects Across Namespaces and Trash
+25. How to Diagnose RBD Journal Growth When Mirror Lag Reports Zero
+26. How to Investigate RBD Mirrors Stuck in starting_replay After a Network Outage
+27. How to Fix Missing Peer Keyrings in a Ceph RBD Mirror Service
+28. How to Copy a Ceph RBD Image and Its Snapshots to Another Pool with deep cp
+29. How to Stream a Compressed Ceph RBD Export Without an Intermediate Image File
+30. How to Verify Sparse RBD Exports When du and Image Capacity Disagree
+31. How to Attach a Ceph RBD Block PVC with volumeDevices Instead of volumeMounts
+32. How to Trace Ceph RBD Volume ID Operation Locks to the Original Mount Failure
+33. How to Fix Ceph RBD Mapping Succeeded but Device Is Not Accessible Errors
+34. How to Convert QCOW2 Images to Raw Ceph RBD Storage with qemu-img
+35. How to Map an Encrypted Ceph RBD Clone with Separate Parent and Child Passphrases
+36. How to Measure Storage and Network Savings Separately for Compressed RBD Pools
+37. How to Route Ceph RBD Reads to Nearby Replicas with CRUSH Client Locations
+38. How to Reclaim Zero-Filled Ceph RBD Extents When Guest TRIM Is Unavailable
+39. How to Snapshot Multiple Ceph RBD Disks as a Consistency Group
+40. How to Separate Ceph RBD Object Integrity Checks from Guest Filesystem Corruption Checks
+
 ## Arch Linux
 
 1. How to Repair Unknown-Trust Package Signatures After an Arch Linux Update Gap
@@ -10855,3 +10897,187 @@
 18. How to Verify Cloud Recovery Can Access Deployment Artifacts Outside the Failed Region
 19. How to Forecast a Cloud Bill After Startup Credits Expire
 20. How to Estimate the Temporary Dual-Run Cost of a Cloud Migration
+
+## Registry Mirrors
+
+1. How to Make Docker Buildx Use a Registry Mirror When docker pull Already Does
+2. How to Diagnose BuildKit Builds That Fail When a Registry Mirror Returns 503
+3. How to Test containerd Registry Mirror Fallback for Connection Failures and HTTP Errors
+4. How to Stop K3s from Bypassing Registry Mirrors Through the Default Endpoint
+5. How to Keep Tag Resolution on the Trusted Registry While Pulling Layers from a Public Mirror
+6. How to Fix HTTP Response to HTTPS Client Errors for a containerd Registry Mirror
+7. How to Diagnose Nexus Docker Mirrors Rejected by Anonymous Pull Authentication
+8. How to Enable K3s Worker Participation in an Embedded Registry Mirror
+9. How to Fix K3s Embedded Mirror Tests That Fail Only for the latest Tag
+10. How to Diagnose K3s Registry Mirror Delays Caused by Blocked Peer Ports
+11. How to Rotate Upstream Credentials Used by a Distribution Pull-Through Cache
+12. How to Configure Mirror Credentials Separately from Upstream imagePullSecrets
+13. How to Test a containerd Registry Mirror with ctr Using the Same hosts.toml as CRI
+14. How to Configure GitLab Docker-in-Docker Jobs to Reuse a Registry Mirror
+15. How to Fix a Docker-in-Docker Mirror That Silently Falls Back After a TLS Error
+16. How to Validate Registry Mirror URLs Before Reloading Docker Configuration
+17. How to Configure containerd Default Mirrors Without Overriding Registry-Specific Rules
+18. How to Debug Registry Mirror Requests That Require the ns Query Parameter
+19. How to Probe Registry Mirror Manifests with the Correct OCI Accept Headers
+20. How to Distinguish Pull-Through Caching from Image Replication in an Outage Plan
+
+## LLMOps
+
+1. How to Diagnose Langfuse Prompts That Stay Stale After a Production Label Change
+2. How to Keep an LLM Application Running When Its Prompt Registry Is Unavailable
+3. How to Prefetch Langfuse Prompts Before an Async Application Starts Accepting Requests
+4. How to Retest Composed Langfuse Prompts When a Referenced Prompt Changes
+5. How to Synchronize Langfuse Prompt Promotions with GitHub Actions Deployments
+6. How to Reproduce a Langfuse Experiment After Its Dataset Items Have Changed
+7. How to Change a Langfuse Scoring Schema Without Mixing Incompatible Historical Scores
+8. How to Evaluate a Complete Chat Session in Langfuse Using Conversation History
+9. How to Reject Malformed LLM Evaluation Dataset Items with Langfuse JSON Schemas
+10. How to Diagnose Langfuse Dataset Evaluators That Process Zero Experiment Items
+11. How to Prevent Prompt Tuning from Overfitting Your LLM Evaluation Holdout
+12. How to Find LLM Regressions Hidden by Aggregate Scores with Dataset Slices
+13. How to Report Failed LLM Evaluations Alongside MLflow Aggregate Scores
+14. How to Evaluate Precomputed LLM Responses in MLflow Without Calling the Model Again
+15. How to Migrate Legacy MLflow LLM Evaluations to the GenAI Scorer API
+16. How to Remove Examples from a LangSmith Dataset Split Without Deleting Them
+17. How to Build a Focused Human Review Interface for LLM Evaluation Queues
+18. How to Add New LangSmith Evaluators to an Existing Experiment
+19. How to Replay Recorded LLM API Responses in Tests and Fail on Unexpected Live Calls
+20. How to Send Failed LangSmith Evaluations to a Human Annotation Queue
+
+## Chef
+
+1. How to Fix Chef Attribute Overrides That Do Not Take Effect
+2. How to Share Attributes Between Chef Cookbooks Without NilClass Errors
+3. How to Delay Chef Template Variables Until Converge Time
+4. How to Make Chef Execute Resources Idempotent with Guards
+5. How to Restart a Service Once After Multiple Chef Configuration Changes
+6. How to Read Encrypted Chef Data Bags in Recipes
+7. How to Test Chef Recipes with Encrypted Data Bags in Test Kitchen
+8. How to Test Multiple Chef Policyfiles with Separate Kitchen Suites
+9. How to Assign a Chef Policyfile to Production Nodes
+10. How to Pin Chef Cookbook Dependencies with Policyfile Lock Files
+11. How to Stub Chef Search Queries in ChefSpec
+12. How to Stub Shell Commands and Ruby Guards in ChefSpec
+13. How to Write Idempotent Chef Custom Resources with load_current_value
+14. How to Migrate Chef Custom Resources to Unified Mode
+15. How to Make Chef Custom Resource Changes Visible in Why-Run Mode
+16. How to Share Helper Methods Inside Chef Custom Resources
+17. How to Distribute Custom Ohai Plugins Through Chef Cookbooks
+18. How to Refresh Ohai Attributes During a Chef Client Run
+19. How to Use PowerShell Guards in Chef Windows Recipes
+20. How to Verify Download Checksums with Chef remote_file
+
+## Buildpacks
+
+1. How to Diagnose No Buildpack Groups Passed Detection Errors
+2. How to Pass Build-Time and Runtime Variables to Paketo Buildpack Images
+3. How to Reuse Buildpack Cache Images Across GitHub Actions Runs
+4. How to Rebase a Buildpack Image onto an Updated Run Image
+5. How to Run Paketo Buildpacks Behind a Corporate HTTP Proxy
+6. How to Add Private CA Certificates to Paketo Buildpack Images
+7. How to Select the Java Version Used by Paketo Buildpacks
+8. How to Tune Paketo JVM Memory Settings for Container Limits
+9. How to Give Paketo Buildpacks Access to a Private Maven Repository
+10. How to Pull Private Buildpacks with Spring Boot's Build-Image Plugin
+11. How to Build ARM64 Images with Cloud Native Buildpacks
+12. How to Diagnose Missing Shells in Paketo Tiny Images
+13. How to Download CycloneDX and SPDX SBOMs from Buildpack Images
+14. How to Fix Missing Font Libraries in Paketo Java Runtime Images
+15. How to Build Python Applications with Node.js Assets Using Paketo Buildpacks
+16. How to Add OCI Labels to Cloud Native Buildpack Images
+17. How to Replace the Default JVM Provider in Paketo Java Builds
+18. How to Configure Startup Commands with the Paketo Procfile Buildpack
+19. How to Fix Maven Wrapper Permission Errors in Google Cloud Buildpacks
+20. How to Build a Monorepo Subdirectory with the pack CLI
+
+## Pumba
+
+1. How to Preview Exactly Which Containers a Pumba Experiment Will Target
+2. How to Combine Docker Label Filters to Limit Pumba Experiments to Staging
+3. How to Diagnose Containers That Stay Stopped After a Pumba Kill Experiment
+4. How to Connect Pumba to a Remote Docker Daemon with Verified TLS
+5. How to Run Pumba Network Experiments Against containerd Containers
+6. How to Run Pumba Network Chaos Inside a Rootful Podman Machine
+7. How to Inject Network Delay into Minimal Containers with a Pumba Tools Sidecar
+8. How to Diagnose Missing sch_netem Support Before Running Pumba on Minikube
+9. How to Target Multiple Destination IPs and CIDR Blocks in One Pumba Experiment
+10. How to Limit a Pumba Network Fault to a Specific Service Port
+11. How to Combine Delay and Packet Loss in a Single Pumba Netem Experiment
+12. How to Test Incoming and Outgoing Packet Loss Separately with Pumba
+13. How to Set Network Jitter and Delay Distributions for Pumba Experiments
+14. How to Check and Clear Leftover Network Rules After Interrupting Pumba
+15. How to Schedule Pumba Chaos with Compatible Interval and Duration Values
+16. How to Quote stress-ng Arguments to Avoid Unrecognized Pumba Flags
+17. How to Make Pumba Stress Share a Docker Container’s CPU and Memory Limits
+18. How to Reuse Preloaded Pumba Network and Stress Images in Offline Tests
+19. How to Target VLAN Interfaces with Pumba Without Interface Validation Errors
+20. How to Keep Recurring Pumba Experiments Running When a Target Container Disappears
+
+## Cue
+
+1. How to Set CUE Defaults That Reference Other Fields
+2. How to Choose Required and Optional Fields in CUE Schemas
+3. How to Check Whether an Optional CUE Field Exists Before Using It
+4. How to Add Validation Rules to CUE Schemas Generated from Go Types
+5. How to Validate YAML Documents with CUE from a Go Application
+6. How to Load a CUE Module and Validate JSON Through the Go API
+7. How to Extend Closed CUE Definitions with Struct Embedding
+8. How to Validate Unique Values and Object Keys Across CUE List Items
+9. How to Merge CUE Lists by a Shared Object Key
+10. How to Organize CUE Packages Across Directories Without Unexpected Outputs
+11. How to Publish Reusable CUE Schemas to the Central Registry
+12. How to Route CUE Module Dependencies to a Private Registry
+13. How to Process Multiple YAML Documents Independently with CUE
+14. How to Inject Environment Values into CUE with Tag Attributes
+15. How to Generate Kubernetes Manifests for Multiple Environments with CUE
+16. How to Export a Concrete CUE Subtree from a File with Schema Definitions
+17. How to Trace Incomplete Values and Interpolation Errors in CUE
+18. How to Generate Cloud-Init YAML with the Required Header Using CUE
+19. How to Use Input Filenames as Configuration Keys in CUE
+20. How to Add Multiple Conditional Items to a CUE List
+
+## Colima
+
+1. How to Fix Docker Socket Discovery for IDEs and CLI Tools Using Colima
+2. How to Configure Testcontainers and Ryuk to Use a Colima Docker Runtime
+3. How to Fix Empty Docker Bind Mounts for Paths Outside Your Home Directory in Colima
+4. How to Diagnose Colima Hot Reload Failures Caused by ATTRIB-Only File Events
+5. How to Fix Colima Falling Back to QEMU When Rosetta and an x86_64 Guest Are Selected
+6. How to Diagnose Colima Disk Expansion When the Guest Filesystem Stays the Same Size
+7. How to Return Unused Colima VM Disk Space to macOS After Pruning Images
+8. How to Store Colima VM Data on an External Drive with COLIMA_HOME
+9. How to Install the Docker Compose Plugin for a Colima Setup
+10. How to Fix Registry DNS Lookup Failures Inside a Colima VM
+11. How to Connect Colima Containers to Services Running on the macOS Host
+12. How to Trust an Internal Registry CA in a Buildx Builder Running on Colima
+13. How to Access a Colima Kubernetes Cluster from the macOS Host
+14. How to Run Separate ARM64 and AMD64 Development Environments with Colima Profiles
+15. How to Investigate Colima Freezes Before Recreating the Virtual Machine
+16. How to Mount a Single Host File in a Colima Container Without Creating a Directory
+17. How to Make Locally Built Containerd Images Available to Kubernetes in Colima
+18. How to Use Colima with Containerd When No Docker Socket Is Exposed
+19. How to Mount macOS External Volumes in Colima When Paths Contain Spaces
+20. How to Pass the Colima Docker Socket into a Local GitLab CI Job
+
+## Model Serving
+
+1. How to Fix Triton Input Shape Errors Caused by an Extra Batch Dimension
+2. How to Batch Variable-Length Inputs in Triton with Ragged Batching
+3. How to Diagnose Triton CUDA Shared Memory Failures Across Docker Processes
+4. How to Stream Multiple Responses from a Triton Python Model over gRPC
+5. How to Cancel Triton Requests and Stop Work in a Custom Python Backend
+6. How to Warm Up Triton Models Before Marking Them Ready for Traffic
+7. How to Load and Unload Triton Models on Demand with Explicit Model Control
+8. How to Separate Triton Batch Wait Time from Request Queue Timeouts
+9. How to Fix Missing Python Packages in a Triton Custom Execution Environment
+10. How to Diagnose Swapped Implicit State Tensors in Triton 25.04 and 25.12
+11. How to Choose vLLM Parallelism When Attention Heads Do Not Divide Your GPU Count
+12. How to Diagnose vLLM Multi-GPU Startup Hangs with NCCL Communication Tests
+13. How to Serve Multiple LoRA Adapters Behind One vLLM Base Model
+14. How to Investigate Slow First Requests After Loading a New LoRA Rank in vLLM
+15. How to Match vLLM Chat Templates to String and Structured Message Content
+16. How to Diagnose Unexpected vLLM Sampling Defaults from generation_config.json
+17. How to Validate JSON Schemas Before Sending Structured Output Requests to vLLM
+18. How to Test vLLM Structured Outputs When a Reasoning Parser Is Enabled
+19. How to Isolate vLLM Prefix Cache Reuse Between Tenants with Cache Salts
+20. How to Match vLLM Tool Call Parsers and Chat Templates to Your Model
