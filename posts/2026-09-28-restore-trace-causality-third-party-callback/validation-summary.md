@@ -1,4 +1,4 @@
-# Validation Summary: How to Restore Trace Continuity After a Third-Party Callback That Does Not Return `traceparent`
+# Validation Summary: Restore Trace Causality for Third-Party Callbacks Without traceparent
 
 ## Status
 validated

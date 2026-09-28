@@ -1,4 +1,4 @@
-# EFS Files Are Slow on First Read: Measuring IA and Archive Latency and Returning Hot Data to Standard
+# Slow EFS First Reads: IA and Archive Latency and Moving Hot Data to Standard
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 

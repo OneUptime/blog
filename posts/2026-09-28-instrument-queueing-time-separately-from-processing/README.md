@@ -1,4 +1,4 @@
-# How to Instrument Queueing Time Separately from Processing Time in an Asynchronous Trace
+# Instrument Queueing and Processing Time Separately in Asynchronous Traces
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

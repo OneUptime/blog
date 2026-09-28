@@ -1,4 +1,4 @@
-# Validation Summary: How to Migrate an Unencrypted EFS File System to an Encrypted Replacement with AWS DataSync
+# Validation Summary: Migrate Unencrypted EFS to an Encrypted File System with AWS DataSync
 
 ## Status
 

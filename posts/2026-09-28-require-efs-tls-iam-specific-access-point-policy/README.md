@@ -1,4 +1,4 @@
-# How to Require `tls`, `iam`, and a Specific EFS Access Point in a File-System Policy
+# Require TLS, IAM, and a Specific EFS Access Point in a File System Policy
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
@@ -93,9 +93,10 @@ Keep administrative EFS API permissions available for rollback. Client access re
 
 ## Test fresh connections, including failures
 
-Use the application role on a disposable Linux client:
+Use the application role on a disposable Linux client with the EFS mount helper installed. Create the local mount-point directory before mounting:
 
 ```bash
+sudo mkdir -p /mnt/efs-check
 sudo mount -t efs \
   -o tls,iam,accesspoint=fsap-0123456789abcdef0 \
   fs-0123456789abcdef0:/ /mnt/efs-check

@@ -1,4 +1,4 @@
-# A Child Span Starts After Its Parent Ends: When to Use a New Trace and a Span Link
+# Child Span After Its Parent Ends: When to Use a New Trace and Span Link
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

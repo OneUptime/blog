@@ -1,4 +1,4 @@
-# Validation Summary: How to Copy On-Premises or S3 Data into EFS with DataSync While Preserving UID, GID, Timestamps, and Permissions
+# Validation Summary: Copy NFS or S3 Data to EFS with DataSync: POSIX Metadata Rules
 
 ## Status
 validated

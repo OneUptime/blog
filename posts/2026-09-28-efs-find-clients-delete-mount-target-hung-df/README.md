@@ -1,4 +1,4 @@
-# How to Find EFS Clients Before Deleting a Mount Target and Avoid Hung `df` Processes
+# Find EFS Clients Before Deleting a Mount Target to Avoid Hung df Processes
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
@@ -18,18 +18,18 @@ Start with a read-only inventory:
 aws efs describe-mount-targets \
   --region us-east-1 \
   --file-system-id fs-0123456789abcdef0 \
-  --query 'MountTargets[].{Target:MountTargetId,IP:IpAddress,ENI:NetworkInterfaceId,AZ:AvailabilityZoneName,Subnet:SubnetId,State:LifeCycleState}'
+  --query 'MountTargets[].{Target:MountTargetId,IPv4:IpAddress,IPv6:Ipv6Address,ENI:NetworkInterfaceId,AZ:AvailabilityZoneName,Subnet:SubnetId,State:LifeCycleState}'
 ```
 
-Save the mount-target ID, IP, ENI, and Availability Zone in the maintenance record. Avoid selecting a target merely because its name looks old. Cross-AZ mounts, static IP mount commands, on-premises consumers, and peered networks can invalidate assumptions about which hosts use it.
+Save the mount-target ID, IPv4 and IPv6 addresses (where present), ENI, and Availability Zone in the maintenance record. Avoid selecting a target merely because its name looks old. Cross-AZ mounts, static IP mount commands, on-premises consumers, and peered networks can invalidate assumptions about which hosts use it.
 
-Inspect infrastructure configuration for the file-system ID, access-point IDs, DNS name, and target IP. Include EC2 launch templates and boot mounts, ECS task definitions, Lambda file-system configuration, and EKS persistent volumes. Stopped workloads matter: a scheduled job can recreate a dependency after today's active connections disappear.
+Inspect infrastructure configuration for the file-system ID, access-point IDs, DNS name, and target IP addresses. Include EC2 launch templates and boot mounts, ECS task definitions, Lambda file-system configuration, and EKS persistent volumes. Stopped workloads matter: a scheduled job can recreate a dependency after today's active connections disappear.
 
 ## Combine traffic evidence with configuration
 
 The EFS `ClientConnections` metric gives a file-system connection count, not a list of owners for an individual mount target. Use it as a trend and cross-check, not proof that a particular endpoint is unused. [EFS metrics](https://docs.aws.amazon.com/efs/latest/ug/efs-metrics.html).
 
-If VPC Flow Logs already cover the target ENI, query accepted traffic to its address on TCP 2049. Map observed source IPs back to instances, task ENIs, Kubernetes nodes, or connected networks. Flow logs are retrospective evidence with delivery and aggregation delay; an idle client may be absent from the chosen window. [VPC Flow Logs](https://docs.aws.amazon.com/vpc/latest/userguide/flow-logs.html).
+If VPC Flow Logs already cover the target ENI, query accepted traffic to all of its IPv4 and IPv6 addresses on TCP 2049. Map observed source IPs back to instances, task ENIs, Kubernetes nodes, or connected networks. Flow logs are retrospective evidence with delivery and aggregation delay; an idle client may be absent from the chosen window. [VPC Flow Logs](https://docs.aws.amazon.com/vpc/latest/userguide/flow-logs.html).
 
 Compare traffic across a period containing scheduled activity. Investigate unfamiliar sources before changing a security group to block them: blocking traffic can create the same hanging-client problem you are trying to prevent.
 
@@ -72,6 +72,6 @@ Re-run the target inventory until the deleted target disappears. Verify unaffect
 
 ## If deletion already stranded a client
 
-Prevent new work from entering the affected application and capture its mount and process state. AWS documents that remounting is necessary for stale handles when a replacement target reuses an address; matching an IP does not recreate the old NFS session.
+Prevent new work from entering the affected application and capture its mount and process state. AWS documents that replacing a deleted file system and mount target with a new file system and mount target at the same IP address can cause “bad file handle” errors, resolved by unmounting and remounting. Reusing an IP address does not preserve the old file system’s file handles.
 
 Use an application-approved recovery sequence that accounts for outstanding writes. Do not hide an unavailable mount with a new local directory and let the service write there accidentally. Before resuming, verify the actual mounted file system, read a known marker, and perform an authorized write test as the service identity. Retirement succeeds when all clients are accounted for and healthy, not merely when the control-plane deletion finishes.

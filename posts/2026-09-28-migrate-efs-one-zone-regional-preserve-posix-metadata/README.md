@@ -1,4 +1,4 @@
-# How to Migrate from EFS One Zone to Regional EFS Without Losing POSIX Ownership or Permissions
+# Migrate EFS One Zone to Regional EFS While Preserving POSIX Metadata
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 

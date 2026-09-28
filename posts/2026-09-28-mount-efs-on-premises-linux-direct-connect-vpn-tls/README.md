@@ -1,4 +1,4 @@
-# How to Mount Amazon EFS from On-Premises Linux over Direct Connect or VPN with TLS
+# Mount EFS from On-Premises Linux over Direct Connect or VPN with TLS
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 

@@ -1,4 +1,4 @@
-# Validation Summary: EFS Throughput Suddenly Collapses: Reading `BurstCreditBalance`, `PercentIOLimit`, and `PermittedThroughput` Together
+# Validation Summary: EFS Throughput Drops: Burst Credits, I/O Limits, and Permitted Throughput
 
 ## Status
 validated

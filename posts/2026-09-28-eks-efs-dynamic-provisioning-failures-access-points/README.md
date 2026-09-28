@@ -1,4 +1,4 @@
-# How to Diagnose EKS EFS Dynamic-Provisioning Failures Across StorageClasses, Access Points, and POSIX IDs
+# Diagnose EKS EFS Provisioning: StorageClasses, Access Points, and POSIX IDs
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
@@ -18,7 +18,7 @@ kubectl -n reports get pvc report-data -o yaml
 kubectl get storageclass efs-apps -o yaml
 ```
 
-Record `storageClassName`, access modes, requested capacity, and the event reporting the provisioning failure. If there is no named StorageClass, confirm which default class the cluster selected. A typo or a different provisioner can send the request somewhere entirely unrelated to EFS.
+Record `storageClassName`, access modes, requested capacity, and the event reporting the provisioning failure. If `storageClassName` was omitted, confirm whether the cluster selected a default class. An explicit `storageClassName: ""` disables default-class selection and dynamic provisioning. A typo or a different provisioner can send the request somewhere entirely unrelated to EFS.
 
 For a deliberately simple diagnostic class:
 
@@ -73,7 +73,7 @@ aws efs describe-access-points \
   --query 'AccessPoints[].{Id:AccessPointId,State:LifeCycleState,User:PosixUser,Root:RootDirectory,Tags:Tags}'
 ```
 
-For the matching access point, compare the root path, creation mode, and assigned numeric identity with the intended class. The dynamic provisioner enforces the access-point identity on file operations. Changing a pod's `runAsUser` therefore does not override the UID/GID enforced by EFS. [Dynamic provisioning parameters](https://github.com/kubernetes-sigs/aws-efs-csi-driver/blob/master/docs/parameters.md)
+For the matching access point, compare the root path, creation mode, and assigned numeric identity with the intended class. The dynamic provisioner configures the access-point identity, and EFS enforces it on file operations through that access point. Changing a pod's `runAsUser` therefore does not override the UID/GID enforced by EFS. [Dynamic provisioning parameters](https://github.com/kubernetes-sigs/aws-efs-csi-driver/blob/master/docs/parameters.md)
 
 If using a custom GID range, specify both endpoints and size it for the expected allocation count. Do not delete live access points to free IDs without mapping them back to bound PVs and workloads. If you choose explicit UID/GID values, understand that sharing identities can weaken isolation between application directories.
 

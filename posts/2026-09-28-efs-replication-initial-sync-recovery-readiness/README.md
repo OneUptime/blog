@@ -1,4 +1,4 @@
-# How to Verify EFS Replication Initial Sync and Recovery-Point Readiness Before a Disaster-Recovery Test
+# Verify EFS Replication Initial Sync and Recovery Readiness Before DR Tests
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 

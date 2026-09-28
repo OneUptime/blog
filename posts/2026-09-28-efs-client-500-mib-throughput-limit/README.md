@@ -1,4 +1,4 @@
-# Why One EFS Client Stops Near 500 MiB/s: Client-Version Limits, NFS Parallelism, and Elastic Throughput
+# EFS Client Stuck Near 500 MiB/s: Versions, NFS Parallelism, and Throughput
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 

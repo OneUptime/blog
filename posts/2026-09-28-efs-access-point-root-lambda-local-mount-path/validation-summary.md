@@ -1,4 +1,4 @@
-# Validation Summary: EFS Access-Point Root vs Lambda Local Mount Path: Why Two Paths Exist and Which One Your Code Uses
+# Validation Summary: EFS Access Point Root vs Lambda Local Mount Path: Which Path Your Code Uses
 
 ## Status
 

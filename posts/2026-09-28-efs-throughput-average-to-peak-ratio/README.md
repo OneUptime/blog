@@ -1,4 +1,4 @@
-# Elastic, Provisioned, or Bursting EFS Throughput? Choose from the Workload’s Average-to-Peak Ratio
+# Choose EFS Throughput Modes Using the Workload's Average-to-Peak Ratio
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 

@@ -1,4 +1,4 @@
-# Validation Summary: Elastic, Provisioned, or Bursting EFS Throughput? Choose from the Workload’s Average-to-Peak Ratio
+# Validation Summary: Choose EFS Throughput Modes Using the Workload's Average-to-Peak Ratio
 
 ## Status
 validated

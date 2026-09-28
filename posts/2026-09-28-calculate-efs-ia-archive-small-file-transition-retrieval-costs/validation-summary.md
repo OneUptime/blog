@@ -1,4 +1,4 @@
-# Validation Summary: How to Calculate EFS IA and Archive Costs for Small Files, 128-KiB Minimums, Transitions, and Retrievals
+# Validation Summary: EFS IA and Archive Costs: Small Files, 128-KiB Minimums, and Retrievals
 
 ## Status
 validated

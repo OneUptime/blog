@@ -1,4 +1,4 @@
-# Lambda Cannot Mount EFS During Initialization: Checking VPC Subnets, Mount Targets, and Access-Point Permissions
+# Lambda EFS Mount Failures: VPC Subnets, Mount Targets, and Access Points
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
@@ -34,7 +34,7 @@ aws lambda get-function-configuration \
 
 If an alias invokes a published version, inspect that qualifier as well; correcting `$LATEST` does not change a published version. Record the access-point ARN, local mount path, role, subnets, and security groups together.
 
-Describe those subnets and compare their Availability Zones with available EFS mount targets. The target need not be in the identical subnet, but it must provide the expected zone coverage and an NFS route from the function's subnets. AWS recommends a target in every zone used by the function. [Lambda EFS configuration](https://docs.aws.amazon.com/lambda/latest/dg/configuration-filesystem-efs.html)
+Describe those subnets and compare their Availability Zones with available EFS mount targets. The target need not be in the identical subnet, but it must provide the expected zone coverage and an NFS route from the function's subnets. Lambda requires a mount target in every Availability Zone used by the function. [Lambda EFS configuration](https://docs.aws.amazon.com/lambda/latest/dg/configuration-filesystem-efs.html)
 
 ## Verify the NFS path and function security groups
 

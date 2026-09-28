@@ -1,4 +1,4 @@
-# Should a Multi-Step User Journey Be One Trace? Choosing Trace IDs, Session IDs, and Business Correlation IDs
+# Multi-Step User Journeys: Choose Trace, Session, and Business Correlation IDs
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

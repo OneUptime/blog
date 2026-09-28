@@ -1,4 +1,4 @@
-# EFS Access-Point Root vs Lambda Local Mount Path: Why Two Paths Exist and Which One Your Code Uses
+# EFS Access Point Root vs Lambda Local Mount Path: Which Path Your Code Uses
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -1,4 +1,4 @@
-# Validation Summary: EFS Says “Access Denied by Server While Mounting 127.0.0.1:/”: A TLS, IAM, and Access-Point Checklist
+# Validation Summary: EFS Access Denied at 127.0.0.1: TLS, IAM, and Access Points
 
 ## Status
 

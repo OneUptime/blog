@@ -1,4 +1,4 @@
-# Validation Summary: How to Verify EFS Replication Initial Sync and Recovery-Point Readiness Before a Disaster-Recovery Test
+# Validation Summary: Verify EFS Replication Initial Sync and Recovery Readiness Before DR Tests
 
 ## Status
 validated

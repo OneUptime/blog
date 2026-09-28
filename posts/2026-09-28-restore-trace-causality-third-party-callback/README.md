@@ -1,4 +1,4 @@
-# How to Restore Trace Continuity After a Third-Party Callback That Does Not Return `traceparent`
+# Restore Trace Causality for Third-Party Callbacks Without traceparent
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

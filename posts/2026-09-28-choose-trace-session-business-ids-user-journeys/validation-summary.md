@@ -1,4 +1,4 @@
-# Validation Summary: Should a Multi-Step User Journey Be One Trace? Choosing Trace IDs, Session IDs, and Business Correlation IDs
+# Validation Summary: Multi-Step User Journeys: Choose Trace, Session, and Business Correlation IDs
 
 ## Status
 validated

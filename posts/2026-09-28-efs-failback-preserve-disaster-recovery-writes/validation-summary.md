@@ -1,4 +1,4 @@
-# Validation Summary: How to Fail Back an EFS Replica Without Losing Writes Made During the Disaster-Recovery Window
+# Validation Summary: Fail Back an EFS Replica Without Losing Disaster-Recovery Writes
 
 ## Status
 

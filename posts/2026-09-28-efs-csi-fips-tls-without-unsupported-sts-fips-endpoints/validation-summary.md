@@ -1,4 +1,4 @@
-# Validation Summary: How to Enable FIPS-Compliant EFS CSI TLS Without Calling Unsupported Regional STS FIPS Endpoints
+# Validation Summary: Enable EFS CSI FIPS TLS While Avoiding Unsupported STS FIPS Endpoints
 
 ## Status
 

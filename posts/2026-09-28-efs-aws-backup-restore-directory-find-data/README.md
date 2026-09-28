@@ -1,4 +1,4 @@
-# How to Find Restored EFS Data When AWS Backup Places It Under an `aws-backup-restore_*` Directory
+# Find Restored EFS Data in AWS Backup's aws-backup-restore_* Directory
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
@@ -18,10 +18,10 @@ Use the account and Region that performed the restore:
 aws backup describe-restore-job \
   --region us-east-1 \
   --restore-job-id REPLACE_WITH_RESTORE_JOB_ID \
-  --query '{Status:Status,Message:StatusMessage,Resource:CreatedResourceArn,Completed:CompletionDate}'
+  --query '{Status:Status,Message:StatusMessage,Resource:CreatedResourceArn,RecoveryPoint:RecoveryPointArn,Completed:CompletionDate}'
 ```
 
-Continue only after the job is complete. Record the returned resource ARN, recovery-point ARN, restore time, and whether you requested a new or existing file system. A completed restore in another Region does not change the filesystem mounted on a production host.
+Continue only after the status is `COMPLETED`. Record the returned resource ARN, recovery-point ARN, and completion time, and check the original restore request to confirm whether you requested a new or existing file system. A completed restore in another Region does not change the filesystem mounted on a production host.
 
 Inspect the actual mount source and options:
 
@@ -74,7 +74,7 @@ For application data spread across several files, perform the application's cons
 
 ## Stage a controlled promotion
 
-Keep the recovery directory intact while preparing a separate staging destination. The following example shows a dry-run copy on Linux; replace both paths only after verifying them:
+Keep the recovery directory intact while preparing a separate staging destination. The following example shows a dry-run copy on Linux; replace both paths only after verifying them. Ensure the destination parent directory (`/mnt/efs-root/recovery-staging` in this example) exists first; rsync creates only the final missing directory by default:
 
 ```bash
 sudo rsync -aHn --numeric-ids --itemize-changes \

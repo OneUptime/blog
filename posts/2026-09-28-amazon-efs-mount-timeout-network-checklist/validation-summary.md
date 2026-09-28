@@ -1,4 +1,4 @@
-# Validation Summary: Amazon EFS Mount Times Out: Checking Mount Targets, Port 2049, Security Groups, Routes, and NACLs
+# Validation Summary: EFS Mount Timeouts: Mount Targets, Port 2049, Security Groups, Routes, NACLs
 
 ## Status
 validated

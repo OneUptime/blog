@@ -1,4 +1,4 @@
-# Fixing EFS “nfs: Server Not Responding” After a Network Reconnect with `noresvport`
+# Fix EFS NFS Server Not Responding After Reconnect with noresvport
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -1,4 +1,4 @@
-# Validation Summary: How to Mount EFS Across AWS Accounts or VPCs with Peering, Resolver Rules, and Mount-Target IPs
+# Validation Summary: Mount EFS Across AWS Accounts or VPCs with Peering, DNS, and Target IPs
 
 ## Status
 validated

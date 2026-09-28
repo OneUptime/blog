@@ -1,4 +1,4 @@
-# EFS Says “Access Denied by Server While Mounting 127.0.0.1:/”: A TLS, IAM, and Access-Point Checklist
+# EFS Access Denied at 127.0.0.1: TLS, IAM, and Access Points
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

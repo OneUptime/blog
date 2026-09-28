@@ -1,4 +1,4 @@
-# Why EFS Lifecycle Policies Ignore POSIX `atime`: How the Internal Last-Access Timer Moves Files to IA and Archive
+# EFS Lifecycle Access Timer vs POSIX atime: Moving Files to IA and Archive
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
@@ -20,7 +20,7 @@ A practical investigation involves three timelines:
 | EFS lifecycle timer | Service-side access history used for tiering eligibility |
 | Observed transition time | When background lifecycle work actually moves the content |
 
-Backdating a file with `touch -a` changes the first timeline. It does not backdate the service's internal access history. Preserving old timestamps during migration therefore does not make a newly copied dataset immediately behave like equally old, untouched EFS data.
+Backdating a file with `touch -a -t 202601010000 existing-file` changes the first timeline. It does not backdate the service's internal access history. Preserving old timestamps during migration therefore does not make a newly copied dataset immediately behave like equally old, untouched EFS data.
 
 Likewise, becoming eligible is not a promise of an instantaneous transition. Lifecycle work runs behind application I/O, and the amount of work matters. Millions of small files can take longer to transition than a smaller number of large files containing the same total bytes.
 
@@ -77,6 +77,6 @@ Avoid reading every candidate file to confirm it is cold: that measurement can c
 
 ## Understand return-to-Standard behavior
 
-Reading content in IA or Archive does not automatically imply permanent promotion unless the return policy requests it. `AFTER_1_ACCESS` asks EFS to move accessed content back to Standard; the move still occurs through lifecycle processing. Disabling future transitions also does not bulk-promote all existing cold data.
+Reading content in IA or Archive does not automatically promote it to Standard unless the return policy requests it. `AFTER_1_ACCESS` asks EFS to move accessed content back to Standard; the move still occurs through lifecycle processing. A promoted file can transition back to IA or Archive after another period of inactivity under the configured policy. Disabling future transitions also does not bulk-promote all existing cold data.
 
 Choose return behavior from measured access patterns. A sporadic read of an old document and a repeated interactive workload have different latency and cost needs. Use POSIX timestamps for application logic and audits that require them, and use EFS policy, observed content access, and storage metrics to reason about lifecycle placement.

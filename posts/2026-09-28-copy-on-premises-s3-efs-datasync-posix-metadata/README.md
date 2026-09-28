@@ -1,4 +1,4 @@
-# How to Copy On-Premises or S3 Data into EFS with DataSync While Preserving UID, GID, Timestamps, and Permissions
+# Copy NFS or S3 Data to EFS with DataSync: POSIX Metadata Rules
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 

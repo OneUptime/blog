@@ -1,4 +1,4 @@
-# How to Replicate into an Existing EFS File System by Managing Replication Overwrite Protection Safely
+# Replicate to an Existing EFS File System: Overwrite Protection and Safety
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 

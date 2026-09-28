@@ -1,4 +1,4 @@
-# Validation Summary: How to Replicate into an Existing EFS File System by Managing Replication Overwrite Protection Safely
+# Validation Summary: Replicate to an Existing EFS File System: Overwrite Protection and Safety
 
 ## Status
 

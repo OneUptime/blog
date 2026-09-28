@@ -1,4 +1,4 @@
-# Validation Summary: A Child Span Starts After Its Parent Ends: When to Use a New Trace and a Span Link
+# Validation Summary: Child Span After Its Parent Ends: When to Use a New Trace and Span Link
 
 ## Status
 

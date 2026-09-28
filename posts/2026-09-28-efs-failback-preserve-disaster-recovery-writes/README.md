@@ -1,4 +1,4 @@
-# How to Fail Back an EFS Replica Without Losing Writes Made During the Disaster-Recovery Window
+# Fail Back an EFS Replica Without Losing Disaster-Recovery Writes
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 

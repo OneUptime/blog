@@ -1,4 +1,4 @@
-# How to Copy EFS Backups Across AWS Accounts and Regions and Prove They Can Be Restored
+# Copy EFS Backups Across Accounts and Regions and Verify Restores
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 

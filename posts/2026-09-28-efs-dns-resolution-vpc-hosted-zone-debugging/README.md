@@ -1,4 +1,4 @@
-# EFS DNS Name Does Not Resolve: Debugging VPC DNS Attributes, Mount Targets, and Conflicting Hosted Zones
+# EFS DNS Failures: VPC Settings, Mount Targets, and Hosted Zone Conflicts
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

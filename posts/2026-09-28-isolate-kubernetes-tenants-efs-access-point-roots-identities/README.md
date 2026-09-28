@@ -1,4 +1,4 @@
-# How to Isolate Multiple Kubernetes Tenants on One EFS File System with Separate Access-Point Roots and POSIX Identities
+# Isolate Kubernetes Tenants with EFS Access Point Roots and POSIX Identities
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 

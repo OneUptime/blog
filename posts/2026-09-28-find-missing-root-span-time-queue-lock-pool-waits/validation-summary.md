@@ -1,4 +1,4 @@
-# Validation Summary: Why Do Child Spans Add Up to Less Than the Root Span? Finding Queue, Lock, and Connection-Pool Waits
+# Validation Summary: Missing Root Span Time: Find Queue, Lock, and Connection-Pool Waits
 
 ## Status
 validated

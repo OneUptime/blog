@@ -1,4 +1,4 @@
-# EFS Throughput Suddenly Collapses: Reading `BurstCreditBalance`, `PercentIOLimit`, and `PermittedThroughput` Together
+# EFS Throughput Drops: Burst Credits, I/O Limits, and Permitted Throughput
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 

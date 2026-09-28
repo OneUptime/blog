@@ -1,4 +1,4 @@
-# How to Enable FIPS-Compliant EFS CSI TLS Without Calling Unsupported Regional STS FIPS Endpoints
+# Enable EFS CSI FIPS TLS While Avoiding Unsupported STS FIPS Endpoints
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 

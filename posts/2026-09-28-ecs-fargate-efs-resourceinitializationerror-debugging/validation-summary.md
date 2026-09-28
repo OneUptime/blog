@@ -1,4 +1,4 @@
-# Validation Summary: ECS Fargate Cannot Mount EFS: Debugging `ResourceInitializationError`, DNS, Task Security Groups, and IAM
+# Validation Summary: Fix ECS Fargate EFS ResourceInitializationError: DNS, Networking, and IAM
 
 ## Status
 validated

@@ -1,4 +1,4 @@
-# Validation Summary: How to Stop `efs-proxy` OOMKills by Sizing EFS CSI Node Memory for Volume Count and Concurrent Mounts
+# Validation Summary: Stop efs-proxy OOMKills: Size EFS CSI Node Memory for Concurrent Mounts
 
 ## Status
 validated

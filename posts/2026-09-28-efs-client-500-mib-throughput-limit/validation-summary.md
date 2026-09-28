@@ -1,4 +1,4 @@
-# Validation Summary: Why One EFS Client Stops Near 500 MiB/s: Client-Version Limits, NFS Parallelism, and Elastic Throughput
+# Validation Summary: EFS Client Stuck Near 500 MiB/s: Versions, NFS Parallelism, and Throughput
 
 ## Status
 validated

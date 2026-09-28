@@ -1,4 +1,4 @@
-# Validation Summary: How to Build an Amazon EFS Backup Plan with Incremental Backups, Retention Rules, Cross-Region Copies, and Vault Lock
+# Validation Summary: EFS Backup Plans: Retention, Cross-Region Copies, and Vault Lock
 
 ## Status
 validated

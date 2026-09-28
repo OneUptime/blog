@@ -1,4 +1,4 @@
-# How to Break a 30,000-Span “Mega Trace” into Linked Traces Your Backend Can Render
+# Split a 30,000-Span Mega Trace into Linked Traces Your Backend Can Render
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

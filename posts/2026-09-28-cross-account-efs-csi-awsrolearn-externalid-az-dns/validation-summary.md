@@ -1,4 +1,4 @@
-# Validation Summary: How to Configure Cross-Account EFS CSI Provisioning with `awsRoleArn`, `externalId`, and AZ-Resilient DNS Resolution
+# Validation Summary: Cross-Account EFS CSI: awsRoleArn, externalId, and AZ-Aware DNS
 
 ## Status
 

@@ -1,4 +1,4 @@
-# EFS Is Mounted but Writes Return “Permission Denied”: Separating IAM Authorization from POSIX UID/GID Permissions
+# EFS Write Permission Denied: IAM Authorization vs POSIX UID/GID
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

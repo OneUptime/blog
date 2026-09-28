@@ -1,4 +1,4 @@
-# Validation Summary: How to Break a 30,000-Span “Mega Trace” into Linked Traces Your Backend Can Render
+# Validation Summary: Split a 30,000-Span Mega Trace into Linked Traces Your Backend Can Render
 
 ## Status
 validated

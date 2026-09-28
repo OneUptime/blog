@@ -1,4 +1,4 @@
-# How to Calculate EFS IA and Archive Costs for Small Files, 128-KiB Minimums, Transitions, and Retrievals
+# EFS IA and Archive Costs: Small Files, 128-KiB Minimums, and Retrievals
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 

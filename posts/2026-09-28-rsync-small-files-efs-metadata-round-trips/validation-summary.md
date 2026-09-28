@@ -1,4 +1,4 @@
-# Validation Summary: Why `rsync` and Millions of Small Files Are Slow on EFS—and How to Reduce Metadata Round Trips
+# Validation Summary: Speed Up rsync with Small Files on EFS by Reducing Metadata Round Trips
 
 ## Status
 validated

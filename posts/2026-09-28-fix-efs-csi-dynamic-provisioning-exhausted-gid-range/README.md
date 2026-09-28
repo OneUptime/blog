@@ -1,4 +1,4 @@
-# How to Fix EFS CSI Dynamic Provisioning When the StorageClass Exhausts Its GID Range
+# Fix EFS CSI Provisioning When a StorageClass Exhausts Its GID Range
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 

@@ -1,4 +1,4 @@
-# How to Build an Amazon EFS Backup Plan with Incremental Backups, Retention Rules, Cross-Region Copies, and Vault Lock
+# EFS Backup Plans: Retention, Cross-Region Copies, and Vault Lock
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 

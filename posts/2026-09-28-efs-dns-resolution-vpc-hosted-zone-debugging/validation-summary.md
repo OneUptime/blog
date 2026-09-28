@@ -1,4 +1,4 @@
-# Validation Summary: EFS DNS Name Does Not Resolve: Debugging VPC DNS Attributes, Mount Targets, and Conflicting Hosted Zones
+# Validation Summary: EFS DNS Failures: VPC Settings, Mount Targets, and Hosted Zone Conflicts
 
 ## Status
 

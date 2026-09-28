@@ -1,4 +1,4 @@
-# Validation Summary: How to Instrument Queueing Time Separately from Processing Time in an Asynchronous Trace
+# Validation Summary: Instrument Queueing and Processing Time Separately in Asynchronous Traces
 
 ## Status
 validated

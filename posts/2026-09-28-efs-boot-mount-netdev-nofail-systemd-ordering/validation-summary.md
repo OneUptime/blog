@@ -1,4 +1,4 @@
-# Validation Summary: EFS Mounts Manually but Not at Boot: Fixing `_netdev`, `nofail`, and systemd Ordering
+# Validation Summary: EFS Fails to Mount at Boot: Fix _netdev, nofail, and systemd Ordering
 
 ## Status
 validated

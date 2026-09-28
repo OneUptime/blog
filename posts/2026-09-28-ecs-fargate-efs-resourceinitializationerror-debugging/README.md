@@ -1,4 +1,4 @@
-# ECS Fargate Cannot Mount EFS: Debugging `ResourceInitializationError`, DNS, Task Security Groups, and IAM
+# Fix ECS Fargate EFS ResourceInitializationError: DNS, Networking, and IAM
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

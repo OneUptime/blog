@@ -1,4 +1,4 @@
-# EKS EFS CSI Mount Fails with Exit Status 32: Debugging the Node Plugin, Mount Watchdog, and `efs-utils`
+# Debug EKS EFS CSI Exit Status 32: Node Plugin, Watchdog, and efs-utils
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

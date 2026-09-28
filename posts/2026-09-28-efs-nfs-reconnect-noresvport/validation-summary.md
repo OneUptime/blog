@@ -1,4 +1,4 @@
-# Validation Summary: Fixing EFS “nfs: Server Not Responding” After a Network Reconnect with `noresvport`
+# Validation Summary: Fix EFS NFS Server Not Responding After Reconnect with noresvport
 
 ## Status
 validated
