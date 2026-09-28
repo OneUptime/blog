@@ -292,7 +292,6 @@
 
 ## EFS
 
-13. EFS Access-Point Root vs Lambda Local Mount Path: Why Two Paths Exist and Which One Your Code Uses
 14. Why `rsync` and Millions of Small Files Are Slow on EFS—and How to Reduce Metadata Round Trips
 15. EFS Throughput Suddenly Collapses: Reading `BurstCreditBalance`, `PercentIOLimit`, and `PermittedThroughput` Together
 16. Elastic, Provisioned, or Bursting EFS Throughput? Choose from the Workload’s Average-to-Peak Ratio
