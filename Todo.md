@@ -292,7 +292,6 @@
 
 ## EFS
 
-20. How to Find EFS Clients Before Deleting a Mount Target and Avoid Hung `df` Processes
 21. How to Build an Amazon EFS Backup Plan with Incremental Backups, Retention Rules, Cross-Region Copies, and Vault Lock
 22. How to Find Restored EFS Data When AWS Backup Places It Under an `aws-backup-restore_*` Directory
 23. How to Copy EFS Backups Across AWS Accounts and Regions and Prove They Can Be Restored
