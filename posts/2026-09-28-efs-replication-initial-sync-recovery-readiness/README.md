@@ -25,7 +25,7 @@ Save both file-system IDs, destination Region, status, `StatusMessage`, and `Las
 
 `ENABLED` means the configuration is healthy. The last replicated timestamp identifies the completed synchronization boundary; changes after it might be missing. A healthy status by itself does not establish the recovery-point age that your application requires. [Viewing replication details](https://docs.aws.amazon.com/efs/latest/ug/monitoring-replication-status.html).
 
-If the timestamp is absent, do not infer that initial sync completed. Wait for a successful synchronization boundary and demonstrate destination data availability. If the configuration is `PAUSED` or `ERROR`, read its message and resolve the cause, such as permissions, Region opt-in, or inaccessible KMS keys. Do not repeatedly recreate replication as a substitute for diagnosing it.
+If the timestamp is absent, do not infer that initial sync completed. Wait for a successful synchronization boundary and demonstrate destination data availability. If the configuration is `PAUSED`, read its message and resolve the cause, such as permissions, Region opt-in, or inaccessible KMS keys. An `ERROR` state is unrecoverable: read its message, diagnose the cause, and delete and recreate the replication configuration as AWS requires. Do not repeatedly recreate replication as a substitute for diagnosing it.
 
 ## Measure the lag instead of guessing
 
