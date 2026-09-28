@@ -295,7 +295,6 @@
 
 ## Tracing
 
-1. Why Do Child Spans Add Up to Less Than the Root Span? Finding Queue, Lock, and Connection-Pool Waits
 2. How to Instrument Queueing Time Separately from Processing Time in an Asynchronous Trace
 3. How to Trace Fire-and-Forget Work Without Falsely Extending the Original Request
 4. A Child Span Starts After Its Parent Ends: When to Use a New Trace and a Span Link
