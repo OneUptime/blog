@@ -292,7 +292,6 @@
 
 ## EFS
 
-34. How to Fix EFS CSI Dynamic Provisioning When the StorageClass Exhausts Its GID Range
 35. How to Delete EFS Access Points and Their Data When Kubernetes PVCs Are Removed
 36. How to Stop `efs-proxy` OOMKills by Sizing EFS CSI Node Memory for Volume Count and Concurrent Mounts
 37. How to Configure Cross-Account EFS CSI Provisioning with `awsRoleArn`, `externalId`, and AZ-Resilient DNS Resolution
