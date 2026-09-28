@@ -69,7 +69,7 @@ Record the original enqueue time and the current delivery attempt independently.
 
 Export queue-wait and processing-duration histograms with bounded dimensions such as queue and worker type. Keep job IDs out of metric labels. Trace examples can show individual delays, while queue depth, oldest-message age, throughput, and duration distributions explain whether the system is falling behind.
 
-Test an idle queue, a backlog, a slow handler, and a retry. Only the backlog case should increase queue wait without increasing handler duration. Also compare attempted, accepted, and processed counts: work that is never dequeued cannot produce the retrospective waiting span in this example, so broker or queue metrics remain necessary.
+Test an idle queue, a backlog, a slow handler, and a retry. In an isolated backlog test with unchanged handler work, queue wait should increase without increasing handler duration. Retries can also add waiting time, and a slow handler can increase queue wait for subsequent jobs. Also compare attempted, accepted, and processed counts: work that is never dequeued cannot produce the retrospective waiting span in this example, so broker or queue metrics remain necessary.
 
 ## Conclusion
 
