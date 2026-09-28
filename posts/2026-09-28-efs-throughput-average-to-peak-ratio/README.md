@@ -29,7 +29,7 @@ Also identify every workload that shares it. A quiet web application and a night
 
 Choose a window containing busy days, idle periods, scheduled exports, and recovery jobs. Calculate throughput from the `Sum` of `MeteredIOBytes` divided by the period in seconds. Using `Average` for this metric measures average operation size, not average throughput. [EFS CloudWatch metrics](https://docs.aws.amazon.com/efs/latest/ug/efs-metrics.html).
 
-For an illustrative seven-day analysis, export one-minute values through CloudWatch `GetMetricData`, or use five-minute values with `get-metric-statistics`. The latter accepts at most 1,440 returned datapoints, so split a longer window into requests rather than silently dropping intervals. [GetMetricStatistics API](https://docs.aws.amazon.com/AmazonCloudWatch/latest/APIReference/API_GetMetricStatistics.html).
+For an illustrative seven-day analysis, export one-minute values through CloudWatch `GetMetricData`, or use five-minute values with `get-metric-statistics`. The latter returns an error if a request exceeds 1,440 datapoints, so split a longer window into requests to retrieve every interval. [GetMetricStatistics API](https://docs.aws.amazon.com/AmazonCloudWatch/latest/APIReference/API_GetMetricStatistics.html).
 
 With a complete series of equally spaced rates:
 
