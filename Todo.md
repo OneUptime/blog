@@ -295,7 +295,6 @@
 
 ## Tracing
 
-4. A Child Span Starts After Its Parent Ends: When to Use a New Trace and a Span Link
 5. How to Model Batch Consumption When One Worker Span Has 100 Message Contexts
 6. How to Break a 30,000-Span “Mega Trace” into Linked Traces Your Backend Can Render
 7. Span Links Exist but Your Jaeger or Grafana View Looks Disconnected: How to Preserve the Causal Trail
