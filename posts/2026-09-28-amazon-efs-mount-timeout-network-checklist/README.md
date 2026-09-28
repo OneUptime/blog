@@ -57,7 +57,7 @@ aws efs describe-mount-target-security-groups \
   --mount-target-id fsmt-0123456789abcdef0
 ```
 
-Inspect the mounting client's ENI as well. The effective pair of rules should permit client outbound TCP 2049 and target inbound TCP 2049 from that client. A rule referencing a security group helps only when that group is attached to the originating network interface and the network topology supports that reference. [EFS security-group requirements](https://docs.aws.amazon.com/efs/latest/ug/network-access.html)
+Inspect the mounting client's ENI as well. The effective pair of rules should permit client outbound TCP 2049 and target inbound TCP 2049 from that client. An inbound rule referencing a security group helps only when that group is attached to the originating network interface and the network topology supports that reference. An outbound rule instead references the destination network interface's group. [EFS security-group requirements](https://docs.aws.amazon.com/efs/latest/ug/network-access.html)
 
 A common mistake is authorizing an ECS instance group when the traffic comes from a Fargate task group, or authorizing a workload group when the CSI mount originates on the worker node. Record the source ENI rather than guessing from an application name.
 
@@ -78,6 +78,6 @@ Choose return-port ranges from the client configuration and the supported operat
 
 ## Prove recovery with the intended mount
 
-After the TCP test succeeds, retry the original EFS helper command with its required TLS, IAM, and access-point options. Confirm the mount with `findmnt -T /mnt/efs`, then read a known file as the application identity. If the application writes, create and remove a uniquely named test file in an approved directory.
+After the TCP test succeeds, retry the original EFS helper command with its required TLS, IAM, and access-point options. Confirm the mount with `findmnt -M /mnt/efs -t nfs,nfs4`, check that it is the intended EFS mount, then read a known file as the application identity. If the application writes, create and remove a uniquely named test file in an approved directory.
 
 Keep the observed client ENI, target IP, route, and rule change in the incident record. Repeat from another affected subnet or Availability Zone before declaring a fleet-wide repair; a single healthy target can hide a missing rule on the next placement.
