@@ -34,12 +34,12 @@ In CloudWatch, select namespace `AWS/EFS` and the `FileSystemId` dimension. Star
 
 AWS defines `MeteredIOBytes` as throughput-accounted work, including metadata and the read discount. `TotalIOBytes` has different accounting, so using it as the numerator can produce misleading utilization. [EFS metric definitions](https://docs.aws.amazon.com/efs/latest/ug/efs-metrics.html).
 
-Assign `m1` to the `MeteredIOBytes` sum and `m2` to average `PermittedThroughput`. Add these metric-math expressions:
+Assign `m1` to the `MeteredIOBytes` sum and `m2` to average `PermittedThroughput`. Add these metric-math expressions, setting each ID separately from its expression:
 
-```text
-metered_bytes_per_second = m1 / PERIOD(m1)
-throughput_utilization_percent = 100 * (m1 / PERIOD(m1)) / m2
-```
+| ID | Expression |
+|---|---|
+| `metered_bytes_per_second` | `m1 / PERIOD(m1)` |
+| `throughput_utilization_percent` | `100 * (m1 / PERIOD(m1)) / m2` |
 
 The units matter: one metric contains bytes over a period and the other already contains bytes per second. Do not divide both by 60. Keep both inputs at the same period. [AWS metric-math guidance](https://docs.aws.amazon.com/efs/latest/ug/monitoring-metric-math.html).
 
