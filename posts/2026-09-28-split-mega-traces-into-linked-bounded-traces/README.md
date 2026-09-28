@@ -26,7 +26,7 @@ Use span links for known causal predecessors. Do not create one summary span wit
 
 ## Create a fresh trace at each stage boundary
 
-The following Python integration helper assumes an initialized SDK. `run` performs one bounded stage; `previous` is an optional valid predecessor `SpanContext` restored by your workflow system. The returned context can be serialized using a propagator for the next stage:
+The following Python integration helper assumes an initialized SDK. `run` performs one bounded stage; `previous` is an optional valid predecessor `SpanContext` restored by your workflow system. To serialize the returned `SpanContext` using a propagator for the next stage, first wrap it with `trace.NonRecordingSpan` and place that span in a `Context` using `trace.set_span_in_context`; pass that context explicitly to the propagator:
 
 ```python
 from opentelemetry import trace
