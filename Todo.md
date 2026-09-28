@@ -292,7 +292,6 @@
 
 ## EFS
 
-10. EKS EFS CSI Mount Fails with Exit Status 32: Debugging the Node Plugin, Mount Watchdog, and `efs-utils`
 11. How to Diagnose EKS EFS Dynamic-Provisioning Failures Across StorageClasses, Access Points, and POSIX IDs
 12. Lambda Cannot Mount EFS During Initialization: Checking VPC Subnets, Mount Targets, and Access-Point Permissions
 13. EFS Access-Point Root vs Lambda Local Mount Path: Why Two Paths Exist and Which One Your Code Uses
