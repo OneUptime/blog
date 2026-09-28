@@ -45,7 +45,7 @@ An on-premises host cannot rely on EC2 instance metadata to discover its Region.
 region = eu-west-2
 ```
 
-Edit the existing configuration rather than replacing the full file, which contains other helper settings. AWS's on-premises procedure documents this Region configuration and mapping the EFS hostname to a reachable mount-target IP.
+Edit the existing configuration rather than replacing the full file, which contains other helper settings. The [EFS helper configuration](https://github.com/aws/efs-utils/blob/master/dist/efs-utils.conf) documents this Region setting for on-premises mounts. AWS's on-premises procedure documents mapping the EFS hostname to a reachable mount-target IP.
 
 For a durable fleet, manage name resolution centrally and verify its result from the actual client network. For a small deployment, a managed `/etc/hosts` entry can map the standard hostname to a chosen private address. Such a mapping is operationally pinned to that target; it is not automatic AZ failover.
 
@@ -77,7 +77,7 @@ A loopback NFS endpoint in mount output can be expected because the helper forwa
 
 Run a small write and read as the application user in a designated test directory. Confirm it from another authorized client. A successful root shell write is insufficient if the service runs with a different UID/GID.
 
-Then add an `/etc/fstab` entry:
+Then add an `/etc/fstab` entry, retaining any `iam`, credential-source, and `accesspoint` options required by the tested mount:
 
 ```fstab
 fs-0123456789abcdef0:/ /mnt/company-efs efs _netdev,tls,mounttargetip=10.20.2.15 0 0
