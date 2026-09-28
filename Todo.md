@@ -295,7 +295,6 @@
 
 ## Tracing
 
-8. How to Restore Trace Continuity After a Third-Party Callback That Does Not Return `traceparent`
 9. Should a Multi-Step User Journey Be One Trace? Choosing Trace IDs, Session IDs, and Business Correlation IDs
 10. Why OpenTelemetry Baggage Propagates but Never Appears in Your Spans—and How to Promote It Safely
 11. How to Stop OpenTelemetry Baggage from Leaking Customer IDs to Third-Party APIs
