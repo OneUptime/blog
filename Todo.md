@@ -295,7 +295,6 @@
 
 ## Tracing
 
-7. Span Links Exist but Your Jaeger or Grafana View Looks Disconnected: How to Preserve the Causal Trail
 8. How to Restore Trace Continuity After a Third-Party Callback That Does Not Return `traceparent`
 9. Should a Multi-Step User Journey Be One Trace? Choosing Trace IDs, Session IDs, and Business Correlation IDs
 10. Why OpenTelemetry Baggage Propagates but Never Appears in Your Spans—and How to Promote It Safely
