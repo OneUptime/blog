@@ -295,7 +295,6 @@
 
 ## Tracing
 
-10. Why OpenTelemetry Baggage Propagates but Never Appears in Your Spans—and How to Promote It Safely
 11. How to Stop OpenTelemetry Baggage from Leaking Customer IDs to Third-Party APIs
 12. How to Validate Untrusted `traceparent` and Trim `tracestate` at an Internet-Facing Trust Boundary
 13. One Request Produces Two Trace IDs: Debugging W3C, B3, and Legacy Propagator Conflicts
