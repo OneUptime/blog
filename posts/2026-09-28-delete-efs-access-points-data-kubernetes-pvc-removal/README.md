@@ -65,7 +65,7 @@ Verify the controller's argument and security context. The released chart docume
 
 The controller must reach a mount target over TCP 2049, resolve or select the target, and mount the filesystem with the required permissions. Node pods successfully mounting application volumes does not prove the controller can do so.
 
-In v3.5.0, the deletion path mounts the filesystem root using `tls` and `iam`, removes the access point's directory, unmounts, and then deletes the access point. Thus the controller's IAM principal and filesystem policy need effective `ClientMount`, `ClientWrite`, and `ClientRootAccess` permissions for the cleanup mount, as well as management permissions for the access point. A policy that allows only access-point-scoped mounts can block this root mount. [Released DeleteVolume implementation](https://github.com/kubernetes-sigs/aws-efs-csi-driver/blob/v3.5.0/pkg/driver/controller.go).
+In v3.5.0, the deletion path mounts the filesystem root using `tls` and `iam`, removes the access point's directory, unmounts, and then deletes the access point. Thus the controller's IAM principal needs effective `ClientMount`, `ClientWrite`, and `ClientRootAccess` permissions for the cleanup mount, as well as management permissions for the access point. Client permissions can be granted through an identity policy or a filesystem policy; they do not have to be allowed in both, and an applicable explicit deny still blocks access. A policy that allows only access-point-scoped mounts can block this root mount. [Released DeleteVolume implementation](https://github.com/kubernetes-sigs/aws-efs-csi-driver/blob/v3.5.0/pkg/driver/controller.go).
 
 Grant cleanup access narrowly to the controller identity. Do not relax application directory permissions to compensate for a controller IAM or network error.
 
@@ -77,7 +77,7 @@ Use a dedicated canary StorageClass with `Delete`, a unique directory, and no ac
 kubectl delete pod cleanup-canary -n storage-test
 kubectl delete pvc cleanup-canary -n storage-test
 kubectl logs -n kube-system deployment/efs-csi-controller \
-  -c efs-plugin --since=10m
+  -c efs-plugin --all-pods=true --since=10m
 ```
 
 Success requires more than the PVC disappearing: confirm the PV is reclaimed, the access point no longer exists, and the recorded directory is absent when viewed from an authorized administrative mount. Also verify an unrelated neighboring directory remains intact.
