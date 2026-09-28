@@ -292,7 +292,6 @@
 
 ## EFS
 
-38. How to Enable FIPS-Compliant EFS CSI TLS Without Calling Unsupported Regional STS FIPS Endpoints
 39. Why EFS Lifecycle Policies Ignore POSIX `atime`: How the Internal Last-Access Timer Moves Files to IA and Archive
 40. How to Calculate EFS IA and Archive Costs for Small Files, 128-KiB Minimums, Transitions, and Retrievals
 
