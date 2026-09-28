@@ -91,7 +91,7 @@ parameters:
 
 For this mode, leave the StorageClass `az` parameter unset. Do not put `crossaccount` into `mountOptions`; the released driver routes that setting through the secret for dynamic volumes.
 
-Version matters: v3.1.0 introduced default per-node AZ target selection when neither DNS mode nor a pinned `az` is set. Older releases could bake a single selected target into the PV. The default mapping is discovered during provisioning; DNS mode resolves at mount time. Inspect existing PV attributes after an upgrade rather than assuming they were rewritten. [Version history](https://github.com/kubernetes-sigs/aws-efs-csi-driver/blob/v3.5.0/CHANGELOG-3.x.md).
+Version matters: v3.1.0 introduced default per-node AZ target selection when neither DNS mode nor a pinned `az` is set. Older releases could bake a single selected target into the PV. The default mapping is discovered during provisioning and, in v3.5.0, matches account-specific AZ names rather than AZ IDs, so it does not guarantee the same physical AZ across accounts. DNS mode resolves by AZ ID at mount time. [Default mapping implementation](https://github.com/kubernetes-sigs/aws-efs-csi-driver/blob/v3.5.0/pkg/driver/controller.go). Inspect existing PV attributes after an upgrade rather than assuming they were rewritten. [Version history](https://github.com/kubernetes-sigs/aws-efs-csi-driver/blob/v3.5.0/CHANGELOG-3.x.md).
 
 ## Verify provisioning, mounts, and recovery separately
 
