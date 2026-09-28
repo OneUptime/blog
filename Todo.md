@@ -295,7 +295,6 @@
 
 ## Tracing
 
-6. How to Break a 30,000-Span “Mega Trace” into Linked Traces Your Backend Can Render
 7. Span Links Exist but Your Jaeger or Grafana View Looks Disconnected: How to Preserve the Causal Trail
 8. How to Restore Trace Continuity After a Third-Party Callback That Does Not Return `traceparent`
 9. Should a Multi-Step User Journey Be One Trace? Choosing Trace IDs, Session IDs, and Business Correlation IDs
