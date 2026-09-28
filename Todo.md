@@ -292,7 +292,6 @@
 
 ## EFS
 
-23. How to Copy EFS Backups Across AWS Accounts and Regions and Prove They Can Be Restored
 24. How to Verify EFS Replication Initial Sync and Recovery-Point Readiness Before a Disaster-Recovery Test
 25. How to Fail Over to an EFS Replica by Removing Replication, Making the Destination Writable, and Switching Clients
 26. How to Fail Back an EFS Replica Without Losing Writes Made During the Disaster-Recovery Window
