@@ -100,6 +100,6 @@ Monitor the restore job to completion and record `CreatedResourceArn`. Prepare m
 
 Mount the restored file system on an isolated client. Locate its `aws-backup-restore_*` directory, then validate known file hashes, numeric ownership, permissions, and representative application behavior. Full restores also use that recovery directory; an empty original application path does not mean the copy lost data.
 
-Run the application as its actual service UID/GID with outbound integrations disabled for the drill. Measure the elapsed time from incident declaration through usable application data, including copy age and mount preparation. Record the newest recoverable business transaction separately from the backup job's completion time.
+Run the application as its actual service UID/GID with outbound integrations disabled for the drill. Measure the elapsed time from incident declaration through usable application data, including restore time and mount preparation. Record the age of the recoverable data at the incident separately, using the newest recoverable business transaction rather than the backup or copy job's completion time.
 
 After the test, remove disposable compute and restored storage according to the drill plan, while keeping retained recovery points under their vault policy. Repeat after key, IAM, account, or application changes. The evidence you want is a successful restore using recovery-account permissions alone, plus an application check that explains what can actually be recovered.
