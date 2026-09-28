@@ -292,7 +292,6 @@
 
 ## EFS
 
-8. Fixing EFS “nfs: Server Not Responding” After a Network Reconnect with `noresvport`
 9. ECS Fargate Cannot Mount EFS: Debugging `ResourceInitializationError`, DNS, Task Security Groups, and IAM
 10. EKS EFS CSI Mount Fails with Exit Status 32: Debugging the Node Plugin, Mount Watchdog, and `efs-utils`
 11. How to Diagnose EKS EFS Dynamic-Provisioning Failures Across StorageClasses, Access Points, and POSIX IDs
