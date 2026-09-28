@@ -25,7 +25,7 @@ Classify the embedded EFS message. A name-resolution failure points toward DNS a
 
 ## Reconstruct the task's network path
 
-Find the task ENI from the attachment details, then inspect it:
+Find the task ENI from the attachment details, then inspect it if it still exists. ECS deletes the ENI during task deprovisioning, so a stopped task's ENI may no longer be available. In that case, use the saved attachment subnet ID and the security groups from the service or task launch configuration, and inspect a fresh diagnostic task's ENI:
 
 ```bash
 aws ec2 describe-network-interfaces \
@@ -33,7 +33,7 @@ aws ec2 describe-network-interfaces \
   --query 'NetworkInterfaces[0].{IP:PrivateIpAddress,Subnet:SubnetId,Groups:Groups,VPC:VpcId}'
 ```
 
-Compare its subnet's Availability Zone with the EFS targets. For ordinary EFS DNS, ensure there is a target in every zone where the service may place tasks. A target belongs to a subnet, but one target covers its Availability Zone; you do not create one for every application subnet. [EFS DNS selection](https://docs.aws.amazon.com/efs/latest/ug/mounting-fs-mount-cmd-dns-name.html)
+Compare its subnet's Availability Zone with the EFS targets. For ordinary EFS DNS with a Regional filesystem, ensure there is a target in every zone where the service may place tasks. A One Zone filesystem supports only one mount target in its own zone; keep task placement in that zone for this DNS approach. A target belongs to a subnet, but one target covers its Availability Zone; you do not create one for every application subnet. [EFS DNS selection](https://docs.aws.amazon.com/efs/latest/ug/mounting-fs-mount-cmd-dns-name.html)
 
 Authorize TCP 2049 from the **task's** security group to the EFS mount-target group. An EC2 host or load-balancer group is not interchangeable with the task ENI's group. Check restricted task egress and subnet ACL return traffic. [EFS network rules](https://docs.aws.amazon.com/efs/latest/ug/network-access.html)
 
@@ -67,12 +67,12 @@ When using an access point, omit `rootDirectory` or set it to `/`; the access po
 
 ## Check the task role and server-side directory
 
-With `iam` enabled, EFS uses the task IAM role in `taskRoleArn`. Do not add EFS client permissions only to `executionRoleArn`, which serves other ECS startup responsibilities. Confirm the task role has the necessary client actions and that the filesystem policy trusts it under the intended conditions.
+With `iam` enabled, EFS uses the task IAM role in `taskRoleArn`. Do not add EFS client permissions only to `executionRoleArn`, which serves other ECS startup responsibilities. Confirm the effective permissions allow the necessary client actions under the intended conditions. For same-account access, an allow can come from the task role's identity policy or the filesystem policy; both do not need to grant it, and an applicable explicit deny overrides an allow. [EFS IAM authorization](https://docs.aws.amazon.com/efs/latest/ug/iam-access-control-nfs-efs.html)
 
 Inspect the access point's filesystem ID, lifecycle state, POSIX identity, and root directory. A missing directory without valid creation information prevents mounting. An existing directory with an incompatible owner or mode is not repaired merely by configuring new creation defaults. [Access-point root requirements](https://docs.aws.amazon.com/efs/latest/ug/enforce-root-directory-access-point.html)
 
 ## Validate a fresh task in every placement zone
 
-Launch a new task using the corrected revision and confirm it reaches `RUNNING`. Then test the mounted directory from the actual application container. A successful start followed by write failures means you have moved past initialization into client-write or POSIX authorization.
+Launch a new task using the corrected revision and confirm it reaches `RUNNING`. Then test the mounted directory from the actual application container. A successful start followed by write failures means you have moved past initialization; check client-write permissions, POSIX authorization, and whether the container's mount point is configured as read-only.
 
 Exercise every subnet used by the service, either through controlled diagnostic tasks or a staged rollout. Record startup success, the task revision, target coverage, and a small read/write check. Only then roll out broadly; otherwise a missing mount target or security-group difference can make the failure appear intermittent as tasks move between zones.
