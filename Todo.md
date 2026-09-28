@@ -292,7 +292,6 @@
 
 ## EFS
 
-29. How to Change an Immutable EFS Performance Mode by Migrating Data to a New File System
 30. How to Migrate from EFS One Zone to Regional EFS Without Losing POSIX Ownership or Permissions
 31. How to Mount Amazon EFS from On-Premises Linux over Direct Connect or VPN with TLS
 32. How to Copy On-Premises or S3 Data into EFS with DataSync While Preserving UID, GID, Timestamps, and Permissions
