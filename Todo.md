@@ -292,7 +292,6 @@
 
 ## EFS
 
-32. How to Copy On-Premises or S3 Data into EFS with DataSync While Preserving UID, GID, Timestamps, and Permissions
 33. How to Isolate Multiple Kubernetes Tenants on One EFS File System with Separate Access-Point Roots and POSIX Identities
 34. How to Fix EFS CSI Dynamic Provisioning When the StorageClass Exhausts Its GID Range
 35. How to Delete EFS Access Points and Their Data When Kubernetes PVCs Are Removed
