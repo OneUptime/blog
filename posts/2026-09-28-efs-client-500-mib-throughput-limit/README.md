@@ -36,7 +36,7 @@ Record how the mount was created. Installing a newer package does not reconstruc
 
 Draw the data path as application → client → network → file system. Each stage has its own budget.
 
-First, compare `MeteredIOBytes / period` with `PermittedThroughput`. If aggregate utilization is already high, increasing a client's capabilities cannot create file-system headroom. If credits are exhausted in Bursting, resolve that condition separately. [EFS metrics](https://docs.aws.amazon.com/efs/latest/ug/efs-metrics.html).
+First, divide the `Sum` of `MeteredIOBytes` by the period in seconds and compare the result with the `Average` of `PermittedThroughput` over the same period (both in bytes per second). If aggregate utilization is already high, increasing a client's capabilities cannot create file-system headroom. If credits are exhausted in Bursting, resolve that condition separately. [EFS metrics](https://docs.aws.amazon.com/efs/latest/ug/efs-metrics.html).
 
 Second, check the EC2 instance's published network capacity, current receive/transmit rate, CPU use, and retransmissions. A 500 MiB/s payload is roughly 4.2 Gbit/s before protocol overhead. A small instance, shared network traffic, or CPU saturation can explain an apparent storage plateau. Use the instance's actual specification and [EC2 network bandwidth guidance](https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/ec2-instance-network-bandwidth.html).
 
