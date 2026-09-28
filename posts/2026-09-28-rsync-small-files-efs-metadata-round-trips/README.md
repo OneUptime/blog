@@ -15,6 +15,7 @@ The goal is to identify the limiting operation before buying more throughput or 
 Record source file count, total bytes, size distribution, and directory layout. Then measure elapsed time and files per second alongside throughput:
 
 ```bash
+mkdir -p /mnt/efs/benchmark
 /usr/bin/time -p rsync -a --stats -- \
   /data/sample/ /mnt/efs/benchmark/sample/
 ```
@@ -47,7 +48,7 @@ Check EFS CloudWatch metrics during the same interval. Compare metadata activity
 
 ## Remove unnecessary rsync work deliberately
 
-Rsync's default quick check compares file size and modification time. `--checksum` changes file selection to use content checksums, adding full-file reads on both sides for existing files. Do not add it as a generic speed option. Likewise, a dry run still performs namespace comparison, so `--dry-run` can be slow on a large tree even though it writes nothing. [Rsync manual](https://download.samba.org/pub/rsync/rsync.1)
+Rsync's default quick check compares file size and modification time. `--checksum` changes file selection to use size and content checksums, adding full-file reads on the source and on destination files whose sizes match the source. Do not add it as a generic speed option. Likewise, a dry run still performs namespace comparison, so `--dry-run` can be slow on a large tree even though it writes nothing. [Rsync manual](https://download.samba.org/pub/rsync/rsync.1)
 
 A transfer between two local paths, including an EFS mount, uses rsync's whole-file behavior by default. Tuning remote delta-transfer options is unlikely to solve metadata latency in that case. Review whether you actually need all archive metadata, but do not drop ownership, timestamps, or permissions when they are required for correctness.
 
