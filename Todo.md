@@ -295,7 +295,6 @@
 
 ## Tracing
 
-5. How to Model Batch Consumption When One Worker Span Has 100 Message Contexts
 6. How to Break a 30,000-Span “Mega Trace” into Linked Traces Your Backend Can Render
 7. Span Links Exist but Your Jaeger or Grafana View Looks Disconnected: How to Preserve the Causal Trail
 8. How to Restore Trace Continuity After a Third-Party Callback That Does Not Return `traceparent`
