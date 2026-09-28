@@ -292,7 +292,6 @@
 
 ## EFS
 
-40. How to Calculate EFS IA and Archive Costs for Small Files, 128-KiB Minimums, Transitions, and Retrievals
 
 ## Tracing
 
