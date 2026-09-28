@@ -292,7 +292,6 @@
 
 ## EFS
 
-26. How to Fail Back an EFS Replica Without Losing Writes Made During the Disaster-Recovery Window
 27. How to Replicate into an Existing EFS File System by Managing Replication Overwrite Protection Safely
 28. How to Migrate an Unencrypted EFS File System to an Encrypted Replacement with AWS DataSync
 29. How to Change an Immutable EFS Performance Mode by Migrating Data to a New File System
