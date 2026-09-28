@@ -292,7 +292,6 @@
 
 ## EFS
 
-16. Elastic, Provisioned, or Bursting EFS Throughput? Choose from the Workload’s Average-to-Peak Ratio
 17. Why Max I/O Made Your EFS Workload Slower: Per-Operation Latency vs Parallelism
 18. Why One EFS Client Stops Near 500 MiB/s: Client-Version Limits, NFS Parallelism, and Elastic Throughput
 19. EFS Files Are Slow on First Read: Measuring IA and Archive Latency and Returning Hot Data to Standard
