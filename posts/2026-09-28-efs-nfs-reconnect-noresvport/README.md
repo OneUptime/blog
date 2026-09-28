@@ -16,7 +16,7 @@ On the affected Linux client, collect:
 
 ```bash
 uname -r
-findmnt -T /mnt/efs -o TARGET,SOURCE,FSTYPE,OPTIONS
+findmnt -C -M /mnt/efs -o TARGET,SOURCE,FSTYPE,OPTIONS
 nfsstat -m
 journalctl -k --since '30 minutes ago'
 ss -tn
@@ -75,4 +75,4 @@ Keep the recommended hard-mount behavior unless your application's storage seman
 
 Use a test client and approved scratch data. Record the effective mount options, write and sync a unique file, introduce a controlled network interruption, and restore the path. Confirm that blocked operations resume, the file contents remain correct, and subsequent reads and writes succeed.
 
-Where packet captures are available, compare the old and new connection's source ports. Also measure the recovery interval observed by the application; a mount remaining listed is insufficient evidence. Persist the verified configuration in the image or deployment template so a replacement instance receives the same fix.
+Where packet captures are available, compare the old and new connection's source ports. With a TLS helper mount, distinguish the kernel-to-local-proxy connection from the proxy-to-EFS connection; `noresvport` controls the kernel NFS connection's source port, not the proxy's outbound source port. Also measure the recovery interval observed by the application; a mount remaining listed is insufficient evidence. Persist the verified configuration in the image or deployment template so a replacement instance receives the same fix.
