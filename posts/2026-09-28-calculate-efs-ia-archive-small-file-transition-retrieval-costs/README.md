@@ -20,7 +20,7 @@ IA or Archive content bytes = max(131072, ceil(s / 4096) × 4096)
 Standard file metadata bytes = 2048
 ```
 
-Directories, symbolic links, special files, and sparse files need their own treatment. AWS documents 4-KiB metering increments, the cold-class minimum, and 2-KiB metadata retained in Standard. Data access to IA and Archive is also metered in 128-KiB increments. [EFS metering rules](https://docs.aws.amazon.com/efs/latest/ug/metered-sizes.html).
+Directories, symbolic links, special files, and sparse files need their own treatment. AWS documents 4-KiB metering increments, the cold-class minimum, and 2-KiB metadata retained in Standard. Data access to IA and Archive is also metered in 128-KiB increments. Tiering files smaller than 128 KiB requires a lifecycle policy updated on or after 12:00 PM PT on November 26, 2023. [EFS metering rules](https://docs.aws.amazon.com/efs/latest/ug/metered-sizes.html).
 
 Do the rounding per file before summing. Applying one 128-KiB minimum to the aggregate misses nearly all of the overhead for a small-file dataset.
 
@@ -68,7 +68,7 @@ Elastic throughput charges are another component. Do not apply the one-third rea
 
 ## Include the Archive minimum duration
 
-EFS Archive has a 90-day minimum storage duration; EFS IA has no minimum storage duration in the documented storage-class comparison. Moving a file into Archive because a lifecycle timer reached 90 days is a different concept from keeping that file in Archive for its minimum billable duration. [EFS storage-class comparison](https://docs.aws.amazon.com/efs/latest/ug/features.html).
+EFS Archive is available for Regional file systems using Elastic throughput and has a 90-day minimum storage duration; EFS IA has no minimum storage duration in the documented storage-class comparison. Moving a file into Archive because a lifecycle timer reached 90 days is a different concept from keeping that file in Archive for its minimum billable duration. [EFS storage-class comparison](https://docs.aws.amazon.com/efs/latest/ug/features.html).
 
 Include early-deletion charges when archived content is removed before that commitment expires. A short-lived export that is archived and deleted soon afterward may save much less than its advertised storage rate suggests. Model retention and return-to-Standard behavior using the documented billing usage types for your workload.
 
