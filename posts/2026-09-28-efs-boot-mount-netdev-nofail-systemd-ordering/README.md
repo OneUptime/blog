@@ -20,7 +20,7 @@ fs-0123456789abcdef0:/ /mnt/efs efs _netdev,nofail,tls,iam,accesspoint=fsap-0123
 
 Create `/mnt/efs` before testing. Keep the entry on one line and install `amazon-efs-utils` before the boot that needs it. AWS supports automatic mounting through the helper and documents `_netdev` for network-dependent filesystems. [Automatic EFS mounts](https://docs.aws.amazon.com/efs/latest/ug/mount-fs-auto-mount-onreboot.html)
 
-`_netdev` identifies the mount as network-dependent. `nofail` allows boot to continue if the mount is unavailable. These options answer different questions: ordering versus whether the operating system should require success. `nofail` is useful only if services that need EFS also handle the missing mount correctly. [systemd mount options](https://raw.githubusercontent.com/systemd/systemd/main/man/systemd.mount.xml)
+`_netdev` identifies the mount as network-dependent and orders it after `network-online.target`. `nofail` makes the mount wanted rather than required by `remote-fs.target` and removes its ordering before that target, allowing boot to continue without waiting for the mount or requiring it to succeed. `nofail` is useful only if services that need EFS also handle the missing mount correctly. [systemd mount options](https://raw.githubusercontent.com/systemd/systemd/main/man/systemd.mount.xml)
 
 ## Test the fstab entry without rebooting first
 
@@ -29,7 +29,7 @@ On a maintenance instance, with application processes stopped and the path unmou
 ```bash
 sudo systemctl daemon-reload
 sudo mount /mnt/efs
-findmnt -T /mnt/efs
+findmnt --mountpoint /mnt/efs
 ```
 
 Invoking `mount` with the target path makes it read the fstab entry. This catches an important class of mistake: the manually typed command succeeds while a different fstab option fails.
