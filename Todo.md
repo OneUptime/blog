@@ -292,7 +292,6 @@
 
 ## EFS
 
-35. How to Delete EFS Access Points and Their Data When Kubernetes PVCs Are Removed
 36. How to Stop `efs-proxy` OOMKills by Sizing EFS CSI Node Memory for Volume Count and Concurrent Mounts
 37. How to Configure Cross-Account EFS CSI Provisioning with `awsRoleArn`, `externalId`, and AZ-Resilient DNS Resolution
 38. How to Enable FIPS-Compliant EFS CSI TLS Without Calling Unsupported Regional STS FIPS Endpoints
