@@ -292,7 +292,6 @@
 
 ## EFS
 
-27. How to Replicate into an Existing EFS File System by Managing Replication Overwrite Protection Safely
 28. How to Migrate an Unencrypted EFS File System to an Encrypted Replacement with AWS DataSync
 29. How to Change an Immutable EFS Performance Mode by Migrating Data to a New File System
 30. How to Migrate from EFS One Zone to Regional EFS Without Losing POSIX Ownership or Permissions
