@@ -62,6 +62,6 @@ A DNS fallback based on `botocore` is another option, but it adds AWS API creden
 
 ## Authorize the client principal
 
-For an IAM-authorized cross-account mount, grant the client role the required EFS client actions and let the destination file-system policy trust that role. Scope permissions to the destination filesystem ARN and, where appropriate, the intended access-point ARN. Reading requires `ClientMount`; writing additionally needs `ClientWrite`. Grant `ClientRootAccess` only when root behavior is needed. [EFS client authorization](https://docs.aws.amazon.com/efs/latest/ug/iam-access-control-nfs-efs.html)
+For an IAM-authorized cross-account mount, grant the client role the required EFS client actions and let the destination file-system policy trust that role. Scope permissions to the destination filesystem ARN and, where appropriate, restrict access to the intended access-point ARN with the `elasticfilesystem:AccessPointArn` condition key. Reading requires `ClientMount`; writing additionally needs `ClientWrite`. Grant `ClientRootAccess` only when root behavior is needed. [EFS client authorization](https://docs.aws.amazon.com/efs/latest/ug/iam-access-control-nfs-efs.html)
 
 Finally, verify the mount and perform a read/write probe as the application. Repeat after a client reboot and from each intended zone. Keep the selected target mapping, DNS ownership, and policy principal together in the deployment configuration so an account or network refactor cannot silently separate them.
