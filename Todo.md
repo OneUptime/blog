@@ -298,7 +298,6 @@
 
 ## Monitoring
 
-1. How to Prove Your Monitoring Pipeline Can Still Page You: End-to-End Heartbeats from Exporter to Notification
 2. Prometheus Shows Gaps but No Scrape Errors: How to Trace Staleness, Series Churn, and Collector Handoffs
 3. How to Detect a Silent Exporter That Returns HTTP 200 but Serves Frozen Metrics
 4. How to Alert on a Missing Metric Without Paging When a Workload Intentionally Scales to Zero
