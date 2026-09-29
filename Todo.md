@@ -295,7 +295,6 @@
 
 ## Tracing
 
-15. How to Prevent Trace Context from Bleeding Between Concurrent Requests in Thread Pools and Async Runtimes
 16. How to Audit Trace Coverage After an Auto-Instrumentation or Semantic-Conventions Upgrade
 17. Why Client and Server Spans Disagree on Duration: Network Time, Clock Skew, and Response-Body Boundaries
 18. How to Represent HTTP Retries and Redirects Without Hiding Individual Attempts
