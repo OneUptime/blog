@@ -301,7 +301,6 @@
 
 ## Incident Response
 
-10. How to Split or Merge Simultaneous Incidents That Share the Same Upstream Dependency
 11. How to Deduplicate Retried Alert Webhooks Without Merging Separate Incident Occurrences
 12. How to Build a Canonical Incident Channel While Technical Teams Debug in Parallel Workstreams
 13. How to Write Useful Status Updates When There Is No New ETA: Facts, Unknowns, Actions, and Next Checkpoint
