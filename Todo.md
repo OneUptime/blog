@@ -298,7 +298,6 @@
 
 ## Monitoring
 
-3. How to Detect a Silent Exporter That Returns HTTP 200 but Serves Frozen Metrics
 4. How to Alert on a Missing Metric Without Paging When a Workload Intentionally Scales to Zero
 5. How to Find Which Labels Caused a Prometheus Cardinality Explosion Before the TSDB Runs Out of Memory
 6. Static Thresholds Fail on Seasonal Traffic: How to Combine Baselines, SLOs, and Minimum-Volume Guards
