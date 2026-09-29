@@ -298,7 +298,6 @@
 
 ## Monitoring
 
-10. How to Catch Telemetry Loss Across Agent, Collector, Remote Write, and Backend Without Guesswork
 11. Internal and External Monitors Failed Together: How to Remove the Shared Failure Domain
 12. How to Suppress Dependency Noise Without Hiding the Customer Impact of Downstream Services
 13. Why Autoscaling Breaks Fleet-Level CPU Alerts—and How to Normalize by Ready Capacity
