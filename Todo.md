@@ -301,7 +301,6 @@
 
 ## Incident Response
 
-19. How to Train a Shadow Incident Commander with Scenario Drills, Handoffs, and Decision Reviews
 20. How to Convert a Customer-Reported Outage into an SLI and Alert That Detects the Next One First
 
 ## Iguazio
