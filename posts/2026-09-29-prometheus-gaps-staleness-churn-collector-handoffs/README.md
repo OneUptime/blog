@@ -1,4 +1,4 @@
-# Prometheus Shows Gaps but No Scrape Errors: How to Trace Staleness, Series Churn, and Collector Handoffs
+# How to Trace Prometheus Gaps from Staleness, Churn, and Collector Handoffs
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
@@ -24,7 +24,7 @@ rate(checkout_requests_total{job="checkout"}[5m])
 
 Under ordinary counter behavior, a rate needs enough samples to establish change. A new label set may already have a raw sample but not yet have a useful rate. A recording rule can also miss an evaluation while raw ingestion remains healthy. Query both the stored recording rule and its source expression at the same instant.
 
-Inspect range data with a query step near the scrape interval. A large dashboard step can hide short-lived series or make a sparse recording rule appear continuous. A graph renderer's interpolation is not evidence that the underlying samples exist.
+Inspect range data with a query step near the scrape interval. A large dashboard step can hide short-lived series or make a sparse recording rule appear continuous. Even at a small step, an instant selector can reuse an earlier sample within the lookback period. To inspect stored sample timestamps, evaluate a range-vector selector such as `checkout_requests_total{job="checkout"}[5m]` as an instant query at the end of the interval. A graph renderer's interpolation is not evidence that the underlying samples exist.
 
 ## Ask whether the successful scrape returned the family
 
@@ -34,7 +34,7 @@ unless on (job, instance)
 checkout_requests_total{job="checkout"}
 ```
 
-This returns scrapeable targets missing the family, provided the family is expected to be initialized even before the first request. Also inspect `scrape_samples_scraped` and `scrape_samples_post_metric_relabeling`. A sudden difference can identify a newly deployed drop rule.
+This returns targets with `up=1` and no matching counter series at the query time, provided `job` and `instance` match on both sides and uniquely identify each target. Adjust the matching labels if needed. Treat the absence as unexpected only if the family should be initialized before the first request; relabeling can also remove a family that was exposed. Also inspect `scrape_samples_scraped` and `scrape_samples_post_metric_relabeling`. A sudden difference can identify a newly deployed drop rule.
 
 Fetch the exporter endpoint through the same network path and authentication configuration as the scraper. A load balancer in front of multiple exporter instances can alternate between different metric sets while returning success each time. Prefer scraping individual instances with stable discovery identities.
 
@@ -48,7 +48,7 @@ Use a recent-presence query to inspect what arrived:
 count_over_time(checkout_requests_total{job="checkout"}[5m])
 ```
 
-This is a sample count, not a request count. An abrupt fall near a deployment helps locate when observations stopped. It cannot recover missing values or establish their business meaning.
+This is a sample count, not a request count. After observations stop, the count generally falls as older samples leave the five-minute window; once no samples remain, the series is absent from the result rather than returning zero. It cannot recover missing values or establish their business meaning.
 
 ## Treat label changes as identity changes
 

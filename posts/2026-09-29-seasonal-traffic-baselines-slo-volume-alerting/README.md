@@ -1,4 +1,4 @@
-# Static Thresholds Fail on Seasonal Traffic: How to Combine Baselines, SLOs, and Minimum-Volume Guards
+# How to Alert on Seasonal Traffic with Baselines, SLOs, and Volume Guards
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

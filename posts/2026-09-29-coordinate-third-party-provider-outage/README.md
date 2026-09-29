@@ -1,4 +1,4 @@
-# How to Coordinate a Third-Party Provider Outage: Vendor Escalation, Customer Updates, and Internal Mitigations
+# How to Coordinate Provider Outages: Escalation, Updates, and Mitigations
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

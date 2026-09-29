@@ -1,4 +1,4 @@
-# Internal and External Monitors Failed Together: How to Remove the Shared Failure Domain
+# How to Remove Shared Failure Domains from Internal and External Monitors
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

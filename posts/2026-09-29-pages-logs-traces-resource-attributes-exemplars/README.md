@@ -1,4 +1,4 @@
-# How to Link a Page to the Exact Logs and Trace with OpenTelemetry Resource Attributes and Exemplars
+# How to Link Alerts to Logs and Traces with Resource Attributes and Exemplars
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -1,4 +1,4 @@
-# How to Train a Shadow Incident Commander with Scenario Drills, Handoffs, and Decision Reviews
+# How to Train a Shadow Incident Commander with Drills, Handoffs, and Reviews
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

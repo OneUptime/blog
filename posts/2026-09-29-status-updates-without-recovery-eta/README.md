@@ -1,4 +1,4 @@
-# How to Write Useful Status Updates When There Is No New ETA: Facts, Unknowns, Actions, and Next Checkpoint
+# How to Write Useful Incident Status Updates Without a Recovery ETA
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
@@ -39,7 +39,7 @@ The message need not use these as visible headings. They are a drafting checklis
 ## Example: Still Degraded, No Reliable ETA
 
 ```text
-29 September, 11:00 UTC — Export processing remains delayed for EU
+29 September, 11:00 UTC - Export processing remains delayed for EU
 workspaces. Exports submitted since 10:12 UTC may remain queued;
 viewing existing reports is operating normally in our current checks.
 

@@ -1,4 +1,4 @@
-# How to Monitor the Monitor: Independent Canaries for Prometheus, Alertmanager, and Your Paging Provider
+# How to Use Independent Canaries for Prometheus, Alertmanager, and Paging
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

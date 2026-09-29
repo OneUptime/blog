@@ -1,4 +1,4 @@
-# How to Route an Incident When Service Ownership Metadata Is Missing, Stale, or Ambiguous
+# How to Route Incidents with Missing, Stale, or Ambiguous Service Ownership
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
@@ -63,11 +63,11 @@ This is a suggested hierarchy, not a Backstage feature. Record provenance and fr
 Keep the current owner responsible until a named receiving responder accepts. A bounded transfer record makes that practical:
 
 ```text
-14:12 UTC — platform-triage requests checkout on-call.
+14:12 UTC - platform-triage requests checkout on-call.
 Reason: failures tied to checkout release 42; catalog mapping outdated.
 Current impact: order submissions fail in cell 3.
 Requested role: own checkout investigation; platform remains IC.
-14:14 UTC — checkout on-call accepts investigation.
+14:14 UTC - checkout on-call accepts investigation.
 Next report: 14:20 UTC.
 Permanent catalog owner still requires verification after mitigation.
 ```

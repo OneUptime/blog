@@ -1,4 +1,4 @@
-# Why Autoscaling Breaks Fleet-Level CPU Alerts—and How to Normalize by Ready Capacity
+# How to Fix Fleet CPU Alerts During Autoscaling with Ready Capacity
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
@@ -6,7 +6,7 @@ Tags: Monitoring, Kubernetes, Prometheus, Autoscaling
 
 Description: Normalize CPU usage against the same ready pod population and declared resource basis so scaling and heterogeneous replicas do not distort alerts.
 
-A fleet CPU graph can improve during an outage simply because new pods were added to its denominator before they became ready. It can also become worse during healthy scale-in because a fixed “total CPU cores used” threshold ignores the remaining capacity.
+A fleet CPU graph can improve during an outage simply because new pods were added to its denominator before they became ready. A fixed “total CPU cores used” threshold can also miss rising utilization during scale-in because it ignores the remaining capacity.
 
 Define the numerator, denominator and membership before choosing a percentage threshold. “CPU percent” can mean utilization of machine cores, container limits, resource requests or an average of per-pod percentages. Those are different quantities with different operational implications.
 
@@ -67,7 +67,7 @@ sum by (cluster, namespace, workload) (
 )
 ```
 
-This weights usage by total requested cores among the same currently ready pods. A one-core pod and a four-core pod contribute their actual requests to the denominator; averaging their percentages would give both equal weight.
+With complete usage and request metrics, this divides total usage by total requested cores among the same currently ready pods. The result is a ratio: 1 means 100% of requests. A one-core pod and a four-core pod contribute their actual requests to the denominator; averaging their percentages would give both equal weight.
 
 Current readiness filters a five-minute usage rate, so a pod that just became ready may contribute usage observed during startup. That can be appropriate for a diagnostic chart, but it is not a strict “CPU only while ready” integral. Require a stable-ready warmup or model readiness across the measurement window when that distinction matters.
 
@@ -75,7 +75,7 @@ Current readiness filters a five-minute usage rate, so a pod that just became re
 
 If no pods are ready, the denominator may be zero. The useful state is “no ready capacity,” not 0% CPU. Alert on desired-versus-ready replicas separately, and gate a CPU saturation alert on a positive denominator.
 
-A missing readiness series drops matching usage from the join. A missing request can inflate or invalidate the ratio. Monitor source coverage, required CPU requests and metric freshness rather than using `or vector(0)` to make the result look complete.
+A missing readiness series drops matching usage from the join. A missing request can inflate or invalidate the ratio. Missing usage metrics can understate the ratio while the corresponding requests remain in the denominator. Monitor source coverage, required CPU requests and metric freshness rather than using `or vector(0)` to make the result look complete.
 
 Likewise, a fleet average can hide one hot pod. Pair the aggregate with a per-pod view, throttling, latency and imbalance signals. Autoscaling cannot necessarily help a hot shard or one serial bottleneck.
 

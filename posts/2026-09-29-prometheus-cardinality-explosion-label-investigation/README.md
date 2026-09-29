@@ -1,4 +1,4 @@
-# How to Find Which Labels Caused a Prometheus Cardinality Explosion Before the TSDB Runs Out of Memory
+# How to Find Labels Behind Prometheus Cardinality Spikes Before OOM
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
@@ -16,7 +16,7 @@ Inspect head series, memory and ingestion changes together. Useful self-metrics 
 
 A rising head count suggests growth in currently retained head identities. A high series-creation rate with a flatter count suggests churn: labels continuously change while older series become inactive. Both can be expensive, but their fixes differ.
 
-Compare the first rise with deployments, scrape discovery changes and newly enabled instrumentation. An added histogram multiplies each label combination across buckets as well as its sum and count series, so a seemingly small label change may have a large effect.
+Compare the first rise with deployments, scrape discovery changes and newly enabled instrumentation. An added classic histogram multiplies each label combination across buckets as well as its sum and count series, so a seemingly small label change may have a large effect.
 
 ## Use the TSDB status endpoint first
 
@@ -37,11 +37,11 @@ jq '.data | {
 
 Use an authenticated administrative connection where required. Keep the result local to the investigation because label values may themselves contain sensitive identifiers.
 
-The summary distinguishes metric families with many series from labels with many unique values. Its label-memory statistic sums label-value string lengths; it is not a complete per-label heap attribution. Head statistics also differ from the set returned by an instant query, so the two counts need not match exactly.
+The `limit` bounds the number of returned entries, not the work needed to calculate the statistics; calculating uncached statistics still scans the head label index, so avoid repeatedly polling it during an incident. The summary distinguishes individual metric names with many series from labels with many unique values; it does not combine a classic histogram's bucket, sum and count metrics into one family. The API documentation describes its label-memory statistic as a sum of label-value string lengths; it is not a complete per-label heap attribution. Head statistics also differ from the set returned by an instant query, so the two counts need not match exactly.
 
 ## Narrow the investigation to one family
 
-Once `api_request_duration_seconds_bucket` appears suspicious, inspect only that family:
+Once `api_request_duration_seconds_bucket` appears suspicious, inspect only that bucket metric:
 
 ```promql
 count by (job) (api_request_duration_seconds_bucket)
@@ -92,4 +92,4 @@ Give each service an owned series budget and a deployment comparison. Check expe
 
 ## Conclusion
 
-Start with bounded TSDB summaries, identify the changed metric and label combination, and fix production at the source. Emergency drop rules can stop growth, but label removal and sample limits have specific semantics that must be understood before they become an additional monitoring failure.
+Start with head-oriented TSDB summaries, identify the changed metric and label combination, and fix production at the source. Emergency drop rules can stop growth, but label removal and sample limits have specific semantics that must be understood before they become an additional monitoring failure.

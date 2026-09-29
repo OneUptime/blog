@@ -1,4 +1,4 @@
-# How to Handle Counter Resets and Label Churn Without False Rate Spikes or Missing Alerts
+# How to Handle Counter Resets and Label Churn for Reliable Rates and Alerts
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
@@ -42,7 +42,7 @@ Do not apply counter rate logic to gauges such as current queue size. A decrease
 
 ## Recognize label churn as a new stream
 
-If a deployment changes `pod`, `version`, a route label or a resource attribute, Prometheus sees a different series even if the metric name stays the same. The new stream does not inherit the old stream's counter history.
+If a deployment changes a `pod`, `version` or route label on the counter, Prometheus sees a different series even if the metric name stays the same. A resource attribute change has this effect only if it changes the labels on that counter series at the Prometheus destination. The new stream does not inherit the old stream's counter history.
 
 Under normal rate calculation, a new series needs enough samples to establish change. An initial nonzero sample does not prove when those events happened. Avoid backfilling an assumed zero before startup merely to make a graph connect.
 

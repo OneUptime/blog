@@ -1,4 +1,4 @@
-# How to Build a Canonical Incident Channel While Technical Teams Debug in Parallel Workstreams
+# How to Build a Canonical Incident Channel for Parallel Debugging
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
@@ -37,7 +37,7 @@ Create a workstream when a bounded question needs several people or sustained te
 Use an assignment with five parts:
 
 ```text
-W1 — Database capacity
+W1 - Database capacity
 Lead: Sam
 Question: Are connection waits causing checkout timeouts in EU?
 Deliverable: compare wait time and pool usage before/after 10:07 UTC;

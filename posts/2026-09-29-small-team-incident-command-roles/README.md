@@ -1,4 +1,4 @@
-# How to Run Incident Command with a Small Team: Combining IC, Operations, Communications, and Scribe Roles Safely
+# How to Run Incident Command Safely with Combined Roles on a Small Team
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

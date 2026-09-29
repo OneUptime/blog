@@ -1,4 +1,4 @@
-# Why Client and Server Spans Disagree on Duration: Network Time, Clock Skew, and Response-Body Boundaries
+# Why Client and Server Span Durations Differ: Networks, Clocks, and Bodies
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
@@ -42,7 +42,7 @@ A trace viewer places timestamps from different hosts on one timeline. Clock off
 
 For local diagnostic measurements in Python, `time.monotonic()` measures elapsed time without depending on wall-clock adjustments. Do not compare monotonic timestamps from unrelated hosts as if they shared an epoch. [Python time functions](https://docs.python.org/3/library/time.html)
 
-Retain the raw event timestamps, known host clock offsets, and collection times when investigating skew. Do not rewrite application timestamps merely to force every child rectangle inside its parent. OpenTelemetry distinguishes timestamps and durations in its common data concepts, and causality is represented by identifiers rather than visual nesting alone. [OpenTelemetry common specification](https://opentelemetry.io/docs/specs/otel/common/)
+Retain the raw event timestamps, known host clock offsets, and collection times when investigating skew. Do not rewrite application timestamps merely to force every child rectangle inside its parent. OpenTelemetry records span start and end timestamps separately from parent relationships and links, so causality is represented by identifiers rather than visual nesting alone. [OpenTelemetry tracing API](https://opentelemetry.io/docs/specs/otel/trace/api/)
 
 ## Instrument the missing boundary
 

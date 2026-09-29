@@ -1,4 +1,4 @@
-# How to Prevent Trace Context from Bleeding Between Concurrent Requests in Thread Pools and Async Runtimes
+# How to Prevent Trace Context Bleed in Thread Pools and Async Runtimes
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
@@ -33,9 +33,9 @@ def submit_with_context(function, *args, **kwargs):
     return pool.submit(captured.run, function, *args, **kwargs)
 ```
 
-Call this helper while the intended request span is current. Capture at submission time, not once when the pool starts. Do not share one `captured` object across all requests. The wrapper preserves all current Python context variables, so review non-tracing fields too.
+Call this helper while the intended request span is current. Capture at submission time, not once when the pool starts. Do not share one `captured` object across all requests. The wrapper preserves all current Python context variables, so review non-tracing fields too. Context copies are shallow: mutable values remain shared, so do not mutate a shared dictionary stored in a context variable.
 
-If the SDK's supported threading integration already propagates context, prefer one propagation owner and test it. Layering several wrappers can make stale-context problems difficult to diagnose. For manual OpenTelemetry attachment, pair `context.attach(captured)` with `context.detach(token)` in `finally`, inside the same worker execution.
+If the SDK's supported threading integration already propagates context, prefer one propagation owner and test it. Layering several wrappers can make stale-context problems difficult to diagnose. For manual OpenTelemetry attachment, use `from opentelemetry import context` and capture `otel_context = context.get_current()` at submission time. Inside the worker, pair `token = context.attach(otel_context)` with `context.detach(token)` in `finally`. This OpenTelemetry context is different from the `contextvars.Context` returned by `copy_context()`.
 
 ## Understand async task inheritance
 
@@ -55,7 +55,7 @@ Use two request contexts with distinct synthetic trace IDs and baggage markers. 
 4. After a nested operation raises.
 5. In a subsequent neutral job on the same worker.
 
-The first four observations must belong to the correct request. The neutral job must see the worker's neutral baseline, not the last request's context. Use a pool with one worker for deterministic reuse, then repeat with several workers and synchronized overlap.
+The first four observations must belong to the correct request. The neutral job must see the worker's neutral baseline, not the last request's context. To inspect that baseline, submit the probe directly to an uninstrumented executor without the context wrapper; installing a fresh context for the probe can hide stale worker state. Use a pool with one worker for deterministic sequential reuse, then repeat with several workers and synchronized overlap. Do not wait for two jobs to overlap in the single-worker fixture.
 
 Check parent span IDs as well as trace IDs. Two child spans can share a trace while still attaching to the wrong operation. Also verify baggage and log correlation fields, because independent enrichment code may leak even when tracing is correct.
 

@@ -1,4 +1,4 @@
-# How to Keep an Emergency Mitigation from Worsening the Outage with Guardrails and Abort Criteria
+# How to Bound Emergency Mitigations with Guardrails and Abort Criteria
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
@@ -70,9 +70,9 @@ If only one responder is available, reduce concurrent work, use a checklist, and
 Keep a visible register of changes in flight:
 
 ```text
-14:12 concurrency change — cell 3 — Lee — observing until 14:18
-14:13 traffic shift proposal — held pending cell 3 result — Priya
-14:14 log-level change — diagnostic only, approved scope — Sam
+14:12 concurrency change - cell 3 - Lee - observing until 14:18
+14:13 traffic shift proposal - held pending cell 3 result - Priya
+14:14 log-level change - diagnostic only, approved scope - Sam
 ```
 
 The purpose is to avoid contradictory actions and preserve attribution. Independent work can continue when it does not interact with the same bottleneck. The incident commander should understand those boundaries rather than imposing an unexplained global freeze.

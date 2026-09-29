@@ -1,4 +1,4 @@
-# How to Measure Impact During a Partial or Multi-Tenant Outage Using Segmented SLIs
+# How to Measure Partial or Multi-Tenant Outage Impact with Segmented SLIs
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

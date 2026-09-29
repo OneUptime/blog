@@ -1,4 +1,4 @@
-# How to Exercise an Incident Response Plan and Produce Audit Evidence with Tabletop Tests and Game Days
+# How to Produce Audit Evidence from Incident Tabletop Tests and Game Days
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
@@ -63,9 +63,9 @@ AWS recommends production-like conditions, relevant stakeholders, and feeding ob
 Use a record that makes the outcome reviewable:
 
 ```text
-Objective: O3 — fallback communication
+Objective: O3 - fallback communication
 Plan under test: IRP revision 12, section 6
-Inject: I3 — primary chat unavailable at 14:15 UTC
+Inject: I3 - primary chat unavailable at 14:15 UTC
 Observed: responder found bridge link in offline contact sheet at 14:18
 Observed: three required roles joined by 14:22
 Gap: vendor liaison's fallback number was obsolete

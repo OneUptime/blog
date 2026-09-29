@@ -1,4 +1,4 @@
-# How to Capture Commands and Evidence During an Incident Without Leaking Secrets into Chat or Postmortems
+# How to Capture Incident Commands and Evidence Without Leaking Secrets
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -1,4 +1,4 @@
-# How to Tell “Healthy Zero” from “No Data” with `absent_over_time`, Scrape Timestamps, and Heartbeats
+# How to Distinguish Healthy Zero from Missing or Frozen Prometheus Metrics
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

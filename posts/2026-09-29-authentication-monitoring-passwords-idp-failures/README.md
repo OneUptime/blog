@@ -1,4 +1,4 @@
-# How to Monitor Authentication Without Confusing Bad Passwords with Identity-Provider Failures
+# How to Monitor Bad Passwords and Identity-Provider Failures Separately
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

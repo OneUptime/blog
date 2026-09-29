@@ -1,4 +1,4 @@
-# How to Preserve Incident Evidence Before Ephemeral Pods, Autoscaled Instances, and Short-Retention Logs Disappear
+# How to Preserve Incident Evidence Before Pods, Instances, and Logs Disappear
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
@@ -95,7 +95,7 @@ For cloud instances, record the account, region, instance ID, image, launch time
 
 ## Make Autoscaling Collection a Prepared Capability
 
-Amazon EC2 Auto Scaling termination lifecycle hooks can place instances in a wait state while a prepared process collects logs or performs cleanup. Hooks have time limits; expiry or abandonment allows termination to proceed. They are useful for routine graceful termination, not a guarantee against abrupt machine loss. [AWS lifecycle hook documentation](https://docs.aws.amazon.com/autoscaling/ec2/userguide/lifecycle-hooks.html)
+Amazon EC2 Auto Scaling termination lifecycle hooks can place instances in a wait state while a prepared process collects logs or performs cleanup. Hooks have time limits; by default, expiry or abandonment allows termination to proceed. An instance lifecycle policy configured to retain instances on `TerminateHookAbandon` can retain an instance when the termination hook is abandoned. They are useful for routine graceful termination, not a guarantee against abrupt machine loss. [AWS lifecycle hook documentation](https://docs.aws.amazon.com/autoscaling/ec2/userguide/lifecycle-hooks.html)
 
 Build and exercise that collection path before an incident. Keep central log shipping as the primary durable path. During an outage, evaluate whether pausing replacement would reduce healthy capacity or prolong impact before changing autoscaling behavior.
 

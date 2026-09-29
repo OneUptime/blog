@@ -1,4 +1,4 @@
-# How to Audit Trace Coverage After an Auto-Instrumentation or Semantic-Conventions Upgrade
+# How to Audit Traces After Instrumentation and Semantic-Convention Upgrades
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

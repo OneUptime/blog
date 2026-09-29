@@ -1,4 +1,4 @@
-# Why Sampled Traces Make Bad Alert Counters—and How to Pair Tracing with Unsampled RED Metrics
+# Why Alerting Needs Unsampled RED Metrics Alongside Sampled Traces
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

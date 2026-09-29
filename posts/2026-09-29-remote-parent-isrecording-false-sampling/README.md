@@ -1,4 +1,4 @@
-# Why a Reconstructed Remote Parent Is `isRecording=false`: Sampling Flags and Parent-Based Samplers
+# Why Remote Parents Have `isRecording=false`: Sampling and Child Spans
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
@@ -66,7 +66,7 @@ The example does not install an exporter. Recording a child is therefore demonst
 
 Parent-based sampling delegates among root, local-parent, and remote-parent cases. Custom branch samplers can change the default behavior. If your test differs from the example, capture the configured provider, sampler, and parent context at span creation.
 
-A malformed carrier or lost context makes the operation a root, invoking the root sampler instead. An API-only setup without a functional SDK can also create non-recording spans. A framework span created before your custom SDK initialization may belong to a different configuration than the tracer you are inspecting.
+A malformed carrier or lost context makes the operation a root if no valid parent remains, invoking the root sampler instead. Failed extraction preserves the supplied context, which may already contain a valid parent. An API-only setup without a functional SDK can also create non-recording spans. A framework span created before your custom SDK initialization may belong to a different configuration than the tracer you are inspecting.
 
 The SDK distinguishes dropping, recording without sampling, and recording with sampling. In particular, recording is not interchangeable with the sampled bit. Export behavior depends on processors and exporters as well as the sampler. [Tracing SDK](https://opentelemetry.io/docs/specs/otel/trace/sdk/)
 

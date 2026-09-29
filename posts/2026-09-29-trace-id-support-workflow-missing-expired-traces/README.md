@@ -1,4 +1,4 @@
-# How to Design a Trace-ID Support Workflow When the Trace May Have Been Sampled Out or Expired
+# How to Handle Sampled-Out or Expired Traces in Trace-ID Support Workflows
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -1,4 +1,4 @@
-# How to Assign Incident Severity Before the Blast Radius Is Known—and Revise It Without Chaos
+# How to Assign and Revise Incident Severity When Impact Is Uncertain
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
@@ -72,7 +72,7 @@ A downgrade needs positive evidence that the higher response is no longer requir
 For a separate incident where wider checkout impact was suspected but never confirmed, a reassessment might read:
 
 ```text
-14:24 UTC — SEV-2 -> SEV-3, approved by current commander
+14:24 UTC - SEV-2 -> SEV-3, approved by current commander
 Evidence: all four checkout cells tested; failures limited to one
 noncritical export workflow; checkout transaction SLIs remain healthy
 Remaining impact: exports delayed for one bounded tenant cohort

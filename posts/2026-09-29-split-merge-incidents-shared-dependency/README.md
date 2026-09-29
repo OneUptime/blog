@@ -1,4 +1,4 @@
-# How to Split or Merge Simultaneous Incidents That Share the Same Upstream Dependency
+# How to Split or Merge Incidents That Share an Upstream Dependency
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

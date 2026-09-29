@@ -1,4 +1,4 @@
-# How to Catch Telemetry Loss Across Agent, Collector, Remote Write, and Backend Without Guesswork
+# How to Trace Telemetry Loss Across Agent, Collector, Remote Write, and Backend
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
@@ -28,7 +28,7 @@ Treat the ledger as an investigation plan. Populate it with measurements and con
 
 The Collector's [internal telemetry documentation](https://opentelemetry.io/docs/collector/internal-telemetry/) describes receiver acceptance and refusal, exporter failures and queue indicators. Inspect the installed version's actual exposition first: metric suffixes and attributes can differ with translation settings and component releases.
 
-For each affected receiver and exporter, compare accepted, refused, successfully sent and failed observations over a window spanning the gap. Preserve component identity and signal type. A queue rising while receiver acceptance continues points toward an export bottleneck; refusal at the receiver moves the failure boundary earlier.
+For each affected receiver and exporter, compare accepted, refused, successfully sent and failed observations over a window spanning the gap. Preserve component identity and signal type. A queue rising while receiver acceptance continues points toward an export bottleneck; refusal at the receiver means data could not be pushed into the pipeline, which can also result from downstream backpressure or errors.
 
 Collect this evidence through an independent scraper where possible. Exporting all Collector health through the same broken pipeline can erase the evidence needed to diagnose it.
 
@@ -44,7 +44,7 @@ A restart that makes the queue empty is not proof that delivery recovered. Check
 
 For Prometheus senders, inspect pending samples, failed/retried samples and the age of the highest successfully sent timestamp as exposed by the installed version. Preserve remote destination identity when several endpoints exist.
 
-The [remote-write tuning guide](https://prometheus.io/docs/practices/remote_write/) explains how queues, shards and WAL buffering interact. Increasing shards can improve throughput when the receiver has spare capacity, but can worsen an overloaded backend. A longer queue buys time; it does not repair authentication errors or an ingestion rejection.
+The [remote-write tuning guide](https://prometheus.io/docs/practices/remote_write/) explains how queues, shards and WAL buffering interact. Increasing shards can improve throughput when the receiver has spare capacity, but can worsen an overloaded backend. A larger in-memory queue can absorb short bursts, but outage tolerance also depends on WAL retention; increasing queue capacity does not extend WAL retention or repair authentication errors or an ingestion rejection.
 
 Compare a raw metric on the local scraper and remote backend at the same timestamp. If it is present locally, inspect write relabeling and transport next. If it is present remotely under different labels, the problem may be query identity rather than loss.
 
@@ -62,7 +62,7 @@ A canary proves its own route. If routing depends on tenant, signal type or dest
 
 ## Reconcile counts before claiming loss
 
-Receivers and exporters may count different units. Sampling, aggregation, batching, temporality conversion and fan-out intentionally change counts. Retries can resend data, and backend deduplication can reduce visible records. Compare like units after accounting for these transformations.
+Receivers and exporters may count different units. Sampling, aggregation, temporality conversion and fan-out can change item counts. Batching changes request counts without inherently changing the number of telemetry items. Retries can resend data, and backend deduplication can reduce visible records. Compare like units after accounting for these transformations.
 
 For an exact test, send a finite set of uniquely identifiable synthetic log records or spans through an isolated test route and verify their IDs at the destination. Do not add an unbounded sequence label to ordinary metrics. For continuous production detection, freshness and bounded sequence evidence usually provide a cheaper signal.
 

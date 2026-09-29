@@ -1,4 +1,4 @@
-# How to Prove Your Monitoring Pipeline Can Still Page You: End-to-End Heartbeats from Exporter to Notification
+# How to Test Monitoring with Heartbeats from Exporter to Notification
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

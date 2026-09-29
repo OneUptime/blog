@@ -1,4 +1,4 @@
-# How to Convert a Customer-Reported Outage into an SLI and Alert That Detects the Next One First
+# How to Turn Customer Outage Reports into SLIs and Alerts for Earlier Detection
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
@@ -59,7 +59,7 @@ The metric must count outcomes independently of trace sampling. Keep request IDs
 
 ## Add a Scoped Alert
 
-This example pages for more than 5% bad outcomes over five minutes, with at least 100 classified outcomes in that region during the same window:
+This example pages for more than 5% bad outcomes over five minutes, with an estimated count of at least 100 classified outcomes in that region during the same window. Prometheus extrapolates `increase()` to the window boundaries, so the volume guard is not an exact event count:
 
 ```yaml
 groups:

@@ -1,4 +1,4 @@
-# Dashboard Looks Healthy but One Region Is Down: How Aggregation Hides Partial Failures
+# Why Dashboard Aggregation Hides Regional Outages and How to Detect Them
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

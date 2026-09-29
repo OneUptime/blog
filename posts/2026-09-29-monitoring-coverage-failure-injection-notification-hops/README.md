@@ -1,4 +1,4 @@
-# How to Validate Monitoring Coverage by Injecting Failures and Following Every Notification Hop
+# How to Test Monitoring Coverage with Failures and Notification Checks
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
@@ -22,7 +22,7 @@ A useful matrix separates detection coverage from notification coverage:
 | Freeze an exporter cache | Old source timestamp with `up=1` | Scrape-only monitoring |
 | Remove a required metric | Presence alert | Empty query treated as healthy |
 | Stop test rule evaluation | External heartbeat expiry | Monitoring cannot detect itself |
-| Reject a test notification endpoint | Delivery failure and fallback | Broken receiver path |
+| Reject a test notification endpoint | Delivery failure and any explicitly configured fallback | Broken receiver path |
 
 Sending an alert directly to Alertmanager can test routing, but it bypasses instrumentation and rule evaluation. Keep that narrower result labeled as a routing test.
 
@@ -30,7 +30,7 @@ Sending an alert directly to Alertmanager can test routing, but it bypasses inst
 
 The path includes source polling, scrape scheduling, transport delay, rule evaluation, pending duration, grouping wait, provider processing and destination delivery. These delays are not always independent, but listing them prevents impossible expectations.
 
-For example, a two-minute freshness threshold plus `for: 2m` already consumes roughly four minutes before notification grouping and delivery. A test with a three-minute deadline would fail by design. Prometheus's [alerting rules](https://prometheus.io/docs/prometheus/latest/configuration/alerting_rules/) explain pending duration; [Alertmanager configuration](https://prometheus.io/docs/alerting/latest/configuration/) defines grouping and repeat timing.
+For example, if the source timestamp is current when updates stop, a two-minute freshness threshold plus `for: 2m` consumes roughly four minutes before notification grouping and delivery, with scrape and evaluation scheduling potentially adding more time. A test with a three-minute deadline from that starting point would fail by design. Prometheus's [alerting rules](https://prometheus.io/docs/prometheus/latest/configuration/alerting_rules/) explain pending duration; [Alertmanager configuration](https://prometheus.io/docs/alerting/latest/configuration/) defines grouping and repeat timing.
 
 Use measured end-to-end timestamps to refine the estimate. Report the maximum observed time and the conditions tested rather than claiming a universal upper bound from a single successful run.
 

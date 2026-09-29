@@ -1,4 +1,4 @@
-# How to Suppress Dependency Noise Without Hiding the Customer Impact of Downstream Services
+# How to Suppress Dependency Alert Noise While Preserving Customer Impact
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

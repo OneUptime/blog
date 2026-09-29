@@ -1,4 +1,4 @@
-# How to Validate Untrusted `traceparent` and Trim `tracestate` at an Internet-Facing Trust Boundary
+# How to Validate Untrusted `traceparent` and Trim `tracestate` at Public Ingress
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
@@ -16,7 +16,7 @@ Use a maintained W3C propagator rather than a regular expression copied into mid
 
 At the HTTP server or proxy, bound request-header bytes and handle repeated fields according to the protocol. Header names are case-insensitive. A Python dictionary already flattened from a request cannot reveal whether an attacker originally supplied multiple `traceparent` fields, so reject ambiguous duplicates at the adapter boundary.
 
-The following function assumes that normalization and duplicate handling are already complete. Its four-entry vendor allowlist is an example local policy, not a W3C limit:
+The following function assumes that normalization and duplicate handling are already complete. Its vendor allowlist and four-entry retention cap are example local policies, not W3C limits:
 
 ```python
 from opentelemetry import trace

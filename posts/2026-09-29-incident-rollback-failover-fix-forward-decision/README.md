@@ -1,4 +1,4 @@
-# Roll Back, Fail Over, or Fix Forward? A Time-Boxed Decision Framework for Active Incidents
+# How to Choose Rollback, Failover, or a Forward Fix During an Incident
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

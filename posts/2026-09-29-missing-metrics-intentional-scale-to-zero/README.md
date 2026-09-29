@@ -1,4 +1,4 @@
-# How to Alert on a Missing Metric Without Paging When a Workload Intentionally Scales to Zero
+# How to Alert on Missing Metrics While Respecting Intentional Scale-to-Zero
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
@@ -29,9 +29,9 @@ Suppose every running workload exposes `workload_metrics_ready=1` after instrume
 
 ```promql
 (
-  workload_desired_replicas > 0
+  max by (cluster, namespace, workload) (workload_desired_replicas) > 0
   and on (cluster, namespace, workload)
-  workload_monitoring_enabled == 1
+  max by (cluster, namespace, workload) (workload_monitoring_enabled) == 1
 )
 unless on (cluster, namespace, workload)
 max by (cluster, namespace, workload) (
@@ -41,17 +41,17 @@ max by (cluster, namespace, workload) (
 
 A stored zero value also counts as presence. If `workload_metrics_ready` is a Boolean readiness contract, filter samples according to that contract separately; alternatively use a metric whose existence alone means initialization completed. Do not confuse “some sample exists” with “its numeric value is healthy.”
 
-PromQL's [`unless` operator](https://prometheus.io/docs/prometheus/latest/querying/operators/) performs the set difference. `present_over_time` retains series with observations in the selected window. The five-minute range is already a delay; an additional `for: 5m` roughly doubles the time before the new absence condition can fire.
+PromQL's [`unless` operator](https://prometheus.io/docs/prometheus/latest/querying/operators/) performs the set difference. `present_over_time` retains series with observations in the selected window. After previously observed telemetry stops, the five-minute range delays detection until the last sample leaves the window; an additional `for: 5m` makes the total roughly ten minutes from the last sample, subject to evaluation timing. If no samples exist in the window when desired replicas become positive, the expression matches immediately; the range alone provides no startup grace period.
 
 ## Cover inventory failure
 
-If desired-state telemetry vanishes, the left side disappears too. A separate inventory health alert is therefore part of the design:
+If desired-state telemetry or `workload_monitoring_enabled` vanishes, the left side disappears too once the series is stale or outside the lookback period. A separate inventory health alert is therefore part of the design:
 
 ```promql
 absent_over_time(workload_desired_replicas{cluster="prod"}[5m])
 ```
 
-This detects absence for the selected cluster as a whole, not one missing workload among many. For individual workloads, use an independent catalog of expected inventory entries. Monitor exporter scrape health, data age and the controller API connection as well.
+This detects absence for the selected cluster as a whole, not one missing workload among many. Monitor absence of `workload_monitoring_enabled` as well. For individual workloads, use an independent catalog of expected inventory entries. Monitor exporter scrape health, data age and the controller API connection as well.
 
 Do not interpret an absent desired-state series as zero replicas. A dashboard should show distinct states: active and observed, intentionally inactive, expected but missing, and expectation unavailable.
 

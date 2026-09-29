@@ -1,4 +1,4 @@
-# How to Keep Monitoring Costs Predictable with Cardinality Budgets, Drop Rules, and Tiered Retention
+# How to Control Monitoring Costs with Cardinality, Drop, and Retention Budgets
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

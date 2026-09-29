@@ -1,4 +1,4 @@
-# How to Alert on Queue Backlog Without Paging on Expected Batch Spikes or Idle Consumers
+# How to Alert on Queue Backlog Without Paging on Batch Spikes or Idle Consumers
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
@@ -16,7 +16,7 @@ Track ready backlog, in-flight work, oldest eligible waiting age and successful 
 
 For Amazon SQS, [CloudWatch metric documentation](https://docs.aws.amazon.com/AWSSimpleQueueService/latest/SQSDeveloperGuide/sqs-available-cloudwatch-metrics.html) distinguishes visible, not-visible and delayed messages. Many values are approximate. The oldest-message metric also has poison-message and dead-letter behavior, so it should not be treated as a perfect audit of every item's original age.
 
-Application completion timestamps can supply a stronger business measure when broker metrics exclude repeatedly failing items. Preserve the original enqueue time in durable message metadata if total end-to-end age matters.
+Application completion timestamps paired with original enqueue timestamps can measure end-to-end latency for completed items. They cannot reveal items that never complete; track outstanding work and its age separately when broker metrics exclude repeatedly failing items. Preserve the original enqueue time in durable message metadata if total end-to-end age matters.
 
 ## Page on deadline risk
 
@@ -29,7 +29,7 @@ queue_completed_total{queue="invoices"} 950000
 queue_consumers_ready{queue="invoices"} 12
 ```
 
-These names are an illustrative normalized contract, not native SQS or RabbitMQ names. For a ten-minute waiting-age budget, a warning at seven minutes gives responders some room:
+These names are an illustrative normalized contract, not native SQS or RabbitMQ names. The examples assume one series per metric per queue, with a queue-wide completion counter. If completions are exported per worker, sum their rates by queue before comparing or dividing; deduplicate replicated queue gauges rather than summing them. For a ten-minute waiting-age budget, a warning at seven minutes gives responders some room:
 
 ```promql
 queue_oldest_ready_age_seconds{queue="invoices"} > 420
@@ -49,7 +49,7 @@ rate(queue_completed_total[5m]) == 0
 
 This describes backlog with no observed completions. A just-started counter with too few samples may return no rate; a missing counter also does not become zero automatically. Add telemetry-presence and worker-health alerts so those states remain covered.
 
-Set the interval longer than normal task duration. A legitimate ten-minute task cannot emit a completion every five minutes. For long tasks, export last-progress time or a stage heartbeat tied to a committed checkpoint. Keep the backlog condition so idle workers do not page simply because there is nothing to complete.
+Set the rate window longer than the normal interval between completions. A worker running ten-minute tasks serially cannot emit a completion every five minutes. A longer window alone does not prevent an immediate match when backlog appears after an idle period with zero completions; use a `for` duration that allows normal startup and first-completion latency, within the deadline budget. For long tasks, export last-progress time or a stage heartbeat tied to a committed checkpoint. Keep the ready-backlog condition for this alert so idle workers do not page simply because there is nothing to complete. For checkpoint alerts, also count in-flight work so a stuck task remains covered when ready backlog is zero.
 
 Zero ready consumers while ready backlog exists is another direct condition. It can be expected briefly during scale-up, so give the scaler a measured startup budget and independently alert if demand never causes capacity to appear.
 
