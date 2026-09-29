@@ -298,7 +298,6 @@
 
 ## Monitoring
 
-14. How to Handle Counter Resets and Label Churn Without False Rate Spikes or Missing Alerts
 15. How to Validate Monitoring Coverage by Injecting Failures and Following Every Notification Hop
 16. How to Link a Page to the Exact Logs and Trace with OpenTelemetry Resource Attributes and Exemplars
 17. How to Keep Monitoring Costs Predictable with Cardinality Budgets, Drop Rules, and Tiered Retention
