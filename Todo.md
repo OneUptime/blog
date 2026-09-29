@@ -295,7 +295,6 @@
 
 ## Tracing
 
-18. How to Represent HTTP Retries and Redirects Without Hiding Individual Attempts
 19. Why Sampled Traces Make Bad Alert Counters—and How to Pair Tracing with Unsampled RED Metrics
 20. How to Design a Trace-ID Support Workflow When the Trace May Have Been Sampled Out or Expired
 
