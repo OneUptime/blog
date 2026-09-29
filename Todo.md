@@ -301,7 +301,6 @@
 
 ## Incident Response
 
-4. Clock Skew Corrupted the Incident Timeline: How to Normalize Events Before the Postmortem
 5. How to Hand Off a Long-Running Incident Across Time Zones Without Losing State or Repeating Work
 6. Roll Back, Fail Over, or Fix Forward? A Time-Boxed Decision Framework for Active Incidents
 7. How to Keep an Emergency Mitigation from Worsening the Outage with Guardrails and Abort Criteria
