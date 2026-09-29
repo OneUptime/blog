@@ -298,7 +298,6 @@
 
 ## Monitoring
 
-7. How to Monitor Authentication Without Confusing Bad Passwords with Identity-Provider Failures
 8. How to Alert on Queue Backlog Without Paging on Expected Batch Spikes or Idle Consumers
 9. How to Monitor Batch Jobs with Deadlines, Last-Success Timestamps, and Heartbeats Instead of `up`
 10. How to Catch Telemetry Loss Across Agent, Collector, Remote Write, and Backend Without Guesswork
