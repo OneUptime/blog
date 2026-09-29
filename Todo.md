@@ -298,7 +298,6 @@
 
 ## Monitoring
 
-16. How to Link a Page to the Exact Logs and Trace with OpenTelemetry Resource Attributes and Exemplars
 17. How to Keep Monitoring Costs Predictable with Cardinality Budgets, Drop Rules, and Tiered Retention
 18. Dashboard Looks Healthy but One Region Is Down: How Aggregation Hides Partial Failures
 19. How to Monitor the Monitor: Independent Canaries for Prometheus, Alertmanager, and Your Paging Provider
