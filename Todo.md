@@ -295,7 +295,6 @@
 
 ## Tracing
 
-16. How to Audit Trace Coverage After an Auto-Instrumentation or Semantic-Conventions Upgrade
 17. Why Client and Server Spans Disagree on Duration: Network Time, Clock Skew, and Response-Body Boundaries
 18. How to Represent HTTP Retries and Redirects Without Hiding Individual Attempts
 19. Why Sampled Traces Make Bad Alert Counters—and How to Pair Tracing with Unsampled RED Metrics
