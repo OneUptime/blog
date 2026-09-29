@@ -295,7 +295,6 @@
 
 ## Tracing
 
-14. Why a Reconstructed Remote Parent Is `isRecording=false`: Sampling Flags and Parent-Based Samplers
 15. How to Prevent Trace Context from Bleeding Between Concurrent Requests in Thread Pools and Async Runtimes
 16. How to Audit Trace Coverage After an Auto-Instrumentation or Semantic-Conventions Upgrade
 17. Why Client and Server Spans Disagree on Duration: Network Time, Clock Skew, and Response-Body Boundaries
