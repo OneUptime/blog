@@ -298,7 +298,6 @@
 
 ## Monitoring
 
-4. How to Alert on a Missing Metric Without Paging When a Workload Intentionally Scales to Zero
 5. How to Find Which Labels Caused a Prometheus Cardinality Explosion Before the TSDB Runs Out of Memory
 6. Static Thresholds Fail on Seasonal Traffic: How to Combine Baselines, SLOs, and Minimum-Volume Guards
 7. How to Monitor Authentication Without Confusing Bad Passwords with Identity-Provider Failures
