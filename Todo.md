@@ -298,7 +298,6 @@
 
 ## Monitoring
 
-20. How to Tell “Healthy Zero” from “No Data” with `absent_over_time`, Scrape Timestamps, and Heartbeats
 
 ## Incident Response
 
