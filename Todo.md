@@ -298,7 +298,6 @@
 
 ## Monitoring
 
-19. How to Monitor the Monitor: Independent Canaries for Prometheus, Alertmanager, and Your Paging Provider
 20. How to Tell “Healthy Zero” from “No Data” with `absent_over_time`, Scrape Timestamps, and Heartbeats
 
 ## Incident Response
