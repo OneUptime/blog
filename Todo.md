@@ -301,7 +301,6 @@
 
 ## Incident Response
 
-1. How to Run Incident Command with a Small Team: Combining IC, Operations, Communications, and Scribe Roles Safely
 2. How to Assign Incident Severity Before the Blast Radius Is Known—and Revise It Without Chaos
 3. How to Preserve Incident Evidence Before Ephemeral Pods, Autoscaled Instances, and Short-Retention Logs Disappear
 4. Clock Skew Corrupted the Incident Timeline: How to Normalize Events Before the Postmortem
