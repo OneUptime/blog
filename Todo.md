@@ -301,7 +301,6 @@
 
 ## Incident Response
 
-12. How to Build a Canonical Incident Channel While Technical Teams Debug in Parallel Workstreams
 13. How to Write Useful Status Updates When There Is No New ETA: Facts, Unknowns, Actions, and Next Checkpoint
 14. How to Coordinate a Third-Party Provider Outage: Vendor Escalation, Customer Updates, and Internal Mitigations
 15. When Is an Incident Really Resolved? Handling Flapping Recovery, Monitoring Windows, and Reopen Rules
