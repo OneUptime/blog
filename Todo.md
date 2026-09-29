@@ -295,7 +295,6 @@
 
 ## Tracing
 
-20. How to Design a Trace-ID Support Workflow When the Trace May Have Been Sampled Out or Expired
 
 ## Monitoring
 
