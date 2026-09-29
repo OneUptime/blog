@@ -301,7 +301,6 @@
 
 ## Incident Response
 
-8. How to Measure Impact During a Partial or Multi-Tenant Outage Using Segmented SLIs
 9. How to Route an Incident When Service Ownership Metadata Is Missing, Stale, or Ambiguous
 10. How to Split or Merge Simultaneous Incidents That Share the Same Upstream Dependency
 11. How to Deduplicate Retried Alert Webhooks Without Merging Separate Incident Occurrences
