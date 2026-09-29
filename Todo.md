@@ -301,7 +301,6 @@
 
 ## Incident Response
 
-6. Roll Back, Fail Over, or Fix Forward? A Time-Boxed Decision Framework for Active Incidents
 7. How to Keep an Emergency Mitigation from Worsening the Outage with Guardrails and Abort Criteria
 8. How to Measure Impact During a Partial or Multi-Tenant Outage Using Segmented SLIs
 9. How to Route an Incident When Service Ownership Metadata Is Missing, Stale, or Ambiguous
