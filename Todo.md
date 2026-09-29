@@ -301,7 +301,6 @@
 
 ## Incident Response
 
-14. How to Coordinate a Third-Party Provider Outage: Vendor Escalation, Customer Updates, and Internal Mitigations
 15. When Is an Incident Really Resolved? Handling Flapping Recovery, Monitoring Windows, and Reopen Rules
 16. How to Capture Commands and Evidence During an Incident Without Leaking Secrets into Chat or Postmortems
 17. How to Turn a Postmortem Action into Verified Risk Reduction Instead of a Forgotten Jira Ticket
