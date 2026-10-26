@@ -130,7 +130,7 @@ services:
 
   # phpMyAdmin for MySQL administration
   phpmyadmin:
-    image: phpmyadmin/phpmyadmin:latest
+    image: phpmyadmin:latest
     container_name: spring-phpmyadmin
     restart: unless-stopped
     ports:

@@ -67,7 +67,7 @@ services:
 
   # phpMyAdmin for database management
   phpmyadmin:
-    image: phpmyadmin/phpmyadmin:latest
+    image: phpmyadmin:latest
     container_name: lamp-phpmyadmin
     restart: unless-stopped
     ports:
