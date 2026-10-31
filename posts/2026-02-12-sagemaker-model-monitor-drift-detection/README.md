@@ -7,7 +7,7 @@ Tags: AWS, SageMaker, MLOps, Model Monitoring, Drift Detection
 Description: Set up Amazon SageMaker Model Monitor to detect data drift, model quality degradation, and bias drift in your deployed machine learning models.
 
 ---
-
+**Note on availability:** AWS has closed SageMaker Model Monitor to new customers. Per AWS's documentation: *"Amazon SageMaker Model Monitor is no longer open to new customers. Existing customers can continue to use the service as normal. AWS continues to invest in security and availability improvements for Model Monitor, but we do not plan to introduce new features."* Existing users can continue to follow this guide; teams starting a new workload should look at AWS's recommended alternatives, which are open-source solutions built on MLflow and Evidently AI with CloudWatch and QuickSight. See [the availability change notice](https://docs.aws.amazon.com/sagemaker/latest/dg/model-monitor-availability-change.html).
 Deploying a model isn't the finish line - it's the starting point of a whole new set of challenges. Models degrade over time as the data they see in production drifts away from what they were trained on. A fraud detection model trained on last year's data might miss new attack patterns. A recommendation engine might become stale as user preferences shift.
 
 SageMaker Model Monitor continuously watches your deployed models for signs of trouble. It can detect data drift, model quality degradation, and even changes in bias metrics. Let's set it up.
