@@ -269,7 +269,7 @@ If you work with resellers or want to offer special pricing to specific customer
 # Customers see the private offer in their Marketplace console
 ```
 
-Private Offers are also how you handle enterprise negotiated pricing, multi-year deals, and custom payment schedules.
+Private Offers are also how you handle enterprise negotiated pricing, multi-year deals, and custom payment schedules. They also carry a lower listing fee than public offers, which is covered in the fees section above.
 
 ## Cost Management for Marketplace Purchases
 
