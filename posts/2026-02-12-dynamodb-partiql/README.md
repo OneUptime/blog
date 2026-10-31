@@ -336,6 +336,19 @@ SELECT * FROM Users WHERE email = 'jane@example.com'
 SELECT * FROM Users WHERE userId = 'user-001'
 ```
 
+**No JOIN, GROUP BY or aggregates.** A PartiQL `SELECT` reads one table or index. Query two of them and DynamoDB returns `ValidationException: Only Select from a Single Table or index supported`. There is no `GROUP BY` either, and no aggregate functions such as `COUNT`, `SUM` or `AVG` - the server returns items and your application does the rest:
+
+```sql
+-- Not supported
+SELECT o.orderId, c.name
+FROM Orders o JOIN Customers c ON o.customerId = c.customerId
+
+-- Not supported either
+SELECT customerId, COUNT(*) FROM Orders GROUP BY customerId
+```
+
+For someone arriving from SQL these are usually the first three things you reach for, so they are worth knowing up front. When you do need them, the usual routes are denormalising at write time, [Amazon Athena's DynamoDB connector](https://docs.aws.amazon.com/athena/latest/ug/connectors-dynamodb.html) for analytical work, or a desktop client that lowers SQL to native DynamoDB requests - [DynoTable](https://dynotable.com/docs/dynamodb-sql-workbench) and DynoStudio both do this.
+
 **No LIKE operator.** DynamoDB doesn't support SQL wildcard searches. Use PartiQL functions such as `begins_with` or `contains` when they fit your access pattern.
 
 **Parameter types.** When you use the low-level DynamoDB SDK client, PartiQL parameters must include the DynamoDB type descriptor (`{ S: 'string' }`, `{ N: '123' }`, etc.). This is easy to forget.
