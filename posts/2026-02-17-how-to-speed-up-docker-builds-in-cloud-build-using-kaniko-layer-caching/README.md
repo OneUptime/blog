@@ -20,7 +20,7 @@ This is where Kaniko comes in.
 
 ## What Is Kaniko?
 
-Kaniko is a tool originally developed under Google's GoogleContainerTools organization that builds container images from a Dockerfile inside a container, without needing a Docker daemon. The original GoogleContainerTools Kaniko project was archived on June 3, 2025 and is no longer maintained, so use these examples for environments that still standardize on Kaniko and evaluate maintained builders for new projects. The key feature for us is its ability to cache layers in a remote container registry and reuse them in subsequent builds.
+Kaniko is a tool originally developed under Google's GoogleContainerTools organization that builds container images from a Dockerfile inside a container, without needing a Docker daemon. The original GoogleContainerTools Kaniko project was archived on June 3, 2025. Kaniko is now maintained in the (osscontainertools)[https://osscontainertools.org/] (fork in GitHub)[https://github.com/osscontainertools/kaniko] with active maintenance and improvements delivered frequently. The key feature for us is Kaniko's ability to cache layers in a remote container registry and reuse them in subsequent builds.
 
 When Kaniko builds an image with caching enabled, it checks cacheable Dockerfile commands against the cache stored in your registry. If a layer's inputs have not changed, Kaniko skips rebuilding it and uses the cached version instead. After the first cache miss, Kaniko builds subsequent layers locally without consulting the cache for the rest of that build, so Dockerfile ordering still matters. This can reduce build times from minutes to seconds for layers that rarely change (like dependency installation).
 
@@ -43,7 +43,7 @@ Here is the equivalent using Kaniko with layer caching:
 ```yaml
 # Kaniko build with layer caching enabled
 steps:
-  - name: 'gcr.io/kaniko-project/executor:latest'
+  - name: 'ghcr.io/osscontainertools/kaniko:latest'
     args:
       - '--destination=gcr.io/$PROJECT_ID/my-app:latest'
       - '--cache=true'
@@ -163,7 +163,7 @@ steps:
     args: ['npm', 'test']
 
   # Step 2: Build and push the image using Kaniko
-  - name: 'gcr.io/kaniko-project/executor:latest'
+  - name: 'ghcr.io/osscontainertools/kaniko:latest'
     id: 'build-push'
     args:
       - '--destination=us-central1-docker.pkg.dev/$PROJECT_ID/my-repo/my-app:$SHORT_SHA'
@@ -209,7 +209,7 @@ To force a full rebuild without cache:
 ```yaml
 # Force a clean build by disabling cache
 steps:
-  - name: 'gcr.io/kaniko-project/executor:latest'
+  - name: 'ghcr.io/osscontainertools/kaniko:latest'
     args:
       - '--destination=gcr.io/$PROJECT_ID/my-app:latest'
       - '--cache=false'
