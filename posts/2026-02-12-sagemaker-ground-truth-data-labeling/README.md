@@ -16,7 +16,7 @@ This guide walks through setting up labeling jobs, managing your workforce, and 
 
 Ground Truth orchestrates labeling jobs by distributing data to human annotators and collecting their labels. It supports several labeling strategies:
 
-- **Amazon Mechanical Turk** - Crowdsourced labeling from the public workforce
+- **Amazon Mechanical Turk** - Crowdsourced labeling from the public workforce. *Note: Amazon closed Mechanical Turk on September 30, 2026, so this option is no longer available ([TechRadar](https://techradar.com/pro/aws-is-shutting-down-mechanical-turk-which-let-humans-beat-ai-at-certain-work-tasks)). See [alternatives to Mechanical Turk and Ground Truth](https://datavlab.ai/post/mechanical-turk-sagemaker-ground-truth-alternatives).*
 - **Private workforce** - Your own team of annotators
 - **Vendor workforce** - Professional labeling companies from the AWS Marketplace
 - **Automated labeling** - Active learning that machine-labels some data while sending uncertain items to humans
