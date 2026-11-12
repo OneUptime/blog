@@ -105,6 +105,145 @@ orders = db.orders.find({"status": "pending"}).sort("created_at", -1).limit(10)
 
 If you want to keep using your MongoDB code as-is, but want to move to a serverless database, Firestore's MongoDB compatible API is the lowest-friction path. Since Firestore is wire-compatible with MongoDB, all MongoDB client libraries, CLI tools like mongosh, mongoimport, mongoexport, mongorestore, mongodump and GUIs like Compass work seamlessly. Your application code stays the same, your queries stay the same, and your data model stays the same. You are just making a connection string change. Once you migrate you can use either the native APIs or MongoDB APIs because Firestore allows you to access the database using different APIs simultaneously. 
 
+### Setting Up Firestore with MongoDB Compatibility
+
+You can provision a Firestore database with MongoDB compatibility enabled using the Google Cloud CLI (`gcloud`). Note that MongoDB compatibility requires **Firestore Enterprise Edition**:
+
+```bash
+# Set your active GCP project
+gcloud config set project my-gcp-project
+
+# Create a Firestore Enterprise database with MongoDB compatibility enabled
+gcloud firestore databases create \
+  --database=myapp-db \
+  --location=nam5 \
+  --edition=enterprise \
+  --enable-mongodb-compatible-data-access
+```
+
+### Creating Database User Credentials
+
+Before connecting to your database, create user credentials using the `gcloud firestore user-creds create` command:
+
+```bash
+# Create user credentials for your Firestore database
+gcloud firestore user-creds create myapp-user \
+  --database=myapp-db
+```
+
+This command returns details about the created credential, including a server-generated secure password in the `securePassword` field:
+
+```yaml
+createTime: '2026-10-13T15:30:00.000000Z'
+name: projects/my-gcp-project/databases/myapp-db/userCreds/myapp-user
+resourceIdentity:
+  principal: principal://firestore.googleapis.com/projects/123456789012/name/databases/myapp-db/userCreds/myapp-user
+securePassword: 'a1b2c3d4-generated-secure-password'
+state: ENABLED
+```
+
+> [!IMPORTANT]
+> The `securePassword` is only displayed once when the credential is created (or when running `gcloud firestore user-creds reset-password`). Be sure to save it in a secure location such as Secret Manager.
+
+By default, newly created user credentials have no database permissions. Grant the credential access to your database by binding an IAM role (such as `roles/datastore.owner` for full administrative, index, and data access, or `roles/datastore.user` for standard read/write operations) to the credential's principal identity:
+
+```bash
+# Fetch your numeric project number
+PROJECT_NUMBER=$(gcloud projects describe my-gcp-project --format="value(projectNumber)")
+
+# Grant roles/datastore.owner scoped to the target database
+gcloud projects add-iam-policy-binding my-gcp-project \
+  --member="principal://firestore.googleapis.com/projects/${PROJECT_NUMBER}/name/databases/myapp-db/userCreds/myapp-user" \
+  --role="roles/datastore.owner" \
+  --condition='expression=resource.name == "projects/my-gcp-project/databases/myapp-db",title=myapp-db-access'
+```
+
+### Getting the Connection String
+
+Once the database and user credentials are created, use `gcloud firestore databases connection-string` to retrieve the MongoDB connection string. You can choose the authentication mechanism that fits your deployment environment:
+
+```bash
+# Option A: Get connection string template with password-based authentication (SCRAM-SHA-256)
+gcloud firestore databases connection-string \
+  --database=myapp-db \
+  --auth=scram-sha-256
+
+# Output returned:
+# mongodb://username:password@<database-uid>.nam5.firestore.goog:443/myapp-db?loadBalanced=true&tls=true&retryWrites=false&authMechanism=SCRAM-SHA-256
+```
+
+Substitute the `username` with `myapp-user` and `password` with the password generated from the credential creation step:
+
+```
+mongodb://myapp-user:a1b2c3d4-generated-secure-password@<database-uid>.nam5.firestore.goog:443/myapp-db?loadBalanced=true&tls=true&retryWrites=false&authMechanism=SCRAM-SHA-256
+```
+
+Alternatively, if connecting from Google Compute Engine, Cloud Run, or GKE, you can use IAM authentication without managing database passwords:
+
+```bash
+# Option B: Get connection string for Google Compute Engine VM / Cloud Run using IAM (OIDC)
+gcloud firestore databases connection-string \
+  --database=myapp-db \
+  --auth=gce-vm
+
+# Connection string format returned:
+# mongodb://<database-uid>.nam5.firestore.goog:443/myapp-db?loadBalanced=true&tls=true&retryWrites=false&authMechanism=MONGODB-OIDC&authMechanismProperties=ENVIRONMENT:gcp,TOKEN_RESOURCE:FIRESTORE
+```
+
+### Migrating Data to Firestore
+
+Google Cloud provides Datastream and Dataflow to handle continuous synchronization with minimal downtime, while standard MongoDB tools can be used for smaller offline migrations:
+
+```bash
+# Option 1: Use Datastream and Dataflow for continuous replication (recommended for production)
+# 1. Datastream streams MongoDB data and changes into Cloud Storage
+# 2. The Datastream to Firestore Dataflow template writes the events into Firestore
+# 3. When replication lag approaches zero, initiate cutover
+# 4. Point your application connection string to Firestore
+
+# Option 2: Use mongodump and mongorestore for smaller databases
+# Export from the source MongoDB
+mongodump \
+  --host mongodb-primary.internal:27017 \
+  --db myapp \
+  --out /tmp/mongodb-backup/ \
+  --gzip
+
+# Import directly into Firestore using your user credentials and connection string
+mongorestore \
+  --uri "mongodb://myapp-user:a1b2c3d4-generated-secure-password@myapp-db.nam5.firestore.goog:443/myapp?loadBalanced=true&tls=true&authMechanism=SCRAM-SHA-256" \
+  --db myapp \
+  /tmp/mongodb-backup/myapp/ \
+  --gzip
+```
+
+For continuous replication before cutover, see the official Google Cloud documentation:
+- [Migrate data from MongoDB to Firestore with MongoDB compatibility](https://cloud.google.com/firestore/mongodb-compatibility/docs/migrate-data)
+- [Datastream Overview](https://cloud.google.com/datastream/docs)
+- [Datastream MongoDB to Firestore Dataflow Template](https://github.com/GoogleCloudPlatform/DataflowTemplates/tree/main/v2/datastream-mongodb-to-firestore)
+
+### Application Connection String Update
+
+Because Firestore with MongoDB compatibility is wire-compatible, your application code, MongoDB driver, and queries stay the same. You only need to update the connection string:
+
+```python
+# Before: connecting to on-premises MongoDB
+# client = MongoClient("mongodb://mongodb-primary.internal:27017/myapp?replicaSet=rs0")
+
+# After: connecting to Firestore with MongoDB compatibility
+from pymongo import MongoClient
+
+# Use the connection string with the user credentials created via gcloud CLI
+client = MongoClient(
+    "mongodb://myapp-user:a1b2c3d4-generated-secure-password@<database-uid>.nam5.firestore.goog:443/myapp"
+    "?loadBalanced=true&tls=true&authMechanism=SCRAM-SHA-256&retryWrites=false"
+)
+
+# Everything else stays exactly the same
+db = client.myapp
+orders = db.orders.find({"status": "pending"}).sort("created_at", -1).limit(10)
+``` 
+
 ## Option 3 - Firestore native APIs
 
 Using to Firestore's proprietary APIs means changing your application code. Your data model now also supports new constructs like sub-documents unlike MongoDB's document model which handles all the nesting in a single document. This might involve more work upfront but gives you more data modeling flexibility and deeper GCP integration.
