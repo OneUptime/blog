@@ -336,6 +336,19 @@ SELECT * FROM Users WHERE email = 'jane@example.com'
 SELECT * FROM Users WHERE userId = 'user-001'
 ```
 
+**No JOIN, GROUP BY, COUNT, SUM, or AVG.** DynamoDB's [PartiQL SELECT syntax](https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/ql-reference.select.html) reads from one table or index and does not support `JOIN` or `GROUP BY`. Its [supported functions](https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/ql-functions.html) also exclude result-set aggregates such as `COUNT`, `SUM`, and `AVG`. The supported `SIZE` function measures a single attribute, not the number of matching items:
+
+```sql
+-- Not supported
+SELECT o.orderId, c.name
+FROM Orders o JOIN Customers c ON o.customerId = c.customerId
+
+-- Not supported either
+SELECT customerId, COUNT(*) FROM Orders GROUP BY customerId
+```
+
+When you need these operations, consider denormalising at write time, processing the retrieved items in your application, or using [Amazon Athena's DynamoDB connector](https://docs.aws.amazon.com/athena/latest/ug/connectors-dynamodb.html) for analytical queries. Athena can join DynamoDB tables, but queries can consume DynamoDB read capacity and incur additional costs, so review table sizes and access patterns first.
+
 **No LIKE operator.** DynamoDB doesn't support SQL wildcard searches. Use PartiQL functions such as `begins_with` or `contains` when they fit your access pattern.
 
 **Parameter types.** When you use the low-level DynamoDB SDK client, PartiQL parameters must include the DynamoDB type descriptor (`{ S: 'string' }`, `{ N: '123' }`, etc.). This is easy to forget.
