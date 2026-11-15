@@ -8,15 +8,18 @@ Description: Set up Amazon SageMaker Ground Truth to create high-quality labeled
 
 ---
 
+**Availability note:** [SageMaker Ground Truth no longer accepts new customers](https://docs.aws.amazon.com/sagemaker/latest/dg/sms.html). This guide is intended for existing customers using private or vendor workforces.
+
 Every supervised ML model starts with labeled data, and getting that labeled data is often the hardest part of the whole project. Labeling thousands of images, text documents, or data points by hand is expensive and time-consuming. SageMaker Ground Truth makes this manageable by combining human labelers with active learning to reduce the amount of manual work needed.
 
 This guide walks through setting up labeling jobs, managing your workforce, and using automated labeling to speed things up.
 
 ## How Ground Truth Works
 
-Ground Truth orchestrates labeling jobs by distributing data to human annotators and collecting their labels. It supports several labeling strategies:
+Ground Truth orchestrates labeling jobs by distributing data to human annotators and collecting their labels.
 
-- **Amazon Mechanical Turk** - Crowdsourced labeling from the public workforce. *Note: Amazon closed Mechanical Turk on September 30, 2026, so this option is no longer available ([TechRadar](https://techradar.com/pro/aws-is-shutting-down-mechanical-turk-which-let-humans-beat-ai-at-certain-work-tasks)). See [alternatives to Mechanical Turk and Ground Truth](https://datavlab.ai/post/mechanical-turk-sagemaker-ground-truth-alternatives).*
+Amazon [closed Mechanical Turk on September 30, 2026](https://www.mturk.com/help), so Ground Truth's public workforce is no longer available. Existing Ground Truth customers can use private or vendor workforces. The available labeling strategies are:
+
 - **Private workforce** - Your own team of annotators
 - **Vendor workforce** - Professional labeling companies from the AWS Marketplace
 - **Automated labeling** - Active learning that machine-labels some data while sending uncertain items to humans
@@ -131,7 +134,7 @@ The label categories configuration file defines the possible labels.
 
 ## Setting Up a Private Workforce
 
-For sensitive data, you'll want to use your own team of annotators rather than a public workforce.
+A private workforce lets you assign labeling tasks to your own employees or contractors.
 
 ```python
 # Create a private workforce using Cognito
