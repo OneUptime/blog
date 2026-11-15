@@ -153,6 +153,8 @@ aws marketplace-catalog list-entities \
 
 You will need to provide business details, banking information for payouts, and tax documentation. AWS takes a listing fee from paid sales; standard fees vary by offer type and deployment method, such as 3% for SaaS public offers and 20% for server public offers.
 
+Standard software and data private-offer fees depend on total contract value: 3% below $1M, 2% from $1M to below $10M, and 1.5% at $10M or more. Renewals carry a 1.5% fee. For example, a $100 AMI sale leaves $80 after the standard public-offer fee, versus $97 after the standard direct private-offer fee, before other applicable charges. Channel Partner Private Offers add 0.5 percentage points; regional uplifts can also apply. Professional services have separate rates. See the [AWS Marketplace listing fees](https://docs.aws.amazon.com/marketplace/latest/userguide/listing-fees.html).
+
 ### Listing an AMI Product
 
 To list an AMI product, you need to create a properly configured AMI and submit it for review:
@@ -268,7 +270,7 @@ If you work with resellers or want to offer special pricing to specific customer
 # Customers see the private offer in their Marketplace console
 ```
 
-Private Offers are also how you handle enterprise negotiated pricing, multi-year deals, and custom payment schedules.
+Private Offers are also how you handle enterprise negotiated pricing, multi-year deals, and custom payment schedules. For server products, private offers can have lower standard listing fees; see the fee summary above.
 
 ## Cost Management for Marketplace Purchases
 
