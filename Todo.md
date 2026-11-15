@@ -1,5 +1,857 @@
 # Blog Post Ideas
 
+## AI-Native Observability: 200 Research-Backed Blog Ideas
+
+Research date: 15 November 2026.
+
+These 200 additions cover 20 topics, with 10 titles per topic. The editorial focus is production AI reliability, trustworthy telemetry, and faster incident investigation.
+
+The research draws on 174 distinct Reddit and Stack Overflow threads. Titles adapt the questions and recurring problems in those discussions; this is a qualitative demand assessment, not a search-volume ranking. Each title links to its motivating discussion.
+
+All 200 titles were checked against the 61,019 entries in Blogs.json and the existing Todo.md backlog using case- and punctuation-insensitive matching. Existing topics are allowed; existing titles are excluded.
+
+### LLM Latency, Streaming, and Token Cost
+
+1. How to Measure LLM Time to First Token Separately from Token Generation Speed
+
+   Research: [Reddit discussion](https://www.reddit.com/r/LocalLLaMA/comments/1kk1dkh/time_to_first_token_and_tokenssecond/).
+
+2. How to Correlate LLM Context Length with Prefill and Decode Latency
+
+   Research: [Reddit discussion](https://www.reddit.com/r/LocalLLaMA/comments/1kk1dkh/time_to_first_token_and_tokenssecond/).
+
+3. How to Diagnose Buffered LLM Streams with FastAPI and Browser Chunk Timestamps
+
+   Research: [Stack Overflow question](https://stackoverflow.com/questions/79952304/fastapi-streamingresponse-buffers-llm-tokens-until-completion-when-consumed-by-n).
+
+4. How to Trace LLM Streaming Stalls Caused by Concurrent FastAPI Requests
+
+   Research: [Stack Overflow question](https://stackoverflow.com/questions/77026648/how-to-ensure-uninterrupted-streaming-with-openais-chat-completion-api-and-hand).
+
+5. How to Diagnose HTTP/2 Resets While Collecting Token Usage from Streamed LLM Calls
+
+   Research: [Stack Overflow question](https://stackoverflow.com/questions/79088852/http-2-server-reset-the-stream-http-2-error-code-internal-error-when-enabling).
+
+6. How to Reconcile Azure OpenAI Realtime Token Telemetry with Billing Meters
+
+   Research: [Stack Overflow question](https://stackoverflow.com/questions/79918080/azure-openai-realtime-api-token-usage-from-response-done-event-does-not-match).
+
+7. How to Attribute LLM Spending to Customers, Chats, and Workflows with Trace Metadata
+
+   Research: [Reddit discussion](https://www.reddit.com/r/LLMDevs/comments/1hu73lk/how_do_you_track_your_llms_usage_and_cost/).
+
+8. How to Preserve Historical LLM Cost Accuracy When Model Prices Change
+
+   Research: [Reddit discussion](https://www.reddit.com/r/LLMDevs/comments/1hu73lk/how_do_you_track_your_llms_usage_and_cost/).
+
+9. How to Detect Prompt Cache Invalidation with Per-Step Agent Latency Metrics
+
+   Research: [Reddit discussion](https://www.reddit.com/r/AI_Agents/comments/1w66bbv/agent_runs_are_fine_at_step_1_then_get_slow/).
+
+10. How to Find Oversized Tool Results That Make Later Agent Steps Slower
+
+    Research: [Reddit discussion](https://www.reddit.com/r/AI_Agents/comments/1w66bbv/agent_runs_are_fine_at_step_1_then_get_slow/).
+
+### AI Agent and Tool-Call Tracing
+
+11. How to Detect Repeated Agent Tool Calls Before an Iteration Limit Ends the Run
+
+    Research: [Stack Overflow question](https://stackoverflow.com/questions/79473112/infinite-loop-in-custom-react-agent-using-langchain-missing-action-after-t).
+
+12. How to Trace ReAct Output Parser Failures After a Successful Tool Call
+
+    Research: [Stack Overflow question](https://stackoverflow.com/questions/79473112/infinite-loop-in-custom-react-agent-using-langchain-missing-action-after-t).
+
+13. How to Monitor Whether an AI Agent Skips a Required Database Lookup
+
+    Research: [Stack Overflow question](https://stackoverflow.com/questions/76961512/force-langchain-agent-to-use-a-tool).
+
+14. How to Preserve Tool Outputs and Model Inputs for Replaying Failed Agent Runs
+
+    Research: [Reddit discussion](https://www.reddit.com/r/AI_Agents/comments/1wpsxlv/question_for_people_running_ai_agents_in/).
+
+15. How to Inspect LangChain and LangGraph HTTP Requests Alongside Agent Traces
+
+    Research: [Stack Overflow question](https://stackoverflow.com/questions/79569887/how-can-i-see-the-requests-and-responses-from-langchain-and-langgraph).
+
+16. How to Propagate Parent Call IDs Through Deeply Nested AI Agents
+
+    Research: [Reddit discussion](https://www.reddit.com/r/AI_Agents/comments/1rs8uz7/how_are_you_handling_observability_when_subagents/).
+
+17. How to Attribute Token Costs Across a Tree of Sub-Agent Calls
+
+    Research: [Reddit discussion](https://www.reddit.com/r/AI_Agents/comments/1rs8uz7/how_are_you_handling_observability_when_subagents/).
+
+18. How to Trace LangGraph Approval, Rejection, and Resume Events to Find Broken Tool Histories
+
+    Research: [Stack Overflow question](https://stackoverflow.com/questions/79471648/when-using-interrupt-followed-by-new-command-resume-get-an-undefin).
+
+19. How to Diagnose LangGraph Step Timeouts with Per-Node Duration Traces
+
+    Research: [Stack Overflow question](https://stackoverflow.com/questions/78696732/intermittent-unboundlocalerror-in-langgraph-agent-execution).
+
+20. How to Verify AI Agent Tool Success by Tracing External State Readbacks
+
+    Research: [Reddit discussion](https://www.reddit.com/r/LLMDevs/comments/1xoeslt/we_built_an_observability_layer_for_ai_agents_but/).
+
+### RAG Retrieval and Answer Quality
+
+21. How to Separate RAG Retrieval Failures from Answer Generation Failures in Traces
+
+    Research: [Reddit discussion](https://www.reddit.com/r/Rag/comments/1s2c1ci/rag_question_retrieval_looks_correct_but_answers/).
+
+22. How to Trace Which RAG Chunks Survive Retrieval, Reranking, and Prompt Assembly
+
+    Research: [Reddit discussion](https://www.reddit.com/r/Rag/comments/1xgrxm0/debugging_rag_gets_confusing_when_retrieval_and/).
+
+23. How to Monitor RAG Relevance Gates and Fallbacks for Unanswerable Questions
+
+    Research: [Stack Overflow question](https://stackoverflow.com/questions/79900654/improve-the-rag-chatbot-result).
+
+24. How to Debug Empty SelfQueryRetriever Results by Logging Generated Metadata Filters
+
+    Research: [Stack Overflow question](https://stackoverflow.com/questions/77509471/why-does-my-selfqueryretriever-langchain-return-an-empty-response-despite-the).
+
+25. How to Detect Duplicate Chroma Retrieval Results with Document ID Metrics
+
+    Research: [Stack Overflow question](https://stackoverflow.com/questions/77555312/langchain-chromadb-why-does-vectorstore-return-so-many-duplicates).
+
+26. How to Add Similarity Scores to SelfQueryRetriever Traces for Retrieval Debugging
+
+    Research: [Stack Overflow question](https://stackoverflow.com/questions/79165072/getting-document-similarity-scores-with-selfqueryretriever-langchain).
+
+27. How to Compare Hybrid and Vector Search with a RAG Retrieval Regression Dashboard
+
+    Research: [Reddit discussion](https://www.reddit.com/r/Rag/comments/1u88gi7/what_actually_broke_when_we_took_rag_from_demo_to/).
+
+28. How to Trace RAG Citations to Document IDs When Several Chunks Share One Source
+
+    Research: [Reddit discussion](https://www.reddit.com/r/Rag/comments/1wf920i/a_question_about_conflicting_context_found_two/).
+
+29. How to Monitor Required-Fact Coverage in RAG Answers That Need Multiple Documents
+
+    Research: [Reddit discussion](https://www.reddit.com/r/Rag/comments/1x1jtsq/how_do_you_evaluate_rag_retrieval_quality_in/).
+
+30. How to Catch Embedding Input Truncation with Token-Length Checks During RAG Ingestion
+
+    Research: [Reddit discussion](https://www.reddit.com/r/Rag/comments/1xthc0g/your_rag_failures_are_chunk_failurenot_model/).
+
+### LLM Evaluation, Regression, and Drift
+
+31. How to Build a Canary Evaluation Gate for Prompt and Tool Changes
+
+    Research: [Reddit discussion](https://www.reddit.com/r/LLMDevs/comments/1sre0n8/how_are_you_testing_and_monitoring_llm_behavior/).
+
+32. How to Compare Prompt and Model Versions Using Stored Production Traces
+
+    Research: [Reddit discussion](https://www.reddit.com/r/mlops/comments/1ovtr8c/how_are_you_all_catching_subtle_llm_regressions/).
+
+33. How to Monitor Silent LLM Output Drift with Scheduled Golden-Prompt Runs
+
+    Research: [Reddit discussion](https://www.reddit.com/r/LLMDevs/comments/1rb1z2t/how_do_you_detect_silent_output_drift_in_llm/).
+
+34. How to Detect LLM Quality Regressions That Still Pass JSON Schema Checks
+
+    Research: [Reddit discussion](https://www.reddit.com/r/LLMDevs/comments/1w5oco1/evaluating_tools_for_detecting_llm_model_drift/).
+
+35. How to Set LLM Drift Alert Thresholds from Repeated Baseline Evaluations
+
+    Research: [Reddit discussion](https://www.reddit.com/r/LLMDevs/comments/1w5oco1/evaluating_tools_for_detecting_llm_model_drift/).
+
+36. How to Measure LLM Output Variance When Temperature Zero Still Produces Different Answers
+
+    Research: [Stack Overflow question](https://stackoverflow.com/questions/75946090/why-is-gpt-4-giving-different-answers-with-same-prompt-temperature-0).
+
+37. How to Trace Flaky LLM Judge Verdicts to Individual Rubric Criteria
+
+    Research: [Reddit discussion](https://www.reddit.com/r/LangChain/comments/1wvouoq/llmasjudge_keeps_flipping_verdicts_on_the_same/).
+
+38. How to Track LLM Judge False Passes and False Failures Against Human Labels
+
+    Research: [Reddit discussion](https://www.reddit.com/r/LLMDevs/comments/1xgk53a/my_llm_judge_was_less_accurate_than_the_agent_it/).
+
+39. How to Regression-Test LLM Judge Changes by Replaying Stored Agent Runs
+
+    Research: [Reddit discussion](https://www.reddit.com/r/LLMDevs/comments/1xgk53a/my_llm_judge_was_less_accurate_than_the_agent_it/).
+
+40. How to Monitor Position Bias in LLM Judges with Swapped Answer Pairs
+
+    Research: [Reddit discussion](https://www.reddit.com/r/LLMDevs/comments/1x2j8da/your_llm_judge_might_be_grading_partly_by/).
+
+### AI Telemetry Privacy, Security, and Guardrails
+
+41. How to Redact Sensitive LLM Data Across Prompt Logs, Tool Spans, and Error Reports
+
+    Research: [Reddit discussion](https://www.reddit.com/r/mlops/comments/1xhaw3h/devs_curious_how_youre_handling_sensitive_data_in/).
+
+42. How to Audit Where Sensitive Prompts Persist in Logs, Traces, and Evaluation Datasets
+
+    Research: [Reddit discussion](https://www.reddit.com/r/mlops/comments/1xhaw3h/devs_curious_how_youre_handling_sensitive_data_in/).
+
+43. How to Verify That PII Redaction Runs on Every Outbound LLM Request Path
+
+    Research: [Reddit discussion](https://www.reddit.com/r/LLMDevs/comments/1w8tezy/handling_pii_in_prompts/).
+
+44. How to Measure the Latency Cost of PII Redaction in Streaming LLM Gateways
+
+    Research: [Reddit discussion](https://www.reddit.com/r/cybersecurity/comments/1qb4wue/investigating_pii_leakage_in_llm_prompts/).
+
+45. How to Correlate Suspected Prompt Injection with Retrieved Content and Agent Tool Calls
+
+    Research: [Reddit discussion](https://www.reddit.com/r/cybersecurity/comments/1semk5r/prompt_injection_detection/).
+
+46. How to Alert on Unexpected Credential Access and Network Egress During Agent Runs
+
+    Research: [Reddit discussion](https://www.reddit.com/r/cybersecurity/comments/1semk5r/prompt_injection_detection/).
+
+47. How to Measure Guardrail False Positives on Harmless Quoted Attack Examples
+
+    Research: [Reddit discussion](https://www.reddit.com/r/AgentsOfAI/comments/1xkl4ai/we_tested_an_ai_guardrail_against_a_harmless/).
+
+48. How to Trace Pre-Model and Post-Model Guardrails Across Azure and AWS RAG Pipelines
+
+    Research: [Reddit discussion](https://www.reddit.com/r/LangChain/comments/1wi75c2/how_do_i_implement_pre_llm_user_prompt_via_a/).
+
+49. How to Monitor Azure OpenAI Content Filter Rejections by Language, Category, and Severity
+
+    Research: [Stack Overflow question](https://stackoverflow.com/questions/77431332/issue-with-microsoft-azure-openai-api-content-filtering-in-the-chinese-language).
+
+50. How to Validate Guardrail Decisions Against Independent Outcomes and Human Review
+
+    Research: [Reddit discussion](https://www.reddit.com/r/AgentsOfAI/comments/1x7tw09/every_guard_passed_the_decision_was_still_wrong/).
+
+### OpenTelemetry SDK and Auto-Instrumentation Troubleshooting
+
+51. How to Restore Node.js Auto-Instrumentation When an ESM Application Produces No Traces
+
+    Research: [Stack Overflow question](https://stackoverflow.com/questions/75505564/opentelemetry-auto-instrumentation-for-node-js).
+
+52. How to Find Import-Order Bugs That Prevent OpenTelemetry from Patching Node.js Libraries
+
+    Research: [Stack Overflow question](https://stackoverflow.com/questions/75136943/why-opentelemetry-needs-to-be-setup-before-any-other-code).
+
+53. How to Choose Python Functions to Trace When Auto-Instrumentation Leaves Gaps
+
+    Research: [Reddit discussion](https://www.reddit.com/r/Python/comments/1l6crs2/why_is_there_no_python_autoinstrument_module_for/).
+
+54. How to Diagnose Go Auto-Instrumentation That Never Starts After Adding Kubernetes Annotations
+
+    Research: [Reddit discussion](https://www.reddit.com/r/OpenTelemetry/comments/1g2ik4q).
+
+55. How to Recover Missing Outbound HTTP Spans in an Auto-Instrumented PHP Application
+
+    Research: [Stack Overflow question](https://stackoverflow.com/questions/76726928/dependencies-do-not-show-with-opentelemetry-automatic-instrumentation-for-php).
+
+56. How to Stop Unwanted Java Agent Exports When OpenTelemetry Keeps Connecting to Localhost
+
+    Research: [Stack Overflow question](https://stackoverflow.com/questions/77790857/getting-error-when-running-auto-instrumentation-using-otel-for-java-service).
+
+57. How to Debug a Null Activity from StartActivity When OpenTelemetry Listeners Are Registered
+
+    Research: [Stack Overflow question](https://stackoverflow.com/questions/76356454/opentelemetry-activitysource-startactivity-returns-null-activity-when-there-are).
+
+58. How to Diagnose Missing Python Request Logs When OpenTelemetry Exports Only Startup Logs
+
+    Research: [Stack Overflow question](https://stackoverflow.com/questions/79882176/otel-auto-instrumentation-for-python-logging).
+
+59. How to Trace the Source of Duplicate OpenTelemetry Spans with Identical Span IDs
+
+    Research: [Reddit discussion](https://www.reddit.com/r/sre/comments/1qwppbj/what_can_be_the_reasons_for_highly_duplicated/).
+
+60. How to Resolve gevent Monkey-Patching Conflicts with Python OpenTelemetry Auto-Instrumentation
+
+    Research: [Stack Overflow question](https://stackoverflow.com/questions/75209658/opentelemetry-python-gevent-monkey-patch-errors-when-using-auto-instrumentation).
+
+### Distributed Context Across HTTP, Queues, and Async Work
+
+61. How to Verify That Concurrent Python Async Tasks Keep Their OpenTelemetry Spans Separate
+
+    Research: [Stack Overflow question](https://stackoverflow.com/questions/77410600/is-opentelemetry-in-python-safe-to-use-with-async).
+
+62. How to Inject a Java Span into traceparent Headers with an OpenTelemetry Propagator
+
+    Research: [Stack Overflow question](https://stackoverflow.com/questions/79143601/can-w3c-traceparent-be-set-by-java-opentelemetry-sdk).
+
+63. How to Give Each Kafka Message Its Own Trace When One HTTP Request Publishes a Batch
+
+    Research: [Stack Overflow question](https://stackoverflow.com/questions/78205728/opentelemetry-manual-traceparent-creation).
+
+64. How to Continue an OpenTracing Request in an OpenTelemetry Service Using Remote Parent Context
+
+    Research: [Stack Overflow question](https://stackoverflow.com/questions/71935070/creating-opentelemetry-context-using-trace-id-and-span-id-of-remote-parent).
+
+65. How to Diagnose Duplicate traceparent Headers Between Nginx and ASP.NET Core
+
+    Research: [Stack Overflow question](https://stackoverflow.com/questions/75075296/net-core-system-diagnostics-activity-cannot-handle-multiple-parentids-from-trac).
+
+66. How to Reconnect Distributed Traces During a Migration from Elastic APM to OpenTelemetry
+
+    Research: [Stack Overflow question](https://stackoverflow.com/questions/76422074/elastic-apm-span-and-opentelemetry-span-not-linked).
+
+67. How to Preserve HTTP Trace Context When Work Moves into a .NET BackgroundService Channel
+
+    Research: [Reddit discussion](https://www.reddit.com/r/dotnet/comments/1kb3iof/tracing_in_background_services_with_opentelemetry/).
+
+68. How to Find the Async Thread-Pool Boundary That Splits Kafka Traces in Java
+
+    Research: [Stack Overflow question](https://stackoverflow.com/questions/73960329/opentelemetry-java-auto-instrumentation-trace-context-changing-when-passing-ov).
+
+69. How to Propagate Pub/Sub Trace Context Through Message Attributes Without Changing the Payload
+
+    Research: [Stack Overflow question](https://stackoverflow.com/questions/75219527/trace-propagate-in-google-cloud-with-pub-sub).
+
+70. How to Replace Hand-Built Kafka Trace Headers with OpenTelemetry Inject and Extract in Go
+
+    Research: [Stack Overflow question](https://stackoverflow.com/questions/78309167/how-to-propogate-open-telemetry-span-via-kafka).
+
+### OpenTelemetry Collector Reliability and Routing
+
+71. How to Diagnose Uneven OTLP Traffic Across Collector Gateways Behind a Network Load Balancer
+
+    Research: [Reddit discussion](https://www.reddit.com/r/OpenTelemetry/comments/1ciojw4).
+
+72. How to Rebalance OTLP Connections After a Collector Gateway Recovers from an Outage
+
+    Research: [Reddit discussion](https://www.reddit.com/r/OpenTelemetry/comments/1ciojw4).
+
+73. How to Detect Collector Data Loss When the Broken Pipeline Also Carries Its Error Logs
+
+    Research: [Reddit discussion](https://www.reddit.com/r/OpenTelemetry/comments/1gv36u3).
+
+74. How to Isolate Slow Tenant Destinations in a Shared OpenTelemetry Log-Routing Pipeline
+
+    Research: [Stack Overflow question](https://stackoverflow.com/questions/79884341/multi-tenant-log-routing-with-opentelemetry).
+
+75. How to Plan Collector Configuration Changes When Customers Add or Replace OTLP Destinations
+
+    Research: [Stack Overflow question](https://stackoverflow.com/questions/79884341/multi-tenant-log-routing-with-opentelemetry).
+
+76. How to Restore Missing Kubernetes Attributes After Reordering Collector Processors
+
+    Research: [Stack Overflow question](https://stackoverflow.com/questions/77893695/whats-the-recommended-processor-ordering-for-opentelemetry-collector-configurat).
+
+77. How to Place Batching, Sampling, and Memory Limits in a Collector Processing Pipeline
+
+    Research: [Stack Overflow question](https://stackoverflow.com/questions/77893695/whats-the-recommended-processor-ordering-for-opentelemetry-collector-configurat).
+
+78. How to Bound Java Telemetry Buffers When an OpenTelemetry Collector Becomes Unreachable
+
+    Research: [Stack Overflow question](https://stackoverflow.com/questions/78928471/handle-collector-failures-when-using-opentelemetry-in-java).
+
+79. How to Diagnose Repeated DeadlineExceeded Errors in a Collector OTLP Exporter
+
+    Research: [Stack Overflow question](https://stackoverflow.com/questions/74263356/why-does-the-opentelemetry-exporter-to-newrelic-is-failing).
+
+80. How to Apply a Service Allowlist Consistently to Collector Logs, Metrics, and Traces
+
+    Research: [Stack Overflow question](https://stackoverflow.com/questions/79680084/opentelemetry-filter-syntax).
+
+### Trace Sampling and Completeness
+
+81. How to Retain Java Error Traces When HTTP Status Is Unknown at Span Creation
+
+    Research: [Reddit discussion](https://www.reddit.com/r/OpenTelemetry/comments/1exikj0).
+
+82. How to Sample Slow Requests When Their Duration Is Known Only After the Span Ends
+
+    Research: [Stack Overflow question](https://stackoverflow.com/questions/72186762/allow-open-telemetry-sampling-decision-at-the-end-of-the-span).
+
+83. How to Choose a Tail-Sampling Decision Window for Jobs That Run for Minutes or Hours
+
+    Research: [Stack Overflow question](https://stackoverflow.com/questions/77654922/otel-collector-tail-sampling).
+
+84. How to Size Tail-Sampling Memory for Traces with Late-Arriving Spans
+
+    Research: [Stack Overflow question](https://stackoverflow.com/questions/77654922/otel-collector-tail-sampling).
+
+85. How to Capture a Specific Replayed Request Without Raising the Global Trace Sample Rate
+
+    Research: [Reddit discussion](https://www.reddit.com/r/kubernetes/comments/1vk2v5t/how_do_you_debug_a_specific_request_when_the/).
+
+86. How to Investigate a Successful but Incorrect Request When Its Trace Was Sampled Out
+
+    Research: [Reddit discussion](https://www.reddit.com/r/kubernetes/comments/1vk2v5t/how_do_you_debug_a_specific_request_when_the/).
+
+87. How to Preserve Trace Affinity While Scaling Collectors That Perform Tail Sampling
+
+    Research: [Reddit discussion](https://www.reddit.com/r/Observability/comments/1ri32cx/is_tail_sampling_at_scale_becoming_a_scaling/).
+
+88. How to Redesign a Trace with Tens of Thousands of Spans When Sampling Is Not an Option
+
+    Research: [Reddit discussion](https://www.reddit.com/r/OpenTelemetry/comments/1qiv29z/grafana_ui_jaeger_becomes_unresponsive_with_huge/).
+
+89. How to Diagnose a Missing AWS Lambda Parent Span in an External Trace Backend
+
+    Research: [Stack Overflow question](https://stackoverflow.com/questions/78900023/aws-lambda-open-telemetry-missing-parent-span).
+
+90. How to Diagnose ASP.NET Core Traces That Disappear Only When Another Service Calls the API
+
+    Research: [Stack Overflow question](https://stackoverflow.com/questions/76610220/net-api-tracing-with-opentelemetry).
+
+### Telemetry Correlation and Service Identity
+
+91. How to Restore trace_id and span_id in Spring Boot Logs When Traces Export Successfully
+
+    Research: [Stack Overflow question](https://stackoverflow.com/questions/75233672/open-telemetry-logger-mdc-auto-instrumentation).
+
+92. How to Read the Active Trace ID in Java When Logback Shows It but MDC.get Returns Null
+
+    Research: [Stack Overflow question](https://stackoverflow.com/questions/75633901/unable-to-get-opentelemetrys-trace-id-through-mdc-even-though-mdc-was-working).
+
+93. How to Make OpenTelemetry Trace Links Work in Google Cloud Structured Logs
+
+    Research: [Stack Overflow question](https://stackoverflow.com/questions/76823058/how-to-associate-opentelemetry-trace-span-id-to-google-cloud-logs).
+
+94. How to Promote Trace IDs from Plain-Text Log Bodies into OpenTelemetry Correlation Fields
+
+    Research: [Stack Overflow question](https://stackoverflow.com/questions/75026679/parsing-traceid-spanid-from-log-line-using-opentelemetry-logprocessor).
+
+95. How to Resolve Conflicting OpenTelemetry Service Names from Environment and Resource Settings
+
+    Research: [Stack Overflow question](https://stackoverflow.com/questions/78737503/difference-between-otel-service-name-and-otel-resource-attributes-service-name-c).
+
+96. How to Fix a Go Service Name That Stays Wrong After Changing Span Attributes
+
+    Research: [Stack Overflow question](https://stackoverflow.com/questions/77755084/set-opentelemetry-span-service-name-in-go).
+
+97. How to Assign service.instance.id Across Processes and Instrumentation Scopes
+
+    Research: [Stack Overflow question](https://stackoverflow.com/questions/79587545/what-does-globally-unique-mean-in-practice-for-service-instance-id-resource-at).
+
+98. How to Find Where Prometheus Exemplars Disappear Between a Collector and a Scrape
+
+    Research: [Stack Overflow question](https://stackoverflow.com/questions/79443856/prometheus-not-scraping-exemplars).
+
+99. How to Repair Missing Metric-to-Trace Links in a Spring Boot, Prometheus, and Tempo Stack
+
+    Research: [Stack Overflow question](https://stackoverflow.com/questions/79607523/micrometer-registry-prometheus-not-showing-exemplars).
+
+100. How to Add Tracing to a LogQL-Based Investigation Workflow Without Losing Log Context
+
+     Research: [Reddit discussion](https://www.reddit.com/r/Observability/comments/1tm7b5i/how_to_move_from_logs_to_traces/).
+
+### Prometheus and PromQL Correctness
+
+101. How to Explain Fractional Request Counts in Prometheus When Traffic Is Sparse
+
+     Research: [Stack Overflow question](https://stackoverflow.com/questions/38665904/why-does-increase-return-a-value-of-1-33-in-prometheus).
+
+102. How to Choose a PromQL Rate Window When Two Scrapes Double an Event Count
+
+     Research: [Stack Overflow question](https://stackoverflow.com/questions/48218950/increase-in-prometheus-sometimes-doubles-values-how-to-avoid).
+
+103. How to Preserve Metric Names in Cardinality Alerts Without Duplicate Label Errors
+
+     Research: [Stack Overflow question](https://stackoverflow.com/questions/64426698/how-to-alert-on-metrics-with-a-high-cardinality-in-prometheus).
+
+104. How to Find Which Prometheus Metrics Consume Memory Before Dropping Labels
+
+     Research: [Reddit discussion](https://www.reddit.com/r/devops/comments/16s7hmq/).
+
+105. How to Keep Useful Pod Identity Labels Without Unbounded Prometheus Series Churn
+
+     Research: [Reddit discussion](https://www.reddit.com/r/devops/comments/12aygos/).
+
+106. How to Decide Which Ephemeral Labels Belong in Logs Instead of Prometheus Metrics
+
+     Research: [Reddit discussion](https://www.reddit.com/r/devops/comments/12aygos/).
+
+107. How to Fill Missing Prometheus Series with Zeros While Preserving Their Labels
+
+     Research: [Stack Overflow question](https://stackoverflow.com/questions/69410425/time-series-from-prometheus-source-how-to-set-nulls-as-zero).
+
+108. How to Keep Missing Success Counters from Breaking Per-Service Success Rates
+
+     Research: [Stack Overflow question](https://stackoverflow.com/questions/56770824/calculate-success-rate-with-prometheus-when-the-numerator-is-null).
+
+109. How to Aggregate Histogram Buckets by Application Without Breaking P99 Queries
+
+     Research: [Stack Overflow question](https://stackoverflow.com/questions/66758116/grafana-promql-histogram-quantile-query-issue).
+
+110. How to Chart Multiple Latency Percentiles When Grafana Variables Break histogram_quantile
+
+     Research: [Stack Overflow question](https://stackoverflow.com/questions/51776726/grafana-multivalue-float-histogram-quantile).
+
+### Log Pipelines and Loki Reliability
+
+111. How to Diagnose Loki Queries That Time Out While CPU Usage Stays Low
+
+     Research: [Reddit discussion](https://www.reddit.com/r/grafana/comments/1kwh1wr/).
+
+112. How to Check Whether Loki Query Splitting Is Using Your Read Replicas
+
+     Research: [Reddit discussion](https://www.reddit.com/r/grafana/comments/1e67f8k/how_is_your_large_volume_grafana_loki_environment/).
+
+113. How to Investigate Loki Entry Too Far Behind Errors After a Logging Delay
+
+     Research: [Reddit discussion](https://www.reddit.com/r/grafana/comments/18m6r4p/).
+
+114. How to Trace Dropped Logs Through Fluent Bit Bulk Rejections and Retry Buffers
+
+     Research: [Reddit discussion](https://www.reddit.com/r/elasticsearch/comments/g1snjl/).
+
+115. How to Keep FireLens Log Backpressure from Exhausting Fargate Ephemeral Storage
+
+     Research: [Reddit discussion](https://www.reddit.com/r/aws/comments/1iyhxl3/).
+
+116. How to Parse Multiline Container Logs with Explicit Start and End Markers
+
+     Research: [Stack Overflow question](https://stackoverflow.com/questions/75770565/fluent-bit-rule-when-using-multiline-log-start-and-end-tags).
+
+117. How to Keep Blank Lines from Splitting Fluent Bit Multiline Events
+
+     Research: [Stack Overflow question](https://stackoverflow.com/questions/79842007/fluentbit-multilines-filter-for-log-including-emptyline).
+
+118. How to Diagnose Fluent Bit Re-reading Rotated Files Despite Saved Offsets
+
+     Research: [Stack Overflow question](https://stackoverflow.com/questions/79814338/why-does-fluent-bit-re-read-a-rotated-log-file-even-when-the-inode-remains-the-s).
+
+119. How to Troubleshoot Loki Too Many Outstanding Requests During Interactive Log Searches
+
+     Research: [Reddit discussion](https://www.reddit.com/r/grafana/comments/1bdukrs/).
+
+120. How to Filter JSON Fields in LogQL When Grafana Does Not Detect Them
+
+     Research: [Stack Overflow question](https://stackoverflow.com/questions/72055752/loki-parse-json-and-filter-by-field).
+
+### Kubernetes and GPU Workload Diagnosis
+
+121. How to Find Short CPU Bursts Behind Kubernetes Throttling with Low Average Usage
+
+     Research: [Stack Overflow question](https://stackoverflow.com/questions/54099425/pod-cpu-throttling).
+
+122. How to Separate CPU Limit Throttling from CPU Share Contention in Kubernetes
+
+     Research: [Stack Overflow question](https://stackoverflow.com/questions/70561395/how-to-measure-throttling-due-to-cpu-shares-in-kubernetes).
+
+123. How to Investigate OOMKilled Pods When Sampled Memory Never Reaches the Limit
+
+     Research: [Stack Overflow question](https://stackoverflow.com/questions/58749290/process-inside-pod-is-oomkilled-even-though-pod-limits-not-reached).
+
+124. How to Reconcile Kubernetes Working Set, RSS, and Cache Before Increasing Memory Limits
+
+     Research: [Stack Overflow question](https://stackoverflow.com/questions/78762663/cadvisor-reports-high-wss-but-low-rss-and-cache-memory-usage).
+
+125. How to Explain .NET Pod Memory Growth When the Managed Heap Stays Small
+
+     Research: [Stack Overflow question](https://stackoverflow.com/questions/74186819/high-working-set-size-in-dotnet-under-kubernetes).
+
+126. How to Fix DCGM GPU Metrics That Identify the Exporter Pod Instead of the Workload
+
+     Research: [Stack Overflow question](https://stackoverflow.com/questions/69647019/not-getting-pod-gpu-metrics-from-dcgm-exporter).
+
+127. How to Connect GPU Utilization Dips to Kubernetes Training Jobs and Experiments
+
+     Research: [Reddit discussion](https://www.reddit.com/r/MachineLearning/comments/1qj0bcc/d_how_do_you_guys_handle_gpu_waste_on_k8s/).
+
+128. How to Interpret GPU Compute and Memory Metrics When Investigating Underutilized Node Pools
+
+     Research: [Reddit discussion](https://www.reddit.com/r/kubernetes/comments/1mupefq/gke_gpu_optimisation/).
+
+129. How to Make GPU Utilization Available to the Kubernetes Horizontal Pod Autoscaler
+
+     Research: [Stack Overflow question](https://stackoverflow.com/questions/77454212/autoscaling-seldon-deployments-based-on-gpu-metric).
+
+130. How to Measure Time Spent Pending for Kubernetes Pods Using kube-state-metrics
+
+     Research: [Reddit discussion](https://www.reddit.com/r/PrometheusMonitoring/comments/1ioamkb/how_to_best_query_and_graph_pods_duration_in/).
+
+### Continuous Profiling and eBPF Diagnostics
+
+131. How to Measure Go pprof Overhead Before Leaving Profiling Enabled in Production
+
+     Research: [Stack Overflow question](https://stackoverflow.com/questions/64057727/is-it-ok-to-use-golang-pprof-on-production-without-effecting-performance).
+
+132. How to Compare Production and Staging pprof Profiles to Catch Release Regressions
+
+     Research: [Reddit discussion](https://www.reddit.com/r/golang/comments/1uasllf/how_do_you_do_continuous_profiling_execution/).
+
+133. How to Diagnose Request Latency That CPU Profiles Cannot Explain
+
+     Research: [Stack Overflow question](https://stackoverflow.com/questions/23098153/how-to-use-linux-perf-tool-to-generate-off-cpu-profile).
+
+134. How to Separate Idle Waiting from Contention in Off-CPU Flame Graphs
+
+     Research: [Stack Overflow question](https://stackoverflow.com/questions/60190228/best-event-counter-to-use-for-measuring-wall-clock-time-using-perf-tools).
+
+135. How to Resolve Unknown Java Allocation Frames in Kubernetes Profiling
+
+     Research: [Stack Overflow question](https://stackoverflow.com/questions/70860682/asyncprofiler-malloc-undefined-category).
+
+136. How to Diagnose Missing JavaScript Symbols in Linux perf Flame Graphs
+
+     Research: [Stack Overflow question](https://stackoverflow.com/questions/27842281/unknown-events-in-nodejs-v8-flamegraph-using-perf-events).
+
+137. How to Choose a Profiling Capture Window for Intermittent Node.js Slowdowns
+
+     Research: [Stack Overflow question](https://stackoverflow.com/questions/34244107/node-js-flame-graph-note-working-properly).
+
+138. How to Measure Event Loss in High-Throughput eBPF Observability Pipelines
+
+     Research: [Reddit discussion](https://www.reddit.com/r/kernel/comments/1m28oon/ebpf_perf_buffer_dropping_events_at_600k_opssec/).
+
+139. How to Profile Userspace Processing When eBPF Buffers Drop Events
+
+     Research: [Reddit discussion](https://www.reddit.com/r/kernel/comments/1m28oon/ebpf_perf_buffer_dropping_events_at_600k_opssec/).
+
+140. How to Review eBPF Observability Changes for Production Performance Regressions
+
+     Research: [Reddit discussion](https://www.reddit.com/r/kubernetes/comments/1ll3bwq/).
+
+### Observability Storage, Retention, and Costs
+
+141. How to Set Different Loki Retention Periods for Teams When Global Retention Works
+
+     Research: [Stack Overflow question](https://stackoverflow.com/questions/79342867/not-getting-grafana-loki-retention-overrides-to-work).
+
+142. How to Diagnose Loki Compactor Retention When Old Log Chunks Never Disappear
+
+     Research: [Stack Overflow question](https://stackoverflow.com/questions/73138278/why-my-loki-log-retention-is-not-working).
+
+143. How to Budget Prometheus Local Disk When Metrics Are Also Sent by Remote Write
+
+     Research: [Stack Overflow question](https://stackoverflow.com/questions/50742163/prometheus-no-space-left-on-device-while-using-remote-writer).
+
+144. How to Diagnose Prometheus WAL Growth Before It Exhausts Persistent Storage
+
+     Research: [Stack Overflow question](https://stackoverflow.com/questions/63958695/prometheus-wal-keeps-on-growing-indefinitely).
+
+145. How to Verify Prometheus Retention Settings When History Disappears After 15 Days
+
+     Research: [Stack Overflow question](https://stackoverflow.com/questions/59401508/prometheus-retention-time-set-to-1-year-but-not-keeping-data-beyond-default-15-d).
+
+146. How to Choose Which Log Fields Deserve Indexing at Terabyte-Scale Ingestion
+
+     Research: [Reddit discussion](https://www.reddit.com/r/Observability/comments/1t37phh/at_what_scale_do_log_indexing_costs_become_the/).
+
+147. How to Compare Indexing and Scan Costs for Long Log Lookbacks
+
+     Research: [Reddit discussion](https://www.reddit.com/r/Observability/comments/1t37phh/at_what_scale_do_log_indexing_costs_become_the/).
+
+148. How to Reduce Observability Spend While Keeping Audit Logs Available
+
+     Research: [Reddit discussion](https://www.reddit.com/r/devops/comments/1og42rk/how_do_smaller_teams_manage_observability_costs/).
+
+149. How to Include Self-Hosting Maintenance in an Observability Cost Comparison
+
+     Research: [Reddit discussion](https://www.reddit.com/r/devops/comments/1og42rk/how_do_smaller_teams_manage_observability_costs/).
+
+150. How to Choose Loki Log Retention from Ingestion Volume and Storage Growth
+
+     Research: [Reddit discussion](https://www.reddit.com/r/devops/comments/1r3d4u0/log_scraper_loki_storage_usage_and_best_practices/).
+
+### Alert Quality and AI-Assisted Triage
+
+151. How to Investigate Resolved Alerts That Actually Mean Prometheus Lost Its Metrics
+
+     Research: [Stack Overflow question](https://stackoverflow.com/questions/71399800/prometheus-send-resolved-notification-when-metric-data-missing).
+
+152. How to Diagnose Repeated Pages When a Flapping Alert Resets Alertmanager Notifications
+
+     Research: [Stack Overflow question](https://stackoverflow.com/questions/78192157/resolved-alerts-resets-repeat-interval-in-alertmanager).
+
+153. How to Keep Resolved Development Alerts Out of New Production Alert Groups
+
+     Research: [Stack Overflow question](https://stackoverflow.com/questions/71969959/prometheus-alertmanager-includes-resolved-alerts-in-a-new-alert).
+
+154. How to Debug Alertmanager Reminders That Arrive Later Than the Repeat Interval
+
+     Research: [Stack Overflow question](https://stackoverflow.com/questions/78728184/why-alertmanager-is-re-sending-notifications-after-group-interval-repeat-inte).
+
+155. How to Give Critical and Warning Alerts Different Reminder Schedules in Alertmanager
+
+     Research: [Stack Overflow question](https://stackoverflow.com/questions/67628163/alertmanager-different-interval-for-different-alert-rules).
+
+156. How to Route a Critical Alert to Both Chat and Paging Without Losing Either Notification
+
+     Research: [Stack Overflow question](https://stackoverflow.com/questions/62672730/prometheus-alertmanager-send-notifications-to-multiple-slack-channel).
+
+157. How to Decide Which Noisy Alerts Should Become Dashboard Panels Instead of Pages
+
+     Research: [Reddit discussion](https://www.reddit.com/r/sre/comments/18ggb3p/whats_your_strategy_for_reducing_alert_fatigue/).
+
+158. How to Audit an On-Call Alert Queue for Pages That Have No Useful Response
+
+     Research: [Reddit discussion](https://www.reddit.com/r/sre/comments/1nm7sbi/alert_fatigue_is_killing_me/).
+
+159. How to Test AI Alert Prioritization in Shadow Mode Before It Can Page Engineers
+
+     Research: [Reddit discussion](https://www.reddit.com/r/sysadmin/comments/1qviqak/how_are_you_handling_triage_and_oncall_across/).
+
+160. How to Put Service Ownership, User Impact, and Escalation Steps Into Every Page
+
+     Research: [Reddit discussion](https://www.reddit.com/r/devops/comments/1vv7m7w/how_do_you_handle_alerts_issues/).
+
+### SLOs and Error Budgets for Real Workloads
+
+161. How to Explain Error Budget Recovery as Old Failures Leave a Rolling SLO Window
+
+     Research: [Stack Overflow question](https://stackoverflow.com/questions/70290789/how-do-i-measure-error-budget-consumption-for-rolling-windows).
+
+162. How to Measure the Share of Minutes That Violated an API Latency SLO Over 28 Days
+
+     Research: [Stack Overflow question](https://stackoverflow.com/questions/52724435/how-do-i-query-an-api-latency-error-budget-from-prometheus).
+
+163. How to Calculate the Fraction of Requests Between Two Histogram Buckets for an SLI
+
+     Research: [Stack Overflow question](https://stackoverflow.com/questions/64693235/latency-slo-calculation-of-requests).
+
+164. How to Represent No-Traffic Periods in an SLO Without Treating Them as Outages
+
+     Research: [Reddit discussion](https://www.reddit.com/r/sre/comments/109w8ru/).
+
+165. How to Set a Useful Latency SLO for an Endpoint With Only Dozens of Monthly Requests
+
+     Research: [Reddit discussion](https://www.reddit.com/r/sre/comments/1rqay29/do_people_actually_set_999_target_for_latency_slo/).
+
+166. How to Keep Bot-Generated Errors From Dominating Low-Traffic SLO Burn Alerts
+
+     Research: [Reddit discussion](https://www.reddit.com/r/sre/comments/1dda0w7/).
+
+167. How to Measure Batch Pipeline Reliability With Output Freshness Instead of Job Duration
+
+     Research: [Reddit discussion](https://www.reddit.com/r/devops/comments/1r3i7kl/how_do_you_set_slos_for_longrunning_batch_jobs/).
+
+168. How to Define a Coverage SLO for Batch Runs That Skip Some Customers
+
+     Research: [Reddit discussion](https://www.reddit.com/r/devops/comments/1r3i7kl/how_do_you_set_slos_for_longrunning_batch_jobs/).
+
+169. How to Budget for Dead-Letter Queue Messages Using Both Backlog Size and Age
+
+     Research: [Reddit discussion](https://www.reddit.com/r/devops/comments/1r3i7kl/how_do_you_set_slos_for_longrunning_batch_jobs/).
+
+170. How to Keep a Healthy Global SLO From Hiding Failures in One Third-Party Integration
+
+     Research: [Reddit discussion](https://www.reddit.com/r/sre/comments/qsidvs/).
+
+### Incident Investigation, Runbooks, and Learning
+
+171. How to Make Failed Remediation Attempts Searchable Before the Next Similar Incident
+
+     Research: [Reddit discussion](https://www.reddit.com/r/sre/comments/1vndr8z/when_a_production_incident_repeats_months_later/).
+
+172. How to Link Runbook Fixes to the Incident Evidence That Verified They Worked
+
+     Research: [Reddit discussion](https://www.reddit.com/r/sre/comments/1vndr8z/when_a_production_incident_repeats_months_later/).
+
+173. How to Keep Postmortem Action Items Visible After the Incident Ticket Closes
+
+     Research: [Reddit discussion](https://www.reddit.com/r/devops/comments/1q30bt7/what_actually_happens_to_postmortem_action_items/).
+
+174. How to Prioritize Incident Follow-Ups by the Outage Impact They Would Have Prevented
+
+     Research: [Reddit discussion](https://www.reddit.com/r/devops/comments/1q30bt7/what_actually_happens_to_postmortem_action_items/).
+
+175. How to Make Runbook Corrections an Owned Deliverable of Every Incident Review
+
+     Research: [Reddit discussion](https://www.reddit.com/r/EngineeringManagers/comments/1qmuyub/how_do_your_runbooks_actually_get_updated_after/).
+
+176. How to Make AI Root Cause Suggestions Reviewable With Linked Logs and Tool Results
+
+     Research: [Reddit discussion](https://www.reddit.com/r/sre/comments/1t6wqux/anyone_using_ai_for_actual_sreoncall_operations/).
+
+177. How to Evaluate an AI On-Call Assistant Against Historical Investigation Steps
+
+     Research: [Reddit discussion](https://www.reddit.com/r/sre/comments/1t6wqux/anyone_using_ai_for_actual_sreoncall_operations/).
+
+178. How to Give an AI Incident Assistant Context From Recent Changes and Previous Outages
+
+     Research: [Reddit discussion](https://www.reddit.com/r/devops/comments/1o5w30f/anyone_else_experimenting_with_ai_assisted_on/).
+
+179. How to Reconstruct an Incident Timeline From Impact Charts, Alerts, and Deployment Changes
+
+     Research: [Reddit discussion](https://www.reddit.com/r/RedditEng/comments/1se5gmu/incident_reviews_or_how_we_transform_outages_into/).
+
+180. How to Unify Incident Intake When Customer Reports and Monitoring Alerts Arrive in Different Tools
+
+     Research: [Reddit discussion](https://www.reddit.com/r/sre/comments/1qvimz3/how_are_you_handling_triage_across_multiple/).
+
+### Synthetic Monitoring and Real User Experience
+
+181. How to Catch Broken Login Flows When the Health Endpoint Still Returns HTTP 200
+
+     Research: [Reddit discussion](https://www.reddit.com/r/sre/comments/1xu7xdn/what_do_you_actually_put_behind_health/).
+
+182. How to Separate Process Health From Database-Dependent User Journey Checks
+
+     Research: [Reddit discussion](https://www.reddit.com/r/sre/comments/1xu7xdn/what_do_you_actually_put_behind_health/).
+
+183. How to Diagnose a Failed Blackbox Probe When the Same URL Works With curl
+
+     Research: [Stack Overflow question](https://stackoverflow.com/questions/54773928/probes-returning-zero).
+
+184. How to Include the Failed HTTP Status Code in a Blackbox Probe Alert
+
+     Research: [Stack Overflow question](https://stackoverflow.com/questions/57022903/blackbox-exporter-alert-with-value-of-the-probe-http-status-code-metric).
+
+185. How to Keep Firebase-Authenticated Synthetic Checks Logged In Across Browser Contexts
+
+     Research: [Stack Overflow question](https://stackoverflow.com/questions/77325496/playwright-re-use-state-re-use-authentication-with-firebase).
+
+186. How to Restore Session Storage for Playwright Synthetic Checks That Lose Their Login
+
+     Research: [Stack Overflow question](https://stackoverflow.com/questions/79998740/playwright-session-state-not-loading).
+
+187. How to Interpret Core Web Vitals Across Client-Side Route Changes in a Vue SPA
+
+     Research: [Stack Overflow question](https://stackoverflow.com/questions/76341639/how-to-collect-core-web-vitals-for-spa-vue-application).
+
+188. How to Investigate INP Regressions That Appear in Field Data but Not Local Tests
+
+     Research: [Stack Overflow question](https://stackoverflow.com/questions/79263877/inp-is-over-300-according-to-google-but-lower-than-100-in-other-tools-and-real).
+
+189. How to Distinguish Checkout Failures From Bot-Protection Errors in Synthetic Monitoring
+
+     Research: [Reddit discussion](https://www.reddit.com/r/devops/comments/1r8jmez/sreish_monitoring_for_a_blackbox_paas_shopify/).
+
+190. How to Capture Console and Network Evidence for Failed Synthetic Checkout Runs
+
+     Research: [Reddit discussion](https://www.reddit.com/r/devops/comments/1r8jmez/sreish_monitoring_for_a_blackbox_paas_shopify/).
+
+### Database and Messaging Dependency Reliability
+
+191. How to Separate Npgsql Pool Contention From Slow EF Core Transaction Startup
+
+     Research: [Stack Overflow question](https://stackoverflow.com/questions/80013695/how-to-distinguish-npgsql-connection-pool-wait-time-from-ef-core-begintransactio).
+
+192. How to Tell Database Connection Creation Delays From Waiting for a Free Pool Slot
+
+     Research: [Stack Overflow question](https://stackoverflow.com/questions/80013695/how-to-distinguish-npgsql-connection-pool-wait-time-from-ef-core-begintransactio).
+
+193. How to Capture Short-Lived PostgreSQL Connection Exhaustion Before the Evidence Disappears
+
+     Research: [Stack Overflow question](https://stackoverflow.com/questions/31784505/tracking-out-of-database-connection-issues-with-python-and-postgresql).
+
+194. How to Read Idle PostgreSQL Sessions Without Mistaking the Last Query for Active Work
+
+     Research: [Stack Overflow question](https://stackoverflow.com/questions/44275684/postgres-sessions-are-idle-with-query-commit-or-rollback).
+
+195. How to Trace a Blocking PostgreSQL Transaction Back to the Client That Left It Open
+
+     Research: [Stack Overflow question](https://stackoverflow.com/questions/18789586/postgres-how-to-debug-trace-idle-in-transaction-connection).
+
+196. How to Distinguish Duplicate Application Queries From PostgreSQL Parallel Worker Activity
+
+     Research: [Stack Overflow question](https://stackoverflow.com/questions/77618910/postgres-pg-stat-activity-is-it-normal-if-there-are-duplicate-activity).
+
+197. How to Tell Falling Kafka Producer Traffic From a Consumer That Has Stopped Keeping Up
+
+     Research: [Stack Overflow question](https://stackoverflow.com/questions/61357676/compare-last-day-total-consumption-for-kafka-consumer-in-grafana).
+
+198. How to Detect a RabbitMQ Requeue Loop That Looks Like a Queue Full of Unacked Messages
+
+     Research: [Stack Overflow question](https://stackoverflow.com/questions/25114230/rabbitmq-purge-a-queue-from-all-of-its-unacked-messages).
+
+199. How to Distinguish Slow RabbitMQ Consumers From Messages Stranded on an Open Channel
+
+     Research: [Stack Overflow question](https://stackoverflow.com/questions/7063224/how-can-i-recover-unacknowledged-amqp-messages-from-other-channels-than-my-conne).
+
+200. How to Investigate Redis Client Timeouts When SLOWLOG Shows No Slow Commands
+
+     Research: [Stack Overflow question](https://stackoverflow.com/questions/69714891/stackexchange-redis-timeout-issue-high-input-stream-buffer).
+
+---
+
 ## Infrastructure Automation
 
 
