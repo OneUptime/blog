@@ -336,7 +336,7 @@ SELECT * FROM Users WHERE email = 'jane@example.com'
 SELECT * FROM Users WHERE userId = 'user-001'
 ```
 
-**No JOIN, GROUP BY or aggregates.** A PartiQL `SELECT` reads one table or index. Query two of them and DynamoDB returns `ValidationException: Only Select from a Single Table or index supported`. There is no `GROUP BY` either, and no aggregate functions such as `COUNT`, `SUM` or `AVG` - the server returns items and your application does the rest:
+**No JOIN, GROUP BY, COUNT, SUM, or AVG.** DynamoDB's [PartiQL SELECT syntax](https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/ql-reference.select.html) reads from one table or index and does not support `JOIN` or `GROUP BY`. Its [supported functions](https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/ql-functions.html) also exclude result-set aggregates such as `COUNT`, `SUM`, and `AVG`. The supported `SIZE` function measures a single attribute, not the number of matching items:
 
 ```sql
 -- Not supported
@@ -347,7 +347,7 @@ FROM Orders o JOIN Customers c ON o.customerId = c.customerId
 SELECT customerId, COUNT(*) FROM Orders GROUP BY customerId
 ```
 
-For someone arriving from SQL these are usually the first three things you reach for, so they are worth knowing up front. When you do need them, the usual routes are denormalising at write time, [Amazon Athena's DynamoDB connector](https://docs.aws.amazon.com/athena/latest/ug/connectors-dynamodb.html) for analytical work, or a desktop client that lowers SQL to native DynamoDB requests - [DynoTable](https://dynotable.com/docs/dynamodb-sql-workbench) and DynoStudio both do this.
+When you need these operations, consider denormalising at write time, processing the retrieved items in your application, or using [Amazon Athena's DynamoDB connector](https://docs.aws.amazon.com/athena/latest/ug/connectors-dynamodb.html) for analytical queries. Athena can join DynamoDB tables, but queries can consume DynamoDB read capacity and incur additional costs, so review table sizes and access patterns first.
 
 **No LIKE operator.** DynamoDB doesn't support SQL wildcard searches. Use PartiQL functions such as `begins_with` or `contains` when they fit your access pattern.
 
