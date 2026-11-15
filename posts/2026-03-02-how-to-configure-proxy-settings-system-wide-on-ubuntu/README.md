@@ -8,11 +8,11 @@ Description: Learn how to configure HTTP, HTTPS, and SOCKS proxy settings system
 
 ---
 
-Working behind a corporate proxy or routing traffic through a specific gateway is a common requirement in enterprise environments. Ubuntu doesn't have a single central proxy configuration file - settings are scattered across environment variables, desktop settings, and application-specific configs. This tutorial covers all the relevant locations so your proxy configuration actually works for every tool and service.
+Working behind a corporate proxy or routing traffic through a specific gateway is a common requirement in enterprise environments. Ubuntu doesn't have a single central proxy configuration file - settings are scattered across environment variables, desktop settings, and application-specific configs. This tutorial covers the common configuration locations; each application must support the settings you choose.
 
 ## Understanding How Ubuntu Handles Proxies
 
-Most command-line tools on Linux respect environment variables like `http_proxy`, `https_proxy`, and `no_proxy`. However, some system services (like APT and systemd services) have their own configuration mechanisms. To get full system-wide proxy coverage, you need to configure multiple locations.
+Many command-line tools on Linux respect environment variables like `http_proxy`, `https_proxy`, and `no_proxy`. However, some system services (like APT and systemd services) have their own configuration mechanisms. These settings supply defaults to participating applications; they do not force all network traffic through a proxy.
 
 The main configuration layers are:
 - System-wide environment variables (`/etc/environment`)
@@ -181,6 +181,27 @@ gsettings set org.gnome.system.proxy.https port 3128
 # Set no-proxy list
 gsettings set org.gnome.system.proxy ignore-hosts "['localhost', '127.0.0.0/8', '10.0.0.0/8', '192.168.0.0/16', '.example.com']"
 ```
+
+## Per-Request Routing with a PAC File
+
+A static `http_proxy` or `https_proxy` value identifies a proxy endpoint. It does not evaluate a Proxy Auto-Configuration (PAC) script. For different routes by destination, keep your PAC file and configure applications that support it to use its URL. WPAD discovers a PAC URL; the client still needs PAC support to evaluate the rules.
+
+On GNOME, choose **Automatic** in the desktop proxy settings and enter your PAC URL, or run these commands as the desktop user, without `sudo`:
+
+```bash
+gsettings set org.gnome.system.proxy autoconfig-url 'https://proxy-config.example.com/wpad.dat'
+gsettings set org.gnome.system.proxy mode 'auto'
+
+# Check the saved settings
+gsettings get org.gnome.system.proxy mode
+gsettings get org.gnome.system.proxy autoconfig-url
+```
+
+Replace the example URL with the PAC URL served to that client. These are per-user settings for applications that honor GNOME's proxy configuration. Browsers with their own settings may need their automatic configuration URL set separately. See [GNOME's proxy documentation](https://help.gnome.org/gnome-help/net-proxy.html).
+
+PAC's `FindProxyForURL(url, host)` function chooses a route for each request; it does not receive the calling application's identity. For different policies by application, configure each application with its own PAC URL where supported. A server can return different PAC content to different clients, but clients may cache that content. Also, [Chromium strips the path and query from HTTPS URLs before PAC evaluation](https://chromium.googlesource.com/chromium/src/+/HEAD/net/docs/proxy.md#Arguments-passed-to-FindProxyForURL_in-PAC-scripts), so avoid relying on those components for routing.
+
+Command-line tools need separate consideration: [curl does not evaluate PAC files](https://everything.curl.dev/usingcurl/proxies/pac.html), and setting `http_proxy` to a PAC URL does not enable that feature. For applications without PAC support, use their supported proxy settings, integrate a PAC resolver into the application, or configure an explicit local forwarding proxy that implements the required routing policy. A forwarding proxy generally sees the destination host and port for HTTPS tunnels, not the encrypted URL path. Test the actual applications you use; no single environment variable gives every program PAC support.
 
 ## SOCKS Proxy Configuration
 

@@ -36,6 +36,8 @@ sequenceDiagram
 
 ## Basic Token Refresh Implementation
 
+The examples build on one another. For a complete script that saves refresh tokens between runs, see [Running the Persistent Example](#running-the-persistent-example).
+
 ```python
 import time
 import requests
@@ -543,7 +545,11 @@ refresher.stop()
 
 ## Handling Refresh Token Rotation
 
-Some OAuth2 providers rotate refresh tokens with each use. Handle this properly:
+Some OAuth2 providers rotate refresh tokens with each use. Save the replacement immediately and use it for the next refresh. If the response omits `refresh_token`, keep the current one, as described in [RFC 6749, Section 6](https://www.rfc-editor.org/rfc/rfc6749#section-6).
+
+This section builds on `TokenData`, `OAuth2TokenManager`, and the exception classes from the basic implementation. `token_store` must be a `PersistentTokenStore` object, not a filename: `token_store=PersistentTokenStore("tokens.json")`. Passing `token_store="tokens.json"` fails because strings do not have a `load_tokens()` method.
+
+The file store below is for one application process with one token manager. Atomic replacement prevents partially written JSON; it does not coordinate the entire refresh operation between processes. Multiple processes sharing a refresh token need coordination around loading, refreshing, and saving it.
 
 ```mermaid
 sequenceDiagram
@@ -573,24 +579,17 @@ import os
 import tempfile
 from pathlib import Path
 from typing import Optional
-import fcntl
 
 
 class PersistentTokenStore:
-    """
-    Persistent token storage with atomic updates for refresh token rotation.
-    """
+    """Persistent token storage with atomic file replacement."""
 
     def __init__(self, storage_path: str):
-        self.storage_path = Path(storage_path)
-        self.lock_path = self.storage_path.with_suffix(".lock")
-        self.storage_path.parent.mkdir(parents=True, exist_ok=True)
+        self.storage_path = Path(storage_path).expanduser()
+        self.storage_path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
 
     def save_tokens(self, token_data: TokenData) -> None:
-        """
-        Atomically save tokens to storage.
-        Uses file locking to prevent race conditions.
-        """
+        """Save complete token metadata without exposing a partial JSON file."""
         data = {
             "access_token": token_data.access_token,
             "refresh_token": token_data.refresh_token,
@@ -601,36 +600,30 @@ class PersistentTokenStore:
             "scope": token_data.scope
         }
 
-        with open(self.lock_path, "w") as lock_file:
-            fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX)
-            try:
-                # Write to a unique temp file first
-                with tempfile.NamedTemporaryFile(
-                    "w",
-                    dir=self.storage_path.parent,
-                    delete=False
-                ) as f:
-                    temp_path = Path(f.name)
-                    json.dump(data, f)
-                    f.flush()
-                    os.fsync(f.fileno())
+        temp_path = None
+        try:
+            # NamedTemporaryFile is readable/writable only by its owner on POSIX.
+            with tempfile.NamedTemporaryFile(
+                "w", dir=self.storage_path.parent, delete=False, encoding="utf-8"
+            ) as f:
+                temp_path = Path(f.name)
+                json.dump(data, f)
+                f.flush()
+                os.fsync(f.fileno())
 
-                # Atomic replace
-                os.replace(temp_path, self.storage_path)
-            finally:
-                fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
+            os.replace(temp_path, self.storage_path)
+        finally:
+            # Remove the temporary file if writing or replacing failed.
+            if temp_path is not None and temp_path.exists():
+                temp_path.unlink()
 
     def load_tokens(self) -> Optional[TokenData]:
-        """Load tokens from storage."""
-        if not self.storage_path.exists():
-            return None
-
-        with open(self.storage_path, "r") as f:
-            fcntl.flock(f.fileno(), fcntl.LOCK_SH)
-            try:
+        """Restore the original expiry; restarting must not extend token life."""
+        try:
+            with self.storage_path.open(encoding="utf-8") as f:
                 data = json.load(f)
-            finally:
-                fcntl.flock(f.fileno(), fcntl.LOCK_UN)
+        except FileNotFoundError:
+            return None
 
         return TokenData(
             access_token=data["access_token"],
@@ -643,15 +636,15 @@ class PersistentTokenStore:
         )
 
     def clear_tokens(self) -> None:
-        """Remove stored tokens."""
-        if self.storage_path.exists():
+        """Remove stored tokens when re-authentication is required."""
+        try:
             self.storage_path.unlink()
+        except FileNotFoundError:
+            pass
 
 
 class TokenManagerWithRotation(OAuth2TokenManager):
-    """
-    Token manager that properly handles refresh token rotation.
-    """
+    """Persist initial tokens and every successful refresh."""
 
     def __init__(
         self,
@@ -662,61 +655,110 @@ class TokenManagerWithRotation(OAuth2TokenManager):
         refresh_buffer_seconds: int = 60
     ):
         super().__init__(client_id, client_secret, token_url, refresh_buffer_seconds)
+        if isinstance(token_store, (str, Path)):
+            raise TypeError("Pass PersistentTokenStore(filename), not the filename itself")
         self.token_store = token_store
-
-        # Load existing tokens
-        stored_tokens = self.token_store.load_tokens()
-        if stored_tokens:
-            self._token_data = stored_tokens
+        self._token_data = self.token_store.load_tokens()
 
     def set_tokens(self, token_response: dict) -> None:
         """Store tokens in memory and persist to storage."""
         super().set_tokens(token_response)
-
-        # Persist immediately after refresh token rotation
-        if self._token_data:
-            self.token_store.save_tokens(self._token_data)
+        self.token_store.save_tokens(self._token_data)
 
     def _refresh_token(self) -> None:
-        """
-        Refresh token with proper handling of rotation.
-        """
-        if self._token_data is None:
-            raise TokenNotAvailableError("No tokens available")
-
-        old_refresh_token = self._token_data.refresh_token
-
-        response = requests.post(
-            self.token_url,
-            data={
-                "grant_type": "refresh_token",
-                "refresh_token": old_refresh_token
-            },
-            auth=(self.client_id, self.client_secret),
-            timeout=30
-        )
-
-        if response.status_code == 200:
-            token_response = response.json()
-
-            # Check for rotated refresh token
-            new_refresh_token = token_response.get("refresh_token")
-
-            if new_refresh_token and new_refresh_token != old_refresh_token:
-                print("Refresh token was rotated")
-            elif not new_refresh_token:
-                # Provider does not rotate - keep the old one
-                token_response["refresh_token"] = old_refresh_token
-
-            self.set_tokens(token_response)
-        else:
-            error_data = response.json()
-            if error_data.get("error") == "invalid_grant":
-                self._token_data = None
-                self.token_store.clear_tokens()
-                raise RefreshTokenExpiredError("Refresh token expired or revoked")
-            raise TokenRefreshError(f"Token refresh failed: {error_data}")
+        # The base class already preserves or replaces the refresh token.
+        # Its call to self.set_tokens() also persists the new token here.
+        try:
+            super()._refresh_token()
+        except RefreshTokenExpiredError:
+            self.token_store.clear_tokens()
+            raise
 ```
+
+### Running the Persistent Example
+
+Download [persistent_token_refresh.py](https://github.com/OneUptime/blog/blob/master/posts/2026-01-24-oauth2-token-refresh/persistent_token_refresh.py). It contains the basic token manager, HTTP session, persistent store, and the entry point below in one file. Install its dependency in a virtual environment:
+
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+python -m pip install requests
+```
+
+On Windows, activate the environment with `.venv\Scripts\activate` instead. Configure your provider's client ID, **token endpoint** (not just the API hostname), API base URL, and an API path you can read:
+
+```bash
+export OAUTH_CLIENT_ID="your_client_id"
+export OAUTH_TOKEN_URL="https://auth.example.com/oauth/token"
+export OAUTH_API_BASE_URL="https://api.example.com"
+export OAUTH_API_PATH="/users/me"
+python persistent_token_refresh.py
+```
+
+These are Bash/Zsh commands; use your shell's equivalent environment-variable syntax on Windows. The script prompts for your client secret, or reads `OAUTH_CLIENT_SECRET` if your service supplies it through its environment. It assumes a confidential client using HTTP Basic authentication at the token endpoint and Bearer access tokens; use your provider's documented authentication method if it differs. Use HTTPS for both endpoints. The basic manager uses a 3,600-second fallback when `expires_in` is absent; replace that fallback with your provider's documented lifetime. OAuth does not define a universal default ([RFC 6749, Section 5.1](https://www.rfc-editor.org/rfc/rfc6749#section-5.1)).
+
+On the first run, complete your provider's authorization flow to obtain a refresh token, then paste the **current** refresh token at the hidden prompt. The script marks the initial access token as expired so the first API request obtains a fresh one. This avoids guessing how much time remains on an access token copied earlier. The authorization/login flow itself is provider-specific and is not implemented here.
+
+On later runs, the constructor loads the saved tokens, including their original `expires_at`. Do not call `set_tokens()` with the initial values again: that would overwrite the latest rotated refresh token. The script makes one GET request per run; a polling application can keep using the same `api` instance.
+
+```python
+from getpass import getpass
+from urllib.parse import urlsplit
+
+
+def main():
+    token_url = os.environ["OAUTH_TOKEN_URL"]
+    base_url = os.environ["OAUTH_API_BASE_URL"].rstrip("/")
+    api_path = os.environ.get("OAUTH_API_PATH", "/users/me")
+    for url in (token_url, base_url):
+        parsed = urlsplit(url)
+        if parsed.scheme != "https" or not parsed.netloc:
+            raise ValueError("Use a complete HTTPS URL for the token endpoint and API")
+    if not api_path.startswith("/"):
+        raise ValueError("OAUTH_API_PATH must start with /")
+
+    # Use a stable path outside the source repository, even after a restart.
+    store = PersistentTokenStore(os.environ.get(
+        "OAUTH_TOKEN_FILE", str(Path.home() / ".oauth2-monitor" / "tokens.json")
+    ))
+    token_manager = TokenManagerWithRotation(
+        client_id=os.environ["OAUTH_CLIENT_ID"],
+        client_secret=os.environ.get("OAUTH_CLIENT_SECRET") or getpass("Client secret: "),
+        token_url=token_url,
+        token_store=store  # Pass the object, not "tokens.json".
+    )
+
+    if store.load_tokens() is None:
+        refresh_token = getpass("Current refresh token from initial authorization: ")
+        if not refresh_token:
+            raise ValueError("A refresh token is required for the first run")
+        token_manager.set_tokens({
+            "access_token": "",
+            "refresh_token": refresh_token,
+            "expires_in": 0  # Refresh before making the first API request.
+        })
+
+    api = OAuth2Session(token_manager, base_url=base_url)
+    try:
+        response = api.get(api_path, timeout=30)
+        response.raise_for_status()
+        print(response.json())
+    except RefreshTokenExpiredError:
+        raise SystemExit(
+            "Refresh token rejected; saved tokens were removed. Complete your "
+            "provider's authorization flow again, then rerun with a new refresh token."
+        ) from None
+    finally:
+        api.session.close()
+
+
+if __name__ == "__main__":
+    main()
+```
+
+By default, tokens are saved in `~/.oauth2-monitor/tokens.json`; set `OAUTH_TOKEN_FILE` to an absolute path to change it. This JSON contains credentials in plaintext. Keep it outside source control and restrict access to the service account. New token files have owner-only permissions on POSIX; configure equivalent file and directory permissions on Windows. For a deployed service, use storage appropriate to its security requirements, such as a secrets store. Refresh tokens must remain confidential in storage and travel over TLS ([RFC 9700, Section 4.14.1](https://www.rfc-editor.org/rfc/rfc9700#section-4.14.1)).
+
+A successful refresh saves the new access token, refresh token, and expiry before the API call proceeds. If the provider omits a replacement refresh token, the existing one is retained. `invalid_grant` clears the saved credentials and requires re-authentication. Disk-write failures also stop the request: do not ignore them, because the provider may already have invalidated the previous refresh token. If a refresh response is lost after rotation, follow your provider's recovery guidance instead of blindly retrying an old refresh token.
 
 ## Token Refresh in Distributed Systems
 
