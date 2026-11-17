@@ -820214,6 +820214,1945 @@
     "readmePath": "posts/2026-09-29-customer-outage-report-to-sli-alert/README.md"
   },
   {
+    "title": "How to Add Trace Links to a LogQL Investigation Workflow",
+    "description": "Keep structured log context while adding trace identifiers, derived links, and a reliable fallback for unsampled requests.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Loki",
+      "Grafana",
+      "OpenTelemetry"
+    ],
+    "post": "2026-11-15-how-to-add-trace-links-to-a-logql-investigation-workflow"
+  },
+  {
+    "title": "How to Aggregate Histogram Buckets by Application for Correct P99",
+    "description": "Preserve le while aggregating classic histogram rates, avoid averaging quantiles, and verify bucket compatibility across replicas.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Prometheus",
+      "Grafana"
+    ],
+    "post": "2026-11-15-how-to-aggregate-histogram-buckets-by-application-for-correct-p99"
+  },
+  {
+    "title": "How to Apply a Service Allowlist to Collector Logs, Metrics, and Traces",
+    "description": "Use the correct OTTL contexts and drop conditions to enforce one service allowlist across all three telemetry signals.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "OpenTelemetry",
+      "Observability"
+    ],
+    "post": "2026-11-15-how-to-apply-a-service-allowlist-to-collector-logs-metrics-and-traces"
+  },
+  {
+    "title": "How to Assign service.instance.id Across Processes and Scopes",
+    "description": "Choose a process-lifetime service instance identifier and reuse it consistently across instrumentation scopes and telemetry signals.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "OpenTelemetry",
+      "Kubernetes"
+    ],
+    "post": "2026-11-15-how-to-assign-service-instance-id-across-processes-and-scopes"
+  },
+  {
+    "title": "How to Audit On-Call Pages That Have No Useful Response",
+    "description": "Turn notification exports into an actionable audit by separating incident episodes, duplicate pages, missing runbooks, and response outcomes.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "SRE",
+      "Incident Management",
+      "Python"
+    ],
+    "post": "2026-11-15-how-to-audit-on-call-pages-that-have-no-useful-response"
+  },
+  {
+    "title": "How to Bound FireLens Backpressure on Fargate Ephemeral Storage",
+    "description": "Budget FireLens memory and disk queues separately and define what happens when Fargate log delivery cannot keep up.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "AWS",
+      "Fluent Bit"
+    ],
+    "post": "2026-11-15-how-to-bound-firelens-backpressure-on-fargate-ephemeral-storage"
+  },
+  {
+    "title": "How to Bound Java Telemetry Buffers During Collector Outages",
+    "description": "Set finite Java SDK trace and log queues, calculate their outage horizon, and verify application behavior when export fails.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "OpenTelemetry",
+      "Java"
+    ],
+    "post": "2026-11-15-how-to-bound-java-telemetry-buffers-during-collector-outages"
+  },
+  {
+    "title": "How to Budget Dead-Letter Queues by Backlog Size and Message Age",
+    "description": "Combine dead-letter backlog and age with unique-event accounting so queue gauges guide response without becoming a misleading error budget.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "SLO",
+      "Monitoring",
+      "Python"
+    ],
+    "post": "2026-11-15-how-to-budget-dead-letter-queues-by-backlog-size-and-message-age"
+  },
+  {
+    "title": "How to Budget Prometheus Disk When Using Remote Write",
+    "description": "Size Prometheus local blocks, WAL, and compaction headroom even when remote write sends every sample to another metrics backend.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Prometheus",
+      "Storage",
+      "Monitoring"
+    ],
+    "post": "2026-11-15-how-to-budget-prometheus-disk-when-using-remote-write"
+  },
+  {
+    "title": "How to Calculate Request Fractions Between Histogram Buckets",
+    "description": "Subtract cumulative Prometheus histogram buckets with matching labels to measure an exact latency band and handle empty traffic safely.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Prometheus",
+      "SLO",
+      "Python"
+    ],
+    "post": "2026-11-15-how-to-calculate-request-fractions-between-histogram-buckets"
+  },
+  {
+    "title": "How to Capture Brief PostgreSQL Connection Exhaustion",
+    "description": "Keep a bounded persistent diagnostic session and structured connection logs so short connection spikes remain explainable after they disappear.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "PostgreSQL",
+      "Monitoring",
+      "SRE"
+    ],
+    "post": "2026-11-15-how-to-capture-brief-postgresql-connection-exhaustion"
+  },
+  {
+    "title": "How to Capture Console and Network Evidence for Failed Checkout Tests",
+    "description": "Attach bounded, redacted console and network summaries to failed Playwright checkout runs and use restricted traces for deeper investigation.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Playwright",
+      "TypeScript",
+      "Monitoring"
+    ],
+    "post": "2026-11-15-how-to-capture-console-and-network-evidence-for-failed-checkout-tests"
+  },
+  {
+    "title": "How to Capture One Replayed Request Without Raising Global Sampling",
+    "description": "Target a controlled replay with trusted sampling context, a capture identifier, and a temporary tail-retention rule.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "OpenTelemetry",
+      "Observability"
+    ],
+    "post": "2026-11-15-how-to-capture-one-replayed-request-without-raising-global-sampling"
+  },
+  {
+    "title": "How to Catch Broken Login Flows Behind a Healthy HTTP Endpoint",
+    "description": "Use a dedicated Playwright login journey with user-visible assertions and failure evidence to detect authentication failures hidden by a healthy process endpoint.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Playwright",
+      "Monitoring",
+      "TypeScript"
+    ],
+    "post": "2026-11-15-how-to-catch-broken-login-flows-behind-a-healthy-http-endpoint"
+  },
+  {
+    "title": "How to Chart Multiple Latency Percentiles Without Broken Grafana Variables",
+    "description": "Use one scalar quantile per query and label each result instead of interpolating a multivalue variable into histogram_quantile.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Prometheus",
+      "Grafana"
+    ],
+    "post": "2026-11-15-how-to-chart-multiple-latency-percentiles-without-broken-grafana-variables"
+  },
+  {
+    "title": "How to Check Whether Loki Query Splitting Uses Read Replicas",
+    "description": "Verify the query frontend path, split intervals, worker discovery, and per-replica work before scaling Loki reads.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Loki",
+      "Kubernetes"
+    ],
+    "post": "2026-11-15-how-to-check-whether-loki-query-splitting-uses-read-replicas"
+  },
+  {
+    "title": "How to Choose a Node.js Profile Window for Intermittent Slowdowns",
+    "description": "Capture a bounded CPU profile around a known slowdown and compare it with event-loop delay and a healthy workload window.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Node.js",
+      "Profiling"
+    ],
+    "post": "2026-11-15-how-to-choose-a-node-js-profile-window-for-intermittent-slowdowns"
+  },
+  {
+    "title": "How to Choose a PromQL Rate Window When Event Counts Look Doubled",
+    "description": "Avoid two-sample extrapolation surprises by choosing stable rate windows and checking scrape timing before adjusting counters.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Prometheus",
+      "Grafana"
+    ],
+    "post": "2026-11-15-how-to-choose-a-promql-rate-window-when-event-counts-look-doubled"
+  },
+  {
+    "title": "How to Choose Log Fields to Index at Terabyte Scale",
+    "description": "Profile log field cardinality and query selectivity to choose stable Loki labels without turning request identifiers into expensive streams.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Loki",
+      "Observability",
+      "Python"
+    ],
+    "post": "2026-11-15-how-to-choose-log-fields-to-index-at-terabyte-scale"
+  },
+  {
+    "title": "How to Choose Loki Retention from Ingestion and Storage Growth",
+    "description": "Estimate Loki storage for different retention windows using measured compressed growth, deletion lag, and operational headroom.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Loki",
+      "Storage",
+      "Python"
+    ],
+    "post": "2026-11-15-how-to-choose-loki-retention-from-ingestion-and-storage-growth"
+  },
+  {
+    "title": "How to Choose Tail-Sampling Windows for Long-Running Jobs",
+    "description": "Use span arrival timing and bounded job phases to avoid retaining hours of trace state for long-running workloads.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "OpenTelemetry",
+      "Observability"
+    ],
+    "post": "2026-11-15-how-to-choose-tail-sampling-windows-for-long-running-jobs"
+  },
+  {
+    "title": "How to Compare Indexing and Scan Costs for Long Log Lookbacks",
+    "description": "Build a repeatable workload and break-even model for indexed versus scanned log searches without confusing storage price with query cost.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Observability",
+      "Loki",
+      "Python"
+    ],
+    "post": "2026-11-15-how-to-compare-indexing-and-scan-costs-for-long-log-lookbacks"
+  },
+  {
+    "title": "How to Compare Production and Staging Go Profiles for Regressions",
+    "description": "Align workload, binaries, sample types, and normalization before interpreting differences between pprof captures.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Go",
+      "Profiling"
+    ],
+    "post": "2026-11-15-how-to-compare-production-and-staging-go-profiles-for-regressions"
+  },
+  {
+    "title": "How to Connect GPU Utilization Dips to Kubernetes Training Jobs",
+    "description": "Join GPU device telemetry with bounded workload metadata and compare dips with training phases, input waits, and checkpoint events.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "GPU",
+      "Kubernetes",
+      "Prometheus"
+    ],
+    "post": "2026-11-15-how-to-connect-gpu-utilization-dips-to-kubernetes-training-jobs"
+  },
+  {
+    "title": "How to Correlate LLM Context Length with Prefill and Decode Latency",
+    "description": "Build controlled context-length experiments and separate queueing, prefill, and decode measurements without overreading client latency.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "AI",
+      "LLM",
+      "Python",
+      "Observability"
+    ],
+    "post": "2026-11-15-how-to-correlate-llm-context-length-with-prefill-and-decode-latency"
+  },
+  {
+    "title": "How to Debug Late Alertmanager Reminder Notifications",
+    "description": "Calculate reminder eligibility on Alertmanager group ticks and separate timer behavior from receiver retries and route changes.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Alertmanager",
+      "Monitoring",
+      "Python"
+    ],
+    "post": "2026-11-15-how-to-debug-late-alertmanager-reminder-notifications"
+  },
+  {
+    "title": "How to Decide Which Ephemeral Labels Belong in Logs Instead of Metrics",
+    "description": "Separate bounded metric dimensions from per-request identifiers and retain correlation through logs, traces, and exemplars.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Prometheus",
+      "Observability"
+    ],
+    "post": "2026-11-15-how-to-decide-which-ephemeral-labels-belong-in-logs-instead-of-metrics"
+  },
+  {
+    "title": "How to Decide Which Noisy Alerts Belong on Dashboards",
+    "description": "Classify alerts by user impact, response urgency, and available action, then replay incidents before moving informational signals off the pager.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "SRE",
+      "Monitoring",
+      "Python"
+    ],
+    "post": "2026-11-15-how-to-decide-which-noisy-alerts-belong-on-dashboards"
+  },
+  {
+    "title": "How to Define a Coverage SLO for Batch Runs That Skip Customers",
+    "description": "Freeze the expected customer population, count verified outputs, and expose missing coverage even when a batch job reports success.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "SLO",
+      "Python",
+      "Monitoring"
+    ],
+    "post": "2026-11-15-how-to-define-a-coverage-slo-for-batch-runs-that-skip-customers"
+  },
+  {
+    "title": "How to Detect Collector Data Loss When Its Error Logs Also Disappear",
+    "description": "Build independent Collector health checks and sequence-number canaries so pipeline failures remain visible during log delivery outages.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "OpenTelemetry",
+      "Monitoring"
+    ],
+    "post": "2026-11-15-how-to-detect-collector-data-loss-when-its-error-logs-also-disappear"
+  },
+  {
+    "title": "How to Detect RabbitMQ Requeue Loops Behind Unacked Messages",
+    "description": "Correlate unacknowledged deliveries with redelivery and acknowledgement progress to identify poison-message loops without purging useful work.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "RabbitMQ",
+      "Monitoring",
+      "Python"
+    ],
+    "post": "2026-11-15-how-to-detect-rabbitmq-requeue-loops-behind-unacked-messages"
+  },
+  {
+    "title": "How to Detect Resolved Alerts Caused by Missing Prometheus Metrics",
+    "description": "Separate recovery from missing telemetry with explicit scrape and metric-absence alerts, then test the failure and recovery timeline.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Prometheus",
+      "Alertmanager",
+      "Monitoring"
+    ],
+    "post": "2026-11-15-how-to-detect-resolved-alerts-caused-by-missing-prometheus-metrics"
+  },
+  {
+    "title": "How to Diagnose a Blackbox Probe When curl Succeeds",
+    "description": "Compare the exporter network path, IP family, TLS, redirects, status policy, and timeout using Blackbox Exporter debug output.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Prometheus",
+      "Monitoring",
+      "Kubernetes"
+    ],
+    "post": "2026-11-15-how-to-diagnose-a-blackbox-probe-when-curl-succeeds"
+  },
+  {
+    "title": "How to Diagnose a Missing AWS Lambda Parent Span in External Traces",
+    "description": "Distinguish AWS-managed X-Ray segments from exported application spans, then inspect propagation and Lambda flush behavior.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "OpenTelemetry",
+      "AWS"
+    ],
+    "post": "2026-11-15-how-to-diagnose-a-missing-aws-lambda-parent-span-in-external-traces"
+  },
+  {
+    "title": "How to Diagnose ASP.NET Traces Missing Only on Service-to-Service Calls",
+    "description": "Inspect incoming sampling flags, ASP.NET Activity state, and parent-based sampling before changing exporters.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "OpenTelemetry",
+      ".NET"
+    ],
+    "post": "2026-11-15-how-to-diagnose-asp-net-traces-missing-only-on-service-to-service-calls"
+  },
+  {
+    "title": "How to Diagnose Buffered LLM Streams with FastAPI Chunk Timestamps",
+    "description": "Locate stream buffering by comparing FastAPI yields, direct HTTP reads, and browser event arrival times through each proxy hop.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "AI",
+      "FastAPI",
+      "Python",
+      "Observability"
+    ],
+    "post": "2026-11-15-how-to-diagnose-buffered-llm-streams-with-fastapi-chunk-timestamps"
+  },
+  {
+    "title": "How to Diagnose Fluent Bit Re-reading Rotated Files with Saved Offsets",
+    "description": "Inspect Tail database identity, rotation strategy, file truncation, and path matching before changing saved-offset behavior.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Fluent Bit",
+      "Linux"
+    ],
+    "post": "2026-11-15-how-to-diagnose-fluent-bit-re-reading-rotated-files-with-saved-offsets"
+  },
+  {
+    "title": "How to Diagnose HTTP/2 Resets While Collecting LLM Stream Usage",
+    "description": "Preserve partial-stream evidence, distinguish missing usage from zero cost, and isolate HTTP/2 failures with a controlled transport matrix.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "AI",
+      "LLM",
+      "Python",
+      "Observability"
+    ],
+    "post": "2026-11-15-how-to-diagnose-http-2-resets-while-collecting-llm-stream-usage"
+  },
+  {
+    "title": "How to Diagnose Latency That CPU Profiles Cannot Explain",
+    "description": "Combine CPU sampling with bounded off-CPU and scheduler evidence to locate request time spent waiting rather than executing.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Profiling",
+      "Linux"
+    ],
+    "post": "2026-11-15-how-to-diagnose-latency-that-cpu-profiles-cannot-explain"
+  },
+  {
+    "title": "How to Diagnose Loki Query Timeouts When CPU Usage Stays Low",
+    "description": "Separate query queueing, object-store waits, cache misses, and timeout layers before adding Loki CPU capacity.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Loki",
+      "Grafana"
+    ],
+    "post": "2026-11-15-how-to-diagnose-loki-query-timeouts-when-cpu-usage-stays-low"
+  },
+  {
+    "title": "How to Diagnose Loki Retention When Old Chunks Never Disappear",
+    "description": "Trace Loki retention through eligibility, index compaction, deletion markers, and object-store removal to locate stuck old chunks.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Loki",
+      "Storage",
+      "Observability"
+    ],
+    "post": "2026-11-15-how-to-diagnose-loki-retention-when-old-chunks-never-disappear"
+  },
+  {
+    "title": "How to Diagnose Loki Too Many Outstanding Requests Errors",
+    "description": "Find the saturated frontend or scheduler queue and reduce query fan-out before raising outstanding-request limits.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Loki",
+      "Grafana"
+    ],
+    "post": "2026-11-15-how-to-diagnose-loki-too-many-outstanding-requests-errors"
+  },
+  {
+    "title": "How to Diagnose Missing JavaScript Symbols in Linux perf Profiles",
+    "description": "Generate and preserve V8 JIT symbol data, align PID namespaces, and distinguish native symbols from JavaScript stack recovery.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Node.js",
+      "Profiling",
+      "Linux"
+    ],
+    "post": "2026-11-15-how-to-diagnose-missing-javascript-symbols-in-linux-perf-profiles"
+  },
+  {
+    "title": "How to Diagnose Prometheus WAL Growth Before Disk Runs Out",
+    "description": "Separate normal Prometheus WAL peaks from ingestion churn, stalled compaction, and remote-write lag before persistent storage fills.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Prometheus",
+      "Storage",
+      "Monitoring"
+    ],
+    "post": "2026-11-15-how-to-diagnose-prometheus-wal-growth-before-disk-runs-out"
+  },
+  {
+    "title": "How to Diagnose Redis Timeouts When SLOWLOG Shows Nothing Slow",
+    "description": "Separate Redis execution time from client queueing, network transfer, and .NET scheduling to explain timeouts with a clean server slow log.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Redis",
+      ".NET",
+      "Monitoring"
+    ],
+    "post": "2026-11-15-how-to-diagnose-redis-timeouts-when-slowlog-shows-nothing-slow"
+  },
+  {
+    "title": "How to Diagnose Repeated OTLP Exporter DeadlineExceeded Errors",
+    "description": "Separate network, protocol, payload, and backend causes of OTLP export deadlines before increasing Collector timeouts.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "OpenTelemetry",
+      "Monitoring"
+    ],
+    "post": "2026-11-15-how-to-diagnose-repeated-otlp-exporter-deadlineexceeded-errors"
+  },
+  {
+    "title": "How to Diagnose Uneven OTLP Traffic Behind a Network Load Balancer",
+    "description": "Identify connection pinning, compare Collector ingestion rates, and choose a balancing strategy that fits OTLP traffic.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "OpenTelemetry",
+      "Kubernetes"
+    ],
+    "post": "2026-11-15-how-to-diagnose-uneven-otlp-traffic-behind-a-network-load-balancer"
+  },
+  {
+    "title": "How to Distinguish Duplicate Queries from PostgreSQL Parallel Workers",
+    "description": "Use backend_type and leader_pid to group PostgreSQL parallel workers before concluding that identical query text means duplicate application requests.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "PostgreSQL",
+      "Monitoring",
+      "SRE"
+    ],
+    "post": "2026-11-15-how-to-distinguish-duplicate-queries-from-postgresql-parallel-workers"
+  },
+  {
+    "title": "How to Distinguish New Database Connections from Pool Waits",
+    "description": "Use controlled warm-pool and saturated-pool experiments, physical-open traces, and server sessions to explain slow database connection acquisition.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      ".NET",
+      "PostgreSQL",
+      "OpenTelemetry"
+    ],
+    "post": "2026-11-15-how-to-distinguish-new-database-connections-from-pool-waits"
+  },
+  {
+    "title": "How to Distinguish Slow RabbitMQ Consumers from Stranded Deliveries",
+    "description": "Trace unacknowledged messages to channels and connections, compare business progress, and recover with correct acknowledgement ownership.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "RabbitMQ",
+      "Monitoring",
+      "SRE"
+    ],
+    "post": "2026-11-15-how-to-distinguish-slow-rabbitmq-consumers-from-stranded-deliveries"
+  },
+  {
+    "title": "How to Evaluate an AI On-Call Assistant on Historical Investigations",
+    "description": "Replay historical incidents at successive evidence cutoffs and score useful next steps, unsupported claims, latency, and unsafe recommendations.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "AI",
+      "Incident Management",
+      "Python"
+    ],
+    "post": "2026-11-15-how-to-evaluate-an-ai-on-call-assistant-on-historical-investigations"
+  },
+  {
+    "title": "How to Explain Error Budget Recovery in a Rolling SLO Window",
+    "description": "Calculate rolling error-budget changes as old requests leave the window and distinguish recovered budget from recent service improvement.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "SLO",
+      "Prometheus",
+      "Python"
+    ],
+    "post": "2026-11-15-how-to-explain-error-budget-recovery-in-a-rolling-slo-window"
+  },
+  {
+    "title": "How to Explain Fractional Prometheus Request Counts with Sparse Traffic",
+    "description": "Understand increase extrapolation, inspect raw counter samples, and choose honest displays for low-volume request counts.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Prometheus",
+      "Monitoring"
+    ],
+    "post": "2026-11-15-how-to-explain-fractional-prometheus-request-counts-with-sparse-traffic"
+  },
+  {
+    "title": "How to Explain .NET Pod Memory Growth with a Small Managed Heap",
+    "description": "Compare .NET heap, process mappings, and cgroup memory to identify native allocations, committed GC memory, and file-backed growth.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      ".NET",
+      "Kubernetes"
+    ],
+    "post": "2026-11-15-how-to-explain-net-pod-memory-growth-with-a-small-managed-heap"
+  },
+  {
+    "title": "How to Expose GPU Utilization to the Kubernetes HPA",
+    "description": "Map DCGM workload metrics through Prometheus Adapter and validate the custom-metrics API before configuring GPU autoscaling.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "GPU",
+      "Kubernetes",
+      "Prometheus"
+    ],
+    "post": "2026-11-15-how-to-expose-gpu-utilization-to-the-kubernetes-hpa"
+  },
+  {
+    "title": "How to Fill Missing Prometheus Series with Labeled Zeros",
+    "description": "Use a known label universe for zero filling and avoid turning scrape failures or unknown services into healthy measurements.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Prometheus",
+      "Grafana"
+    ],
+    "post": "2026-11-15-how-to-fill-missing-prometheus-series-with-labeled-zeros"
+  },
+  {
+    "title": "How to Filter JSON Fields in LogQL When Grafana Does Not Detect Them",
+    "description": "Parse JSON explicitly, inspect nested fields and parser errors, and distinguish query-time extraction from indexed Loki labels.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Loki",
+      "Grafana"
+    ],
+    "post": "2026-11-15-how-to-filter-json-fields-in-logql-when-grafana-does-not-detect-them"
+  },
+  {
+    "title": "How to Find CPU Bursts Behind Kubernetes Throttling and Low Average Usage",
+    "description": "Compare quota periods, throttled periods, and short-window CPU rates to explain latency despite low average container CPU.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Kubernetes",
+      "Prometheus"
+    ],
+    "post": "2026-11-15-how-to-find-cpu-bursts-behind-kubernetes-throttling-and-low-average-usage"
+  },
+  {
+    "title": "How to Find Prometheus Memory Costs Before Dropping Labels",
+    "description": "Use TSDB statistics, active-series queries, and churn indicators to locate costly metrics without corrupting series identity.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Prometheus",
+      "Performance"
+    ],
+    "post": "2026-11-15-how-to-find-prometheus-memory-costs-before-dropping-labels"
+  },
+  {
+    "title": "How to Find Where Prometheus Exemplars Disappear After a Collector",
+    "description": "Check exemplar generation, OTLP transport, OpenMetrics exposition, Prometheus storage, and query retrieval one boundary at a time.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "OpenTelemetry",
+      "Prometheus"
+    ],
+    "post": "2026-11-15-how-to-find-where-prometheus-exemplars-disappear-after-a-collector"
+  },
+  {
+    "title": "How to Fix a Go Service Name That Span Attributes Do Not Change",
+    "description": "Set service.name on the Go SDK resource, share it across providers, and verify resource merge order before exporting.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "OpenTelemetry",
+      "Go"
+    ],
+    "post": "2026-11-15-how-to-fix-a-go-service-name-that-span-attributes-do-not-change"
+  },
+  {
+    "title": "How to Fix DCGM Metrics That Show the Exporter Pod as the Workload",
+    "description": "Separate Prometheus target labels from DCGM workload attribution and verify the kubelet PodResources mapping.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "GPU",
+      "Kubernetes",
+      "Prometheus"
+    ],
+    "post": "2026-11-15-how-to-fix-dcgm-metrics-that-show-the-exporter-pod-as-the-workload"
+  },
+  {
+    "title": "How to Give AI Incident Assistants Recent Change and Outage Context",
+    "description": "Build a bounded context packet with relevant deployments, prior incidents, source timestamps, and explicit trust boundaries for AI-assisted triage.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "AI",
+      "Incident Management",
+      "Python"
+    ],
+    "post": "2026-11-15-how-to-give-ai-incident-assistants-recent-change-and-outage-context"
+  },
+  {
+    "title": "How to Include HTTP Status Codes in Blackbox Probe Alerts",
+    "description": "Carry the HTTP status metric into a failed-probe alert value while preserving transport failures and stable alert identity.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Prometheus",
+      "Alertmanager",
+      "Monitoring"
+    ],
+    "post": "2026-11-15-how-to-include-http-status-codes-in-blackbox-probe-alerts"
+  },
+  {
+    "title": "How to Include Self-Hosting Work in Observability Cost Comparisons",
+    "description": "Model upgrades, incidents, recovery drills, and engineering time alongside infrastructure when comparing hosted and self-hosted observability.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Observability",
+      "SRE",
+      "Python"
+    ],
+    "post": "2026-11-15-how-to-include-self-hosting-work-in-observability-cost-comparisons"
+  },
+  {
+    "title": "How to Interpret Core Web Vitals Across Vue SPA Route Changes",
+    "description": "Separate document Web Vitals from Vue route timings, preserve metric identity, and evaluate soft-navigation support as a distinct reporting mode.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Vue.js",
+      "JavaScript",
+      "Monitoring"
+    ],
+    "post": "2026-11-15-how-to-interpret-core-web-vitals-across-vue-spa-route-changes"
+  },
+  {
+    "title": "How to Interpret GPU Compute and Memory Metrics for Idle Node Pools",
+    "description": "Distinguish GPU activity, memory allocation, and memory bandwidth before deciding a Kubernetes GPU pool is underutilized.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "GPU",
+      "Kubernetes"
+    ],
+    "post": "2026-11-15-how-to-interpret-gpu-compute-and-memory-metrics-for-idle-node-pools"
+  },
+  {
+    "title": "How to Investigate Incorrect Requests When Their Traces Were Sampled Out",
+    "description": "Reconstruct an incorrect successful request from durable evidence, then add domain-aware capture for the next occurrence.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "OpenTelemetry",
+      "Observability"
+    ],
+    "post": "2026-11-15-how-to-investigate-incorrect-requests-when-their-traces-were-sampled-out"
+  },
+  {
+    "title": "How to Investigate INP Regressions Seen Only in Field Data",
+    "description": "Align field and lab populations, collect INP attribution, and reproduce the slow interaction phase rather than comparing unrelated headline scores.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "JavaScript",
+      "Monitoring",
+      "Observability"
+    ],
+    "post": "2026-11-15-how-to-investigate-inp-regressions-seen-only-in-field-data"
+  },
+  {
+    "title": "How to Investigate Loki Entry Too Far Behind Errors After Log Delays",
+    "description": "Distinguish per-stream ordering windows from maximum sample age, then recover delayed logs without falsifying timestamps.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Loki",
+      "Fluent Bit"
+    ],
+    "post": "2026-11-15-how-to-investigate-loki-entry-too-far-behind-errors-after-log-delays"
+  },
+  {
+    "title": "How to Investigate OOMKilled Pods Below Their Sampled Memory Limit",
+    "description": "Use termination evidence and cgroup peaks to find short memory spikes and distinguish container OOM from node pressure.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Kubernetes",
+      "Linux"
+    ],
+    "post": "2026-11-15-how-to-investigate-oomkilled-pods-below-their-sampled-memory-limit"
+  },
+  {
+    "title": "How to Isolate Slow Tenants in an OpenTelemetry Log Pipeline",
+    "description": "Route tenants into separate exporter queues, bound backlog, and identify when a shared Collector needs stronger failure isolation.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "OpenTelemetry",
+      "Observability"
+    ],
+    "post": "2026-11-15-how-to-isolate-slow-tenants-in-an-opentelemetry-log-pipeline"
+  },
+  {
+    "title": "How to Keep Blank Lines Inside Fluent Bit Multiline Events",
+    "description": "Extend continuation rules to include empty lines while preserving event boundaries and testing whitespace and timeout behavior.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Fluent Bit",
+      "Observability"
+    ],
+    "post": "2026-11-15-how-to-keep-blank-lines-inside-fluent-bit-multiline-events"
+  },
+  {
+    "title": "How to Keep Bot Errors from Dominating Low-Traffic SLO Alerts",
+    "description": "Define eligible traffic before outcomes occur, separate abuse signals from customer reliability, and test low-volume burn alerts honestly.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "SLO",
+      "Prometheus",
+      "SRE"
+    ],
+    "post": "2026-11-15-how-to-keep-bot-errors-from-dominating-low-traffic-slo-alerts"
+  },
+  {
+    "title": "How to Keep Development Alerts Out of Production Alert Groups",
+    "description": "Use environment-aware Alertmanager grouping and explicit firing and resolved template sections to prevent confusing mixed notifications.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Alertmanager",
+      "Prometheus",
+      "Monitoring"
+    ],
+    "post": "2026-11-15-how-to-keep-development-alerts-out-of-production-alert-groups"
+  },
+  {
+    "title": "How to Keep Missing Success Counters from Breaking Service Success Rates",
+    "description": "Fill absent success numerators from the denominator label set while leaving zero-traffic and telemetry outages explicit.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Prometheus",
+      "Monitoring"
+    ],
+    "post": "2026-11-15-how-to-keep-missing-success-counters-from-breaking-service-success-rates"
+  },
+  {
+    "title": "How to Keep Pod Identity Without Unbounded Prometheus Series Churn",
+    "description": "Preserve per-target correctness while controlling pod-label churn through bounded dimensions, aggregation, and retention choices.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Prometheus",
+      "Kubernetes"
+    ],
+    "post": "2026-11-15-how-to-keep-pod-identity-without-unbounded-prometheus-series-churn"
+  },
+  {
+    "title": "How to Keep Postmortem Actions Visible After Incident Closure",
+    "description": "Track follow-up work independently from incident status with owners, due dates, verification evidence, and a reproducible overdue review.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Incident Management",
+      "Python",
+      "SRE"
+    ],
+    "post": "2026-11-15-how-to-keep-postmortem-actions-visible-after-incident-closure"
+  },
+  {
+    "title": "How to Link OpenTelemetry Traces from Google Cloud Structured Logs",
+    "description": "Map active trace context into Cloud Logging special fields and verify project, span format, and stored trace availability.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "OpenTelemetry",
+      "Java"
+    ],
+    "post": "2026-11-15-how-to-link-opentelemetry-traces-from-google-cloud-structured-logs"
+  },
+  {
+    "title": "How to Link Runbook Fixes to Evidence That They Worked",
+    "description": "Attach immutable evidence references, observation windows, and recovery criteria to runbook changes so responders can review why a fix is justified.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Incident Management",
+      "Python",
+      "SRE"
+    ],
+    "post": "2026-11-15-how-to-link-runbook-fixes-to-evidence-that-they-worked"
+  },
+  {
+    "title": "How to Make AI Root Cause Suggestions Reviewable with Evidence",
+    "description": "Require AI incident hypotheses to cite captured evidence, disclose uncertainty, and propose falsifiable checks before responders accept a cause.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "AI",
+      "Incident Management",
+      "Python"
+    ],
+    "post": "2026-11-15-how-to-make-ai-root-cause-suggestions-reviewable-with-evidence"
+  },
+  {
+    "title": "How to Make Failed Incident Remediations Searchable",
+    "description": "Record failed remediation hypotheses, preconditions, evidence, and outcomes in a small searchable ledger so future responders avoid blind repetition.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Incident Management",
+      "Python",
+      "SRE"
+    ],
+    "post": "2026-11-15-how-to-make-failed-incident-remediations-searchable"
+  },
+  {
+    "title": "How to Make Runbook Corrections an Owned Incident Review Deliverable",
+    "description": "Turn runbook gaps into assigned, reviewable changes with observable preconditions, verification steps, and a test by a new responder.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Incident Management",
+      "SRE",
+      "Python"
+    ],
+    "post": "2026-11-15-how-to-make-runbook-corrections-an-owned-incident-review-deliverable"
+  },
+  {
+    "title": "How to Measure Batch Reliability with Output Freshness",
+    "description": "Publish a verified data watermark and alert on stale user-visible output instead of assuming a successful or fast batch job produced fresh data.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "SLO",
+      "Prometheus",
+      "Python"
+    ],
+    "post": "2026-11-15-how-to-measure-batch-reliability-with-output-freshness"
+  },
+  {
+    "title": "How to Measure Event Loss in High-Throughput eBPF Pipelines",
+    "description": "Count failures at kernel export, userspace receive, application queues, and destination delivery with explicit denominators.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "eBPF",
+      "Linux",
+      "Observability"
+    ],
+    "post": "2026-11-15-how-to-measure-event-loss-in-high-throughput-ebpf-pipelines"
+  },
+  {
+    "title": "How to Measure Go pprof Overhead Before Production Use",
+    "description": "Compare disabled, available, and actively collecting profiling modes under representative Go workloads and explicit latency budgets.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Go",
+      "Profiling"
+    ],
+    "post": "2026-11-15-how-to-measure-go-pprof-overhead-before-production-use"
+  },
+  {
+    "title": "How to Measure Kubernetes Pod Pending Time with kube-state-metrics",
+    "description": "Separate current Pending age from scheduling latency and historical phase duration when building PromQL dashboards.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Kubernetes",
+      "Prometheus"
+    ],
+    "post": "2026-11-15-how-to-measure-kubernetes-pod-pending-time-with-kube-state-metrics"
+  },
+  {
+    "title": "How to Measure LLM First-Token Latency and Generation Speed",
+    "description": "Measure first visible text, stream duration, and generation throughput independently without mistaking HTTP chunks for model tokens.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "AI",
+      "LLM",
+      "Python",
+      "Observability"
+    ],
+    "post": "2026-11-15-how-to-measure-llm-first-token-latency-and-generation-speed"
+  },
+  {
+    "title": "How to Measure Minutes That Violate a 28-Day Latency SLO",
+    "description": "Record one latency assessment per minute, count violating eligible minutes, and report missing coverage separately from the SLO result.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "SLO",
+      "Prometheus",
+      "Monitoring"
+    ],
+    "post": "2026-11-15-how-to-measure-minutes-that-violate-a-28-day-latency-slo"
+  },
+  {
+    "title": "How to Order Batching, Sampling, and Collector Memory Limits",
+    "description": "Place Collector processors according to their context and buffering needs, and distinguish batch thresholds from memory protection.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "OpenTelemetry",
+      "Performance"
+    ],
+    "post": "2026-11-15-how-to-order-batching-sampling-and-collector-memory-limits"
+  },
+  {
+    "title": "How to Parse Multiline Logs with Explicit Start and End Markers",
+    "description": "Model Fluent Bit multiline parsing as a state machine and test marker boundaries, incomplete events, and container log wrappers.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Fluent Bit",
+      "Observability"
+    ],
+    "post": "2026-11-15-how-to-parse-multiline-logs-with-explicit-start-and-end-markers"
+  },
+  {
+    "title": "How to Preserve Metric Names in Prometheus Cardinality Alerts",
+    "description": "Copy metric names into a normal label before alert arithmetic so high-cardinality series remain identifiable without collisions.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Prometheus",
+      "Monitoring"
+    ],
+    "post": "2026-11-15-how-to-preserve-metric-names-in-prometheus-cardinality-alerts"
+  },
+  {
+    "title": "How to Preserve Trace Affinity When Scaling Tail-Sampling Collectors",
+    "description": "Use trace-aware routing, consistent endpoint discovery, and deliberate membership changes to protect tail-sampling decisions.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "OpenTelemetry",
+      "Kubernetes"
+    ],
+    "post": "2026-11-15-how-to-preserve-trace-affinity-when-scaling-tail-sampling-collectors"
+  },
+  {
+    "title": "How to Prioritize Incident Follow-Ups by Preventable User Impact",
+    "description": "Estimate which follow-ups reduce affected users or outage duration, show uncertainty, and avoid double-counting overlapping mitigations.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Incident Management",
+      "SRE",
+      "Python"
+    ],
+    "post": "2026-11-15-how-to-prioritize-incident-follow-ups-by-preventable-user-impact"
+  },
+  {
+    "title": "How to Profile Userspace Work When eBPF Buffers Drop Events",
+    "description": "Measure consumer callback cost, queue pressure, and export blocking before increasing eBPF buffer capacity.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "eBPF",
+      "Profiling",
+      "Linux"
+    ],
+    "post": "2026-11-15-how-to-profile-userspace-work-when-ebpf-buffers-drop-events"
+  },
+  {
+    "title": "How to Promote Plain-Text Trace IDs into OpenTelemetry Log Fields",
+    "description": "Parse embedded identifiers with the filelog receiver and populate native trace correlation fields instead of ordinary attributes.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "OpenTelemetry",
+      "Observability"
+    ],
+    "post": "2026-11-15-how-to-promote-plain-text-trace-ids-into-opentelemetry-log-fields"
+  },
+  {
+    "title": "How to Put Ownership and User Impact Into Every Page",
+    "description": "Add stable ownership labels, precise impact annotations, runbook links, and escalation steps to alert rules, then check their completeness in review.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Prometheus",
+      "Alertmanager",
+      "Incident Management"
+    ],
+    "post": "2026-11-15-how-to-put-ownership-and-user-impact-into-every-page"
+  },
+  {
+    "title": "How to Read Idle PostgreSQL Sessions Without Misreading Their Query",
+    "description": "Interpret pg_stat_activity state, query_start, state_change, and transaction age so idle COMMIT or ROLLBACK text is not mistaken for active execution.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "PostgreSQL",
+      "Monitoring",
+      "SRE"
+    ],
+    "post": "2026-11-15-how-to-read-idle-postgresql-sessions-without-misreading-their-query"
+  },
+  {
+    "title": "How to Read Java Trace IDs When Logback MDC.get Returns Null",
+    "description": "Read tracing context through the OpenTelemetry API and understand why Logback event enrichment may not populate thread-local MDC.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "OpenTelemetry",
+      "Java"
+    ],
+    "post": "2026-11-15-how-to-read-java-trace-ids-when-logback-mdc-get-returns-null"
+  },
+  {
+    "title": "How to Rebalance OTLP Traffic After a Collector Gateway Recovers",
+    "description": "Restore traffic to a recovered gateway by distinguishing target health, connection lifetime, and safe client redistribution.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "OpenTelemetry",
+      "Kubernetes"
+    ],
+    "post": "2026-11-15-how-to-rebalance-otlp-traffic-after-a-collector-gateway-recovers"
+  },
+  {
+    "title": "How to Reconcile Kubernetes Working Set, RSS, and Cache Metrics",
+    "description": "Compare memory metrics at the same container and timestamp and understand why working set is not simply application heap.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Kubernetes",
+      "Prometheus"
+    ],
+    "post": "2026-11-15-how-to-reconcile-kubernetes-working-set-rss-and-cache-metrics"
+  },
+  {
+    "title": "How to Reconstruct Incident Timelines from Alerts and Changes",
+    "description": "Normalize event timestamps, preserve observation delays and uncertainty, and build a reproducible timeline without mistaking correlation for cause.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Incident Management",
+      "OpenTelemetry",
+      "Python"
+    ],
+    "post": "2026-11-15-how-to-reconstruct-incident-timelines-from-alerts-and-changes"
+  },
+  {
+    "title": "How to Redesign Huge Traces Without Dropping Required Work Records",
+    "description": "Split giant workflows into meaningful linked traces while retaining complete business records and bounded diagnostic detail.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "OpenTelemetry",
+      "Performance"
+    ],
+    "post": "2026-11-15-how-to-redesign-huge-traces-without-dropping-required-work-records"
+  },
+  {
+    "title": "How to Reduce Observability Spend While Preserving Audit Logs",
+    "description": "Separate searchable operational logs from durable audit evidence, verify archive completeness, and test retrieval before reducing hot retention.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Observability",
+      "AWS",
+      "Python"
+    ],
+    "post": "2026-11-15-how-to-reduce-observability-spend-while-preserving-audit-logs"
+  },
+  {
+    "title": "How to Repair Spring Boot Metric-to-Trace Links with Prometheus and Tempo",
+    "description": "Verify Micrometer tracing integration, histogram publication, OpenMetrics scraping, exemplar storage, and the Tempo link configuration.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Spring Boot",
+      "Prometheus",
+      "Grafana"
+    ],
+    "post": "2026-11-15-how-to-repair-spring-boot-metric-to-trace-links-with-prometheus-and-tempo"
+  },
+  {
+    "title": "How to Represent No Traffic in an SLO Without Calling It an Outage",
+    "description": "Model healthy, failing, idle, and unknown states separately so zero-request periods do not distort request-based SLOs or conceal telemetry loss.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "SLO",
+      "Prometheus",
+      "Monitoring"
+    ],
+    "post": "2026-11-15-how-to-represent-no-traffic-in-an-slo-without-calling-it-an-outage"
+  },
+  {
+    "title": "How to Resolve Conflicting OpenTelemetry Service Name Settings",
+    "description": "Trace service-name precedence from SDK environment variables through programmatic resources and Collector transformations.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "OpenTelemetry",
+      "Observability"
+    ],
+    "post": "2026-11-15-how-to-resolve-conflicting-opentelemetry-service-name-settings"
+  },
+  {
+    "title": "How to Resolve Unknown Java Allocation Frames in Kubernetes Profiles",
+    "description": "Separate Java allocation classes from native frames, then verify profiler mode, JVM compatibility, symbols, and container attach access.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Java",
+      "Profiling",
+      "Kubernetes"
+    ],
+    "post": "2026-11-15-how-to-resolve-unknown-java-allocation-frames-in-kubernetes-profiles"
+  },
+  {
+    "title": "How to Restore Kubernetes Attributes After Reordering Processors",
+    "description": "Recover missing pod metadata by enriching before batching and sampling, then verify pod association and Kubernetes API access.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "OpenTelemetry",
+      "Kubernetes"
+    ],
+    "post": "2026-11-15-how-to-restore-kubernetes-attributes-after-reordering-processors"
+  },
+  {
+    "title": "How to Restore Session Storage for Playwright Synthetic Checks",
+    "description": "Capture origin-scoped session storage and seed it before application scripts run when ordinary Playwright storage state cannot restore login.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Playwright",
+      "TypeScript",
+      "Monitoring"
+    ],
+    "post": "2026-11-15-how-to-restore-session-storage-for-playwright-synthetic-checks"
+  },
+  {
+    "title": "How to Restore Trace IDs in Spring Boot Logs When Traces Export",
+    "description": "Diagnose Logback correlation by separating active span context, MDC integration, logging patterns, and asynchronous boundaries.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "OpenTelemetry",
+      "Spring Boot"
+    ],
+    "post": "2026-11-15-how-to-restore-trace-ids-in-spring-boot-logs-when-traces-export"
+  },
+  {
+    "title": "How to Retain Java Error Traces When HTTP Status Arrives Late",
+    "description": "Record Java failures correctly and use tail sampling when the sampling decision depends on the final request outcome.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "OpenTelemetry",
+      "Java"
+    ],
+    "post": "2026-11-15-how-to-retain-java-error-traces-when-http-status-arrives-late"
+  },
+  {
+    "title": "How to Reuse Firebase Login State in Playwright Browser Contexts",
+    "description": "Capture Firebase authentication including IndexedDB with Playwright 1.51 or newer, restore it into a fresh context, and verify the authenticated UI.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Playwright",
+      "Firebase",
+      "TypeScript"
+    ],
+    "post": "2026-11-15-how-to-reuse-firebase-login-state-in-playwright-browser-contexts"
+  },
+  {
+    "title": "How to Review eBPF Observability Changes for Performance Regressions",
+    "description": "Use a staged benchmark matrix, stage-specific loss counters, and application latency guardrails when reviewing eBPF instrumentation changes.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "eBPF",
+      "Performance",
+      "Kubernetes"
+    ],
+    "post": "2026-11-15-how-to-review-ebpf-observability-changes-for-performance-regressions"
+  },
+  {
+    "title": "How to Route Critical Alerts to Both Chat and Paging",
+    "description": "Use Alertmanager receiver fan-out or explicit sibling continuation, then test that both chat and paging receive critical alert transitions.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Alertmanager",
+      "Monitoring",
+      "SRE"
+    ],
+    "post": "2026-11-15-how-to-route-critical-alerts-to-both-chat-and-paging"
+  },
+  {
+    "title": "How to Safely Change Customer OTLP Destinations in Collector Config",
+    "description": "Plan destination migrations with configuration validation, canary routing, queue draining, and an explicit cutover boundary.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "OpenTelemetry",
+      "Observability"
+    ],
+    "post": "2026-11-15-how-to-safely-change-customer-otlp-destinations-in-collector-config"
+  },
+  {
+    "title": "How to Sample Slow Requests After Their Spans End",
+    "description": "Use tail sampling for completed latency, distinguish trace duration from one span, and test the decision boundary.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "OpenTelemetry",
+      "Performance"
+    ],
+    "post": "2026-11-15-how-to-sample-slow-requests-after-their-spans-end"
+  },
+  {
+    "title": "How to Separate Checkout Failures from Bot-Protection Errors",
+    "description": "Classify synthetic checkout outcomes using edge evidence and application progress, and keep blocked probes distinct from verified customer checkout failures.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Playwright",
+      "Monitoring",
+      "SRE"
+    ],
+    "post": "2026-11-15-how-to-separate-checkout-failures-from-bot-protection-errors"
+  },
+  {
+    "title": "How to Separate Idle Waiting from Contention in Off-CPU Flame Graphs",
+    "description": "Interpret off-CPU widths using thread roles, request activity, and wait reasons so idle workers are not mistaken for bottlenecks.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Profiling",
+      "Linux"
+    ],
+    "post": "2026-11-15-how-to-separate-idle-waiting-from-contention-in-off-cpu-flame-graphs"
+  },
+  {
+    "title": "How to Separate Kubernetes CPU Quota Throttling from CPU Contention",
+    "description": "Use cgroup bandwidth counters, CPU pressure, and scheduler wait evidence to distinguish limits from competition for node CPU.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Kubernetes",
+      "Linux"
+    ],
+    "post": "2026-11-15-how-to-separate-kubernetes-cpu-quota-throttling-from-cpu-contention"
+  },
+  {
+    "title": "How to Separate Npgsql Pool Waits from EF Core Transaction Startup",
+    "description": "Measure connection acquisition, transaction creation, and the first command separately, then correlate Npgsql pool usage and physical-open traces.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      ".NET",
+      "EF Core",
+      "PostgreSQL"
+    ],
+    "post": "2026-11-15-how-to-separate-npgsql-pool-waits-from-ef-core-transaction-startup"
+  },
+  {
+    "title": "How to Separate Process Health from Database Journey Checks",
+    "description": "Design liveness, readiness, and synthetic checks with different failure consequences so a shared database outage does not trigger useless restart storms.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Kubernetes",
+      "Monitoring",
+      "SRE"
+    ],
+    "post": "2026-11-15-how-to-separate-process-health-from-database-journey-checks"
+  },
+  {
+    "title": "How to Set a Latency SLO for Very Low-Traffic Endpoints",
+    "description": "Choose meaningful latency thresholds and reporting windows when only dozens of requests occur, and avoid misleading high-precision SLO targets.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "SLO",
+      "SRE",
+      "Python"
+    ],
+    "post": "2026-11-15-how-to-set-a-latency-slo-for-very-low-traffic-endpoints"
+  },
+  {
+    "title": "How to Set Critical and Warning Alertmanager Reminder Schedules",
+    "description": "Configure severity-specific Alertmanager routes with explicit grouping and validate that critical and warning alerts inherit the intended timers.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Alertmanager",
+      "Prometheus",
+      "Monitoring"
+    ],
+    "post": "2026-11-15-how-to-set-critical-and-warning-alertmanager-reminder-schedules"
+  },
+  {
+    "title": "How to Set Different Loki Retention Periods for Teams",
+    "description": "Configure tenant and stream retention in Loki, verify identity and label matching, and test policies without deleting production history.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Loki",
+      "Grafana",
+      "Observability"
+    ],
+    "post": "2026-11-15-how-to-set-different-loki-retention-periods-for-teams"
+  },
+  {
+    "title": "How to Size Tail-Sampling Memory for Late-Arriving Spans",
+    "description": "Estimate concurrent traces, measure retained bytes, and size decision caches separately from the span buffer.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "OpenTelemetry",
+      "Performance"
+    ],
+    "post": "2026-11-15-how-to-size-tail-sampling-memory-for-late-arriving-spans"
+  },
+  {
+    "title": "How to Stop Flapping Alerts from Repeatedly Paging On-Call",
+    "description": "Trace alert identity and state transitions, then use stable labels and bounded firing persistence to reduce repeated pages safely.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Prometheus",
+      "Alertmanager",
+      "SRE"
+    ],
+    "post": "2026-11-15-how-to-stop-flapping-alerts-from-repeatedly-paging-on-call"
+  },
+  {
+    "title": "How to Stop Global SLOs from Hiding a Failed Integration",
+    "description": "Keep request-weighted global reliability while adding bounded integration slices and low-volume response rules that expose localized outages.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "SLO",
+      "Prometheus",
+      "Python"
+    ],
+    "post": "2026-11-15-how-to-stop-global-slos-from-hiding-a-failed-integration"
+  },
+  {
+    "title": "How to Tell Falling Kafka Traffic from a Stalled Consumer",
+    "description": "Compare producer progress, committed offsets, partition lag, and business processing rates before interpreting a drop in daily Kafka consumption.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Kafka",
+      "Monitoring",
+      "Python"
+    ],
+    "post": "2026-11-15-how-to-tell-falling-kafka-traffic-from-a-stalled-consumer"
+  },
+  {
+    "title": "How to Test AI Alert Prioritization in Shadow Mode",
+    "description": "Evaluate AI triage against frozen incident labels while preserving existing paging, measuring missed critical events, and recording reviewable decisions.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "AI",
+      "SRE",
+      "Python"
+    ],
+    "post": "2026-11-15-how-to-test-ai-alert-prioritization-in-shadow-mode"
+  },
+  {
+    "title": "How to Trace a Blocking PostgreSQL Transaction to Its Client",
+    "description": "Follow pg_blocking_pids to the blocking session, inspect transaction age and client identity, and connect the backend to application ownership before acting.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "PostgreSQL",
+      "Incident Management",
+      "Monitoring"
+    ],
+    "post": "2026-11-15-how-to-trace-a-blocking-postgresql-transaction-to-its-client"
+  },
+  {
+    "title": "How to Trace Dropped Logs Through Fluent Bit Bulk Rejections",
+    "description": "Inspect Elasticsearch bulk item errors, Fluent Bit retry outcomes, and finite storage to distinguish delayed logs from discarded records.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Fluent Bit",
+      "Observability"
+    ],
+    "post": "2026-11-15-how-to-trace-dropped-logs-through-fluent-bit-bulk-rejections"
+  },
+  {
+    "title": "How to Trace LLM Streaming Stalls During Concurrent FastAPI Requests",
+    "description": "Use event-loop lag, queue wait, and per-stream gaps to distinguish blocking FastAPI code from model limits and slow consumers.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "AI",
+      "FastAPI",
+      "Python",
+      "Observability"
+    ],
+    "post": "2026-11-15-how-to-trace-llm-streaming-stalls-during-concurrent-fastapi-requests"
+  },
+  {
+    "title": "How to Unify Incident Intake Across Reports and Monitoring Alerts",
+    "description": "Normalize reports into one intake ledger, deduplicate source deliveries, and correlate likely incidents without automatically merging ambiguous failures.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Incident Management",
+      "Python",
+      "SRE"
+    ],
+    "post": "2026-11-15-how-to-unify-incident-intake-across-reports-and-monitoring-alerts"
+  },
+  {
+    "title": "How to Verify Prometheus Retention When History Stops at 15 Days",
+    "description": "Check effective Prometheus retention flags, competing size limits, datasource selection, and persistent volumes when older metrics disappear.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Prometheus",
+      "Grafana",
+      "Storage"
+    ],
+    "post": "2026-11-15-how-to-verify-prometheus-retention-when-history-stops-at-15-days"
+  },
+  {
+    "title": "How to Add Similarity Scores to SelfQueryRetriever Traces",
+    "description": "Attach Chroma distance scores to the documents returned by SelfQueryRetriever while preserving its generated filters and distinguishing distances from confidence.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "LangChain",
+      "ChromaDB",
+      "RAG",
+      "Observability",
+      "Python"
+    ],
+    "post": "2026-11-16-how-to-add-similarity-scores-to-selfqueryretriever-traces-for-retrieval-debugging"
+  },
+  {
+    "title": "How to Alert on Unexpected Credential Access and Egress During Agent Runs",
+    "description": "Correlate agent runtime identities with secret-access audits and network egress to detect unexpected behavior while accounting for missing and delayed telemetry.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "LLM",
+      "Security",
+      "AWS",
+      "Monitoring"
+    ],
+    "post": "2026-11-16-how-to-alert-on-unexpected-credential-access-and-network-egress-during-agent-runs"
+  },
+  {
+    "title": "How to Attribute LLM Spending with Customer and Workflow Trace Metadata",
+    "description": "Create a request-level cost ledger that assigns model attempts to customers, chats, and workflows without duplicating spend across traces.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "LLM",
+      "Observability",
+      "Token Usage",
+      "Cost Optimization"
+    ],
+    "post": "2026-11-16-how-to-attribute-llm-spending-to-customers-chats-and-workflows-with-trace-metadata"
+  },
+  {
+    "title": "How to Attribute Token Costs Across a Tree of Sub-Agent Calls",
+    "description": "Attribute model usage to the correct agent invocation and calculate direct and subtree costs without counting child usage twice.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "AI Agents",
+      "LLM Observability",
+      "OpenTelemetry",
+      "Python"
+    ],
+    "post": "2026-11-16-how-to-attribute-token-costs-across-a-tree-of-sub-agent-calls"
+  },
+  {
+    "title": "How to Audit Sensitive Prompts in Logs, Traces, and Evaluation Datasets",
+    "description": "Audit prompt persistence across application telemetry, provider storage, and evaluation datasets using synthetic markers and explicit retention evidence.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "LLM",
+      "Privacy",
+      "Observability",
+      "Security"
+    ],
+    "post": "2026-11-16-how-to-audit-where-sensitive-prompts-persist-in-logs-traces-and-evaluation-datasets"
+  },
+  {
+    "title": "How to Build a Canary Evaluation Gate for Prompt and Tool Changes",
+    "description": "Gate prompt and tool releases with offline canary cases, limited live exposure, explicit evidence thresholds, and rollback-ready version bundles.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "LLM",
+      "Evaluation",
+      "CI/CD",
+      "Observability"
+    ],
+    "post": "2026-11-16-how-to-build-a-canary-evaluation-gate-for-prompt-and-tool-changes"
+  },
+  {
+    "title": "How to Catch Embedding Truncation with Token Checks During RAG Ingestion",
+    "description": "Detect oversized embedding inputs before ingestion and retain token counts, payload identity, and provider truncation signals for reliable RAG retrieval.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "RAG",
+      "Embedding",
+      "Python",
+      "Observability"
+    ],
+    "post": "2026-11-16-how-to-catch-embedding-input-truncation-with-token-length-checks-during-rag-ingestion"
+  },
+  {
+    "title": "How to Compare Hybrid and Vector Search in a RAG Regression Dashboard",
+    "description": "Compare hybrid and vector retrieval on identical queries with paired quality metrics, latency distributions, evidence coverage, and regression drill-downs.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "RAG",
+      "Vector Search",
+      "Evaluation",
+      "Observability",
+      "Python"
+    ],
+    "post": "2026-11-16-how-to-compare-hybrid-and-vector-search-with-a-rag-retrieval-regression-dashboard"
+  },
+  {
+    "title": "How to Compare Prompt and Model Versions Using Stored Production Traces",
+    "description": "Compare prompt and model changes on immutable production-derived cases while separating model-only replay from complete workflow evaluation.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "LLM",
+      "Evaluation",
+      "Regression Testing",
+      "Observability"
+    ],
+    "post": "2026-11-16-how-to-compare-prompt-and-model-versions-using-stored-production-traces"
+  },
+  {
+    "title": "How to Compare LLM Prefill and Decode Latency by Context Length",
+    "description": "Separate prompt processing, queueing, and token decoding to explain how context length changes LLM latency.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "LLM",
+      "Observability",
+      "Performance",
+      "Monitoring"
+    ],
+    "post": "2026-11-16-how-to-correlate-llm-context-length-with-prefill-and-decode-latency"
+  },
+  {
+    "title": "How to Trace Suspected Prompt Injection Through Retrieval and Agent Tools",
+    "description": "Connect suspicious retrieved content to prompt assembly, proposed tool calls, authorization decisions, and external outcomes without mistaking correlation for proof.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "LLM",
+      "RAG",
+      "Security",
+      "Observability"
+    ],
+    "post": "2026-11-16-how-to-correlate-suspected-prompt-injection-with-retrieved-content-and-agent-tool-calls"
+  },
+  {
+    "title": "How to Debug Empty SelfQueryRetriever Results with Metadata Filter Logs",
+    "description": "Debug empty SelfQueryRetriever responses by inspecting the structured query, translated metadata filter, search settings, and matching stored records.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "LangChain",
+      "RAG",
+      "ChromaDB",
+      "Observability",
+      "Python"
+    ],
+    "post": "2026-11-16-how-to-debug-empty-selfqueryretriever-results-by-logging-generated-metadata-filters"
+  },
+  {
+    "title": "How to Detect Duplicate Chroma Retrieval Results with Document ID Metrics",
+    "description": "Distinguish repeated Chroma record IDs, repeated document content, and multiple chunks from one source using explicit retrieval metrics.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "ChromaDB",
+      "RAG",
+      "Vector Database",
+      "Observability",
+      "Python"
+    ],
+    "post": "2026-11-16-how-to-detect-duplicate-chroma-retrieval-results-with-document-id-metrics"
+  },
+  {
+    "title": "How to Detect LLM Quality Regressions That Still Pass JSON Schema Checks",
+    "description": "Catch semantically wrong LLM answers that remain schema-valid by adding evidence checks, task invariants, and targeted regression mutations.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "LLM",
+      "Evaluation",
+      "Testing",
+      "Data Quality"
+    ],
+    "post": "2026-11-16-how-to-detect-llm-quality-regressions-that-still-pass-json-schema-checks"
+  },
+  {
+    "title": "How to Detect Prompt Cache Invalidation with Per-Step Agent Latency Metrics",
+    "description": "Detect prompt cache misses across agent steps using cached-token counts, stable input fingerprints, and first-output timing.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "LLM",
+      "OpenAI",
+      "Observability",
+      "Performance"
+    ],
+    "post": "2026-11-16-how-to-detect-prompt-cache-invalidation-with-per-step-agent-latency-metrics"
+  },
+  {
+    "title": "How to Diagnose Buffered LLM Streams with FastAPI and Browser Chunk Timestamps",
+    "description": "Locate LLM stream buffering by comparing producer events, browser reads, and rendered output timestamps.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "LLM",
+      "FastAPI",
+      "Python",
+      "Observability"
+    ],
+    "post": "2026-11-16-how-to-diagnose-buffered-llm-streams-with-fastapi-and-browser-chunk-timestamps"
+  },
+  {
+    "title": "How to Diagnose HTTP/2 Resets While Collecting Streamed LLM Token Usage",
+    "description": "Separate HTTP/2 transport resets from stream parser failures and preserve unknown usage when a final usage chunk is lost.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "LLM",
+      "OpenAI",
+      "HTTP/2",
+      "Observability"
+    ],
+    "post": "2026-11-16-how-to-diagnose-http-2-resets-while-collecting-token-usage-from-streamed-llm-calls"
+  },
+  {
+    "title": "How to Diagnose LangGraph Step Timeouts with Per-Node Duration Traces",
+    "description": "Diagnose LangGraph timeouts by tracing each node attempt, dependency wait, cancellation, and retry under an explicit execution budget.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "LangGraph",
+      "Python",
+      "Observability",
+      "OpenTelemetry"
+    ],
+    "post": "2026-11-16-how-to-diagnose-langgraph-step-timeouts-with-per-node-duration-traces"
+  },
+  {
+    "title": "How to Find Oversized Tool Results That Make Later Agent Steps Slower",
+    "description": "Measure tool-result size at the point it enters model context and identify outputs that inflate later agent-step latency.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "LLM",
+      "LangChain",
+      "Observability",
+      "Performance"
+    ],
+    "post": "2026-11-16-how-to-find-oversized-tool-results-that-make-later-agent-steps-slower"
+  },
+  {
+    "title": "How to Inspect LangChain and LangGraph HTTP Requests Alongside Agent Traces",
+    "description": "Join model-level agent traces with HTTP request metadata while preserving streaming and keeping credentials out of logs.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "LangChain",
+      "LangGraph",
+      "Tracing",
+      "Python"
+    ],
+    "post": "2026-11-16-how-to-inspect-langchain-and-langgraph-http-requests-alongside-agent-traces"
+  },
+  {
+    "title": "How to Measure Guardrail False Positives on Harmless Quoted Attack Examples",
+    "description": "Measure guardrail false positives on benign quotations using paired context fixtures, explicit policy labels, and separate detection and enforcement metrics.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "LLM",
+      "Guardrails",
+      "Testing",
+      "Security"
+    ],
+    "post": "2026-11-16-how-to-measure-guardrail-false-positives-on-harmless-quoted-attack-examples"
+  },
+  {
+    "title": "How to Measure LLM Output Variance at Temperature Zero",
+    "description": "Measure exact-text and semantic variability at temperature zero with frozen request envelopes, fresh repetitions, and separate judge repeatability checks.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "LLM",
+      "Evaluation",
+      "Statistical Analysis",
+      "Python"
+    ],
+    "post": "2026-11-16-how-to-measure-llm-output-variance-when-temperature-zero-still-produces-different-answers"
+  },
+  {
+    "title": "How to Measure the Latency Cost of PII Redaction in Streaming LLM Gateways",
+    "description": "Separate PII detection, replacement, queueing, and stream-release delays to measure the real latency cost of redaction in LLM gateways.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "LLM",
+      "PII",
+      "Monitoring",
+      "Python"
+    ],
+    "post": "2026-11-16-how-to-measure-the-latency-cost-of-pii-redaction-in-streaming-llm-gateways"
+  },
+  {
+    "title": "How to Monitor Azure OpenAI Filter Rejections by Language and Severity",
+    "description": "Normalize Azure OpenAI Chat Completions filter outcomes and monitor rejection rates by language, category, severity, and evaluation coverage.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Azure OpenAI",
+      "Monitoring",
+      "Guardrails",
+      "Observability"
+    ],
+    "post": "2026-11-16-how-to-monitor-azure-openai-content-filter-rejections-by-language-category-and-severity"
+  },
+  {
+    "title": "How to Monitor RAG Relevance Gates and Fallbacks for Unanswerable Questions",
+    "description": "Monitor RAG relevance decisions with labeled answerability data, explicit fallback reasons, and separate false-answer and false-abstention rates.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "RAG",
+      "Evaluation",
+      "Observability",
+      "Python"
+    ],
+    "post": "2026-11-16-how-to-monitor-rag-relevance-gates-and-fallbacks-for-unanswerable-questions"
+  },
+  {
+    "title": "How to Monitor Required Facts in RAG Answers Across Multiple Documents",
+    "description": "Measure retrieval and answer coverage against explicit required facts when a RAG response must combine evidence from several documents.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "RAG",
+      "Evaluation",
+      "Observability",
+      "Python"
+    ],
+    "post": "2026-11-16-how-to-monitor-required-fact-coverage-in-rag-answers-that-need-multiple-documents"
+  },
+  {
+    "title": "How to Monitor Silent LLM Output Drift with Scheduled Golden-Prompt Runs",
+    "description": "Detect silent LLM behavior changes with versioned golden prompts, separate judge controls, fresh scheduled requests, and explicit evaluation freshness checks.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "LLM",
+      "Evaluation",
+      "Monitoring",
+      "Python"
+    ],
+    "post": "2026-11-16-how-to-monitor-silent-llm-output-drift-with-scheduled-golden-prompt-runs"
+  },
+  {
+    "title": "How to Monitor Whether an AI Agent Skips a Required Database Lookup",
+    "description": "Enforce and monitor required database evidence before an AI agent can return a customer-specific answer.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "LLM",
+      "LangGraph",
+      "Monitoring",
+      "Observability"
+    ],
+    "post": "2026-11-16-how-to-monitor-whether-an-ai-agent-skips-a-required-database-lookup"
+  },
+  {
+    "title": "How to Preserve Historical LLM Cost Accuracy When Model Prices Change",
+    "description": "Preserve usage, effective-dated rates, and pricing revisions so historical LLM cost reports survive model price changes.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "LLM",
+      "Cost Optimization",
+      "Token Usage",
+      "Python"
+    ],
+    "post": "2026-11-16-how-to-preserve-historical-llm-cost-accuracy-when-model-prices-change"
+  },
+  {
+    "title": "How to Preserve Tool Outputs and Model Inputs for Replaying Failed Agent Runs",
+    "description": "Capture versioned replay artifacts and inject recorded tool results so failed agent runs can be reproduced without repeating external side effects.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "LLM",
+      "LangGraph",
+      "Tracing",
+      "Observability"
+    ],
+    "post": "2026-11-16-how-to-preserve-tool-outputs-and-model-inputs-for-replaying-failed-agent-runs"
+  },
+  {
+    "title": "How to Reconcile Azure OpenAI Realtime Token Telemetry with Billing Meters",
+    "description": "Reconcile Azure Realtime response usage with modality-specific billing meters without double-counting cached tokens or conversation history.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Azure",
+      "OpenAI",
+      "Token Usage",
+      "Cost Optimization"
+    ],
+    "post": "2026-11-16-how-to-reconcile-azure-openai-realtime-token-telemetry-with-billing-meters"
+  },
+  {
+    "title": "How to Redact Sensitive LLM Data in Prompt Logs, Tool Spans, and Errors",
+    "description": "Prevent sensitive LLM content from leaking through prompt logging, tool instrumentation, and exception reporting with explicit telemetry boundaries.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "LLM",
+      "OpenTelemetry",
+      "Security",
+      "Privacy"
+    ],
+    "post": "2026-11-16-how-to-redact-sensitive-llm-data-across-prompt-logs-tool-spans-and-error-reports"
+  },
+  {
+    "title": "How to Regression-Test LLM Judge Changes by Replaying Stored Agent Runs",
+    "description": "Regression-test evaluator changes against immutable agent traces, paired human labels, and explicit error-direction metrics without reexecuting production tools.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "LLM",
+      "Evaluation",
+      "Regression Testing",
+      "Data Quality"
+    ],
+    "post": "2026-11-16-how-to-regression-test-llm-judge-changes-by-replaying-stored-agent-runs"
+  },
+  {
+    "title": "How to Trace Flaky LLM Judge Verdicts to Individual Rubric Criteria",
+    "description": "Localize unstable LLM judge verdicts by freezing candidate answers, tracing atomic rubric criteria, and comparing repeated evidence-bound judgments.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "LLM",
+      "Evaluation",
+      "Observability",
+      "Prompt Engineering"
+    ],
+    "post": "2026-11-16-how-to-trace-flaky-llm-judge-verdicts-to-individual-rubric-criteria"
+  },
+  {
+    "title": "How to Trace LangGraph Approvals and Resumes to Debug Broken Tool Histories",
+    "description": "Trace approval decisions and resumed LangGraph runs while preserving tool call identities and detecting incomplete message histories.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "LangGraph",
+      "AI Agents",
+      "LLM Observability",
+      "Python"
+    ],
+    "post": "2026-11-16-how-to-trace-langgraph-approval-rejection-and-resume-events-to-find-broken-tool-histories"
+  },
+  {
+    "title": "How to Trace LLM Streaming Stalls Caused by Concurrent FastAPI Requests",
+    "description": "Find event-loop blocking, pool waits, and shared locks that interrupt LLM streams under concurrent FastAPI traffic.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "LLM",
+      "FastAPI",
+      "Python",
+      "Tracing"
+    ],
+    "post": "2026-11-16-how-to-trace-llm-streaming-stalls-caused-by-concurrent-fastapi-requests"
+  },
+  {
+    "title": "How to Trace Input and Output Guardrails in Azure and AWS RAG Pipelines",
+    "description": "Trace input, retrieved-context, and output guardrails across Azure and Amazon Bedrock without conflating provider decisions or missing enforcement.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "RAG",
+      "Guardrails",
+      "Azure",
+      "Amazon Bedrock",
+      "Observability"
+    ],
+    "post": "2026-11-16-how-to-trace-pre-model-and-post-model-guardrails-across-azure-and-aws-rag-pipelines"
+  },
+  {
+    "title": "How to Trace RAG Citations to Document IDs When Several Chunks Share One Source",
+    "description": "Preserve document revisions and chunk identities behind RAG citation labels so several passages from one source remain independently traceable.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "RAG",
+      "LangChain",
+      "Observability",
+      "Python"
+    ],
+    "post": "2026-11-16-how-to-trace-rag-citations-to-document-ids-when-several-chunks-share-one-source"
+  },
+  {
+    "title": "How to Trace ReAct Output Parser Failures After a Successful Tool Call",
+    "description": "Separate successful tool execution from the next ReAct parser failure and preserve the exact failing model output for diagnosis.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "LLM",
+      "LangChain",
+      "Tracing",
+      "Python"
+    ],
+    "post": "2026-11-16-how-to-trace-react-output-parser-failures-after-a-successful-tool-call"
+  },
+  {
+    "title": "How to Validate Guardrails Against Independent Outcomes and Human Review",
+    "description": "Validate guardrail decisions against independently verified effects and blinded human review while keeping unknown and blocked counterfactual outcomes separate.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "LLM",
+      "Guardrails",
+      "Testing",
+      "Monitoring"
+    ],
+    "post": "2026-11-16-how-to-validate-guardrail-decisions-against-independent-outcomes-and-human-review"
+  },
+  {
+    "title": "How to Verify AI Agent Tool Success by Tracing External State Readbacks",
+    "description": "Verify agent tool outcomes with independent state readbacks and trace the difference between accepted, observed, failed, and unknown operations.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "AI Agents",
+      "Observability",
+      "OpenTelemetry",
+      "Python"
+    ],
+    "post": "2026-11-16-how-to-verify-ai-agent-tool-success-by-tracing-external-state-readbacks"
+  },
+  {
+    "title": "How to Verify That PII Redaction Runs on Every Outbound LLM Request Path",
+    "description": "Verify outbound LLM redaction coverage with a request-path inventory, provider-boundary capture, retry tests, and fail-closed behavior.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "LLM",
+      "PII",
+      "Security",
+      "Testing"
+    ],
+    "post": "2026-11-16-how-to-verify-that-pii-redaction-runs-on-every-outbound-llm-request-path"
+  },
+  {
     "title": "How to Set LLM Drift Alert Thresholds from Repeated Baseline Evaluations",
     "description": "Calibrate recurring LLM drift alerts from complete baseline runs, then replay frozen thresholds on held-out runs to measure false alerts and detection delay.",
     "authorGitHubUsername": "nawazdhandala",
