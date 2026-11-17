@@ -820212,5 +820212,19 @@
     ],
     "post": "2026-09-29-customer-outage-report-to-sli-alert",
     "readmePath": "posts/2026-09-29-customer-outage-report-to-sli-alert/README.md"
+  },
+  {
+    "title": "How to Set LLM Drift Alert Thresholds from Repeated Baseline Evaluations",
+    "description": "Calibrate recurring LLM drift alerts from complete baseline runs, then replay frozen thresholds on held-out runs to measure false alerts and detection delay.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "LLM",
+      "Evaluation",
+      "Monitoring",
+      "Statistical Analysis",
+      "Python"
+    ],
+    "post": "2026-11-17-how-to-set-llm-drift-alert-thresholds-from-repeated-baseline-evaluations",
+    "readmePath": "posts/2026-11-17-how-to-set-llm-drift-alert-thresholds-from-repeated-baseline-evaluations/README.md"
   }
 ]

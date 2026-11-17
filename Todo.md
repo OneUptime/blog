@@ -10,12 +10,6 @@ The research draws on 174 distinct Reddit and Stack Overflow threads. Titles ada
 
 All 200 titles were checked against the 61,019 entries in Blogs.json and the existing Todo.md backlog using case- and punctuation-insensitive matching. Existing topics are allowed; existing titles are excluded.
 
-### LLM Evaluation, Regression, and Drift
-
-35. How to Set LLM Drift Alert Thresholds from Repeated Baseline Evaluations
-
-    Research: [Reddit discussion](https://www.reddit.com/r/LLMDevs/comments/1w5oco1/evaluating_tools_for_detecting_llm_model_drift/).
-
 ### OpenTelemetry SDK and Auto-Instrumentation Troubleshooting
 
 51. How to Restore Node.js Auto-Instrumentation When an ESM Application Produces No Traces
