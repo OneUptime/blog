@@ -822178,5 +822178,18 @@
     ],
     "post": "2026-11-18-how-to-stop-unwanted-java-agent-exports-when-opentelemetry-keeps-connecting-to-localhost",
     "readmePath": "posts/2026-11-18-how-to-stop-unwanted-java-agent-exports-when-opentelemetry-keeps-connecting-to-localhost/README.md"
+  },
+  {
+    "title": "How to Diagnose Missing Python Request Logs When OpenTelemetry Exports Only Startup Logs",
+    "description": "Trace missing Python request logs through logger levels, propagation, handler replacement, and worker startup without confusing export with trace correlation.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "OpenTelemetry",
+      "Python",
+      "Logging",
+      "Troubleshooting"
+    ],
+    "post": "2026-11-18-how-to-diagnose-missing-python-request-logs-when-opentelemetry-exports-only-startup-logs",
+    "readmePath": "posts/2026-11-18-how-to-diagnose-missing-python-request-logs-when-opentelemetry-exports-only-startup-logs/README.md"
   }
 ]

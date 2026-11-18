@@ -36,10 +36,6 @@ All 200 titles were checked against the 61,019 entries in Blogs.json and the exi
 
     Research: [Stack Overflow question](https://stackoverflow.com/questions/76356454/opentelemetry-activitysource-startactivity-returns-null-activity-when-there-are).
 
-58. How to Diagnose Missing Python Request Logs When OpenTelemetry Exports Only Startup Logs
-
-    Research: [Stack Overflow question](https://stackoverflow.com/questions/79882176/otel-auto-instrumentation-for-python-logging).
-
 59. How to Trace the Source of Duplicate OpenTelemetry Spans with Identical Span IDs
 
     Research: [Reddit discussion](https://www.reddit.com/r/sre/comments/1qwppbj/what_can_be_the_reasons_for_highly_duplicated/).
