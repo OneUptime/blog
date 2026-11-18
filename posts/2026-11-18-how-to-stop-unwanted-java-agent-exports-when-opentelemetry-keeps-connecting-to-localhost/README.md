@@ -1,4 +1,4 @@
-# How to Stop Unwanted Java Agent Exports When OpenTelemetry Keeps Connecting to Localhost
+# How to Stop OpenTelemetry Java Agent Exports to Localhost
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

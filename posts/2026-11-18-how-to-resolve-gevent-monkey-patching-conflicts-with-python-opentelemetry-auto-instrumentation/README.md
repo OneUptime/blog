@@ -1,4 +1,4 @@
-# How to Resolve gevent Monkey-Patching Conflicts with Python OpenTelemetry Auto-Instrumentation
+# How to Resolve gevent Conflicts with Python OpenTelemetry Auto-Instrumentation
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

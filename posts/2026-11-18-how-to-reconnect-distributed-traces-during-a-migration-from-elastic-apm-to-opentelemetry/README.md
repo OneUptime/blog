@@ -1,4 +1,4 @@
-# How to Reconnect Distributed Traces During a Migration from Elastic APM to OpenTelemetry
+# How to Reconnect Traces When Migrating from Elastic APM to OpenTelemetry
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

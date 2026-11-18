@@ -1,4 +1,4 @@
-# How to Give Each Kafka Message Its Own Trace When One HTTP Request Publishes a Batch
+# How to Give Each Kafka Message Its Own Trace in an HTTP Request Batch
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
@@ -20,7 +20,7 @@ The [messaging conventions](https://opentelemetry.io/docs/specs/semconv/messagin
 
 ## Start one independent producer span per record
 
-Kafka's `send` accepts one record even when the producer later batches records into network requests. This example models each application send as that message's creation context. It uses the existing configured `OpenTelemetry` instance:
+Kafka's `send` accepts one record even when the producer later batches records into network requests. This example models each application send as that message's creation context. It uses the existing configured `OpenTelemetry` instance with an SDK tracer provider and W3C Trace Context propagation enabled on both producer and consumer; the `traceparent` checks below assume that propagator. Here, `messageId` is a unique application-assigned message identifier, also used as the Kafka record key; Kafka keys alone do not guarantee message uniqueness:
 
 ```java
 import io.opentelemetry.api.OpenTelemetry;
@@ -45,6 +45,10 @@ public final class IndependentMessageTraces {
             .spanBuilder("send " + topic)
             .setNoParent()
             .setSpanKind(SpanKind.PRODUCER)
+            .setAttribute("messaging.system.name", "kafka")
+            .setAttribute("messaging.operation.name", "send")
+            .setAttribute("messaging.operation.type", "send")
+            .setAttribute("kafka.message.tombstone", payload == null)
             .setAttribute("messaging.destination.name", topic)
             .setAttribute("messaging.message.id", messageId);
         if (request.isValid()) {
@@ -60,6 +64,7 @@ public final class IndependentMessageTraces {
                 try {
                     if (failure != null) {
                         messageSpan.recordException(failure);
+                        messageSpan.setAttribute("error.type", failure.getClass().getName());
                         messageSpan.setStatus(StatusCode.ERROR);
                     }
                 } finally {
@@ -68,6 +73,7 @@ public final class IndependentMessageTraces {
             });
         } catch (RuntimeException failure) {
             messageSpan.recordException(failure);
+            messageSpan.setAttribute("error.type", failure.getClass().getName());
             messageSpan.setStatus(StatusCode.ERROR);
             messageSpan.end();
             throw failure;
@@ -90,7 +96,7 @@ A consumer processing an indivisible batch cannot have multiple parents. Use lin
 
 ## Verify the policy under concurrency
 
-For one HTTP request publishing three messages, assert the following against captured records and exported spans:
+With an always-on sampler and a test exporter, wait for send callbacks and span export to complete. For one HTTP request publishing three messages, assert the following against captured records and exported spans:
 
 - Three message producer spans have no parent and three distinct trace IDs.
 - Every producer root links to the HTTP request's span context.

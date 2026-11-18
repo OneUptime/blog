@@ -1,4 +1,4 @@
-# How to Diagnose Missing Python Request Logs When OpenTelemetry Exports Only Startup Logs
+# How to Diagnose Missing Python Request Logs with OpenTelemetry
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

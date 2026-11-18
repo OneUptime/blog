@@ -1,4 +1,4 @@
-# How to Verify That Concurrent Python Async Tasks Keep Their OpenTelemetry Spans Separate
+# How to Verify OpenTelemetry Span Isolation in Concurrent Python Async Tasks
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -85,6 +85,6 @@ Remove overlapping manual `traceparent` injection from that path. `propagate` ex
 
 ## Check the resulting parent relationship
 
-For pass-through, the application's parent should match the span identified in the incoming header. For a tracing Nginx proxy, the trace ID should remain the same while the application's parent should identify Nginx's span. An unchanged parent ID is not a success requirement when the proxy creates a span.
+With a valid incoming context and server tracing enabled, a pass-through proxy should leave the application's parent matching the span identified in the incoming header. For a tracing Nginx proxy using `propagate`, the trace ID should remain the same while the application's parent should identify Nginx's span. An unchanged parent ID is not a success requirement when the proxy creates a span.
 
-Retest one value, no value, duplicated values, and two concurrent callers. Require exactly one valid outgoing context on the normal path and a deliberate policy for invalid ingress. Remove the diagnostic endpoint afterward. Fixing ownership at the point that adds the second header is more reliable than stripping duplicates inside application middleware after server tracing has already started.
+Retest one value, no value, duplicated values, and two concurrent callers. Require exactly one valid outgoing context when forwarding a valid incoming context or when Nginx creates and propagates a span; a pass-through proxy should leave an absent context absent. Require a deliberate policy for invalid ingress. Remove the diagnostic endpoint afterward. Fixing ownership at the point that adds the second header is more reliable than stripping duplicates inside application middleware after server tracing has already started.

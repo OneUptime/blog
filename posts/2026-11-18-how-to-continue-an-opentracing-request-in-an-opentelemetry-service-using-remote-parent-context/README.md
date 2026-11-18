@@ -1,4 +1,4 @@
-# How to Continue an OpenTracing Request in an OpenTelemetry Service Using Remote Parent Context
+# How to Continue OpenTracing Requests with OpenTelemetry Remote Parents
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
@@ -17,7 +17,7 @@ Record the caller's tracer implementation, configured propagator, and the trace 
 | Observed context | Receiver action |
 | --- | --- |
 | `traceparent` and optional `tracestate` | Extract with W3C Trace Context. |
-| `b3` or `X-B3-*` | Use the supported B3 propagator matching the sender's encoding. |
+| `b3` or `X-B3-*` | Use a supported B3 propagator; OpenTelemetry B3 extraction supports both encodings, with single-header precedence. |
 | A vendor-specific header | Install the corresponding supported propagator or migrate injection at the sender. |
 | No trace header | Repair the sender or intermediary before debugging parent assignment. |
 
@@ -69,7 +69,7 @@ public final class IncomingTrace {
 }
 ```
 
-Starting extraction from `Context.root()` prevents a pooled request thread's ambient context from becoming an accidental fallback. W3C extraction produces a remote span context when valid headers are present. Invalid or absent input leaves no valid remote parent, so this example creates a root. Add any ingress trust policy before accepting remote sampling decisions.
+Starting extraction from `Context.root()` prevents a pooled request thread's ambient context from becoming an accidental fallback. W3C extraction produces a remote span context when valid headers are present. An invalid or absent `traceparent` leaves no valid remote parent, so this example creates a root. Malformed `tracestate` does not invalidate a valid `traceparent`; the parent is retained without that trace state. Add any ingress trust policy before accepting remote sampling decisions.
 
 The server span must have a new span ID while retaining the extracted trace ID. Do not create a new span with the caller's span ID or export a synthetic copy of its span. The [tracing API specification](https://opentelemetry.io/docs/specs/otel/trace/api/) defines remote contexts and parent relationships.
 

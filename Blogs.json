@@ -822167,7 +822167,7 @@
     "readmePath": "posts/2026-11-17-how-to-set-llm-drift-alert-thresholds-from-repeated-baseline-evaluations/README.md"
   },
   {
-    "title": "How to Stop Unwanted Java Agent Exports When OpenTelemetry Keeps Connecting to Localhost",
+    "title": "How to Stop OpenTelemetry Java Agent Exports to Localhost",
     "description": "Identify which Java agent signal still exports to localhost, disable unwanted exporters, and verify the effective endpoint and configuration source.",
     "authorGitHubUsername": "nawazdhandala",
     "tags": [
@@ -822180,7 +822180,7 @@
     "readmePath": "posts/2026-11-18-how-to-stop-unwanted-java-agent-exports-when-opentelemetry-keeps-connecting-to-localhost/README.md"
   },
   {
-    "title": "How to Diagnose Missing Python Request Logs When OpenTelemetry Exports Only Startup Logs",
+    "title": "How to Diagnose Missing Python Request Logs with OpenTelemetry",
     "description": "Trace missing Python request logs through logger levels, propagation, handler replacement, and worker startup without confusing export with trace correlation.",
     "authorGitHubUsername": "nawazdhandala",
     "tags": [
@@ -822206,7 +822206,7 @@
     "readmePath": "posts/2026-11-18-how-to-trace-the-source-of-duplicate-opentelemetry-spans-with-identical-span-ids/README.md"
   },
   {
-    "title": "How to Resolve gevent Monkey-Patching Conflicts with Python OpenTelemetry Auto-Instrumentation",
+    "title": "How to Resolve gevent Conflicts with Python OpenTelemetry Auto-Instrumentation",
     "description": "Fix gevent and OpenTelemetry startup ordering, verify early monkey patching, and test the real worker lifecycle before restoring telemetry exports.",
     "authorGitHubUsername": "nawazdhandala",
     "tags": [
@@ -822219,7 +822219,7 @@
     "readmePath": "posts/2026-11-18-how-to-resolve-gevent-monkey-patching-conflicts-with-python-opentelemetry-auto-instrumentation/README.md"
   },
   {
-    "title": "How to Verify That Concurrent Python Async Tasks Keep Their OpenTelemetry Spans Separate",
+    "title": "How to Verify OpenTelemetry Span Isolation in Concurrent Python Async Tasks",
     "description": "Verify Python asyncio trace isolation with an in-memory exporter, forced task interleaving, and assertions on current spans and parent IDs.",
     "authorGitHubUsername": "nawazdhandala",
     "tags": [
@@ -822232,7 +822232,7 @@
     "readmePath": "posts/2026-11-18-how-to-verify-that-concurrent-python-async-tasks-keep-their-opentelemetry-spans-separate/README.md"
   },
   {
-    "title": "How to Give Each Kafka Message Its Own Trace When One HTTP Request Publishes a Batch",
+    "title": "How to Give Each Kafka Message Its Own Trace in an HTTP Request Batch",
     "description": "Create an independent root trace for each Kafka message published by one HTTP request, preserve causality with links, and prevent automatic header replacement.",
     "authorGitHubUsername": "nawazdhandala",
     "tags": [
@@ -822245,7 +822245,7 @@
     "readmePath": "posts/2026-11-18-how-to-give-each-kafka-message-its-own-trace-when-one-http-request-publishes-a-batch/README.md"
   },
   {
-    "title": "How to Continue an OpenTracing Request in an OpenTelemetry Service Using Remote Parent Context",
+    "title": "How to Continue OpenTracing Requests with OpenTelemetry Remote Parents",
     "description": "Continue requests from an OpenTracing caller by matching its wire propagator, extracting a remote parent, and creating a new OpenTelemetry server span.",
     "authorGitHubUsername": "nawazdhandala",
     "tags": [
@@ -822273,7 +822273,7 @@
     "readmePath": "posts/2026-11-18-how-to-diagnose-duplicate-traceparent-headers-between-nginx-and-asp-net-core/README.md"
   },
   {
-    "title": "How to Reconnect Distributed Traces During a Migration from Elastic APM to OpenTelemetry",
+    "title": "How to Reconnect Traces When Migrating from Elastic APM to OpenTelemetry",
     "description": "Reconnect mixed Elastic APM and OpenTelemetry traces by checking W3C headers, continuation strategy, legacy compatibility, sampling, and backend routing.",
     "authorGitHubUsername": "nawazdhandala",
     "tags": [
