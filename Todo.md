@@ -12,10 +12,6 @@ All 200 titles were checked against the 61,019 entries in Blogs.json and the exi
 
 ### Distributed Context Across HTTP, Queues, and Async Work
 
-65. How to Diagnose Duplicate traceparent Headers Between Nginx and ASP.NET Core
-
-    Research: [Stack Overflow question](https://stackoverflow.com/questions/75075296/net-core-system-diagnostics-activity-cannot-handle-multiple-parentids-from-trac).
-
 66. How to Reconnect Distributed Traces During a Migration from Elastic APM to OpenTelemetry
 
     Research: [Stack Overflow question](https://stackoverflow.com/questions/76422074/elastic-apm-span-and-opentelemetry-span-not-linked).

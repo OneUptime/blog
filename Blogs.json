@@ -822257,5 +822257,19 @@
     ],
     "post": "2026-11-18-how-to-continue-an-opentracing-request-in-an-opentelemetry-service-using-remote-parent-context",
     "readmePath": "posts/2026-11-18-how-to-continue-an-opentracing-request-in-an-opentelemetry-service-using-remote-parent-context/README.md"
+  },
+  {
+    "title": "How to Diagnose Duplicate traceparent Headers Between Nginx and ASP.NET Core",
+    "description": "Locate duplicate traceparent headers across Nginx and ASP.NET Core, distinguish wire duplication from log formatting, and assign one propagation owner.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "OpenTelemetry",
+      "Nginx",
+      "ASP.NET Core",
+      "Debugging",
+      "Context Propagation"
+    ],
+    "post": "2026-11-18-how-to-diagnose-duplicate-traceparent-headers-between-nginx-and-asp-net-core",
+    "readmePath": "posts/2026-11-18-how-to-diagnose-duplicate-traceparent-headers-between-nginx-and-asp-net-core/README.md"
   }
 ]
