@@ -822165,5 +822165,18 @@
     ],
     "post": "2026-11-17-how-to-set-llm-drift-alert-thresholds-from-repeated-baseline-evaluations",
     "readmePath": "posts/2026-11-17-how-to-set-llm-drift-alert-thresholds-from-repeated-baseline-evaluations/README.md"
+  },
+  {
+    "title": "How to Stop Unwanted Java Agent Exports When OpenTelemetry Keeps Connecting to Localhost",
+    "description": "Identify which Java agent signal still exports to localhost, disable unwanted exporters, and verify the effective endpoint and configuration source.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "OpenTelemetry",
+      "Java",
+      "Configuration",
+      "Troubleshooting"
+    ],
+    "post": "2026-11-18-how-to-stop-unwanted-java-agent-exports-when-opentelemetry-keeps-connecting-to-localhost",
+    "readmePath": "posts/2026-11-18-how-to-stop-unwanted-java-agent-exports-when-opentelemetry-keeps-connecting-to-localhost/README.md"
   }
 ]

@@ -32,10 +32,6 @@ All 200 titles were checked against the 61,019 entries in Blogs.json and the exi
 
     Research: [Stack Overflow question](https://stackoverflow.com/questions/76726928/dependencies-do-not-show-with-opentelemetry-automatic-instrumentation-for-php).
 
-56. How to Stop Unwanted Java Agent Exports When OpenTelemetry Keeps Connecting to Localhost
-
-    Research: [Stack Overflow question](https://stackoverflow.com/questions/77790857/getting-error-when-running-auto-instrumentation-using-otel-for-java-service).
-
 57. How to Debug a Null Activity from StartActivity When OpenTelemetry Listeners Are Registered
 
     Research: [Stack Overflow question](https://stackoverflow.com/questions/76356454/opentelemetry-activitysource-startactivity-returns-null-activity-when-there-are).
