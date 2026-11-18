@@ -822191,5 +822191,18 @@
     ],
     "post": "2026-11-18-how-to-diagnose-missing-python-request-logs-when-opentelemetry-exports-only-startup-logs",
     "readmePath": "posts/2026-11-18-how-to-diagnose-missing-python-request-logs-when-opentelemetry-exports-only-startup-logs/README.md"
+  },
+  {
+    "title": "How to Trace the Source of Duplicate OpenTelemetry Spans with Identical Span IDs",
+    "description": "Locate repeated exports of the same span by comparing identifiers at SDK, Collector, transport, and backend boundaries without discarding legitimate operations.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "OpenTelemetry",
+      "OpenTelemetry Collector",
+      "Tracing",
+      "Debugging"
+    ],
+    "post": "2026-11-18-how-to-trace-the-source-of-duplicate-opentelemetry-spans-with-identical-span-ids",
+    "readmePath": "posts/2026-11-18-how-to-trace-the-source-of-duplicate-opentelemetry-spans-with-identical-span-ids/README.md"
   }
 ]
