@@ -542,6 +542,86 @@ All 200 titles were checked against the 61,019 entries in Blogs.json and the exi
 ## Fulcio
 
 
+1. How to Diagnose Fulcio OIDC Discovery Failures Behind Istio ServiceEntry Virtual IPs
+
+    Research: [Source](https://github.com/sigstore/fulcio/issues/2483) · [Documentation](https://github.com/sigstore/fulcio/blob/main/docs/oidc.md).
+
+2. How to Diagnose K3s Service Account Signing Regressions After a Fulcio Upgrade
+
+    Research: [Source](https://github.com/sigstore/fulcio/issues/2355) · [Documentation](https://github.com/sigstore/fulcio/releases).
+
+3. How to Assess Fulcio Exposure to OIDC Discovery Redirect and JWKS Substitution Flaws
+
+    Research: [Source](https://github.com/sigstore/fulcio/security/advisories/GHSA-f5mr-q85p-6hh6) · [Documentation](https://github.com/sigstore/fulcio/releases).
+
+4. How to Check Whether a New CI Provider Is Trusted by the Public Fulcio Service
+
+    Research: [Source](https://github.com/sigstore/fulcio/issues/2442) · [Documentation](https://github.com/sigstore/fulcio/blob/main/docs/new-idp-requirements.md).
+
+5. How to Diagnose Azure Pipelines OIDC Compatibility Before Using Fulcio for Signing
+
+    Research: [Source](https://github.com/sigstore/fulcio/issues/1803) · [Documentation](https://github.com/sigstore/fulcio/blob/main/docs/oidc.md).
+
+6. How to Diagnose Jenkins OIDC Issuer Mismatches in a Self-Hosted Fulcio Deployment
+
+    Research: [Source](https://github.com/sigstore/fulcio/issues/2334) · [Documentation](https://github.com/sigstore/fulcio/blob/main/docs/oidc.md).
+
+7. How to Repair Missing GitLab CI Provider Metadata in a Fulcio Configuration
+
+    Research: [Source](https://github.com/sigstore/cosign/issues/4399) · [Documentation](https://docs.gitlab.com/ci/yaml/signing_self_hosted/).
+
+8. How to Investigate Fulcio GitLab Signing Failures When ci_config_ref_uri Is Empty
+
+    Research: [Source](https://github.com/sigstore/fulcio/issues/2189) · [Documentation](https://github.com/sigstore/fulcio/blob/main/docs/oidc.md).
+
+9. How to Test a Custom OIDC Client Audience Across Sigstore Python and Fulcio
+
+    Research: [Source](https://github.com/sigstore/sigstore-python/issues/1401) · [Documentation](https://github.com/sigstore/fulcio/blob/main/docs/oidc.md).
+
+10. How to Restore Fulcio Signing When Cosign Reports an Invalid TUF Key
+
+    Research: [Source](https://github.com/sigstore/cosign-installer/issues/100) · [Documentation](https://blog.sigstore.dev/tuf-root-update/).
+
+11. How to Check Organization Restrictions Before Trusting GitHub Actions in a Private Fulcio CA
+
+    Research: [Source](https://github.com/sigstore/fulcio/issues/1989) · [Documentation](https://github.com/sigstore/fulcio/blob/main/docs/oidc.md).
+
+12. How to Update Fulcio Certificate Parsers for DER-Encoded Issuer Extensions
+
+    Research: [Source](https://github.com/sigstore/fulcio/issues/754) · [Documentation](https://github.com/sigstore/fulcio/blob/main/docs/oid-info.md).
+
+13. How to Detect Repository Name Reuse with Immutable IDs in Fulcio Certificates
+
+    Research: [Source](https://github.com/sigstore/fulcio/issues/754) · [Documentation](https://github.com/sigstore/fulcio/blob/main/docs/oid-info.md).
+
+14. How to Trace a Fulcio Signing Certificate to the Exact CI Run Attempt
+
+    Research: [Source](https://github.com/sigstore/fulcio/issues/754) · [Documentation](https://github.com/sigstore/fulcio/blob/main/config/identity/config.yaml).
+
+15. How to Check Runner Environment Claims in Fulcio Certificates Before Accepting a Build
+
+    Research: [Source](https://github.com/sigstore/fulcio/issues/754) · [Documentation](https://github.com/sigstore/fulcio/blob/main/docs/oid-info.md).
+
+16. How to Encrypt the Ingress-to-Fulcio Hop for REST Certificate Requests
+
+    Research: [Source](https://github.com/sigstore/fulcio/issues/2415) · [Documentation](https://github.com/sigstore/fulcio/blob/main/docs/setup.md).
+
+17. How to Plan TLS Certificate Rotation for Fulcio HTTP and gRPC Listeners
+
+    Research: [Source](https://github.com/sigstore/fulcio/issues/2415) · [Documentation](https://github.com/sigstore/fulcio/blob/main/docs/setup.md).
+
+18. How to Diagnose Fulcio Unsupported-Key Errors After AWS KMS Access Is Lost
+
+    Research: [Source](https://github.com/sigstore/fulcio/issues/2506) · [Documentation](https://github.com/sigstore/fulcio/blob/main/docs/setup.md).
+
+19. How to Separate Fulcio Code-Signing Trust from GitLab and Registry TLS Trust
+
+    Research: [Source](https://github.com/sigstore/cosign/issues/4399) · [Documentation](https://docs.gitlab.com/ci/yaml/signing_self_hosted/).
+
+20. How to Check Whether a Container Image Verifier Supports Fulcio URI Identities
+
+    Research: [Source](https://gitlab.com/dunn.dev/immutable/basef/-/work_items/15) · [Documentation](https://github.com/sigstore/architecture-docs/blob/main/fulcio-spec.md).
+
 ## SSL Monitoring
 
 
@@ -682,6 +762,86 @@ All 200 titles were checked against the 61,019 entries in Blogs.json and the exi
 
 ## gRPC
 
+
+1. How to Start Multiprocess Python gRPC Servers Without Forking an Active Runtime
+
+    Research: [Source](https://stackoverflow.com/questions/62798507/why-multiprocess-python-grpc-server-do-not-work) · [Documentation](https://github.com/grpc/grpc/blob/master/examples/python/multiprocessing/README.md).
+
+2. How to Fix Python gRPC AsyncIO Futures Attached to a Different Event Loop
+
+    Research: [Source](https://stackoverflow.com/questions/78739591/when-using-asyncclients-in-google-cloud-python-sdk-got-future-attached-to-a-dif) · [Documentation](https://grpc.github.io/grpc/python/grpc_asyncio.html).
+
+3. How to Serialize Writes from Multiple Producers to a Java gRPC StreamObserver
+
+    Research: [Source](https://stackoverflow.com/questions/65665620/can-grpc-bidi-streaming-server-send-a-message-to-a-client-that-it-is-not-current) · [Documentation](https://grpc.github.io/grpc-java/javadoc/io/grpc/stub/StreamObserver.html).
+
+4. How to Keep Slow Java gRPC onNext Handlers from Delaying Cancellation Callbacks
+
+    Research: [Source](https://stackoverflow.com/questions/53614704/blocking-inside-of-streamobserver-onnext) · [Documentation](https://grpc.github.io/grpc-java/javadoc/io/grpc/stub/StreamObserver.html).
+
+5. How to Prevent Bidirectional gRPC Streams from Deadlocking Under Backpressure
+
+    Research: [Source](https://stackoverflow.com/questions/57375360/how-does-grpc-client-streaming-flow-control-work-in-go) · [Documentation](https://grpc.io/docs/guides/flow-control/).
+
+6. How to Diagnose gRPC Retries That Stop After Response Headers Arrive
+
+    Research: [Source](https://stackoverflow.com/questions/78352187/how-to-configure-grpc-client-retry-for-ruby-via-service-config) · [Documentation](https://grpc.io/docs/guides/retry/).
+
+7. How to Explain Why Large gRPC Requests Stop Retrying When Small Requests Succeed
+
+    Research: [Source](https://stackoverflow.com/questions/78352187/how-to-configure-grpc-client-retry-for-ruby-via-service-config) · [Documentation](https://github.com/grpc/proposal/blob/master/A6-client-retries.md).
+
+8. How to Read Binary gRPC Metadata in Java Interceptors Without ASCII Parsing Errors
+
+    Research: [Source](https://stackoverflow.com/questions/73250530/invalid-argument-failed-to-parse-headers-when-adding-a-serverinterceptor) · [Documentation](https://grpc.io/docs/guides/metadata/).
+
+9. How to Carry Multiline Diagnostic Text in gRPC Metadata Without Invalid Header Values
+
+    Research: [Source](https://stackoverflow.com/questions/72951977/rpcexception-metadata-limitations) · [Documentation](https://grpc.io/docs/guides/metadata/).
+
+10. How to Resume a Go gRPC Subscription After Recreating a Broken Stream
+
+    Research: [Source](https://stackoverflow.com/questions/71530942/how-to-re-establish-grpc-bidirectional-stream-if-internet-connection-is-down) · [Documentation](https://pkg.go.dev/google.golang.org/grpc#ClientStream).
+
+11. How to Find the Client Exception Hidden Behind Python gRPC Exception Iterating Requests
+
+    Research: [Source](https://stackoverflow.com/questions/70417991/grpc-about-a-client-to-server-stream-rpc-but-with-an-error-of-exception-itera) · [Documentation](https://grpc.github.io/grpc/python/grpc.html).
+
+12. How to Feed a C++ gRPC Streaming Reactor Without Blocking Its Callback Threads
+
+    Research: [Source](https://stackoverflow.com/questions/79684222/how-to-safely-wait-for-new-data-in-a-grpc-c-server-streaming-reactor-using-the) · [Documentation](https://grpc.io/docs/languages/cpp/best_practices/).
+
+13. How to Diagnose Python gRPC AsyncIO Streaming Concurrency Limits with a Minimal Reproduction
+
+    Research: [Source](https://stackoverflow.com/questions/79469878/is-the-asyncio-api-of-grpcio-production-ready) · [Documentation](https://grpc.github.io/grpc/python/grpc_asyncio.html).
+
+14. How to Call a gRPC Service with grpcurl When Server Reflection Is Disabled
+
+    Research: [Source](https://stackoverflow.com/questions/70885810/kong-grpc-fails-without-proto) · [Documentation](https://github.com/fullstorydev/grpcurl).
+
+15. How to Give Java Background gRPC Calls Their Own Cancellation Lifetime
+
+    Research: [Source](https://stackoverflow.com/questions/57110811/grpc-random-cancelled-exception-on-rpc-calls) · [Documentation](https://grpc.github.io/grpc-java/javadoc/io/grpc/Context.html).
+
+16. How to Diagnose Missing CallCredentials on a .NET gRPC Channel
+
+    Research: [Source](https://stackoverflow.com/questions/58990213/asp-net-core-grpc-client-configuring-http-authorization) · [Documentation](https://learn.microsoft.com/en-us/aspnet/core/grpc/authn-and-authz).
+
+17. How to Resolve gRPC Too Many Pings Errors by Matching Client and Server Keepalive Policies
+
+    Research: [Source](https://stackoverflow.com/questions/57606303/grpc-arg-keepalive-permit-without-calls-for-java-servers) · [Documentation](https://grpc.io/docs/guides/keepalive/).
+
+18. How to Preserve Unknown Protobuf Fields When Relaying gRPC Messages Through Older Services
+
+    Research: [Source](https://stackoverflow.com/questions/62346394/unable-to-unmarshal-json-into-protobuf-message) · [Documentation](https://protobuf.dev/programming-guides/proto3/).
+
+19. How to Diagnose gRPC Metadata Size Errors That Hide the Original Server Failure
+
+    Research: [Source](https://stackoverflow.com/questions/77525513/texttospeech-synthesize-long-audio-error-resourceexhausted-429-received-metadata) · [Documentation](https://grpc.io/docs/guides/metadata/).
+
+20. How to Prevent Concurrent C++ gRPC Writes from Triggering Too Many Operations
+
+    Research: [Source](https://stackoverflow.com/questions/59436740/getting-abort-trap-6-from-google-speech-api) · [Documentation](https://grpc.io/docs/languages/cpp/best_practices/).
 
 ## PostgreSQL Operator
 
@@ -2063,6 +2223,86 @@ All 200 titles were checked against the 61,019 entries in Blogs.json and the exi
 18. A Sigma Rule Converts but Finds Nothing in Your SIEM: How to Debug Taxonomy, Field Mappings, Pipelines, and Backend Limitations
 19. How to Write Sigma Correlation Rules for Thresholds and Ordered Sequences Across Log Sources with Different Field Names
 20. How to Benchmark a SIEM with Repeatable Log Replay: Ingestion Lag, Parse Accuracy, Search Latency, Detection Fidelity, and Analyst Workflow
+
+21. How to Diagnose Wazuh Rules That Pass Logtest but Miss Live Syslog Events
+
+    Research: [Source](https://www.reddit.com/r/Wazuh/comments/1r6i2oy/wazuh_decoderrule_working_in_logtest_but/) · [Documentation](https://documentation.wazuh.com/current/user-manual/ruleset/ruleset-xml-syntax/decoders.html).
+
+22. How to Resolve Duplicate Custom Rule IDs in Wazuh Without Editing the Shipped Ruleset
+
+    Research: [Source](https://www.reddit.com/r/Wazuh/comments/1tvmu8n/rule_id_is_duplicated_warning_during_wazuhlogtest/) · [Documentation](https://documentation.wazuh.com/current/user-manual/ruleset/rules/custom.html).
+
+23. How to Decode JSON Embedded After a Syslog Header in Wazuh
+
+    Research: [Source](https://www.reddit.com/r/Wazuh/comments/1f7y9x8) · [Documentation](https://documentation.wazuh.com/current/user-manual/ruleset/ruleset-xml-syntax/decoders.html).
+
+24. How to Match Windows Event Fields in Wazuh Rules Without the Alert JSON data Prefix
+
+    Research: [Source](https://www.reddit.com/r/Wazuh/comments/1t3ljv9/issue_with_custom_wazuh_rule_detection_logic/) · [Documentation](https://documentation.wazuh.com/current/user-manual/ruleset/ruleset-xml-syntax/rules.html).
+
+25. How to Choose same_field or same_srcip for Wazuh Frequency Rules
+
+    Research: [Source](https://www.reddit.com/r/Wazuh/comments/1tfips2/wazuh_fine_tuning_and_alerting/) · [Documentation](https://documentation.wazuh.com/current/user-manual/ruleset/ruleset-xml-syntax/rules.html).
+
+26. How to Detect Password Spraying Across Multiple Accounts from One IP in Wazuh
+
+    Research: [Source](https://www.reddit.com/r/Wazuh/comments/1xsnum5/wazuh_password_spraying/) · [Documentation](https://documentation.wazuh.com/current/user-manual/ruleset/ruleset-xml-syntax/rules.html).
+
+27. How to Restrict Splunk Authentication Data Model Events Without Dropping the Raw Logs
+
+    Research: [Source](https://www.reddit.com/r/Splunk/comments/1ewvkbl) · [Documentation](https://help.splunk.com/en/data-management/common-information-model/8.5/data-models/authentication).
+
+28. How to Trace Splunk ES Search Results Through Failed Notable Event Actions
+
+    Research: [Source](https://www.reddit.com/r/Splunk/comments/14vl07y) · [Documentation](https://help.splunk.com/en/splunk-enterprise-security-7/administer/7.3/correlation-searches/configure-correlation-searches-in-splunk-enterprise-security).
+
+29. How to Aggregate Related Splunk ES Search Results Before Creating Notable Events
+
+    Research: [Source](https://www.reddit.com/r/Splunk/comments/ur1n06) · [Documentation](https://help.splunk.com/en/splunk-enterprise-security-7/administer/7.3/correlation-searches/configure-correlation-searches-in-splunk-enterprise-security).
+
+30. How to Add Contributing-Event Drilldowns to Splunk ES Findings
+
+    Research: [Source](https://www.reddit.com/r/Splunk/comments/163n9ns) · [Documentation](https://help.splunk.com/en/splunk-enterprise-security-8/administer/8.5/investigations/investigate-findings-using-drilldown-searches-and-dashboards-in-splunk-enterprise-security).
+
+31. How to Stop Splunk Risk Notables from Repeating When No New Risk Events Arrive
+
+    Research: [Source](https://community.splunk.com/t5/Splunk-Enterprise-Security/Throttling-Notables-Do-Underlying-Alerts-Need-to-be-Throttled/m-p/702820) · [Documentation](https://help.splunk.com/en/splunk-enterprise-security-7/risk-based-alerting/7.3/best-practices/suppressing-false-positives-using-alert-throttling).
+
+32. How to Plan a Splunk ES Detection Backfill Without Recounting Risk Events
+
+    Research: [Source](https://community.splunk.com/t5/Splunk-Enterprise-Security/Correlation-Search-Skipped-Backfill-Operations/m-p/756575) · [Documentation](https://help.splunk.com/en/splunk-enterprise-security-7/administer/7.3/correlation-searches/configure-correlation-searches-in-splunk-enterprise-security).
+
+33. How to Map Cloud User IDs to Endpoint Identities for a Splunk Investigation Timeline
+
+    Research: [Source](https://www.reddit.com/r/Splunk/comments/1xhjb4p/connecting_cloud_and_endpoint_logs_during_a_hunt/) · [Documentation](https://help.splunk.com/en/data-management/common-information-model/8.5/data-models/authentication).
+
+34. How to Check Whether Splunk tstats Security Detections Are Missing Unaccelerated Events
+
+    Research: [Source](https://www.reddit.com/r/Splunk/comments/17umm3f) · [Documentation](https://help.splunk.com/en/splunk-enterprise/spl-search-reference/9.2/search-commands/tstats).
+
+35. How to Apply a Two-Column Sentinel Watchlist Exception with a KQL Anti Join
+
+    Research: [Source](https://stackoverflow.com/questions/78862180/how-to-create-a-whitelist-with-two-fields-in-kql-with-a-watchlist) · [Documentation](https://learn.microsoft.com/en-us/azure/sentinel/watchlists-queries).
+
+36. How to Correlate Two Sentinel Event Tables by Account and a Bounded Time Window
+
+    Research: [Source](https://stackoverflow.com/questions/74932025/sentinel-analytics-rule-with-two-tables) · [Documentation](https://learn.microsoft.com/en-us/kusto/query/join-time-window).
+
+37. How to Count Currently Open Sentinel Incidents Using Their Latest Status
+
+    Research: [Source](https://stackoverflow.com/questions/76831973/kql-aggregate-on-latest-entry) · [Documentation](https://learn.microsoft.com/en-us/kusto/query/arg-max-aggregation-function?view=microsoft-fabric).
+
+38. How to Fix Sentinel Login-Failure Counts Split by Individual Timestamps
+
+    Research: [Source](https://stackoverflow.com/questions/76375936/can-someone-assist-me-with-my-kql-query-to-create-an-alert-for-login-failures-in) · [Documentation](https://learn.microsoft.com/en-us/kusto/query/bin-function?view=microsoft-fabric).
+
+39. How to Grant Machine.Isolate API Permission to a Sentinel Playbook Managed Identity
+
+    Research: [Source](https://www.reddit.com/r/AzureSentinel/comments/1ftv2qr) · [Documentation](https://learn.microsoft.com/en-us/defender-endpoint/api/isolate-machine).
+
+40. How to Diagnose Sentinel Playbook Trigger Failures When the Operator Already Has Access
+
+    Research: [Source](https://www.reddit.com/r/AzureSentinel/comments/1b749o3) · [Documentation](https://learn.microsoft.com/en-us/azure/sentinel/automation/run-playbooks).
 
 ## Log Enrichment
 
@@ -10063,6 +10303,86 @@ All 200 titles were checked against the 61,019 entries in Blogs.json and the exi
 19. How to Update Nested ArangoDB Objects Without Replacing Unchanged Fields
 20. How to Find Low-Cost Routes in ArangoDB with Weighted Graph Traversals
 
+21. How to Search ArangoDB Document Strings Containing Spaces with ArangoSearch LIKE
+
+    Research: [Source](https://stackoverflow.com/questions/66158829/using-arangosearch-like-to-search-for-a-string-with-space) · [Documentation](https://docs.arango.ai/arangodb/stable/indexes-and-search/analyzers/).
+
+22. How to Match ArangoSearch Query Terms to Stemmed Index Tokens
+
+    Research: [Source](https://stackoverflow.com/questions/69917822/unable-to-get-an-arangosearch-view-working-properly-in-arangodb) · [Documentation](https://docs.arango.ai/arangodb/stable/aql/functions/arangosearch/).
+
+23. How to Remove Empty Tokens from an ArangoSearch Analyzer Pipeline
+
+    Research: [Source](https://stackoverflow.com/questions/72747410/how-to-remove-empty-strings-in-custom-arangosearch-analyzer/72747512) · [Documentation](https://docs.arango.ai/arangodb/stable/indexes-and-search/analyzers/).
+
+24. How to Search Text Inside Nested JSON Arrays with an ArangoSearch View
+
+    Research: [Source](https://github.com/arangodb/arangodb/issues/9616) · [Documentation](https://docs.arango.ai/arangodb/stable/indexes-and-search/arangosearch/).
+
+25. How to Weight Product Names and Descriptions Differently in ArangoSearch Rankings
+
+    Research: [Source](https://github.com/arangodb/arangodb/issues/21714) · [Documentation](https://docs.arango.ai/arangodb/stable/aql/functions/arangosearch/).
+
+26. How to Measure ArangoSearch Index Disk Usage Separately from Collection Data
+
+    Research: [Source](https://github.com/arangodb/arangodb/issues/19702) · [Documentation](https://docs.arango.ai/arangodb/stable/develop/http-api/monitoring/metrics/).
+
+27. How to Bound Memory Use While Streaming Large ArangoDB Query Results
+
+    Research: [Source](https://github.com/arangodb/arangodb/issues/8932) · [Documentation](https://docs.arango.ai/arangodb/stable/operations/administration/reduce-memory-footprint/).
+
+28. How to Version ArangoDB Graph Edges for Historical Relationship Queries
+
+    Research: [Source](https://www.reddit.com/r/KnowledgeGraph/comments/1t1eqbt/modeling_temporal_data_in_arangodb_versioned/) · [Documentation](https://docs.arango.ai/arangodb/stable/aql/graph-queries/traversals/).
+
+29. How to Fix ArangoDB Bind Parameter Errors When Parameterizing Collection Names
+
+    Research: [Source](https://www.reddit.com/r/csharp/comments/jue9dg) · [Documentation](https://docs.arango.ai/arangodb/stable/aql/fundamentals/bind-parameters/).
+
+30. How to Check ArangoDB Vector Index Training Before Running Similarity Queries
+
+    Research: [Source](https://github.com/arangodb/arangodb/issues/8258) · [Documentation](https://docs.arango.ai/arangodb/stable/indexes-and-search/indexing/working-with-indexes/vector-indexes/).
+
+31. How to Retry SurrealDB Explicit Transactions After a Write Conflict
+
+    Research: [Source](https://www.reddit.com/r/surrealdb/comments/1rffo18/surrealdb_javascript_sdk_20/) · [Documentation](https://surrealdb.com/docs/learn/querying/concepts-and-guides/transactions).
+
+32. How to Verify SurrealDB Compound Unique Constraints Under Concurrent Inserts
+
+    Research: [Source](https://github.com/surrealdb/surrealdb/issues/7303) · [Documentation](https://surrealdb.com/docs/learn/querying/concepts-and-guides/transactions).
+
+33. How to Restore SurrealDB Live Subscriptions After a WebSocket Reconnect
+
+    Research: [Source](https://github.com/surrealdb/surrealdb/issues/3987) · [Documentation](https://github.com/surrealdb/surrealdb.js/blob/main/packages/sdk/README.md).
+
+34. How to Recheck SurrealDB Live-Query Access After Logout or an Identity Switch
+
+    Research: [Source](https://github.com/surrealdb/surrealdb/security/advisories/GHSA-4m82-p8cx-f94j) · [Documentation](https://surrealdb.com/docs/reference/query-language/statements/live-select).
+
+35. How to Fix SurrealDB Database-User Login Failures Caused by Root Authentication Scope
+
+    Research: [Source](https://www.reddit.com/r/surrealdb/comments/1aq6qgn) · [Documentation](https://surrealdb.com/docs/reference/cli/db/commands/sql).
+
+36. How to Match Any Word in a SurrealDB Full-Text Query Without Building Dynamic SQL
+
+    Research: [Source](https://www.reddit.com/r/surrealdb/comments/1jz1lic) · [Documentation](https://surrealdb.com/docs/reference/query-language/language-primitives/operators).
+
+37. How to Match SurrealDB Vector Index Dimensions and Distance to an Embedding Model
+
+    Research: [Source](https://www.reddit.com/r/surrealdb/comments/1bc7obu) · [Documentation](https://surrealdb.com/docs/reference/query-language/statements/define/indexes).
+
+38. How to Fuse SurrealDB Keyword and Vector Results with Reciprocal Rank Fusion
+
+    Research: [Source](https://www.reddit.com/r/surrealdb/comments/1u0v4tx/production_showcase_scaling_a_global_llmstxt/) · [Documentation](https://surrealdb.com/docs/learn/data-models/vector-search/hybrid-search).
+
+39. How to Identify Full Table Scans Behind Slow SurrealDB Aggregations
+
+    Research: [Source](https://www.reddit.com/r/surrealdb/comments/1lopyv2) · [Documentation](https://surrealdb.com/docs/reference/query-language/statements/select).
+
+40. How to Separate SurrealDB Query Latency from Client Buffering When Reading Large Results
+
+    Research: [Source](https://www.reddit.com/r/surrealdb/comments/1tbw1oh/surrealdb_in_prod/) · [Documentation](https://github.com/surrealdb/surrealdb.py).
+
 ## Scheduler
 
 1. How to Load KubeSchedulerConfiguration When kubectl Reports No Matches for Kind
@@ -11463,3 +11783,495 @@ All 200 titles were checked against the 61,019 entries in Blogs.json and the exi
 18. How to Test vLLM Structured Outputs When a Reasoning Parser Is Enabled
 19. How to Isolate vLLM Prefix Cache Reuse Between Tenants with Cache Salts
 20. How to Match vLLM Tool Call Parsers and Chat Templates to Your Model
+
+## Fluid
+
+1. How to Diagnose Fluid CSI Driver Registration Failures After a Kubernetes Node Restart
+
+    Research: [Source](https://github.com/fluid-cloudnative/fluid/issues/220) · [Documentation](https://fluid-cloudnative.github.io/docs/troubleshooting-and-faq/faq).
+
+2. How to Find Pods That Prevent a Fluid Runtime from Being Deleted
+
+    Research: [Source](https://fluid-cloudnative.github.io/docs/troubleshooting-and-faq/faq) · [Documentation](https://github.com/fluid-cloudnative/fluid/blob/master/docs/en/dev/api_doc.md).
+
+3. How to Trace Fluid FailedMount Events to an Unready FUSE Pod
+
+    Research: [Source](https://github.com/fluid-cloudnative/fluid/issues/5416) · [Documentation](https://fluid-cloudnative.github.io/docs/troubleshooting-and-faq/troubleshooting).
+
+4. How to Investigate Fluid Transport Endpoint Errors After Repeated FUSE Recovery
+
+    Research: [Source](https://github.com/fluid-cloudnative/fluid/issues/5416) · [Documentation](https://fluid-cloudnative.github.io/docs/troubleshooting-and-faq/troubleshooting).
+
+5. How to Diagnose First-Read Input/Output Errors in Fluid WebUFS Examples
+
+    Research: [Source](https://fluid-cloudnative.github.io/docs/troubleshooting-and-faq/faq) · [Documentation](https://fluid-cloudnative.github.io/docs/tutorials/dataset-operation/data-preloading).
+
+6. How to Resolve Non-Root Directory Permission Errors in a Fluid AlluxioRuntime
+
+    Research: [Source](https://fluid-cloudnative.github.io/docs/troubleshooting-and-faq/faq) · [Documentation](https://github.com/fluid-cloudnative/fluid/blob/master/docs/en/dev/api_doc.md).
+
+7. How to Diagnose Alluxio Job Master Hostname Resolution Failures in Fluid
+
+    Research: [Source](https://fluid-cloudnative.github.io/docs/troubleshooting-and-faq/faq) · [Documentation](https://fluid-cloudnative.github.io/docs/troubleshooting-and-faq/troubleshooting).
+
+8. How to Check Kubelet Access When Fluid PVC Attachment Times Out
+
+    Research: [Source](https://fluid-cloudnative.github.io/docs/troubleshooting-and-faq/faq) · [Documentation](https://fluid-cloudnative.github.io/docs/troubleshooting-and-faq/troubleshooting).
+
+9. How to Verify Fluid CRDs and Controllers After a Helm Installation Fails
+
+    Research: [Source](https://fluid-cloudnative.github.io/docs/troubleshooting-and-faq/faq) · [Documentation](https://github.com/fluid-cloudnative/fluid/blob/master/docs/en/dev/api_doc.md).
+
+10. How to Diagnose Fluid Runtime Helm Releases Stuck in Pending-Install
+
+    Research: [Source](https://github.com/fluid-cloudnative/fluid/issues/2764) · [Documentation](https://github.com/fluid-cloudnative/fluid/releases).
+
+11. How to Troubleshoot Rejected Dataset Node Affinity in Fluid
+
+    Research: [Source](https://github.com/fluid-cloudnative/fluid/issues/2772) · [Documentation](https://github.com/fluid-cloudnative/fluid/blob/master/docs/en/dev/api_doc.md).
+
+12. How to Diagnose JuiceFS FUSE Pod Port Conflicts Between Fluid Datasets
+
+    Research: [Source](https://github.com/fluid-cloudnative/fluid/issues/2668) · [Documentation](https://github.com/fluid-cloudnative/fluid/blob/master/docs/en/dev/api_doc.md).
+
+13. How to Debug Private Registry Image Pull Failures in Fluid DataLoad Jobs
+
+    Research: [Source](https://github.com/fluid-cloudnative/fluid/issues/6247) · [Documentation](https://github.com/fluid-cloudnative/fluid/blob/master/docs/en/dev/api_doc.md).
+
+14. How to Detect Cache Quota Drift Between Fluid Specs, ConfigMaps, and Worker Pods
+
+    Research: [Source](https://github.com/fluid-cloudnative/fluid/issues/6192) · [Documentation](https://github.com/fluid-cloudnative/fluid/blob/master/docs/en/dev/api_doc.md).
+
+15. How to Verify Whether Fluid CacheRuntime FUSE Configuration Changes Reached the DaemonSet
+
+    Research: [Source](https://github.com/fluid-cloudnative/fluid/issues/6154) · [Documentation](https://github.com/fluid-cloudnative/fluid/blob/master/docs/en/dev/api_doc.md).
+
+16. How to Diagnose a Fluid Dataset That Remains Failed After Its Workers Recover
+
+    Research: [Source](https://github.com/fluid-cloudnative/fluid/issues/6160) · [Documentation](https://github.com/fluid-cloudnative/fluid/blob/master/docs/en/dev/api_doc.md).
+
+17. How to Collect Fluid Runtime and CSI Logs for a Reproducible Mount Failure Report
+
+    Research: [Source](https://github.com/fluid-cloudnative/fluid/issues/5416) · [Documentation](https://fluid-cloudnative.github.io/docs/troubleshooting-and-faq/troubleshooting).
+
+18. How to Preload Only the Training Data Paths You Need with Fluid DataLoad
+
+    Research: [Source](https://fluid-cloudnative.github.io/docs/case-study/alibaba-case-study) · [Documentation](https://fluid-cloudnative.github.io/docs/tutorials/dataset-operation/data-preloading).
+
+19. How to Gate Model Rollouts on Complete Dataset Preloading in Fluid
+
+    Research: [Source](https://fluid-cloudnative.github.io/docs/case-study/zuoyebang-case-study) · [Documentation](https://fluid-cloudnative.github.io/docs/tutorials/dataset-operation/data-preloading).
+
+20. How to Expand Fluid Alluxio Cache Capacity Automatically as Cached Data Grows
+
+    Research: [Source](https://fluid-cloudnative.github.io/blog) · [Documentation](https://fluid-cloudnative.github.io/docs/operation-guide/cache-runtime-auto-scaling).
+
+## Artifact Provenance
+
+1. How to Migrate Build Provenance Workflows from attest-build-provenance to actions/attest
+
+    Research: [Source](https://github.com/actions/attest-build-provenance/issues/780) · [Documentation](https://github.com/actions/attest).
+
+2. How to Skip Artifact Attestation on Fork Pull Requests Without Weakening Release Permissions
+
+    Research: [Source](https://github.com/actions/attest-build-provenance/issues/99) · [Documentation](https://github.com/actions/attest).
+
+3. How to Attest Several Release Files with Glob Patterns in One GitHub Actions Step
+
+    Research: [Source](https://github.com/actions/attest-build-provenance/issues/133) · [Documentation](https://github.com/actions/attest).
+
+4. How to Generate Provenance for Every Image Produced by a Docker Bake Pipeline
+
+    Research: [Source](https://github.com/actions/attest-build-provenance/issues/84) · [Documentation](https://github.com/actions/attest).
+
+5. How to Verify Artifact Provenance When the Signing Workflow Lives in Another Repository
+
+    Research: [Source](https://github.com/actions/attest-build-provenance/issues/60) · [Documentation](https://docs.github.com/en/actions/how-tos/secure-your-work/use-artifact-attestations/increase-security-rating).
+
+6. How to Diagnose Missing Build Provenance When a Release Contains Only a Release Attestation
+
+    Research: [Source](https://github.com/railwayapp/cli/issues/1154) · [Documentation](https://cli.github.com/manual/gh_attestation_verify).
+
+7. How to Prepare Attestation Bundles and Trust Roots for an Offline Release Review
+
+    Research: [Source](https://github.com/orgs/community/discussions/122028) · [Documentation](https://docs.github.com/en/actions/how-tos/secure-your-work/use-artifact-attestations/verify-attestations-offline).
+
+8. How to Diagnose GitHub Attestation Failures Caused by Private Repository Plan Restrictions
+
+    Research: [Source](https://github.com/orgs/community/discussions/129761) · [Documentation](https://github.com/actions/attest).
+
+9. How to Upload Artifacts and Attestations Before Publishing an Immutable GitHub Release
+
+    Research: [Source](https://github.com/actions/attest-build-provenance/issues/734) · [Documentation](https://docs.github.com/en/code-security/concepts/supply-chain-security/immutable-releases).
+
+10. How to Verify GitHub OCI Attestations When Cosign Cannot Find Legacy att Tags
+
+    Research: [Source](https://github.com/actions/attest-build-provenance/issues/162) · [Documentation](https://cli.github.com/manual/gh_attestation_verify).
+
+11. How to Check Whether SLSA Provenance Records All workflow_dispatch Build Inputs
+
+    Research: [Source](https://github.com/actions/attest-build-provenance/issues/55) · [Documentation](https://slsa.dev/spec/v1.0/provenance).
+
+12. How to Diagnose Provenance Upload Errors in Google Artifact Registry from GitHub Actions
+
+    Research: [Source](https://github.com/actions/attest-build-provenance/issues/666) · [Documentation](https://github.com/actions/attest).
+
+13. How to Detect Release Pipeline Branches That Publish Artifacts Without Provenance
+
+    Research: [Source](https://github.com/opensandbox-group/OpenSandbox/issues/2463) · [Documentation](https://docs.github.com/en/actions/concepts/security/artifact-attestations).
+
+14. How to Verify a Downloaded CLI Archive Before Extracting It with GitHub Attestations
+
+    Research: [Source](https://github.com/higgsfield-ai/cli/issues/10) · [Documentation](https://cli.github.com/manual/gh_attestation_verify).
+
+15. How to Diagnose npm Provenance Failures on a Self-Managed GitLab Runner
+
+    Research: [Source](https://stackoverflow.com/questions/79576604/npm-error-code-ca-create-signing-certificate-error-publishing-to-private-regis) · [Documentation](https://docs.npmjs.com/generating-provenance-statements/).
+
+16. How to Export Verified npm Provenance Bundles for Downstream Policy Checks
+
+    Research: [Source](https://github.com/npm/cli/issues/9048) · [Documentation](https://github.com/npm/cli/blob/latest/docs/lib/content/commands/npm-audit.md).
+
+17. How to Investigate Buildx ResourceExhausted Errors When Attestation Metadata Is Too Large
+
+    Research: [Source](https://github.com/docker/build-push-action/discussions/1442) · [Documentation](https://docs.docker.com/build/metadata/attestations/slsa-provenance/).
+
+18. How to Match Provenance Subjects to an OCI Index or a Platform-Specific Image Digest
+
+    Research: [Source](https://github.com/docker/build-push-action/issues/1461) · [Documentation](https://docs.docker.com/build/metadata/attestations/slsa-provenance/).
+
+19. How to Test That a Release Fails When Artifact Provenance Is Missing or Invalid
+
+    Research: [Source](https://www.reddit.com/r/selfhosted/comments/1u1iutn/why_dont_more_projects_use_github_attestations/) · [Documentation](https://docs.github.com/en/actions/concepts/security/artifact-attestations).
+
+20. How to Diagnose Invalid npm Provenance Warnings Caused by an Outdated npm CLI
+
+    Research: [Source](https://github.com/npm/cli/issues/7279) · [Documentation](https://docs.npmjs.com/generating-provenance-statements/).
+
+## Jenkins
+
+1. How to Parse JSON in Jenkins Without LazyMap Serialization Failures
+
+    Research: [Source](https://stackoverflow.com/questions/37864542/jenkins-pipeline-notserializableexception-groovy-json-internal-lazymap) · [Documentation](https://www.jenkins.io/doc/book/pipeline/cps-method-mismatches/).
+
+2. How to Keep Groovy Regex Matchers from Breaking Jenkins Pipeline Checkpoints
+
+    Research: [Source](https://stackoverflow.com/questions/50855961/notserializableexception-in-jenkinsfile) · [Documentation](https://www.jenkins.io/doc/book/pipeline/cps-method-mismatches/).
+
+3. How to Fix Jenkins CPS Method Mismatches Caused by Pipeline Steps Inside NonCPS Methods
+
+    Research: [Source](https://stackoverflow.com/questions/51215348/jenkins-pipeline-sleep10-prevents-function-from-being-completed) · [Documentation](https://www.jenkins.io/doc/book/pipeline/cps-method-mismatches/).
+
+4. How to Preserve Jenkins Stashes When Restarting a Pipeline from a Later Stage
+
+    Research: [Source](https://stackoverflow.com/questions/69573538/running-script-stash-prior-to-parallel-stages-being-invoked) · [Documentation](https://www.jenkins.io/doc/book/pipeline/running-pipelines/).
+
+5. How to Prevent an Older Jenkins Build from Deploying After a Newer Build
+
+    Research: [Source](https://stackoverflow.com/questions/46041579/jenkins-pipeline-milestone-not-cancelling-previous-ongoing-build) · [Documentation](https://www.jenkins.io/blog/2016/10/16/stage-lock-milestone/).
+
+6. How to Prioritize the Latest Jenkins Build Without Occupying Executors While Waiting for a Lock
+
+    Research: [Source](https://stackoverflow.com/questions/56635751/how-to-skip-stages-in-jenkins-based-on-capacity) · [Documentation](https://www.jenkins.io/blog/2016/10/16/stage-lock-milestone/).
+
+7. How to Diagnose Jenkins Creating an @2 Workspace After Aborting the Previous Build
+
+    Research: [Source](https://stackoverflow.com/questions/71625737/jenkins-pipeline-checking-out-to-new-workspace-when-previous-build-has-been-abor) · [Documentation](https://www.jenkins.io/doc/pipeline/steps/workflow-durable-task-step/).
+
+8. How to Pass Secrets and Ordinary Variables to the Same Jenkins Shell Step Safely
+
+    Research: [Source](https://stackoverflow.com/questions/69764632/jenkins-scripted-pipeline-environment-variable) · [Documentation](https://www.jenkins.io/doc/pipeline/steps/credentials-binding/).
+
+9. How to Use Jenkins Secret Files Without Leaving Them in a Browsable Workspace
+
+    Research: [Source](https://stackoverflow.com/questions/51524613/how-do-i-download-a-jenkins-secret-file-from-the-credential-store) · [Documentation](https://www.jenkins.io/doc/pipeline/steps/credentials-binding/).
+
+10. How to Skip Jenkins Stages Before Provisioning Their Agents
+
+    Research: [Source](https://stackoverflow.com/questions/75917851/agent-is-picked-even-if-stage-is-disabled-from-when-expresion) · [Documentation](https://www.jenkins.io/doc/book/pipeline/syntax/).
+
+11. How to Wait for Jenkins Deployment Approval Without Holding an Executor
+
+    Research: [Source](https://stackoverflow.com/questions/74395721/how-to-pause-a-stage-in-jenkinsfile-without-consuming-an-agent) · [Documentation](https://www.jenkins.io/doc/book/pipeline/syntax/).
+
+12. How to Diagnose Missing hudson.FilePath Context in Jenkins Post-Build Cleanup
+
+    Research: [Source](https://stackoverflow.com/questions/42380712/jenkins-pipeline-conditional-stage-succeeds-but-jenkins-shows-build-as-failed) · [Documentation](https://www.jenkins.io/doc/book/pipeline/syntax/).
+
+13. How to Make Jenkins Parallel Fail-Fast Work with Downstream Build Results
+
+    Research: [Source](https://stackoverflow.com/questions/78938806/jenkins-how-stop-the-job-when-one-of-the-parallel-branches-fails-failfast-see) · [Documentation](https://www.jenkins.io/doc/book/pipeline/syntax/).
+
+14. How to Collect Every Downstream Jenkins Build Result Before Marking the Parent Failed
+
+    Research: [Source](https://stackoverflow.com/questions/68227542/jenkins-pipeline-how-to-detect-downstream-build-status-when-using-parallel) · [Documentation](https://www.jenkins.io/doc/pipeline/steps/pipeline-build-step/).
+
+15. How to Give Parallel Gradle Stages Separate Jenkins Workspaces
+
+    Research: [Source](https://www.reddit.com/r/jenkinsci/comments/1556kjb/) · [Documentation](https://www.jenkins.io/doc/pipeline/steps/workflow-durable-task-step/).
+
+16. How to Retry Jenkins Kubernetes Stages After Agent Pod Loss Without Retrying Test Failures
+
+    Research: [Source](https://stackoverflow.com/questions/76857863/jenkins-for-kubernetes-how-to-prevent-closedchannelexception-and-keep-pod-agent) · [Documentation](https://plugins.jenkins.io/kubernetes/).
+
+17. How to Diagnose Jenkins Pipelines That Do Not Resume After a Controller Restart
+
+    Research: [Source](https://www.reddit.com/r/jenkinsci/comments/se8bsx/) · [Documentation](https://www.jenkins.io/doc/book/pipeline/scaling-pipeline/).
+
+18. How to Prevent Jenkins Parallel Closures from Running the Same Job Repeatedly
+
+    Research: [Source](https://stackoverflow.com/questions/77005129/jenkins-parallel-pipeline-triggers-same-build) · [Documentation](https://www.jenkins.io/doc/book/pipeline/syntax/).
+
+19. How to Stop Jenkins Deployment Stages After JUnit Marks a Build Unstable
+
+    Research: [Source](https://stackoverflow.com/questions/51637782/how-to-exit-from-the-jenkins-pipeline-if-a-stage-sets-build-fail-unstable-status) · [Documentation](https://www.jenkins.io/doc/book/pipeline/syntax/).
+
+20. How to Choose Jenkins Stashes or Archived Artifacts for Large Build Outputs
+
+    Research: [Source](https://stackoverflow.com/questions/54866575/jenkins-stash-vs-archiveartifacts) · [Documentation](https://www.jenkins.io/doc/pipeline/steps/workflow-basic-steps/).
+
+## Prisma Cloud
+
+1. How to Scope Both Sides of a Prisma Cloud RQL Join to the Same Cloud Account
+
+    Research: [Source](https://live.paloaltonetworks.com/t5/cortex-cloud-discussions/prisma-cloud-rql-join-filter/td-p/576639) · [Documentation](https://live.paloaltonetworks.com/t5/cortex-cloud-discussions/prisma-cloud-rql-join-filter/td-p/576639).
+
+2. How to Debug Prisma Cloud RQL Joins That Return Unexpected EC2 and AMI Matches
+
+    Research: [Source](https://live.paloaltonetworks.com/t5/cortex-cloud-discussions/prisma-cloud-rql-join-operator/td-p/1250396) · [Documentation](https://live.paloaltonetworks.com/t5/cortex-cloud-discussions/prisma-cloud-rql-join-operator/td-p/1250396).
+
+3. How to Include Nested Resource Fields in Prisma Cloud RQL CSV Exports
+
+    Research: [Source](https://live.paloaltonetworks.com/t5/cortex-cloud-discussions/prisma-cloud-rql-join-operator/td-p/1250396) · [Documentation](https://live.paloaltonetworks.com/t5/cortex-cloud-discussions/prisma-cloud-rql-join-operator/td-p/1250396).
+
+4. How to Distinguish Prisma Cloud RQL Timeouts from Queries with No Matching Resources
+
+    Research: [Source](https://live.paloaltonetworks.com/t5/cortex-cloud-discussions/prisma-cloud-rql-join-filter/td-p/576639) · [Documentation](https://live.paloaltonetworks.com/t5/配置和实施/如何避免prisma-cloud中investigate标签的rql查询超时/ta-p/526487).
+
+5. How to Run Prisma Cloud Network Analyzer Queries Through the Correct REST Endpoint
+
+    Research: [Source](https://live.paloaltonetworks.com/t5/community-blogs/network-analyzer-query-via-rest-api/ba-p/584075) · [Documentation](https://live.paloaltonetworks.com/t5/community-blogs/network-analyzer-query-via-rest-api/ba-p/584075).
+
+6. How to Find AWS Organization Accounts Missing from Prisma Cloud Monitoring
+
+    Research: [Source](https://live.paloaltonetworks.com/t5/cortex-cloud-discussions/how-to-find-accounts-not-monitored/td-p/291697) · [Documentation](https://live.paloaltonetworks.com/t5/cortex-cloud-discussions/how-to-find-accounts-not-monitored/td-p/291697).
+
+7. How to Investigate Prisma Cloud Alerts Against the Current Cloud Resource Configuration
+
+    Research: [Source](https://www.reddit.com/r/paloaltonetworks/comments/1i1j673) · [Documentation](https://knowledgebase.paloaltonetworks.com/KCSArticleDetail?id=kA1Ki000000TO40KAG).
+
+8. How to Route Prisma Cloud Alerts to Application Owners Using Account Groups
+
+    Research: [Source](https://www.reddit.com/r/paloaltonetworks/comments/1i1j673) · [Documentation](https://live.paloaltonetworks.com/t5/community-blogs/tips-for-avoiding-alert-fatigue-in-the-cloud/ba-p/430152).
+
+9. How to Export Large Prisma Cloud Alert Backlogs with API Pagination
+
+    Research: [Source](https://www.reddit.com/r/paloaltonetworks/comments/1i1j673) · [Documentation](https://pan.dev/prisma-cloud/api/cspm/alerts/).
+
+10. How to Detect Newly Failing Prisma Cloud Image Scans Without Repeating Every Alert
+
+    Research: [Source](https://live.paloaltonetworks.com/t5/cortex-cloud-discussions/alerts-for-prisma-cloud-compute-scans-going-from-good-to-bad/td-p/590959) · [Documentation](https://live.paloaltonetworks.com/t5/cortex-cloud-discussions/alerts-for-prisma-cloud-compute-scans-going-from-good-to-bad/td-p/590959).
+
+11. How to Validate Prisma Cloud Scan Coverage When Cloud Discovery Says an Asset Is Defended
+
+    Research: [Source](https://live.paloaltonetworks.com/t5/general-topics/reliable-metrics-to-conclude-an-asset-s-defended-status-in-cloud/td-p/571466) · [Documentation](https://live.paloaltonetworks.com/t5/community-blogs/deploy-life-cycle/ba-p/529526).
+
+12. How to Locate Defender Logs for a Failed Prisma Cloud Registry Scan
+
+    Research: [Source](https://live.paloaltonetworks.com/t5/cortex-cloud-discussions/how-where-can-i-find-log-s-for-failed-registry-scans/m-p/526377) · [Documentation](https://live.paloaltonetworks.com/t5/pancast-episodes/pancast-episode-27-the-importance-of-making-use-of-defender-logs/ta-p/556353/page/2/show-comments/true).
+
+13. How to Diagnose Prisma Cloud Nexus Registry Scans That Fail with EOF
+
+    Research: [Source](https://live.paloaltonetworks.com/t5/cortex-cloud-discussions/failed-to-retrieve-repositories-info-request-error-get-eof-scan/td-p/590636) · [Documentation](https://live.paloaltonetworks.com/t5/pancast-episodes/pancast-episode-27-the-importance-of-making-use-of-defender-logs/ta-p/556353/page/2/show-comments/true).
+
+14. How to Diagnose twistcli Podman Storage-Mount Failures Inside CI Containers
+
+    Research: [Source](https://stackoverflow.com/questions/68085958/twistcli-podman-in-pipeline) · [Documentation](https://docs.podman.io/en/latest/markdown/podman.1.html).
+
+15. How to Investigate Intermittent Prisma Cloud Image-Not-Found Errors in Jenkins
+
+    Research: [Source](https://stackoverflow.com/questions/65789841/prisma-randomously-not-finding-docker-image-in-jenkins) · [Documentation](https://live.paloaltonetworks.com/t5/community-blogs/deploy-life-cycle/ba-p/529526).
+
+16. How to Resolve Duplicate Defender Hostnames in Prisma Cloud
+
+    Research: [Source](https://www.reddit.com/r/cloudcomputing/comments/1w6u50j/prisma_cloud_whats_it_actually_like_to_deploy_and/) · [Documentation](https://knowledgebase.paloaltonetworks.com/KCSArticleDetail?id=kA14u000000wlIDCAY).
+
+17. How to Diagnose Prisma Cloud Serverless Defenders Missing from the Console
+
+    Research: [Source](https://www.reddit.com/r/paloaltonetworks/comments/1ebnpxw) · [Documentation](https://live.paloaltonetworks.com/t5/pancast-episodes/pancast-episode-27-the-importance-of-making-use-of-defender-logs/ta-p/556353/page/2/show-comments/true).
+
+18. How to Diagnose Prisma Cloud Agentless Scans That Cannot Reach the Console
+
+    Research: [Source](https://www.reddit.com/r/cloudcomputing/comments/1w6u50j/prisma_cloud_whats_it_actually_like_to_deploy_and/) · [Documentation](https://live.paloaltonetworks.com/t5/community-blogs/prisma-cloud-s-innovative-agentless-scanning/ba-p/592846).
+
+19. How to Troubleshoot Prisma Cloud Azure Function Scans Returning HTTP 403
+
+    Research: [Source](https://www.reddit.com/r/cloudcomputing/comments/1w6u50j/prisma_cloud_whats_it_actually_like_to_deploy_and/) · [Documentation](https://knowledgebase.paloaltonetworks.com/KCSArticleDetail?id=kA14u000000sdEeCAI).
+
+20. How to Check Azure Permissions Before Prisma Cloud Tenant Onboarding
+
+    Research: [Source](https://www.reddit.com/r/cloudcomputing/comments/1w6u50j/prisma_cloud_whats_it_actually_like_to_deploy_and/) · [Documentation](https://knowledgebase.paloaltonetworks.com/KCSArticleDetail?id=kA14u000000CpzACAS).
+
+## Remote Diagnostics
+
+1. How to Collect .NET Diagnostics from a Runtime-Only Production Container
+
+    Research: [Source](https://stackoverflow.com/questions/78061429/what-is-recommended-way-to-create-and-analyze-dump-from-asp-net-core-8-applicati) · [Documentation](https://learn.microsoft.com/en-us/dotnet/core/diagnostics/diagnostics-in-containers).
+
+2. How to Prepare Matching Runtime Files for Offline Analysis of a Remote .NET Dump
+
+    Research: [Source](https://stackoverflow.com/questions/70349226/how-to-analyze-dotnet-dump-created-in-production-container) · [Documentation](https://learn.microsoft.com/en-us/dotnet/core/diagnostics/dotnet-symbol).
+
+3. How to Diagnose dotnet-dump Write Failures on a Remote Linux Service
+
+    Research: [Source](https://stackoverflow.com/questions/61412969/dotnet-dump-fails-with-writing-dump-failed-hresult-0x80004005-in-ubuntu) · [Documentation](https://learn.microsoft.com/en-us/dotnet/core/diagnostics/dotnet-dump).
+
+4. How to Target One dotnet-monitor Sidecar When a Kubernetes Service Has Multiple Replicas
+
+    Research: [Source](https://stackoverflow.com/questions/74705678/dotnet-monitor-in-kubernetes-cluster-when-2-or-more-replicas/74886539) · [Documentation](https://learn.microsoft.com/en-us/dotnet/core/diagnostics/dotnet-monitor).
+
+5. How to Plan Memory Headroom Before Collecting a .NET Dump from a Remote Container
+
+    Research: [Source](https://stackoverflow.com/questions/75055671/net-core-application-running-on-fargate-with-memory-issues) · [Documentation](https://learn.microsoft.com/en-us/dotnet/core/diagnostics/dotnet-dump).
+
+6. How to Diagnose a .NET Diagnostic Socket Connection Failure Across Containers
+
+    Research: [Source](https://stackoverflow.com/questions/79844877/collecting-dotnet-dump-on-wsl-when-process-is-stuck-at-gc-waitforpendingfinalize) · [Documentation](https://learn.microsoft.com/dotnet/core/diagnostics/diagnostic-port).
+
+7. How to Access Remote dotnet-monitor Dumps Through an Authenticated Port-Forward
+
+    Research: [Source](https://stackoverflow.com/questions/71749553/collect-dump-using-dotnet-monitor-without-restarting-pod) · [Documentation](https://learn.microsoft.com/en-us/dotnet/core/diagnostics/dotnet-monitor).
+
+8. How to Collect a Managed Stack Snapshot from a Remote .NET Service Without a Full Dump
+
+    Research: [Source](https://www.reddit.com/r/csharp/comments/nqp3t5/) · [Documentation](https://learn.microsoft.com/en-us/dotnet/core/diagnostics/dotnet-stack).
+
+9. How to Diagnose jcmd Attach Socket Errors in a Remote Kubernetes Pod
+
+    Research: [Source](https://stackoverflow.com/questions/69617239/running-jcmd-in-k8-pod-permission-denied-or-unable-to-open-socket-file) · [Documentation](https://docs.oracle.com/en/java/javase/25/docs/specs/man/jcmd.html).
+
+10. How to Collect JVM Diagnostics from a Remote JRE-Only Container with jattach
+
+    Research: [Source](https://stackoverflow.com/questions/68999346/how-to-capture-application-monitoring-information-from-the-docker-container) · [Documentation](https://github.com/jattach/jattach).
+
+11. How to Fix Remote JMX Connections That Fail After the SSH Tunnel Connects
+
+    Research: [Source](https://stackoverflow.com/questions/12825117/jmx-jstatd-access-to-remote-machine-through-an-ssh-tunnel/15086467) · [Documentation](https://docs.oracle.com/en/java/javase/25/management/monitoring-and-management-using-jmx-technology.html).
+
+12. How to Retrieve a Time-Bounded JFR Snapshot from a Remote Running JVM
+
+    Research: [Source](https://stackoverflow.com/questions/68999346/how-to-capture-application-monitoring-information-from-the-docker-container) · [Documentation](https://docs.oracle.com/en/java/javase/25/docs/specs/man/jcmd.html).
+
+13. How to Load Local Symbols for a Stripped Program Running Under gdbserver
+
+    Research: [Source](https://stackoverflow.com/questions/14014288/gdb-remote-debugging-cant-seem-to-find-symbols) · [Documentation](https://www.sourceware.org/gdb/current/onlinedocs/gdb.html/gdbserver-man.html).
+
+14. How to Reduce Remote GDB Attachment Delays with a Matching Local Sysroot
+
+    Research: [Source](https://stackoverflow.com/questions/58922523/a-way-to-have-gdb-load-libraries-from-local-sysroot-and-remote-gdbserver) · [Documentation](https://www.sourceware.org/gdb/current/onlinedocs/gdb.html/Connecting.html).
+
+15. How to Map Build-Server Source Paths to Local Files in an LLDB Remote Session
+
+    Research: [Source](https://stackoverflow.com/questions/66096291/when-remote-debugging-with-lldb-does-the-remote-binary-need-debug-symbols) · [Documentation](https://lldb.llvm.org/use/settings.html).
+
+16. How to Launch a New Remote Debugging Target with gdbserver Multi Mode
+
+    Research: [Source](https://stackoverflow.com/questions/64662738/run-file-with-gdbserver-multi) · [Documentation](https://www.sourceware.org/gdb/current/onlinedocs/gdb.html/Connecting.html).
+
+17. How to Capture Remote Linux Traffic in Wireshark on Windows with sshdump
+
+    Research: [Source](https://serverfault.com/questions/1067059/piping-ssh-to-wireshark-on-windows) · [Documentation](https://www.wireshark.org/docs/man-pages/sshdump.html).
+
+18. How to Exclude the SSH Transport from a Live Remote Packet Capture
+
+    Research: [Source](https://serverfault.com/questions/362529/how-can-i-sniff-the-traffic-of-remote-machine-with-wireshark/362537) · [Documentation](https://www.wireshark.org/docs/man-pages/sshdump.html).
+
+19. How to Preserve Remote Linux Panic Messages When Local Logs End Abruptly
+
+    Research: [Source](https://serverfault.com/questions/1122800/how-to-debug-linux-server-reboots) · [Documentation](https://docs.kernel.org/6.14/networking/netconsole.html).
+
+20. How to Diagnose Missing Messages at a Remote Netconsole Receiver
+
+    Research: [Source](https://www.reddit.com/r/linuxquestions/comments/1h4qj0w/) · [Documentation](https://docs.kernel.org/6.14/networking/netconsole.html).
+
+## Sysdig
+
+1. How to Capture a Short-Lived Command with Sysdig Process Filters
+
+    Research: [Source](https://stackoverflow.com/questions/36292813/how-to-trace-a-single-process-with-sysdig) · [Documentation](https://github.com/draios/sysdig/wiki/sysdig-user-guide).
+
+2. How to Find the Correct Worker Node When Sysdig Captures No Events for a Kubernetes Pod
+
+    Research: [Source](https://stackoverflow.com/questions/71503861/sysdig-get-syscalls-triggered-by-a-k8-pod) · [Documentation](https://github.com/draios/sysdig).
+
+3. How to Keep File and Process Events When Filtering Sysdig Captures by IP Address
+
+    Research: [Source](https://github.com/draios/sysdig/issues/1050) · [Documentation](https://github.com/draios/sysdig/wiki/sysdig-user-guide).
+
+4. How to Investigate Domain-Based Sysdig Filters That Miss Expected Connections
+
+    Research: [Source](https://github.com/draios/sysdig/issues/1571) · [Documentation](https://github.com/draios/sysdig/wiki/sysdig-user-guide).
+
+5. How to Measure Dropped Events Before Trusting a High-Volume Sysdig Capture
+
+    Research: [Source](https://github.com/draios/sysdig/issues/2049) · [Documentation](https://github.com/draios/sysdig/wiki/sysdig-quick-reference-guide).
+
+6. How to Reduce Sysdig Terminal Overhead by Capturing Events for Offline Analysis
+
+    Research: [Source](https://community.sysdig.com/t/high-system-call-latency-and-scap-file-bloat-during-external-script-injection/738) · [Documentation](https://github.com/draios/sysdig/wiki/sysdig-quick-reference-guide).
+
+7. How to Bound Sysdig Capture Disk Usage with Rotating Files
+
+    Research: [Source](https://community.sysdig.com/t/high-system-call-latency-and-scap-file-bloat-during-external-script-injection/738) · [Documentation](https://github.com/draios/sysdig/wiki/sysdig-quick-reference-guide).
+
+8. How to Choose Sysdig Snaplen When Captured Application Output Is Truncated
+
+    Research: [Source](https://community.sysdig.com/t/high-system-call-latency-and-scap-file-bloat-during-external-script-injection/738) · [Documentation](https://github.com/draios/sysdig-inspect/blob/dev/README.md).
+
+9. How to Identify the Files Behind a Disk I/O Spike with Sysdig Chisels
+
+    Research: [Source](https://stackoverflow.com/questions/25737787/explore-which-files-are-heavily-used-in-the-system/25807098) · [Documentation](https://github.com/draios/sysdig/wiki/sysdig-quick-reference-guide).
+
+10. How to Trace Missing-File Errors During Container Startup with Sysdig
+
+    Research: [Source](https://www.reddit.com/r/docker/comments/ijicp7/) · [Documentation](https://github.com/draios/sysdig/wiki/sysdig-user-guide).
+
+11. How to Inspect Future Writes from a Process Whose Output Goes to dev/null with Sysdig
+
+    Research: [Source](https://stackoverflow.com/questions/65639771/view-output-of-process-redirected-to-dev-null-undo-redirection) · [Documentation](https://github.com/draios/sysdig/wiki/sysdig-user-guide).
+
+12. How to Correlate stdout and stderr Writes Using Sysdig JSON Events
+
+    Research: [Source](https://stackoverflow.com/questions/45760692/separately-redirecting-and-recombining-stderr-stdout-without-losing-ordering) · [Documentation](https://github.com/draios/sysdig/wiki/sysdig-quick-reference-guide).
+
+13. How to Make a Sysdig Lua Chisel Handle Fields Missing from Older Versions
+
+    Research: [Source](https://stackoverflow.com/questions/52735861/how-to-determine-if-sysdig-field-exists-or-handle-error-if-it-doesnt) · [Documentation](https://github.com/draios/sysdig/wiki/Sysdig-Chisel-API-Reference-Manual).
+
+14. How to Preserve Sysdig Events When Custom Output Fields Are Unavailable
+
+    Research: [Source](https://stackoverflow.com/questions/52735861/how-to-determine-if-sysdig-field-exists-or-handle-error-if-it-doesnt) · [Documentation](https://github.com/draios/sysdig/wiki/sysdig-user-guide).
+
+15. How to Build a Sysdig Chisel That Summarizes File Activity per Process
+
+    Research: [Source](https://stackoverflow.com/questions/25737787/explore-which-files-are-heavily-used-in-the-system/25807098) · [Documentation](https://github.com/draios/sysdig/wiki/Sysdig-Chisel-API-Reference-Manual).
+
+16. How to Stream Remote Sysdig Captures into Stratoshark over SSH
+
+    Research: [Source](https://www.reddit.com/r/devops/comments/erldol/) · [Documentation](https://github.com/wireshark/wireshark/blob/master/doc/man_pages/sshdig.adoc).
+
+17. How to Distinguish Signal Delivery from Signal Handler Execution in Sysdig Traces
+
+    Research: [Source](https://stackoverflow.com/questions/65238627/is-there-a-way-to-identify-the-start-of-linuxs-signal-handling-using-systems-li) · [Documentation](https://github.com/draios/sysdig/wiki/sysdig-user-guide).
+
+18. How to Diagnose Sysdig Modern BPF Load Failures on Custom Linux Kernels
+
+    Research: [Source](https://github.com/falcosecurity/libs/issues/2033) · [Documentation](https://github.com/draios/sysdig/blob/dev/CMakeLists.txt).
+
+19. How to Investigate Missing Container Child Processes in Csysdig Modern BPF Views
+
+    Research: [Source](https://github.com/draios/sysdig/issues/2184) · [Documentation](https://github.com/draios/sysdig/releases).
+
+20. How to Reconstruct a Container Crash from a Sysdig Capture in Sysdig Inspect
+
+    Research: [Source](https://www.reddit.com/r/docker/comments/ijicp7/) · [Documentation](https://github.com/draios/sysdig-inspect/blob/dev/README.md).
