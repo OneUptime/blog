@@ -822204,5 +822204,18 @@
     ],
     "post": "2026-11-18-how-to-trace-the-source-of-duplicate-opentelemetry-spans-with-identical-span-ids",
     "readmePath": "posts/2026-11-18-how-to-trace-the-source-of-duplicate-opentelemetry-spans-with-identical-span-ids/README.md"
+  },
+  {
+    "title": "How to Resolve gevent Monkey-Patching Conflicts with Python OpenTelemetry Auto-Instrumentation",
+    "description": "Fix gevent and OpenTelemetry startup ordering, verify early monkey patching, and test the real worker lifecycle before restoring telemetry exports.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "OpenTelemetry",
+      "Python",
+      "Auto-Instrumentation",
+      "Troubleshooting"
+    ],
+    "post": "2026-11-18-how-to-resolve-gevent-monkey-patching-conflicts-with-python-opentelemetry-auto-instrumentation",
+    "readmePath": "posts/2026-11-18-how-to-resolve-gevent-monkey-patching-conflicts-with-python-opentelemetry-auto-instrumentation/README.md"
   }
 ]

@@ -36,10 +36,6 @@ All 200 titles were checked against the 61,019 entries in Blogs.json and the exi
 
     Research: [Stack Overflow question](https://stackoverflow.com/questions/76356454/opentelemetry-activitysource-startactivity-returns-null-activity-when-there-are).
 
-60. How to Resolve gevent Monkey-Patching Conflicts with Python OpenTelemetry Auto-Instrumentation
-
-    Research: [Stack Overflow question](https://stackoverflow.com/questions/75209658/opentelemetry-python-gevent-monkey-patch-errors-when-using-auto-instrumentation).
-
 ### Distributed Context Across HTTP, Queues, and Async Work
 
 61. How to Verify That Concurrent Python Async Tasks Keep Their OpenTelemetry Spans Separate
