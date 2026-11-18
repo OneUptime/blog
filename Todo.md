@@ -10,12 +10,6 @@ The research draws on 174 distinct Reddit and Stack Overflow threads. Titles ada
 
 All 200 titles were checked against the 61,019 entries in Blogs.json and the existing Todo.md backlog using case- and punctuation-insensitive matching. Existing topics are allowed; existing titles are excluded.
 
-### Distributed Context Across HTTP, Queues, and Async Work
-
-66. How to Reconnect Distributed Traces During a Migration from Elastic APM to OpenTelemetry
-
-    Research: [Stack Overflow question](https://stackoverflow.com/questions/76422074/elastic-apm-span-and-opentelemetry-span-not-linked).
-
 ### Prometheus and PromQL Correctness
 
 101. How to Explain Fractional Request Counts in Prometheus When Traffic Is Sparse

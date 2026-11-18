@@ -822271,5 +822271,19 @@
     ],
     "post": "2026-11-18-how-to-diagnose-duplicate-traceparent-headers-between-nginx-and-asp-net-core",
     "readmePath": "posts/2026-11-18-how-to-diagnose-duplicate-traceparent-headers-between-nginx-and-asp-net-core/README.md"
+  },
+  {
+    "title": "How to Reconnect Distributed Traces During a Migration from Elastic APM to OpenTelemetry",
+    "description": "Reconnect mixed Elastic APM and OpenTelemetry traces by checking W3C headers, continuation strategy, legacy compatibility, sampling, and backend routing.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "OpenTelemetry",
+      "Elastic",
+      "Migration",
+      "Distributed Tracing",
+      "Debugging"
+    ],
+    "post": "2026-11-18-how-to-reconnect-distributed-traces-during-a-migration-from-elastic-apm-to-opentelemetry",
+    "readmePath": "posts/2026-11-18-how-to-reconnect-distributed-traces-during-a-migration-from-elastic-apm-to-opentelemetry/README.md"
   }
 ]
