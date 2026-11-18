@@ -822217,5 +822217,18 @@
     ],
     "post": "2026-11-18-how-to-resolve-gevent-monkey-patching-conflicts-with-python-opentelemetry-auto-instrumentation",
     "readmePath": "posts/2026-11-18-how-to-resolve-gevent-monkey-patching-conflicts-with-python-opentelemetry-auto-instrumentation/README.md"
+  },
+  {
+    "title": "How to Verify That Concurrent Python Async Tasks Keep Their OpenTelemetry Spans Separate",
+    "description": "Verify Python asyncio trace isolation with an in-memory exporter, forced task interleaving, and assertions on current spans and parent IDs.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "OpenTelemetry",
+      "Python",
+      "Asyncio",
+      "Context Propagation"
+    ],
+    "post": "2026-11-18-how-to-verify-that-concurrent-python-async-tasks-keep-their-opentelemetry-spans-separate",
+    "readmePath": "posts/2026-11-18-how-to-verify-that-concurrent-python-async-tasks-keep-their-opentelemetry-spans-separate/README.md"
   }
 ]

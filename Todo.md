@@ -12,10 +12,6 @@ All 200 titles were checked against the 61,019 entries in Blogs.json and the exi
 
 ### Distributed Context Across HTTP, Queues, and Async Work
 
-61. How to Verify That Concurrent Python Async Tasks Keep Their OpenTelemetry Spans Separate
-
-    Research: [Stack Overflow question](https://stackoverflow.com/questions/77410600/is-opentelemetry-in-python-safe-to-use-with-async).
-
 63. How to Give Each Kafka Message Its Own Trace When One HTTP Request Publishes a Batch
 
     Research: [Stack Overflow question](https://stackoverflow.com/questions/78205728/opentelemetry-manual-traceparent-creation).
