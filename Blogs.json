@@ -822243,5 +822243,19 @@
     ],
     "post": "2026-11-18-how-to-give-each-kafka-message-its-own-trace-when-one-http-request-publishes-a-batch",
     "readmePath": "posts/2026-11-18-how-to-give-each-kafka-message-its-own-trace-when-one-http-request-publishes-a-batch/README.md"
+  },
+  {
+    "title": "How to Continue an OpenTracing Request in an OpenTelemetry Service Using Remote Parent Context",
+    "description": "Continue requests from an OpenTracing caller by matching its wire propagator, extracting a remote parent, and creating a new OpenTelemetry server span.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "OpenTelemetry",
+      "OpenTracing",
+      "Java",
+      "Migration",
+      "Context Propagation"
+    ],
+    "post": "2026-11-18-how-to-continue-an-opentracing-request-in-an-opentelemetry-service-using-remote-parent-context",
+    "readmePath": "posts/2026-11-18-how-to-continue-an-opentracing-request-in-an-opentelemetry-service-using-remote-parent-context/README.md"
   }
 ]

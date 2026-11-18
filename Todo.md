@@ -12,10 +12,6 @@ All 200 titles were checked against the 61,019 entries in Blogs.json and the exi
 
 ### Distributed Context Across HTTP, Queues, and Async Work
 
-64. How to Continue an OpenTracing Request in an OpenTelemetry Service Using Remote Parent Context
-
-    Research: [Stack Overflow question](https://stackoverflow.com/questions/71935070/creating-opentelemetry-context-using-trace-id-and-span-id-of-remote-parent).
-
 65. How to Diagnose Duplicate traceparent Headers Between Nginx and ASP.NET Core
 
     Research: [Stack Overflow question](https://stackoverflow.com/questions/75075296/net-core-system-diagnostics-activity-cannot-handle-multiple-parentids-from-trac).
