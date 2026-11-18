@@ -12,10 +12,6 @@ All 200 titles were checked against the 61,019 entries in Blogs.json and the exi
 
 ### Distributed Context Across HTTP, Queues, and Async Work
 
-63. How to Give Each Kafka Message Its Own Trace When One HTTP Request Publishes a Batch
-
-    Research: [Stack Overflow question](https://stackoverflow.com/questions/78205728/opentelemetry-manual-traceparent-creation).
-
 64. How to Continue an OpenTracing Request in an OpenTelemetry Service Using Remote Parent Context
 
     Research: [Stack Overflow question](https://stackoverflow.com/questions/71935070/creating-opentelemetry-context-using-trace-id-and-span-id-of-remote-parent).

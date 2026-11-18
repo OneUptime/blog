@@ -822230,5 +822230,18 @@
     ],
     "post": "2026-11-18-how-to-verify-that-concurrent-python-async-tasks-keep-their-opentelemetry-spans-separate",
     "readmePath": "posts/2026-11-18-how-to-verify-that-concurrent-python-async-tasks-keep-their-opentelemetry-spans-separate/README.md"
+  },
+  {
+    "title": "How to Give Each Kafka Message Its Own Trace When One HTTP Request Publishes a Batch",
+    "description": "Create an independent root trace for each Kafka message published by one HTTP request, preserve causality with links, and prevent automatic header replacement.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "OpenTelemetry",
+      "Java",
+      "Kafka",
+      "Distributed Tracing"
+    ],
+    "post": "2026-11-18-how-to-give-each-kafka-message-its-own-trace-when-one-http-request-publishes-a-batch",
+    "readmePath": "posts/2026-11-18-how-to-give-each-kafka-message-its-own-trace-when-one-http-request-publishes-a-batch/README.md"
   }
 ]
