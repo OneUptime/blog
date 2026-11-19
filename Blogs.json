@@ -822949,5 +822949,18 @@
     ],
     "post": "2026-11-19-multi-tenant-otlp-routing-preserve-trusted-tenant-headers-without-accepting-spoofed-identity",
     "readmePath": "posts/2026-11-19-multi-tenant-otlp-routing-preserve-trusted-tenant-headers-without-accepting-spoofed-identity/README.md"
+  },
+  {
+    "title": "OTLP Partial-Success Responses: Surface Rejected Spans, Metrics, and Logs Before They Vanish",
+    "description": "Detect OTLP partial-success rejection counts for traces, metrics, and logs, retain diagnostic warnings, and avoid replaying already accepted telemetry.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "OpenTelemetry",
+      "OTLP",
+      "Observability",
+      "Troubleshooting"
+    ],
+    "post": "2026-11-19-otlp-partial-success-responses-surface-rejected-spans-metrics-and-logs-before-they-vanish",
+    "readmePath": "posts/2026-11-19-otlp-partial-success-responses-surface-rejected-spans-metrics-and-logs-before-they-vanish/README.md"
   }
 ]
