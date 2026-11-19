@@ -822507,5 +822507,18 @@
     ],
     "post": "2026-11-19-how-to-plan-tls-certificate-rotation-for-fulcio-http-and-grpc-listeners",
     "readmePath": "posts/2026-11-19-how-to-plan-tls-certificate-rotation-for-fulcio-http-and-grpc-listeners/README.md"
+  },
+  {
+    "title": "How to Diagnose Fulcio Unsupported-Key Errors After AWS KMS Access Is Lost",
+    "description": "Trace misleading Fulcio unsupported-key failures through the AWS workload identity, KMS public-key access, signing permissions, and the configured CA certificate chain.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Fulcio",
+      "AWS KMS",
+      "Security",
+      "Troubleshooting"
+    ],
+    "post": "2026-11-19-how-to-diagnose-fulcio-unsupported-key-errors-after-aws-kms-access-is-lost",
+    "readmePath": "posts/2026-11-19-how-to-diagnose-fulcio-unsupported-key-errors-after-aws-kms-access-is-lost/README.md"
   }
 ]

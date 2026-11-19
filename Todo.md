@@ -122,10 +122,6 @@ All 200 titles were checked against the 61,019 entries in Blogs.json and the exi
 ## Fulcio
 
 
-18. How to Diagnose Fulcio Unsupported-Key Errors After AWS KMS Access Is Lost
-
-    Research: [Source](https://github.com/sigstore/fulcio/issues/2506) · [Documentation](https://github.com/sigstore/fulcio/blob/main/docs/setup.md).
-
 19. How to Separate Fulcio Code-Signing Trust from GitLab and Registry TLS Trust
 
     Research: [Source](https://github.com/sigstore/cosign/issues/4399) · [Documentation](https://docs.gitlab.com/ci/yaml/signing_self_hosted/).
