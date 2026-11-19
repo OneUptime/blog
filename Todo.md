@@ -2,7 +2,6 @@
 
 ## Systems Manager
 
-5. Fixing “document worker timed out” in SSM: Disk Space, Memory, File Descriptors, and Worker Logs
 6. `DeliveryTimedOut` vs. `ExecutionTimedOut` in SSM Run Command: Find Which Clock Expired
 7. How to Capture Complete SSM Run Command Output When the Console Truncates It
 8. How to Reboot Safely from SSM Run Command with Linux Exit Code 194 and Windows Exit Code 3010

@@ -823624,5 +823624,18 @@
     ],
     "post": "2026-11-19-ssm-agent-offline-proxy-variables-no-proxy-tls-inspection",
     "readmePath": "posts/2026-11-19-ssm-agent-offline-proxy-variables-no-proxy-tls-inspection/README.md"
+  },
+  {
+    "title": "Fixing “document worker timed out” in SSM: Disk Space, Memory, File Descriptors, and Worker Logs",
+    "description": "Diagnose SSM document worker timeouts on Linux using matching worker logs, filesystem and memory evidence, process descriptor limits, and inotify usage.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "AWS",
+      "Systems Manager",
+      "Linux",
+      "Troubleshooting"
+    ],
+    "post": "2026-11-19-ssm-document-worker-timed-out",
+    "readmePath": "posts/2026-11-19-ssm-document-worker-timed-out/README.md"
   }
 ]
