@@ -822355,5 +822355,19 @@
     ],
     "post": "2026-11-19-how-to-diagnose-azure-pipelines-oidc-compatibility-before-using-fulcio-for-signing",
     "readmePath": "posts/2026-11-19-how-to-diagnose-azure-pipelines-oidc-compatibility-before-using-fulcio-for-signing/README.md"
+  },
+  {
+    "title": "How to Diagnose Jenkins OIDC Issuer Mismatches in a Self-Hosted Fulcio Deployment",
+    "description": "Compare Jenkins token, discovery, and Fulcio issuer URLs precisely, including folder-scoped and externally hosted issuers, before changing signing policy.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Fulcio",
+      "Sigstore",
+      "OIDC",
+      "Jenkins",
+      "Troubleshooting"
+    ],
+    "post": "2026-11-19-how-to-diagnose-jenkins-oidc-issuer-mismatches-in-a-self-hosted-fulcio-deployment",
+    "readmePath": "posts/2026-11-19-how-to-diagnose-jenkins-oidc-issuer-mismatches-in-a-self-hosted-fulcio-deployment/README.md"
   }
 ]
