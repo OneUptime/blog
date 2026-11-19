@@ -2,7 +2,6 @@
 
 ## Deployment Rework
 
-6. Roll Back or Fix Forward? A Data-Aware Decision Tree for Failed Production Changes
 7. How to Redeploy the Last-Known-Good Artifact Without Rebuilding Old Source
 8. Production Is Rolled Back but `main` Is Still Broken: How to Reconcile Git and the Running Release
 9. How to Make Deployment Steps Idempotent Enough to Retry Safely After Partial Failure
