@@ -822452,5 +822452,19 @@
     ],
     "post": "2026-11-19-how-to-update-fulcio-certificate-parsers-for-der-encoded-issuer-extensions",
     "readmePath": "posts/2026-11-19-how-to-update-fulcio-certificate-parsers-for-der-encoded-issuer-extensions/README.md"
+  },
+  {
+    "title": "How to Trace a Fulcio Signing Certificate to the Exact CI Run Attempt",
+    "description": "Extract the run invocation URI from a Fulcio certificate and correlate the verified signing evidence with the precise GitHub Actions attempt or provider-specific job.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Fulcio",
+      "Sigstore",
+      "CI/CD",
+      "Python",
+      "Troubleshooting"
+    ],
+    "post": "2026-11-19-how-to-trace-a-fulcio-signing-certificate-to-the-exact-ci-run-attempt",
+    "readmePath": "posts/2026-11-19-how-to-trace-a-fulcio-signing-certificate-to-the-exact-ci-run-attempt/README.md"
   }
 ]

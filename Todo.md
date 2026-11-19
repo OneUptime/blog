@@ -122,10 +122,6 @@ All 200 titles were checked against the 61,019 entries in Blogs.json and the exi
 ## Fulcio
 
 
-14. How to Trace a Fulcio Signing Certificate to the Exact CI Run Attempt
-
-    Research: [Source](https://github.com/sigstore/fulcio/issues/754) · [Documentation](https://github.com/sigstore/fulcio/blob/main/config/identity/config.yaml).
-
 15. How to Check Runner Environment Claims in Fulcio Certificates Before Accepting a Build
 
     Research: [Source](https://github.com/sigstore/fulcio/issues/754) · [Documentation](https://github.com/sigstore/fulcio/blob/main/docs/oid-info.md).
