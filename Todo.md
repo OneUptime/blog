@@ -263,10 +263,6 @@ All 200 titles were checked against the 61,019 entries in Blogs.json and the exi
 ## gRPC
 
 
-1. How to Start Multiprocess Python gRPC Servers Without Forking an Active Runtime
-
-    Research: [Source](https://stackoverflow.com/questions/62798507/why-multiprocess-python-grpc-server-do-not-work) · [Documentation](https://github.com/grpc/grpc/blob/master/examples/python/multiprocessing/README.md).
-
 2. How to Fix Python gRPC AsyncIO Futures Attached to a Different Event Loop
 
     Research: [Source](https://stackoverflow.com/questions/78739591/when-using-asyncclients-in-google-cloud-python-sdk-got-future-attached-to-a-dif) · [Documentation](https://grpc.github.io/grpc/python/grpc_asyncio.html).
