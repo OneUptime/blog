@@ -2,7 +2,6 @@
 
 ## Deployment Rework
 
-7. How to Redeploy the Last-Known-Good Artifact Without Rebuilding Old Source
 8. Production Is Rolled Back but `main` Is Still Broken: How to Reconcile Git and the Running Release
 9. How to Make Deployment Steps Idempotent Enough to Retry Safely After Partial Failure
 10. Flaky Pipeline or Deployment Rework? How to Separate Delivery Noise from Production Remediation
