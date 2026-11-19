@@ -263,10 +263,6 @@ All 200 titles were checked against the 61,019 entries in Blogs.json and the exi
 ## gRPC
 
 
-10. How to Resume a Go gRPC Subscription After Recreating a Broken Stream
-
-    Research: [Source](https://stackoverflow.com/questions/71530942/how-to-re-establish-grpc-bidirectional-stream-if-internet-connection-is-down) · [Documentation](https://pkg.go.dev/google.golang.org/grpc#ClientStream).
-
 11. How to Find the Client Exception Hidden Behind Python gRPC Exception Iterating Requests
 
     Research: [Source](https://stackoverflow.com/questions/70417991/grpc-about-a-client-to-server-stream-rpc-but-with-an-error-of-exception-itera) · [Documentation](https://grpc.github.io/grpc/python/grpc.html).

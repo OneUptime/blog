@@ -822638,5 +822638,18 @@
     ],
     "post": "2026-11-19-grpc-multiline-diagnostic-binary-metadata",
     "readmePath": "posts/2026-11-19-grpc-multiline-diagnostic-binary-metadata/README.md"
+  },
+  {
+    "title": "How to Resume a Go gRPC Subscription After Recreating a Broken Stream",
+    "description": "Recreate a failed Go gRPC subscription with a durable application cursor, bounded retries, and explicit duplicate handling.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "gRPC",
+      "Go",
+      "Streaming",
+      "Troubleshooting"
+    ],
+    "post": "2026-11-19-go-grpc-resume-broken-subscription",
+    "readmePath": "posts/2026-11-19-go-grpc-resume-broken-subscription/README.md"
   }
 ]
