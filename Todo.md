@@ -2,7 +2,6 @@
 
 ## Systems Manager
 
-3. How to Run AWS Systems Manager in a Private Subnet with the Right VPC Endpoints, DNS, and Security Groups
 4. SSM Agent Keeps Going Offline Behind a Proxy: Configure Proxy Variables, `no_proxy`, and TLS Inspection
 5. Fixing “document worker timed out” in SSM: Disk Space, Memory, File Descriptors, and Worker Logs
 6. `DeliveryTimedOut` vs. `ExecutionTimedOut` in SSM Run Command: Find Which Clock Expired

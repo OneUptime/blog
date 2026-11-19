@@ -823596,5 +823596,19 @@
     ],
     "post": "2026-11-19-fleet-manager-online-session-manager-fails",
     "readmePath": "posts/2026-11-19-fleet-manager-online-session-manager-fails/README.md"
+  },
+  {
+    "title": "How to Run AWS Systems Manager in a Private Subnet with the Right VPC Endpoints, DNS, and Security Groups",
+    "description": "Configure private Systems Manager access with feature-specific endpoints, private DNS, security groups, S3 routes, and verification of the actual node path.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "AWS",
+      "Systems Manager",
+      "VPC Endpoints",
+      "Networking",
+      "Security"
+    ],
+    "post": "2026-11-19-aws-systems-manager-private-subnet-endpoints-dns-security-groups",
+    "readmePath": "posts/2026-11-19-aws-systems-manager-private-subnet-endpoints-dns-security-groups/README.md"
   }
 ]
