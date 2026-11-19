@@ -822768,5 +822768,17 @@
     ],
     "post": "2026-11-19-mlrun-is-missing-in-an-iguazio-jupyter-service-how-to-align-the-notebook-client-with-the-cluster-version",
     "readmePath": "posts/2026-11-19-mlrun-is-missing-in-an-iguazio-jupyter-service-how-to-align-the-notebook-client-with-the-cluster-version/README.md"
+  },
+  {
+    "title": "MLRun Returns 404 for `/api/v1/client-spec`: How to Fix `MLRUN_DB` URL and Environment Configuration",
+    "description": "Fix MLRun client-spec 404 errors by inspecting the effective API base URL, using MLRUN_DBPATH, and separating proxy routing from authentication and version compatibility.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "MLOps",
+      "Python",
+      "Troubleshooting"
+    ],
+    "post": "2026-11-19-mlrun-returns-404-for-api-v1-client-spec-how-to-fix-mlrun-db-url-and-environment-configuration",
+    "readmePath": "posts/2026-11-19-mlrun-returns-404-for-api-v1-client-spec-how-to-fix-mlrun-db-url-and-environment-configuration/README.md"
   }
 ]

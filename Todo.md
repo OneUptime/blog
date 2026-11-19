@@ -316,7 +316,6 @@ All 200 titles were checked against the 61,019 entries in Blogs.json and the exi
 
 ## Iguazio
 
-2. MLRun Returns 404 for `/api/v1/client-spec`: How to Fix `MLRUN_DB` URL and Environment Configuration
 3. `project.deploy_function()` Cannot Submit a Deployment: How to Trace MLRun-to-Nuclio API Routing
 4. Iguazio Spark Jobs Hit `ImagePullBackOff`: How to Publish MLRun’s Default Spark Images to the Cluster Registry
 5. An MLRun Job Is Stuck in `Pending`: How to Check Kubernetes Events, Quotas, Volumes, and Node Placement
