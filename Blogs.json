@@ -823404,5 +823404,18 @@
     ],
     "post": "2026-11-19-iguazio-no-space-left-on-device-feature-store-trace-artifact-storage-growth",
     "readmePath": "posts/2026-11-19-iguazio-no-space-left-on-device-feature-store-trace-artifact-storage-growth/README.md"
+  },
+  {
+    "title": "MLRun Feature Ingestion Resets the Connection: How to Tune Batch Size, Retries, and Target Endpoints",
+    "description": "Diagnose MLRun ingestion connection resets by identifying the failing endpoint, tuning Storey Parquet buffers, and applying retries only at the correct layer.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "MLOps",
+      "Feature Store",
+      "Data Ingestion",
+      "Troubleshooting"
+    ],
+    "post": "2026-11-19-mlrun-feature-ingestion-resets-connection-batch-size-retries-target-endpoints",
+    "readmePath": "posts/2026-11-19-mlrun-feature-ingestion-resets-connection-batch-size-retries-target-endpoints/README.md"
   }
 ]

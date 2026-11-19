@@ -2,7 +2,6 @@
 
 ## Iguazio
 
-15. MLRun Feature Ingestion Resets the Connection: How to Tune Batch Size, Retries, and Target Endpoints
 17. How to Observe Nuclio Model-Serving Throughput, Latency, Errors, and Worker Saturation in Iguazio
 18. MLRun Real-Time Ingestion Failed but the Notebook Succeeded: How to Inspect Error Streams and Nuclio Logs
 20. How to Configure Iguazio User Roles for Read-Only Access Without Accidentally Granting Service Administration
