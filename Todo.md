@@ -2,7 +2,6 @@
 
 ## Systems Manager
 
-4. SSM Agent Keeps Going Offline Behind a Proxy: Configure Proxy Variables, `no_proxy`, and TLS Inspection
 5. Fixing “document worker timed out” in SSM: Disk Space, Memory, File Descriptors, and Worker Logs
 6. `DeliveryTimedOut` vs. `ExecutionTimedOut` in SSM Run Command: Find Which Clock Expired
 7. How to Capture Complete SSM Run Command Output When the Console Truncates It

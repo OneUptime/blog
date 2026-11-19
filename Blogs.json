@@ -823610,5 +823610,19 @@
     ],
     "post": "2026-11-19-aws-systems-manager-private-subnet-endpoints-dns-security-groups",
     "readmePath": "posts/2026-11-19-aws-systems-manager-private-subnet-endpoints-dns-security-groups/README.md"
+  },
+  {
+    "title": "SSM Agent Keeps Going Offline Behind a Proxy: Configure Proxy Variables, `no_proxy`, and TLS Inspection",
+    "description": "Diagnose SSM Agent disconnects behind an HTTP proxy by correcting its service environment, protecting metadata access, and validating certificate trust and session channels.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "AWS",
+      "Systems Manager",
+      "Proxy",
+      "TLS",
+      "Troubleshooting"
+    ],
+    "post": "2026-11-19-ssm-agent-offline-proxy-variables-no-proxy-tls-inspection",
+    "readmePath": "posts/2026-11-19-ssm-agent-offline-proxy-variables-no-proxy-tls-inspection/README.md"
   }
 ]
