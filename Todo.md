@@ -10330,7 +10330,6 @@ All 200 titles were checked against the 61,019 entries in Blogs.json and the exi
 
 ## Knative Serving
 
-1. How to Mirror Knative Serving Control Plane and Queue Proxy Images for Offline Installation
 2. How to Persist Knative ConfigMap Changes When the Operator Keeps Reverting Them
 3. How to Make the Knative Serving Controller Trust a Private Registry CA
 4. How to Skip Knative Image Tag Resolution for an HTTP-Only Development Registry

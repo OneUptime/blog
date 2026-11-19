@@ -823271,5 +823271,17 @@
     ],
     "post": "2026-11-19-how-to-detect-and-prevent-manual-replica-overrides-on-hpa-controlled-workloads",
     "readmePath": "posts/2026-11-19-how-to-detect-and-prevent-manual-replica-overrides-on-hpa-controlled-workloads/README.md"
+  },
+  {
+    "title": "How to Mirror Knative Serving Control Plane and Queue Proxy Images for Offline Installation",
+    "description": "Inventory and mirror Knative Serving images, explicitly override queue-proxy, and prove offline operation with a new Revision on an uncached node.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Knative",
+      "Kubernetes",
+      "Air-Gapped"
+    ],
+    "post": "2026-11-19-how-to-mirror-knative-serving-control-plane-and-queue-proxy-images-for-offline-installation",
+    "readmePath": "posts/2026-11-19-how-to-mirror-knative-serving-control-plane-and-queue-proxy-images-for-offline-installation/README.md"
   }
 ]
