@@ -822383,5 +822383,19 @@
     ],
     "post": "2026-11-19-how-to-repair-missing-gitlab-ci-provider-metadata-in-a-fulcio-configuration",
     "readmePath": "posts/2026-11-19-how-to-repair-missing-gitlab-ci-provider-metadata-in-a-fulcio-configuration/README.md"
+  },
+  {
+    "title": "How to Investigate Fulcio GitLab Signing Failures When ci_config_ref_uri Is Empty",
+    "description": "Distinguish missing, null, and empty GitLab CI configuration claims in Fulcio failures, and repair the pipeline identity without fabricating certificate metadata.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Fulcio",
+      "Sigstore",
+      "GitLab",
+      "OIDC",
+      "Troubleshooting"
+    ],
+    "post": "2026-11-19-how-to-investigate-fulcio-gitlab-signing-failures-when-ci-config-ref-uri-is-empty",
+    "readmePath": "posts/2026-11-19-how-to-investigate-fulcio-gitlab-signing-failures-when-ci-config-ref-uri-is-empty/README.md"
   }
 ]

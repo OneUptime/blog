@@ -122,10 +122,6 @@ All 200 titles were checked against the 61,019 entries in Blogs.json and the exi
 ## Fulcio
 
 
-8. How to Investigate Fulcio GitLab Signing Failures When ci_config_ref_uri Is Empty
-
-    Research: [Source](https://github.com/sigstore/fulcio/issues/2189) · [Documentation](https://github.com/sigstore/fulcio/blob/main/docs/oidc.md).
-
 9. How to Test a Custom OIDC Client Audience Across Sigstore Python and Fulcio
 
     Research: [Source](https://github.com/sigstore/sigstore-python/issues/1401) · [Documentation](https://github.com/sigstore/fulcio/blob/main/docs/oidc.md).
