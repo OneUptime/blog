@@ -822831,5 +822831,18 @@
     ],
     "post": "2026-11-19-how-to-develop-mlrun-functions-locally-and-run-them-remotely-with-host-ip-shared-dir-and-local-false",
     "readmePath": "posts/2026-11-19-how-to-develop-mlrun-functions-locally-and-run-them-remotely-with-host-ip-shared-dir-and-local-false/README.md"
+  },
+  {
+    "title": "MLRun Reports `Unauthorized path` on V3IO: How UID Mapping, Ownership, and Security-Admin Roles Interact",
+    "description": "Diagnose V3IO path authorization by comparing the job identity, numeric ownership, data policies, and the separate responsibilities of security administrators.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "MLOps",
+      "Security",
+      "Kubernetes",
+      "Troubleshooting"
+    ],
+    "post": "2026-11-19-mlrun-reports-unauthorized-path-on-v3io-how-uid-mapping-ownership-and-security-admin-roles-interact",
+    "readmePath": "posts/2026-11-19-mlrun-reports-unauthorized-path-on-v3io-how-uid-mapping-ownership-and-security-admin-roles-interact/README.md"
   }
 ]
