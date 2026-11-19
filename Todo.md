@@ -122,10 +122,6 @@ All 200 titles were checked against the 61,019 entries in Blogs.json and the exi
 ## Fulcio
 
 
-16. How to Encrypt the Ingress-to-Fulcio Hop for REST Certificate Requests
-
-    Research: [Source](https://github.com/sigstore/fulcio/issues/2415) · [Documentation](https://github.com/sigstore/fulcio/blob/main/docs/setup.md).
-
 17. How to Plan TLS Certificate Rotation for Fulcio HTTP and gRPC Listeners
 
     Research: [Source](https://github.com/sigstore/fulcio/issues/2415) · [Documentation](https://github.com/sigstore/fulcio/blob/main/docs/setup.md).

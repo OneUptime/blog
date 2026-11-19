@@ -822480,5 +822480,19 @@
     ],
     "post": "2026-11-19-how-to-check-runner-environment-claims-in-fulcio-certificates-before-accepting-a-build",
     "readmePath": "posts/2026-11-19-how-to-check-runner-environment-claims-in-fulcio-certificates-before-accepting-a-build/README.md"
+  },
+  {
+    "title": "How to Encrypt the Ingress-to-Fulcio Hop for REST Certificate Requests",
+    "description": "Configure authenticated TLS between an ingress and Fulcio REST listener, checking the deployed release for native HTTP TLS support and verifying the upstream certificate.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Fulcio",
+      "TLS",
+      "Kubernetes",
+      "Security",
+      "Troubleshooting"
+    ],
+    "post": "2026-11-19-how-to-encrypt-the-ingress-to-fulcio-hop-for-rest-certificate-requests",
+    "readmePath": "posts/2026-11-19-how-to-encrypt-the-ingress-to-fulcio-hop-for-rest-certificate-requests/README.md"
   }
 ]
