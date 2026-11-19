@@ -823417,5 +823417,19 @@
     ],
     "post": "2026-11-19-mlrun-feature-ingestion-resets-connection-batch-size-retries-target-endpoints",
     "readmePath": "posts/2026-11-19-mlrun-feature-ingestion-resets-connection-batch-size-retries-target-endpoints/README.md"
+  },
+  {
+    "title": "How to Observe Nuclio Model-Serving Throughput, Latency, Errors, and Worker Saturation in Iguazio",
+    "description": "Diagnose Nuclio serving performance in Iguazio by discovering deployed metrics, measuring client latency and errors, and correlating worker queues with replica capacity.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Nuclio",
+      "Model Serving",
+      "Prometheus",
+      "Observability",
+      "MLOps"
+    ],
+    "post": "2026-11-19-observe-nuclio-model-serving-metrics-iguazio",
+    "readmePath": "posts/2026-11-19-observe-nuclio-model-serving-metrics-iguazio/README.md"
   }
 ]
