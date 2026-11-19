@@ -823792,5 +823792,18 @@
     ],
     "post": "2026-11-19-rotate-securestring-parameter-versions-labels",
     "readmePath": "posts/2026-11-19-rotate-securestring-parameter-versions-labels/README.md"
+  },
+  {
+    "title": "Patch Manager Stuck on “In Progress” or “Pending Reboot”: Trace the Agent, OS Updater, and Patch Logs",
+    "description": "Diagnose stalled Patch Manager operations by correlating command status, patch compliance, agent logs, native updater activity, and post-reboot scans.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "AWS",
+      "Systems Manager",
+      "Patch Manager",
+      "Troubleshooting"
+    ],
+    "post": "2026-11-19-patch-manager-in-progress-pending-reboot",
+    "readmePath": "posts/2026-11-19-patch-manager-in-progress-pending-reboot/README.md"
   }
 ]
