@@ -2,7 +2,6 @@
 
 ## Systems Manager
 
-10. Why Session Manager Logs Are Empty: CloudWatch/S3/KMS Setup and the SSH/Port-Forwarding Blind Spot
 11. How to Reach Private RDS Through SSM Remote-Host Port Forwarding—and Why Your Client Must Use `localhost`
 12. RDS IAM Authentication Through an SSM Tunnel: Fix Token Hostnames and TLS Certificate Validation
 13. How to Use OpenSSH `ProxyCommand` over Session Manager Without Opening Port 22

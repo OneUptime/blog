@@ -823692,5 +823692,19 @@
     ],
     "post": "2026-11-19-least-privilege-session-manager-iam",
     "readmePath": "posts/2026-11-19-least-privilege-session-manager-iam/README.md"
+  },
+  {
+    "title": "Why Session Manager Logs Are Empty: CloudWatch/S3/KMS Setup and the SSH/Port-Forwarding Blind Spot",
+    "description": "Diagnose missing Session Manager transcripts by checking session modes, upload timing, document inputs, destination permissions, encryption, and local recovery evidence.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "AWS",
+      "Systems Manager",
+      "Session Manager",
+      "CloudWatch",
+      "Troubleshooting"
+    ],
+    "post": "2026-11-19-session-manager-empty-logs-cloudwatch-s3-kms",
+    "readmePath": "posts/2026-11-19-session-manager-empty-logs-cloudwatch-s3-kms/README.md"
   }
 ]
