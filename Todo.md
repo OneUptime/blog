@@ -2,7 +2,6 @@
 
 ## Deployment Rework
 
-11. How to Set Retry Budgets So Automatic Re-Runs Do Not Hide Chronic Deployment Failures
 12. How to Use Expand-and-Contract Database Migrations Without Losing the Rollback Path
 13. How to Test Rollbacks Against Both the Old and New Database Schema Before Production
 14. How to Trigger Automatic Rollback from SLOs Without Letting One Noisy Metric Revert a Healthy Release

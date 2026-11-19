@@ -823498,5 +823498,19 @@
     ],
     "post": "2026-11-19-reconcile-main-after-production-rollback",
     "readmePath": "posts/2026-11-19-reconcile-main-after-production-rollback/README.md"
+  },
+  {
+    "title": "How to Set Retry Budgets So Automatic Re-Runs Do Not Hide Chronic Deployment Failures",
+    "description": "Bound deployment reruns with persistent attempt budgets, preserve first-attempt failure data, and escalate recurring faults even when retries succeed.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "CI/CD",
+      "Deployment",
+      "Retry Budget",
+      "Observability",
+      "DevOps"
+    ],
+    "post": "2026-11-19-deployment-retry-budgets-failure-visibility",
+    "readmePath": "posts/2026-11-19-deployment-retry-budgets-failure-visibility/README.md"
   }
 ]
