@@ -10330,7 +10330,6 @@ All 200 titles were checked against the 61,019 entries in Blogs.json and the exi
 
 ## Knative Serving
 
-7. How to Choose PVC Access Modes Before Scaling a Knative Service Across Nodes
 8. How to Probe Every User Container in a Knative Service with Sidecars
 9. How to Align Knative Startup Probes with the Revision Progress Deadline
 10. How to Fix Knative Readiness Failures Caused by the Wrong Container Listening Port

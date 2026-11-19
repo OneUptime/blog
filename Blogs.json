@@ -823343,5 +823343,17 @@
     ],
     "post": "2026-11-19-how-to-enable-persistent-volume-claims-and-write-access-in-knative-serving",
     "readmePath": "posts/2026-11-19-how-to-enable-persistent-volume-claims-and-write-access-in-knative-serving/README.md"
+  },
+  {
+    "title": "How to Choose PVC Access Modes Before Scaling a Knative Service Across Nodes",
+    "description": "Choose Knative PVC access modes for cross-node scaling, account for overlapping Revisions, and diagnose attachment failures without confusing RWO with single-pod access.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Knative",
+      "Kubernetes",
+      "Storage"
+    ],
+    "post": "2026-11-19-how-to-choose-pvc-access-modes-before-scaling-a-knative-service-across-nodes",
+    "readmePath": "posts/2026-11-19-how-to-choose-pvc-access-modes-before-scaling-a-knative-service-across-nodes/README.md"
   }
 ]
