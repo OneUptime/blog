@@ -263,10 +263,6 @@ All 200 titles were checked against the 61,019 entries in Blogs.json and the exi
 ## gRPC
 
 
-5. How to Prevent Bidirectional gRPC Streams from Deadlocking Under Backpressure
-
-    Research: [Source](https://stackoverflow.com/questions/57375360/how-does-grpc-client-streaming-flow-control-work-in-go) · [Documentation](https://grpc.io/docs/guides/flow-control/).
-
 6. How to Diagnose gRPC Retries That Stop After Response Headers Arrive
 
     Research: [Source](https://stackoverflow.com/questions/78352187/how-to-configure-grpc-client-retry-for-ruby-via-service-config) · [Documentation](https://grpc.io/docs/guides/retry/).

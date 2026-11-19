@@ -822586,5 +822586,18 @@
     ],
     "post": "2026-11-19-java-grpc-slow-onnext-cancellation",
     "readmePath": "posts/2026-11-19-java-grpc-slow-onnext-cancellation/README.md"
+  },
+  {
+    "title": "How to Prevent Bidirectional gRPC Streams from Deadlocking Under Backpressure",
+    "description": "Keep bidirectional gRPC reads and writes progressing independently, with bounded queues and coordinated cancellation.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "gRPC",
+      "Streaming",
+      "Python",
+      "Concurrency"
+    ],
+    "post": "2026-11-19-grpc-bidirectional-stream-backpressure-deadlock",
+    "readmePath": "posts/2026-11-19-grpc-bidirectional-stream-backpressure-deadlock/README.md"
   }
 ]
