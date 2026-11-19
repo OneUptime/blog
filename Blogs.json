@@ -822599,5 +822599,18 @@
     ],
     "post": "2026-11-19-grpc-bidirectional-stream-backpressure-deadlock",
     "readmePath": "posts/2026-11-19-grpc-bidirectional-stream-backpressure-deadlock/README.md"
+  },
+  {
+    "title": "How to Explain Why Large gRPC Requests Stop Retrying When Small Requests Succeed",
+    "description": "Diagnose request-size-dependent gRPC retries by separating replay buffers, message limits, commitment, and application idempotency.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "gRPC",
+      "Java",
+      "Debugging",
+      "Troubleshooting"
+    ],
+    "post": "2026-11-19-grpc-large-request-retry-buffer-limits",
+    "readmePath": "posts/2026-11-19-grpc-large-request-retry-buffer-limits/README.md"
   }
 ]

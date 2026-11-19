@@ -263,10 +263,6 @@ All 200 titles were checked against the 61,019 entries in Blogs.json and the exi
 ## gRPC
 
 
-7. How to Explain Why Large gRPC Requests Stop Retrying When Small Requests Succeed
-
-    Research: [Source](https://stackoverflow.com/questions/78352187/how-to-configure-grpc-client-retry-for-ruby-via-service-config) · [Documentation](https://github.com/grpc/proposal/blob/master/A6-client-retries.md).
-
 8. How to Read Binary gRPC Metadata in Java Interceptors Without ASCII Parsing Errors
 
     Research: [Source](https://stackoverflow.com/questions/73250530/invalid-argument-failed-to-parse-headers-when-adding-a-serverinterceptor) · [Documentation](https://grpc.io/docs/guides/metadata/).
