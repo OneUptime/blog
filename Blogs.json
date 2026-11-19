@@ -823484,5 +823484,19 @@
     ],
     "post": "2026-11-19-link-fix-deployment-incident-original-change",
     "readmePath": "posts/2026-11-19-link-fix-deployment-incident-original-change/README.md"
+  },
+  {
+    "title": "Production Is Rolled Back but `main` Is Still Broken: How to Reconcile Git and the Running Release",
+    "description": "Repair application main after a production rollback, preserve later changes, reconcile release manifests, and carry emergency fixes into the next normal build.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Git",
+      "GitOps",
+      "Rollback",
+      "Deployment",
+      "Incident Response"
+    ],
+    "post": "2026-11-19-reconcile-main-after-production-rollback",
+    "readmePath": "posts/2026-11-19-reconcile-main-after-production-rollback/README.md"
   }
 ]
