@@ -122,10 +122,6 @@ All 200 titles were checked against the 61,019 entries in Blogs.json and the exi
 ## Fulcio
 
 
-3. How to Assess Fulcio Exposure to OIDC Discovery Redirect and JWKS Substitution Flaws
-
-    Research: [Source](https://github.com/sigstore/fulcio/security/advisories/GHSA-f5mr-q85p-6hh6) · [Documentation](https://github.com/sigstore/fulcio/releases).
-
 4. How to Check Whether a New CI Provider Is Trusted by the Public Fulcio Service
 
     Research: [Source](https://github.com/sigstore/fulcio/issues/2442) · [Documentation](https://github.com/sigstore/fulcio/blob/main/docs/new-idp-requirements.md).

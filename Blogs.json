@@ -822313,5 +822313,19 @@
     ],
     "post": "2026-11-19-how-to-diagnose-k3s-service-account-signing-regressions-after-a-fulcio-upgrade",
     "readmePath": "posts/2026-11-19-how-to-diagnose-k3s-service-account-signing-regressions-after-a-fulcio-upgrade/README.md"
+  },
+  {
+    "title": "How to Assess Fulcio Exposure to OIDC Discovery Redirect and JWKS Substitution Flaws",
+    "description": "Assess Fulcio discovery redirect and JWKS substitution exposure using deployed versions, issuer configuration, network evidence, and current upstream security advisories.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Fulcio",
+      "Sigstore",
+      "OIDC",
+      "Supply Chain Security",
+      "Troubleshooting"
+    ],
+    "post": "2026-11-19-how-to-assess-fulcio-exposure-to-oidc-discovery-redirect-and-jwks-substitution-flaws",
+    "readmePath": "posts/2026-11-19-how-to-assess-fulcio-exposure-to-oidc-discovery-redirect-and-jwks-substitution-flaws/README.md"
   }
 ]
