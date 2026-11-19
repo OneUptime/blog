@@ -823102,5 +823102,18 @@
     ],
     "post": "2026-11-19-how-to-configure-per-direction-hpa-tolerance-in-kubernetes-1-35-to-filter-metric-noise",
     "readmePath": "posts/2026-11-19-how-to-configure-per-direction-hpa-tolerance-in-kubernetes-1-35-to-filter-metric-noise/README.md"
+  },
+  {
+    "title": "How to Detect Stale External Metrics That Pin an HPA at `maxReplicas`",
+    "description": "Trace external metric timestamps, adapter caching, and selector aggregation when an HPA remains at its replica ceiling after real demand falls.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Kubernetes",
+      "HPA",
+      "Autoscaling",
+      "Troubleshooting"
+    ],
+    "post": "2026-11-19-how-to-detect-stale-external-metrics-that-pin-an-hpa-at-maxreplicas",
+    "readmePath": "posts/2026-11-19-how-to-detect-stale-external-metrics-that-pin-an-hpa-at-maxreplicas/README.md"
   }
 ]
