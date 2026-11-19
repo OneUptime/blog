@@ -823245,5 +823245,18 @@
     ],
     "post": "2026-11-19-how-to-drain-long-lived-connections-safely-when-hpa-scales-down",
     "readmePath": "posts/2026-11-19-how-to-drain-long-lived-connections-safely-when-hpa-scales-down/README.md"
+  },
+  {
+    "title": "How to Make HPA Decisions Observable with Controller Metrics, Events, and Recommendation Dashboards",
+    "description": "Combine HPA status, controller metrics, retained events, and clearly labeled recommendation estimates to explain why requested capacity changed.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Kubernetes",
+      "HPA",
+      "Autoscaling",
+      "Troubleshooting"
+    ],
+    "post": "2026-11-19-how-to-make-hpa-decisions-observable-with-controller-metrics-events-and-recommendation-dashboards",
+    "readmePath": "posts/2026-11-19-how-to-make-hpa-decisions-observable-with-controller-metrics-events-and-recommendation-dashboards/README.md"
   }
 ]
