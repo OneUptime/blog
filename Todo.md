@@ -1,9 +1,5 @@
 # Blog Post Ideas
 
-## Deployment Rework
-
-20. How to Dashboard Deployment Rework Rate with Change Failure Rate and Recovery Time Without Gaming the Numbers
-
 ## Systems Manager
 
 1. AWS SSM `TargetNotConnected`: A Layer-by-Layer Check of Agent, IAM, Region, DNS, and Egress

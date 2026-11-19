@@ -823554,5 +823554,19 @@
     ],
     "post": "2026-11-19-turn-deployment-rework-postmortems-into-pipeline-checks",
     "readmePath": "posts/2026-11-19-turn-deployment-rework-postmortems-into-pipeline-checks/README.md"
+  },
+  {
+    "title": "How to Dashboard Deployment Rework Rate with Change Failure Rate and Recovery Time Without Gaming the Numbers",
+    "description": "Build an auditable dashboard that aligns deployment rework, change failure, and recovery cohorts while exposing uncertainty and incentives to game the numbers.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "DORA",
+      "DevOps",
+      "Dashboard",
+      "Software Delivery",
+      "Data Quality"
+    ],
+    "post": "2026-11-19-dashboard-rework-failure-recovery-without-gaming",
+    "readmePath": "posts/2026-11-19-dashboard-rework-failure-recovery-without-gaming/README.md"
   }
 ]
