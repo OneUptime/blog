@@ -263,10 +263,6 @@ All 200 titles were checked against the 61,019 entries in Blogs.json and the exi
 ## gRPC
 
 
-19. How to Diagnose gRPC Metadata Size Errors That Hide the Original Server Failure
-
-    Research: [Source](https://stackoverflow.com/questions/77525513/texttospeech-synthesize-long-audio-error-resourceexhausted-429-received-metadata) · [Documentation](https://grpc.io/docs/guides/metadata/).
-
 20. How to Prevent Concurrent C++ gRPC Writes from Triggering Too Many Operations
 
     Research: [Source](https://stackoverflow.com/questions/59436740/getting-abort-trap-6-from-google-speech-api) · [Documentation](https://grpc.io/docs/languages/cpp/best_practices/).

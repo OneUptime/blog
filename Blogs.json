@@ -822729,5 +822729,18 @@
     ],
     "post": "2026-11-19-protobuf-preserve-unknown-fields-grpc-relay",
     "readmePath": "posts/2026-11-19-protobuf-preserve-unknown-fields-grpc-relay/README.md"
+  },
+  {
+    "title": "How to Diagnose gRPC Metadata Size Errors That Hide the Original Server Failure",
+    "description": "Find the original server failure behind a gRPC metadata-size error by checking trailers, diagnostic payloads, and each receiving hop.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "gRPC",
+      "Debugging",
+      "Troubleshooting",
+      "Java"
+    ],
+    "post": "2026-11-19-grpc-metadata-limit-hides-server-error",
+    "readmePath": "posts/2026-11-19-grpc-metadata-limit-hides-server-error/README.md"
   }
 ]
