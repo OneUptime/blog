@@ -823568,5 +823568,19 @@
     ],
     "post": "2026-11-19-dashboard-rework-failure-recovery-without-gaming",
     "readmePath": "posts/2026-11-19-dashboard-rework-failure-recovery-without-gaming/README.md"
+  },
+  {
+    "title": "AWS SSM `TargetNotConnected`: A Layer-by-Layer Check of Agent, IAM, Region, DNS, and Egress",
+    "description": "Diagnose AWS SSM TargetNotConnected by checking account and Region, agent health, node and caller permissions, regional endpoints, DNS, and outbound HTTPS.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "AWS",
+      "Systems Manager",
+      "Session Manager",
+      "EC2",
+      "Troubleshooting"
+    ],
+    "post": "2026-11-19-aws-ssm-targetnotconnected-layered-troubleshooting",
+    "readmePath": "posts/2026-11-19-aws-ssm-targetnotconnected-layered-troubleshooting/README.md"
   }
 ]

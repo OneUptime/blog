@@ -2,7 +2,6 @@
 
 ## Systems Manager
 
-1. AWS SSM `TargetNotConnected`: A Layer-by-Layer Check of Agent, IAM, Region, DNS, and Egress
 2. Node Appears in Fleet Manager but Session Manager Fails: Check `ssmmessages`, Session Preferences, and Agent Logs
 3. How to Run AWS Systems Manager in a Private Subnet with the Right VPC Endpoints, DNS, and Security Groups
 4. SSM Agent Keeps Going Offline Behind a Proxy: Configure Proxy Variables, `no_proxy`, and TLS Inspection
