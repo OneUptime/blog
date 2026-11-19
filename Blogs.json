@@ -822299,5 +822299,19 @@
     ],
     "post": "2026-11-19-how-to-diagnose-fulcio-oidc-discovery-failures-behind-istio-serviceentry-virtual-ips",
     "readmePath": "posts/2026-11-19-how-to-diagnose-fulcio-oidc-discovery-failures-behind-istio-serviceentry-virtual-ips/README.md"
+  },
+  {
+    "title": "How to Diagnose K3s Service Account Signing Regressions After a Fulcio Upgrade",
+    "description": "Diagnose the K3s issuer regression introduced in Fulcio 1.8.6, separate discovery credentials from signing tokens, and test a corrected upgrade.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Fulcio",
+      "Sigstore",
+      "OIDC",
+      "Kubernetes",
+      "Troubleshooting"
+    ],
+    "post": "2026-11-19-how-to-diagnose-k3s-service-account-signing-regressions-after-a-fulcio-upgrade",
+    "readmePath": "posts/2026-11-19-how-to-diagnose-k3s-service-account-signing-regressions-after-a-fulcio-upgrade/README.md"
   }
 ]

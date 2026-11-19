@@ -122,10 +122,6 @@ All 200 titles were checked against the 61,019 entries in Blogs.json and the exi
 ## Fulcio
 
 
-2. How to Diagnose K3s Service Account Signing Regressions After a Fulcio Upgrade
-
-    Research: [Source](https://github.com/sigstore/fulcio/issues/2355) · [Documentation](https://github.com/sigstore/fulcio/releases).
-
 3. How to Assess Fulcio Exposure to OIDC Discovery Redirect and JWKS Substitution Flaws
 
     Research: [Source](https://github.com/sigstore/fulcio/security/advisories/GHSA-f5mr-q85p-6hh6) · [Documentation](https://github.com/sigstore/fulcio/releases).
