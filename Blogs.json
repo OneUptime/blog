@@ -823860,5 +823860,18 @@
     ],
     "post": "2026-11-19-ssh-too-many-authentication-failures-identitiesonly",
     "readmePath": "posts/2026-11-19-ssh-too-many-authentication-failures-identitiesonly/README.md"
+  },
+  {
+    "title": "OpenSSH Upgrade Broke RSA Login: Fix “sign_and_send_pubkey: no mutual signature supported” Safely",
+    "description": "Diagnose RSA signature negotiation failures after OpenSSH upgrades, restore SHA-2 authentication, and limit any temporary SHA-1 exception to one destination.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "SSH",
+      "OpenSSH",
+      "Security",
+      "Troubleshooting"
+    ],
+    "post": "2026-11-19-openssh-rsa-no-mutual-signature-supported",
+    "readmePath": "posts/2026-11-19-openssh-rsa-no-mutual-signature-supported/README.md"
   }
 ]
