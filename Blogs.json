@@ -823749,5 +823749,20 @@
     ],
     "post": "2026-11-19-openssh-proxycommand-session-manager-no-inbound-port-22",
     "readmePath": "posts/2026-11-19-openssh-proxycommand-session-manager-no-inbound-port-22/README.md"
+  },
+  {
+    "title": "SSM Parameter Store `AccessDeniedException`: Match the API Action, Parameter ARN, Path, and KMS Key",
+    "description": "Diagnose Parameter Store access denials by matching the caller, retrieval action, resource path, and SecureString decryption permissions without printing parameter values.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "AWS",
+      "Systems Manager",
+      "Parameter Store",
+      "IAM",
+      "KMS",
+      "Troubleshooting"
+    ],
+    "post": "2026-11-19-ssm-parameter-store-accessdenied-action-arn-path-kms",
+    "readmePath": "posts/2026-11-19-ssm-parameter-store-accessdenied-action-arn-path-kms/README.md"
   }
 ]
