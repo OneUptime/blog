@@ -316,7 +316,6 @@ All 200 titles were checked against the 61,019 entries in Blogs.json and the exi
 
 ## Iguazio
 
-6. How to Develop MLRun Functions Locally and Run Them Remotely with `HOST_IP`, `SHARED_DIR`, and `local=False`
 7. MLRun Reports `Unauthorized path` on V3IO: How UID Mapping, Ownership, and Security-Admin Roles Interact
 8. MLRun API Returns 412 “Waiting for Migrations”: How to Complete Database Migrations After an Upgrade
 9. `V3IO_ACCESS_KEY` or `V3IO_API` Is Missing: How to Configure Iguazio Credentials Without Hard-Coding Secrets

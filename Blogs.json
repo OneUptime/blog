@@ -822818,5 +822818,18 @@
     ],
     "post": "2026-11-19-an-mlrun-job-is-stuck-in-pending-how-to-check-kubernetes-events-quotas-volumes-and-node-placement",
     "readmePath": "posts/2026-11-19-an-mlrun-job-is-stuck-in-pending-how-to-check-kubernetes-events-quotas-volumes-and-node-placement/README.md"
+  },
+  {
+    "title": "How to Develop MLRun Functions Locally and Run Them Remotely with `HOST_IP`, `SHARED_DIR`, and `local=False`",
+    "description": "Separate local Docker network and storage settings from remote MLRun execution, then submit a version-aligned job with local=False.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "MLOps",
+      "Python",
+      "Kubernetes",
+      "Troubleshooting"
+    ],
+    "post": "2026-11-19-how-to-develop-mlrun-functions-locally-and-run-them-remotely-with-host-ip-shared-dir-and-local-false",
+    "readmePath": "posts/2026-11-19-how-to-develop-mlrun-functions-locally-and-run-them-remotely-with-host-ip-shared-dir-and-local-false/README.md"
   }
 ]
