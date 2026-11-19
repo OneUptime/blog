@@ -510,7 +510,6 @@ All 200 titles were checked against the 61,019 entries in Blogs.json and the exi
 
 ## OTLP
 
-6. OTLP Collector-to-Collector Headers Disappear: When `include_metadata` Is Required
 7. Multi-Tenant OTLP Routing: Preserve Trusted Tenant Headers Without Accepting Spoofed Identity
 8. OTLP Partial-Success Responses: Surface Rejected Spans, Metrics, and Logs Before They Vanish
 9. Which OTLP Failures Should Retry? Classifying gRPC Codes and HTTP Statuses Without Retry Storms
