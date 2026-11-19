@@ -822882,5 +822882,18 @@
     ],
     "post": "2026-11-19-mlrun-says-no-offline-targets-how-to-configure-parquet-and-nosql-targets-for-a-feature-set",
     "readmePath": "posts/2026-11-19-mlrun-says-no-offline-targets-how-to-configure-parquet-and-nosql-targets-for-a-feature-set/README.md"
+  },
+  {
+    "title": "OTLP/HTTP Returns 401: Adding Authorization with Static Headers or the `basicauth` Extension",
+    "description": "Trace OTLP HTTP 401 responses to the rejecting hop and configure static authorization headers or a Basic Auth client extension without exposing credentials.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "OpenTelemetry",
+      "OTLP",
+      "Authentication",
+      "Troubleshooting"
+    ],
+    "post": "2026-11-19-otlp-http-returns-401-adding-authorization-with-static-headers-or-the-basicauth-extension",
+    "readmePath": "posts/2026-11-19-otlp-http-returns-401-adding-authorization-with-static-headers-or-the-basicauth-extension/README.md"
   }
 ]

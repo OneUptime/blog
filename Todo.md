@@ -510,7 +510,6 @@ All 200 titles were checked against the 61,019 entries in Blogs.json and the exi
 
 ## OTLP
 
-1. OTLP/HTTP Returns 401: Adding Authorization with Static Headers or the `basicauth` Extension
 2. Browser OTLP/HTTP Exports Fail Preflight: Configure Collector CORS Without Allowing Every Origin
 3. OTLP/HTTP Hits 413 “Payload Too Large”: Align SDK Batches, Reverse Proxies, and Backend Limits
 4. OTLP/gRPC Shows `bogus greeting` Behind an Ingress: Preserve HTTP/2 or Terminate It Correctly
