@@ -263,10 +263,6 @@ All 200 titles were checked against the 61,019 entries in Blogs.json and the exi
 ## gRPC
 
 
-14. How to Call a gRPC Service with grpcurl When Server Reflection Is Disabled
-
-    Research: [Source](https://stackoverflow.com/questions/70885810/kong-grpc-fails-without-proto) · [Documentation](https://github.com/fullstorydev/grpcurl).
-
 15. How to Give Java Background gRPC Calls Their Own Cancellation Lifetime
 
     Research: [Source](https://stackoverflow.com/questions/57110811/grpc-random-cancelled-exception-on-rpc-calls) · [Documentation](https://grpc.github.io/grpc-java/javadoc/io/grpc/Context.html).
