@@ -823582,5 +823582,19 @@
     ],
     "post": "2026-11-19-aws-ssm-targetnotconnected-layered-troubleshooting",
     "readmePath": "posts/2026-11-19-aws-ssm-targetnotconnected-layered-troubleshooting/README.md"
+  },
+  {
+    "title": "Node Appears in Fleet Manager but Session Manager Fails: Check `ssmmessages`, Session Preferences, and Agent Logs",
+    "description": "Diagnose Session Manager failures on an online managed node by checking messaging channels, the selected session document, logging, KMS, Run As, and agent evidence.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "AWS",
+      "Systems Manager",
+      "Session Manager",
+      "EC2",
+      "Troubleshooting"
+    ],
+    "post": "2026-11-19-fleet-manager-online-session-manager-fails",
+    "readmePath": "posts/2026-11-19-fleet-manager-online-session-manager-fails/README.md"
   }
 ]

@@ -2,7 +2,6 @@
 
 ## Systems Manager
 
-2. Node Appears in Fleet Manager but Session Manager Fails: Check `ssmmessages`, Session Preferences, and Agent Logs
 3. How to Run AWS Systems Manager in a Private Subnet with the Right VPC Endpoints, DNS, and Security Groups
 4. SSM Agent Keeps Going Offline Behind a Proxy: Configure Proxy Variables, `no_proxy`, and TLS Inspection
 5. Fixing “document worker timed out” in SSM: Disk Space, Memory, File Descriptors, and Worker Logs
