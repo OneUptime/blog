@@ -823678,5 +823678,19 @@
     ],
     "post": "2026-11-19-ssm-run-command-safe-reboots-exit-194-3010",
     "readmePath": "posts/2026-11-19-ssm-run-command-safe-reboots-exit-194-3010/README.md"
+  },
+  {
+    "title": "Least-Privilege Session Manager IAM: Restrict Users by Instance Tags, Session Documents, and Actions",
+    "description": "Build scoped Session Manager permissions for tagged EC2 instances, approved session documents, and caller-owned sessions while closing common authorization bypasses.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "AWS",
+      "Systems Manager",
+      "Session Manager",
+      "IAM",
+      "Security"
+    ],
+    "post": "2026-11-19-least-privilege-session-manager-iam",
+    "readmePath": "posts/2026-11-19-least-privilege-session-manager-iam/README.md"
   }
 ]
