@@ -823258,5 +823258,18 @@
     ],
     "post": "2026-11-19-how-to-make-hpa-decisions-observable-with-controller-metrics-events-and-recommendation-dashboards",
     "readmePath": "posts/2026-11-19-how-to-make-hpa-decisions-observable-with-controller-metrics-events-and-recommendation-dashboards/README.md"
+  },
+  {
+    "title": "How to Detect and Prevent Manual Replica Overrides on HPA-Controlled Workloads",
+    "description": "Identify unexpected writers to Deployment replicas through managed fields and audit logs, then preserve HPA ownership with deployment and access controls.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Kubernetes",
+      "HPA",
+      "Autoscaling",
+      "Troubleshooting"
+    ],
+    "post": "2026-11-19-how-to-detect-and-prevent-manual-replica-overrides-on-hpa-controlled-workloads",
+    "readmePath": "posts/2026-11-19-how-to-detect-and-prevent-manual-replica-overrides-on-hpa-controlled-workloads/README.md"
   }
 ]

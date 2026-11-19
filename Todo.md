@@ -1096,7 +1096,6 @@ All 200 titles were checked against the 61,019 entries in Blogs.json and the exi
 
 ## Horizontal Autoscaling
 
-20. How to Detect and Prevent Manual Replica Overrides on HPA-Controlled Workloads
 
 ## Multus
 
