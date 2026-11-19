@@ -2,7 +2,6 @@
 
 ## Systems Manager
 
-13. How to Use OpenSSH `ProxyCommand` over Session Manager Without Opening Port 22
 14. SSM Parameter Store `AccessDeniedException`: Match the API Action, Parameter ARN, Path, and KMS Key
 15. How to Read an Entire Parameter Store Hierarchy Without Missing Paginated or Encrypted Values
 16. How to Rotate a `SecureString` with Parameter Versions and Labels Without Breaking Consumers

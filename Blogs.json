@@ -823735,5 +823735,19 @@
     ],
     "post": "2026-11-19-rds-iam-authentication-ssm-tunnel-token-hostnames-tls",
     "readmePath": "posts/2026-11-19-rds-iam-authentication-ssm-tunnel-token-hostnames-tls/README.md"
+  },
+  {
+    "title": "How to Use OpenSSH `ProxyCommand` over Session Manager Without Opening Port 22",
+    "description": "Configure SSH through Session Manager with explicit AWS identity, verified host keys, separate SSH authentication, and no inbound port 22 rule.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "AWS",
+      "Systems Manager",
+      "Session Manager",
+      "OpenSSH",
+      "Security"
+    ],
+    "post": "2026-11-19-openssh-proxycommand-session-manager-no-inbound-port-22",
+    "readmePath": "posts/2026-11-19-openssh-proxycommand-session-manager-no-inbound-port-22/README.md"
   }
 ]
