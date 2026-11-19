@@ -122,10 +122,6 @@ All 200 titles were checked against the 61,019 entries in Blogs.json and the exi
 ## Fulcio
 
 
-10. How to Restore Fulcio Signing When Cosign Reports an Invalid TUF Key
-
-    Research: [Source](https://github.com/sigstore/cosign-installer/issues/100) · [Documentation](https://blog.sigstore.dev/tuf-root-update/).
-
 11. How to Check Organization Restrictions Before Trusting GitHub Actions in a Private Fulcio CA
 
     Research: [Source](https://github.com/sigstore/fulcio/issues/1989) · [Documentation](https://github.com/sigstore/fulcio/blob/main/docs/oidc.md).

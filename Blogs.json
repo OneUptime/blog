@@ -822411,5 +822411,18 @@
     ],
     "post": "2026-11-19-how-to-test-a-custom-oidc-client-audience-across-sigstore-python-and-fulcio",
     "readmePath": "posts/2026-11-19-how-to-test-a-custom-oidc-client-audience-across-sigstore-python-and-fulcio/README.md"
+  },
+  {
+    "title": "How to Restore Fulcio Signing When Cosign Reports an Invalid TUF Key",
+    "description": "Trace invalid TUF key errors to the actual signing client, distinguish embedded dependency problems from trust-root compatibility, and recover without bypassing verification.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Fulcio",
+      "Sigstore",
+      "Cosign",
+      "Troubleshooting"
+    ],
+    "post": "2026-11-19-how-to-restore-fulcio-signing-when-cosign-reports-an-invalid-tuf-key",
+    "readmePath": "posts/2026-11-19-how-to-restore-fulcio-signing-when-cosign-reports-an-invalid-tuf-key/README.md"
   }
 ]
