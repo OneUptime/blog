@@ -823819,5 +823819,19 @@
     ],
     "post": "2026-11-19-patch-manager-auto-scaling-groups-live-patching-or-ami",
     "readmePath": "posts/2026-11-19-patch-manager-auto-scaling-groups-live-patching-or-ami/README.md"
+  },
+  {
+    "title": "Windows Patch Manager in a Private Subnet: Combine SSM Endpoints with WSUS or Update Egress",
+    "description": "Design and verify private Windows Server patching by separating SSM and S3 connectivity from WSUS metadata, update content, and Microsoft Update egress.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "AWS",
+      "Systems Manager",
+      "Patch Manager",
+      "Windows Server",
+      "Networking"
+    ],
+    "post": "2026-11-19-windows-patch-manager-private-subnet-ssm-wsus-egress",
+    "readmePath": "posts/2026-11-19-windows-patch-manager-private-subnet-ssm-wsus-egress/README.md"
   }
 ]

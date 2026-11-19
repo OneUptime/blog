@@ -2,7 +2,6 @@
 
 ## Systems Manager
 
-19. Windows Patch Manager in a Private Subnet: Combine SSM Endpoints with WSUS or Update Egress
 20. On-Premises Node Missing from Systems Manager: Debug Hybrid Activation, Region, IAM Role, and Agent Registration
 
 ## SSH
