@@ -823319,5 +823319,17 @@
     ],
     "post": "2026-11-19-how-to-skip-knative-image-tag-resolution-for-an-http-only-development-registry",
     "readmePath": "posts/2026-11-19-how-to-skip-knative-image-tag-resolution-for-an-http-only-development-registry/README.md"
+  },
+  {
+    "title": "How to Enable Init Containers for Knative Serving Startup Tasks",
+    "description": "Enable Knative init containers through the correct configuration owner and design repeatable startup tasks that tolerate scale-out and cold starts.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Knative",
+      "Kubernetes",
+      "Configuration"
+    ],
+    "post": "2026-11-19-how-to-enable-init-containers-for-knative-serving-startup-tasks",
+    "readmePath": "posts/2026-11-19-how-to-enable-init-containers-for-knative-serving-startup-tasks/README.md"
   }
 ]

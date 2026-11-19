@@ -10330,7 +10330,6 @@ All 200 titles were checked against the 61,019 entries in Blogs.json and the exi
 
 ## Knative Serving
 
-5. How to Enable Init Containers for Knative Serving Startup Tasks
 6. How to Enable Persistent Volume Claims and Write Access in Knative Serving
 7. How to Choose PVC Access Modes Before Scaling a Knative Service Across Nodes
 8. How to Probe Every User Container in a Knative Service with Sidecars
