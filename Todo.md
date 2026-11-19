@@ -263,10 +263,6 @@ All 200 titles were checked against the 61,019 entries in Blogs.json and the exi
 ## gRPC
 
 
-6. How to Diagnose gRPC Retries That Stop After Response Headers Arrive
-
-    Research: [Source](https://stackoverflow.com/questions/78352187/how-to-configure-grpc-client-retry-for-ruby-via-service-config) · [Documentation](https://grpc.io/docs/guides/retry/).
-
 7. How to Explain Why Large gRPC Requests Stop Retrying When Small Requests Succeed
 
     Research: [Source](https://stackoverflow.com/questions/78352187/how-to-configure-grpc-client-retry-for-ruby-via-service-config) · [Documentation](https://github.com/grpc/proposal/blob/master/A6-client-retries.md).
