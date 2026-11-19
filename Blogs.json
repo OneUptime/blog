@@ -823664,5 +823664,19 @@
     ],
     "post": "2026-11-19-capture-complete-ssm-run-command-output",
     "readmePath": "posts/2026-11-19-capture-complete-ssm-run-command-output/README.md"
+  },
+  {
+    "title": "How to Reboot Safely from SSM Run Command with Linux Exit Code 194 and Windows Exit Code 3010",
+    "description": "Handle SSM Run Command reboots with explicit exit codes, persistent checkpoints, bounded retries, and post-boot verification on Linux and Windows.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "AWS",
+      "Systems Manager",
+      "Run Command",
+      "Linux",
+      "Automation"
+    ],
+    "post": "2026-11-19-ssm-run-command-safe-reboots-exit-194-3010",
+    "readmePath": "posts/2026-11-19-ssm-run-command-safe-reboots-exit-194-3010/README.md"
   }
 ]
