@@ -122,10 +122,6 @@ All 200 titles were checked against the 61,019 entries in Blogs.json and the exi
 ## Fulcio
 
 
-19. How to Separate Fulcio Code-Signing Trust from GitLab and Registry TLS Trust
-
-    Research: [Source](https://github.com/sigstore/cosign/issues/4399) · [Documentation](https://docs.gitlab.com/ci/yaml/signing_self_hosted/).
-
 20. How to Check Whether a Container Image Verifier Supports Fulcio URI Identities
 
     Research: [Source](https://gitlab.com/dunn.dev/immutable/basef/-/work_items/15) · [Documentation](https://github.com/sigstore/architecture-docs/blob/main/fulcio-spec.md).
