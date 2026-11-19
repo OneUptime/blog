@@ -822755,5 +822755,18 @@
     ],
     "post": "2026-11-19-cpp-grpc-overlapping-writes-too-many-operations",
     "readmePath": "posts/2026-11-19-cpp-grpc-overlapping-writes-too-many-operations/README.md"
+  },
+  {
+    "title": "`mlrun` Is Missing in an Iguazio Jupyter Service: How to Align the Notebook Client with the Cluster Version",
+    "description": "Repair a missing MLRun notebook package by checking the active Jupyter kernel, using Iguazio version alignment, and verifying client and runtime compatibility.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "MLOps",
+      "Jupyter",
+      "Python",
+      "Troubleshooting"
+    ],
+    "post": "2026-11-19-mlrun-is-missing-in-an-iguazio-jupyter-service-how-to-align-the-notebook-client-with-the-cluster-version",
+    "readmePath": "posts/2026-11-19-mlrun-is-missing-in-an-iguazio-jupyter-service-how-to-align-the-notebook-client-with-the-cluster-version/README.md"
   }
 ]
