@@ -822494,5 +822494,18 @@
     ],
     "post": "2026-11-19-how-to-encrypt-the-ingress-to-fulcio-hop-for-rest-certificate-requests",
     "readmePath": "posts/2026-11-19-how-to-encrypt-the-ingress-to-fulcio-hop-for-rest-certificate-requests/README.md"
+  },
+  {
+    "title": "How to Plan TLS Certificate Rotation for Fulcio HTTP and gRPC Listeners",
+    "description": "Plan Fulcio transport certificate rotation around listener-specific reload behavior, Kubernetes Secret delivery, fresh TLS handshakes, and a tested rollback.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Fulcio",
+      "TLS",
+      "Kubernetes",
+      "Troubleshooting"
+    ],
+    "post": "2026-11-19-how-to-plan-tls-certificate-rotation-for-fulcio-http-and-grpc-listeners",
+    "readmePath": "posts/2026-11-19-how-to-plan-tls-certificate-rotation-for-fulcio-http-and-grpc-listeners/README.md"
   }
 ]
