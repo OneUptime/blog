@@ -822424,5 +822424,19 @@
     ],
     "post": "2026-11-19-how-to-restore-fulcio-signing-when-cosign-reports-an-invalid-tuf-key",
     "readmePath": "posts/2026-11-19-how-to-restore-fulcio-signing-when-cosign-reports-an-invalid-tuf-key/README.md"
+  },
+  {
+    "title": "How to Check Organization Restrictions Before Trusting GitHub Actions in a Private Fulcio CA",
+    "description": "Determine whether a private Fulcio deployment actually restricts GitHub organizations, then test issuance controls and artifact verification as separate policies.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Fulcio",
+      "Sigstore",
+      "OIDC",
+      "CI/CD",
+      "Security"
+    ],
+    "post": "2026-11-19-how-to-check-organization-restrictions-before-trusting-github-actions-in-a-private-fulcio-ca",
+    "readmePath": "posts/2026-11-19-how-to-check-organization-restrictions-before-trusting-github-actions-in-a-private-fulcio-ca/README.md"
   }
 ]

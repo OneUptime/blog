@@ -122,10 +122,6 @@ All 200 titles were checked against the 61,019 entries in Blogs.json and the exi
 ## Fulcio
 
 
-11. How to Check Organization Restrictions Before Trusting GitHub Actions in a Private Fulcio CA
-
-    Research: [Source](https://github.com/sigstore/fulcio/issues/1989) · [Documentation](https://github.com/sigstore/fulcio/blob/main/docs/oidc.md).
-
 12. How to Update Fulcio Certificate Parsers for DER-Encoded Issuer Extensions
 
     Research: [Source](https://github.com/sigstore/fulcio/issues/754) · [Documentation](https://github.com/sigstore/fulcio/blob/main/docs/oid-info.md).
