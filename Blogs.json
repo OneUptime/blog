@@ -822806,5 +822806,17 @@
     ],
     "post": "2026-11-19-iguazio-spark-jobs-hit-imagepullbackoff-how-to-publish-mlrun-s-default-spark-images-to-the-cluster-registry",
     "readmePath": "posts/2026-11-19-iguazio-spark-jobs-hit-imagepullbackoff-how-to-publish-mlrun-s-default-spark-images-to-the-cluster-registry/README.md"
+  },
+  {
+    "title": "An MLRun Job Is Stuck in `Pending`: How to Check Kubernetes Events, Quotas, Volumes, and Node Placement",
+    "description": "Trace a pending MLRun run through Kubernetes admission, scheduling, image pulls, and volume setup using events and effective pod configuration.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "MLOps",
+      "Kubernetes",
+      "Troubleshooting"
+    ],
+    "post": "2026-11-19-an-mlrun-job-is-stuck-in-pending-how-to-check-kubernetes-events-quotas-volumes-and-node-placement",
+    "readmePath": "posts/2026-11-19-an-mlrun-job-is-stuck-in-pending-how-to-check-kubernetes-events-quotas-volumes-and-node-placement/README.md"
   }
 ]
