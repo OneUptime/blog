@@ -822999,5 +822999,18 @@
     ],
     "post": "2026-11-19-duplicate-kubernetes-logs-from-stdout-and-otlp-choose-one-ingestion-path-per-pod",
     "readmePath": "posts/2026-11-19-duplicate-kubernetes-logs-from-stdout-and-otlp-choose-one-ingestion-path-per-pod/README.md"
+  },
+  {
+    "title": "Gzip-Compressed OTLP Requests Fail to Decode: Trace `Content-Encoding` Across Every Hop",
+    "description": "Diagnose OTLP/HTTP gzip failures by comparing body bytes and Content-Encoding at each proxy hop, then verify the repair with a small controlled request.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "OpenTelemetry",
+      "OTLP",
+      "HTTP",
+      "Troubleshooting"
+    ],
+    "post": "2026-11-19-gzip-compressed-otlp-requests-fail-to-decode-trace-content-encoding-across-every-hop",
+    "readmePath": "posts/2026-11-19-gzip-compressed-otlp-requests-fail-to-decode-trace-content-encoding-across-every-hop/README.md"
   }
 ]

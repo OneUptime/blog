@@ -510,7 +510,6 @@ All 200 titles were checked against the 61,019 entries in Blogs.json and the exi
 
 ## OTLP
 
-16. Gzip-Compressed OTLP Requests Fail to Decode: Trace `Content-Encoding` Across Every Hop
 17. Why OTLP/gRPC Traffic Sticks to One Collector Replica: Long-Lived Channels and Trace-Aware Load Balancing
 18. OTLP Receiver Is Published but Unreachable in Docker: Bind to `0.0.0.0`, Not `localhost`
 19. Why `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT` Overrides the Base Endpoint—and Breaks Only One Signal
