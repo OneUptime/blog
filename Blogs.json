@@ -822962,5 +822962,18 @@
     ],
     "post": "2026-11-19-otlp-partial-success-responses-surface-rejected-spans-metrics-and-logs-before-they-vanish",
     "readmePath": "posts/2026-11-19-otlp-partial-success-responses-surface-rejected-spans-metrics-and-logs-before-they-vanish/README.md"
+  },
+  {
+    "title": "Which OTLP Failures Should Retry? Classifying gRPC Codes and HTTP Statuses Without Retry Storms",
+    "description": "Classify OTLP HTTP and gRPC failures using the protocol retry rules, then bound retries, queues, and concurrency so backend incidents do not become retry storms.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "OpenTelemetry",
+      "OTLP",
+      "Reliability",
+      "Troubleshooting"
+    ],
+    "post": "2026-11-19-which-otlp-failures-should-retry-classifying-grpc-codes-and-http-statuses-without-retry-storms",
+    "readmePath": "posts/2026-11-19-which-otlp-failures-should-retry-classifying-grpc-codes-and-http-statuses-without-retry-storms/README.md"
   }
 ]

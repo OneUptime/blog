@@ -510,7 +510,6 @@ All 200 titles were checked against the 61,019 entries in Blogs.json and the exi
 
 ## OTLP
 
-9. Which OTLP Failures Should Retry? Classifying gRPC Codes and HTTP Statuses Without Retry Storms
 10. Recovering an OTLP Persistent Queue That Blocks Collector Startup After a Backend Outage
 11. Why Short-Lived Jobs Lose OTLP Data: Call `ForceFlush` and `Shutdown` Before Exit
 12. How to Test an OTLP Pipeline Without a Backend: Synthetic Telemetry, Debug Export, and File Capture
