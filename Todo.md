@@ -510,7 +510,6 @@ All 200 titles were checked against the 61,019 entries in Blogs.json and the exi
 
 ## OTLP
 
-20. Keeping OTLP API Keys Out of Collector ConfigMaps: Environment Expansion, Secret Mounts, and Header Rotation
 
 ## Cloud Automation
 

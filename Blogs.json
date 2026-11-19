@@ -823025,5 +823025,17 @@
     ],
     "post": "2026-11-19-why-otel-exporter-otlp-traces-endpoint-overrides-the-base-endpoint-and-breaks-only-one-signal",
     "readmePath": "posts/2026-11-19-why-otel-exporter-otlp-traces-endpoint-overrides-the-base-endpoint-and-breaks-only-one-signal/README.md"
+  },
+  {
+    "title": "Keeping OTLP API Keys Out of Collector ConfigMaps: Environment Expansion, Secret Mounts, and Header Rotation",
+    "description": "Use Kubernetes Secrets for Collector exporter credentials, understand environment and mounted-file refresh behavior, and rotate headers through a verified rollout.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "OpenTelemetry",
+      "Kubernetes",
+      "Secrets Management"
+    ],
+    "post": "2026-11-19-keeping-otlp-api-keys-out-of-collector-configmaps-environment-expansion-secret-mounts-and-header-rotation",
+    "readmePath": "posts/2026-11-19-keeping-otlp-api-keys-out-of-collector-configmaps-environment-expansion-secret-mounts-and-header-rotation/README.md"
   }
 ]
