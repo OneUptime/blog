@@ -822547,5 +822547,18 @@
     ],
     "post": "2026-11-19-python-grpc-multiprocess-server-startup",
     "readmePath": "posts/2026-11-19-python-grpc-multiprocess-server-startup/README.md"
+  },
+  {
+    "title": "How to Fix Python gRPC AsyncIO Futures Attached to a Different Event Loop",
+    "description": "Fix cross-loop gRPC AsyncIO failures by creating, using, and closing channels within one event-loop lifetime.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "gRPC",
+      "Python",
+      "Asyncio",
+      "Debugging"
+    ],
+    "post": "2026-11-19-python-grpc-asyncio-different-event-loop",
+    "readmePath": "posts/2026-11-19-python-grpc-asyncio-different-event-loop/README.md"
   }
 ]
