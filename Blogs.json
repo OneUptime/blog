@@ -823540,5 +823540,19 @@
     ],
     "post": "2026-11-19-preserve-evidence-before-automatic-rollback",
     "readmePath": "posts/2026-11-19-preserve-evidence-before-automatic-rollback/README.md"
+  },
+  {
+    "title": "How to Turn Deployment-Rework Postmortems into New Pipeline Checks and Release Guardrails",
+    "description": "Convert deployment-rework findings into reproducible assertions, enforced release checks, and owned guardrails with evidence of effectiveness.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Postmortem Actions",
+      "CI/CD",
+      "SRE",
+      "Release Management",
+      "Testing"
+    ],
+    "post": "2026-11-19-turn-deployment-rework-postmortems-into-pipeline-checks",
+    "readmePath": "posts/2026-11-19-turn-deployment-rework-postmortems-into-pipeline-checks/README.md"
   }
 ]
