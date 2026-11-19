@@ -823283,5 +823283,17 @@
     ],
     "post": "2026-11-19-how-to-mirror-knative-serving-control-plane-and-queue-proxy-images-for-offline-installation",
     "readmePath": "posts/2026-11-19-how-to-mirror-knative-serving-control-plane-and-queue-proxy-images-for-offline-installation/README.md"
+  },
+  {
+    "title": "How to Persist Knative ConfigMap Changes When the Operator Keeps Reverting Them",
+    "description": "Move Knative configuration into the Operator-managed custom resource so reconciliation preserves ConfigMap values and GitOps owns one durable source of truth.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Knative",
+      "Kubernetes",
+      "Configuration"
+    ],
+    "post": "2026-11-19-how-to-persist-knative-configmap-changes-when-the-operator-keeps-reverting-them",
+    "readmePath": "posts/2026-11-19-how-to-persist-knative-configmap-changes-when-the-operator-keeps-reverting-them/README.md"
   }
 ]
