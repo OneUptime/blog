@@ -822780,5 +822780,18 @@
     ],
     "post": "2026-11-19-mlrun-returns-404-for-api-v1-client-spec-how-to-fix-mlrun-db-url-and-environment-configuration",
     "readmePath": "posts/2026-11-19-mlrun-returns-404-for-api-v1-client-spec-how-to-fix-mlrun-db-url-and-environment-configuration/README.md"
+  },
+  {
+    "title": "`project.deploy_function()` Cannot Submit a Deployment: How to Trace MLRun-to-Nuclio API Routing",
+    "description": "Trace a failed MLRun deploy_function request through the client, MLRun API, Nuclio dashboard, image build, and function readiness before changing endpoints.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "MLOps",
+      "Nuclio",
+      "Kubernetes",
+      "Troubleshooting"
+    ],
+    "post": "2026-11-19-project-deploy-function-cannot-submit-a-deployment-how-to-trace-mlrun-to-nuclio-api-routing",
+    "readmePath": "posts/2026-11-19-project-deploy-function-cannot-submit-a-deployment-how-to-trace-mlrun-to-nuclio-api-routing/README.md"
   }
 ]
