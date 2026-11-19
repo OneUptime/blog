@@ -1096,7 +1096,6 @@ All 200 titles were checked against the 61,019 entries in Blogs.json and the exi
 
 ## Horizontal Autoscaling
 
-3. How to Choose Between Utilization, AverageValue, and Value Targets in an HPA
 4. How to Prevent HPA Startup CPU Spikes from Triggering Premature Scale-Out
 5. How to Tune HPA for Slow-Starting Pods Before Traffic Overruns Existing Replicas
 6. How to Configure Per-Direction HPA Tolerance in Kubernetes 1.35 to Filter Metric Noise

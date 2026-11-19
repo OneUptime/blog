@@ -823063,5 +823063,18 @@
     ],
     "post": "2026-11-19-how-to-recalculate-an-hpa-replica-decision-by-hand-from-current-metrics-and-resource-requests",
     "readmePath": "posts/2026-11-19-how-to-recalculate-an-hpa-replica-decision-by-hand-from-current-metrics-and-resource-requests/README.md"
+  },
+  {
+    "title": "How to Choose Between Utilization, AverageValue, and Value Targets in an HPA",
+    "description": "Choose HPA metric target types by their units and scaling response, with examples for CPU usage, per-Pod concurrency, and shared queue depth.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Kubernetes",
+      "HPA",
+      "Autoscaling",
+      "Troubleshooting"
+    ],
+    "post": "2026-11-19-how-to-choose-between-utilization-averagevalue-and-value-targets-in-an-hpa",
+    "readmePath": "posts/2026-11-19-how-to-choose-between-utilization-averagevalue-and-value-targets-in-an-hpa/README.md"
   }
 ]
