@@ -1096,7 +1096,6 @@ All 200 titles were checked against the 61,019 entries in Blogs.json and the exi
 
 ## Horizontal Autoscaling
 
-18. How to Drain Long-Lived Connections Safely When HPA Scales Down
 19. How to Make HPA Decisions Observable with Controller Metrics, Events, and Recommendation Dashboards
 20. How to Detect and Prevent Manual Replica Overrides on HPA-Controlled Workloads
 

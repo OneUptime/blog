@@ -823232,5 +823232,18 @@
     ],
     "post": "2026-11-19-how-to-handle-missing-metrics-from-new-unready-and-terminating-pods-in-hpa-decisions",
     "readmePath": "posts/2026-11-19-how-to-handle-missing-metrics-from-new-unready-and-terminating-pods-in-hpa-decisions/README.md"
+  },
+  {
+    "title": "How to Drain Long-Lived Connections Safely When HPA Scales Down",
+    "description": "Coordinate HPA scale-down rate, Pod termination grace, application draining, and client reconnection so long-lived sessions survive planned capacity reductions.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Kubernetes",
+      "HPA",
+      "Autoscaling",
+      "Troubleshooting"
+    ],
+    "post": "2026-11-19-how-to-drain-long-lived-connections-safely-when-hpa-scales-down",
+    "readmePath": "posts/2026-11-19-how-to-drain-long-lived-connections-safely-when-hpa-scales-down/README.md"
   }
 ]
