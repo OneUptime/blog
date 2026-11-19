@@ -510,7 +510,6 @@ All 200 titles were checked against the 61,019 entries in Blogs.json and the exi
 
 ## OTLP
 
-3. OTLP/HTTP Hits 413 “Payload Too Large”: Align SDK Batches, Reverse Proxies, and Backend Limits
 4. OTLP/gRPC Shows `bogus greeting` Behind an Ingress: Preserve HTTP/2 or Terminate It Correctly
 5. Debugging OTLP/gRPC `GOAWAY` and `FRAME_SIZE_ERROR` Through Proxies and Load Balancers
 6. OTLP Collector-to-Collector Headers Disappear: When `include_metadata` Is Required

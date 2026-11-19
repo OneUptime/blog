@@ -822908,5 +822908,18 @@
     ],
     "post": "2026-11-19-browser-otlp-http-exports-fail-preflight-configure-collector-cors-without-allowing-every-origin",
     "readmePath": "posts/2026-11-19-browser-otlp-http-exports-fail-preflight-configure-collector-cors-without-allowing-every-origin/README.md"
+  },
+  {
+    "title": "OTLP/HTTP Hits 413 “Payload Too Large”: Align SDK Batches, Reverse Proxies, and Backend Limits",
+    "description": "Diagnose OTLP HTTP 413 responses by locating the rejecting hop and coordinating batch item counts, request byte limits, compression, and oversized telemetry records.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "OpenTelemetry",
+      "OTLP",
+      "Troubleshooting",
+      "Performance"
+    ],
+    "post": "2026-11-19-otlp-http-hits-413-payload-too-large-align-sdk-batches-reverse-proxies-and-backend-limits",
+    "readmePath": "posts/2026-11-19-otlp-http-hits-413-payload-too-large-align-sdk-batches-reverse-proxies-and-backend-limits/README.md"
   }
 ]
