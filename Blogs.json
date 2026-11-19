@@ -823128,5 +823128,18 @@
     ],
     "post": "2026-11-19-how-to-avoid-hpa-feedback-loops-when-scaling-on-per-pod-request-concurrency",
     "readmePath": "posts/2026-11-19-how-to-avoid-hpa-feedback-loops-when-scaling-on-per-pod-request-concurrency/README.md"
+  },
+  {
+    "title": "How to Prevent Two HPAs from Fighting Over the Same Workload",
+    "description": "Find duplicate and overlapping HPA targets, consolidate metrics under one autoscaler, and prevent competing controllers from managing the same replica count.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Kubernetes",
+      "HPA",
+      "Autoscaling",
+      "Troubleshooting"
+    ],
+    "post": "2026-11-19-how-to-prevent-two-hpas-from-fighting-over-the-same-workload",
+    "readmePath": "posts/2026-11-19-how-to-prevent-two-hpas-from-fighting-over-the-same-workload/README.md"
   }
 ]
