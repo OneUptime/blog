@@ -822793,5 +822793,18 @@
     ],
     "post": "2026-11-19-project-deploy-function-cannot-submit-a-deployment-how-to-trace-mlrun-to-nuclio-api-routing",
     "readmePath": "posts/2026-11-19-project-deploy-function-cannot-submit-a-deployment-how-to-trace-mlrun-to-nuclio-api-routing/README.md"
+  },
+  {
+    "title": "Iguazio Spark Jobs Hit `ImagePullBackOff`: How to Publish MLRun’s Default Spark Images to the Cluster Registry",
+    "description": "Diagnose missing MLRun Spark images, publish the runtime-specific default image, and separate registry failures from Spark execution errors.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "MLOps",
+      "Apache Spark",
+      "Kubernetes",
+      "Troubleshooting"
+    ],
+    "post": "2026-11-19-iguazio-spark-jobs-hit-imagepullbackoff-how-to-publish-mlrun-s-default-spark-images-to-the-cluster-registry",
+    "readmePath": "posts/2026-11-19-iguazio-spark-jobs-hit-imagepullbackoff-how-to-publish-mlrun-s-default-spark-images-to-the-cluster-registry/README.md"
   }
 ]

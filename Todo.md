@@ -316,7 +316,6 @@ All 200 titles were checked against the 61,019 entries in Blogs.json and the exi
 
 ## Iguazio
 
-4. Iguazio Spark Jobs Hit `ImagePullBackOff`: How to Publish MLRun’s Default Spark Images to the Cluster Registry
 5. An MLRun Job Is Stuck in `Pending`: How to Check Kubernetes Events, Quotas, Volumes, and Node Placement
 6. How to Develop MLRun Functions Locally and Run Them Remotely with `HOST_IP`, `SHARED_DIR`, and `local=False`
 7. MLRun Reports `Unauthorized path` on V3IO: How UID Mapping, Ownership, and Security-Admin Roles Interact
