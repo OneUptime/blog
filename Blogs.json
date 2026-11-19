@@ -822895,5 +822895,18 @@
     ],
     "post": "2026-11-19-otlp-http-returns-401-adding-authorization-with-static-headers-or-the-basicauth-extension",
     "readmePath": "posts/2026-11-19-otlp-http-returns-401-adding-authorization-with-static-headers-or-the-basicauth-extension/README.md"
+  },
+  {
+    "title": "Browser OTLP/HTTP Exports Fail Preflight: Configure Collector CORS Without Allowing Every Origin",
+    "description": "Fix browser OTLP HTTP preflight failures with explicit Collector origins and headers, then verify the proxy, CSP, and actual export request separately.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "OpenTelemetry",
+      "OTLP",
+      "CORS",
+      "Troubleshooting"
+    ],
+    "post": "2026-11-19-browser-otlp-http-exports-fail-preflight-configure-collector-cors-without-allowing-every-origin",
+    "readmePath": "posts/2026-11-19-browser-otlp-http-exports-fail-preflight-configure-collector-cors-without-allowing-every-origin/README.md"
   }
 ]
