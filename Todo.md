@@ -2,7 +2,6 @@
 
 ## Deployment Rework
 
-13. How to Test Rollbacks Against Both the Old and New Database Schema Before Production
 14. How to Trigger Automatic Rollback from SLOs Without Letting One Noisy Metric Revert a Healthy Release
 15. How to Preserve Logs, Traces, and State Before an Automatic Rollback Erases the Evidence
 16. Canary Failed: When to Halt, Roll Back, Disable a Flag, or Continue the Rollout
