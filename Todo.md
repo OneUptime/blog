@@ -263,10 +263,6 @@ All 200 titles were checked against the 61,019 entries in Blogs.json and the exi
 ## gRPC
 
 
-15. How to Give Java Background gRPC Calls Their Own Cancellation Lifetime
-
-    Research: [Source](https://stackoverflow.com/questions/57110811/grpc-random-cancelled-exception-on-rpc-calls) · [Documentation](https://grpc.github.io/grpc-java/javadoc/io/grpc/Context.html).
-
 16. How to Diagnose Missing CallCredentials on a .NET gRPC Channel
 
     Research: [Source](https://stackoverflow.com/questions/58990213/asp-net-core-grpc-client-configuring-http-authorization) · [Documentation](https://learn.microsoft.com/en-us/aspnet/core/grpc/authn-and-authz).

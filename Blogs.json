@@ -822690,5 +822690,18 @@
     ],
     "post": "2026-11-19-python-grpc-asyncio-streaming-concurrency-reproduction",
     "readmePath": "posts/2026-11-19-python-grpc-asyncio-streaming-concurrency-reproduction/README.md"
+  },
+  {
+    "title": "How to Give Java Background gRPC Calls Their Own Cancellation Lifetime",
+    "description": "Detach authorized Java gRPC background work from its incoming RPC cancellation while giving it a bounded lifetime and reliable cleanup.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "gRPC",
+      "Java",
+      "Concurrency",
+      "Troubleshooting"
+    ],
+    "post": "2026-11-19-java-grpc-background-call-cancellation-lifetime",
+    "readmePath": "posts/2026-11-19-java-grpc-background-call-cancellation-lifetime/README.md"
   }
 ]
