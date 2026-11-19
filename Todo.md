@@ -510,7 +510,6 @@ All 200 titles were checked against the 61,019 entries in Blogs.json and the exi
 
 ## OTLP
 
-5. Debugging OTLP/gRPC `GOAWAY` and `FRAME_SIZE_ERROR` Through Proxies and Load Balancers
 6. OTLP Collector-to-Collector Headers Disappear: When `include_metadata` Is Required
 7. Multi-Tenant OTLP Routing: Preserve Trusted Tenant Headers Without Accepting Spoofed Identity
 8. OTLP Partial-Success Responses: Surface Rejected Spans, Metrics, and Logs Before They Vanish

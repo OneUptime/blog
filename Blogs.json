@@ -822921,5 +822921,19 @@
     ],
     "post": "2026-11-19-otlp-http-hits-413-payload-too-large-align-sdk-batches-reverse-proxies-and-backend-limits",
     "readmePath": "posts/2026-11-19-otlp-http-hits-413-payload-too-large-align-sdk-batches-reverse-proxies-and-backend-limits/README.md"
+  },
+  {
+    "title": "Debugging OTLP/gRPC `GOAWAY` and `FRAME_SIZE_ERROR` Through Proxies and Load Balancers",
+    "description": "Separate graceful HTTP/2 connection draining from framing errors and keepalive rejection when OTLP gRPC crosses proxies or load balancers.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "OpenTelemetry",
+      "OTLP",
+      "gRPC",
+      "HTTP/2",
+      "Troubleshooting"
+    ],
+    "post": "2026-11-19-debugging-otlp-grpc-goaway-and-frame-size-error-through-proxies-and-load-balancers",
+    "readmePath": "posts/2026-11-19-debugging-otlp-grpc-goaway-and-frame-size-error-through-proxies-and-load-balancers/README.md"
   }
 ]
