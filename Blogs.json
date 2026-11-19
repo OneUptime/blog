@@ -823012,5 +823012,18 @@
     ],
     "post": "2026-11-19-gzip-compressed-otlp-requests-fail-to-decode-trace-content-encoding-across-every-hop",
     "readmePath": "posts/2026-11-19-gzip-compressed-otlp-requests-fail-to-decode-trace-content-encoding-across-every-hop/README.md"
+  },
+  {
+    "title": "Why `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT` Overrides the Base Endpoint—and Breaks Only One Signal",
+    "description": "Resolve signal-specific OTLP endpoint overrides by inspecting the effective protocol and URL, including the HTTP path that base endpoints append automatically.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "OpenTelemetry",
+      "OTLP",
+      "Configuration",
+      "Troubleshooting"
+    ],
+    "post": "2026-11-19-why-otel-exporter-otlp-traces-endpoint-overrides-the-base-endpoint-and-breaks-only-one-signal",
+    "readmePath": "posts/2026-11-19-why-otel-exporter-otlp-traces-endpoint-overrides-the-base-endpoint-and-breaks-only-one-signal/README.md"
   }
 ]
