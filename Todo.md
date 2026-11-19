@@ -2,7 +2,6 @@
 
 ## Deployment Rework
 
-15. How to Preserve Logs, Traces, and State Before an Automatic Rollback Erases the Evidence
 16. Canary Failed: When to Halt, Roll Back, Disable a Flag, or Continue the Rollout
 18. How to Turn Deployment-Rework Postmortems into New Pipeline Checks and Release Guardrails
 20. How to Dashboard Deployment Rework Rate with Change Failure Rate and Recovery Time Without Gaming the Numbers

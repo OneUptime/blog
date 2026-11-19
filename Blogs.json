@@ -823526,5 +823526,19 @@
     ],
     "post": "2026-11-19-slo-automatic-rollback-noisy-metrics",
     "readmePath": "posts/2026-11-19-slo-automatic-rollback-noisy-metrics/README.md"
+  },
+  {
+    "title": "How to Preserve Logs, Traces, and State Before an Automatic Rollback Erases the Evidence",
+    "description": "Preserve failed-release identity, volatile Kubernetes state, and durable telemetry with bounded collection that does not hold up automatic recovery.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Kubernetes",
+      "Argo Rollouts",
+      "OpenTelemetry",
+      "Incident Response",
+      "Observability"
+    ],
+    "post": "2026-11-19-preserve-evidence-before-automatic-rollback",
+    "readmePath": "posts/2026-11-19-preserve-evidence-before-automatic-rollback/README.md"
   }
 ]
