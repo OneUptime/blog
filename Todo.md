@@ -263,10 +263,6 @@ All 200 titles were checked against the 61,019 entries in Blogs.json and the exi
 ## gRPC
 
 
-13. How to Diagnose Python gRPC AsyncIO Streaming Concurrency Limits with a Minimal Reproduction
-
-    Research: [Source](https://stackoverflow.com/questions/79469878/is-the-asyncio-api-of-grpcio-production-ready) · [Documentation](https://grpc.github.io/grpc/python/grpc_asyncio.html).
-
 14. How to Call a gRPC Service with grpcurl When Server Reflection Is Disabled
 
     Research: [Source](https://stackoverflow.com/questions/70885810/kong-grpc-fails-without-proto) · [Documentation](https://github.com/fullstorydev/grpcurl).
