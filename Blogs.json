@@ -823805,5 +823805,19 @@
     ],
     "post": "2026-11-19-patch-manager-in-progress-pending-reboot",
     "readmePath": "posts/2026-11-19-patch-manager-in-progress-pending-reboot/README.md"
+  },
+  {
+    "title": "Patch Manager for Auto Scaling Groups: Drain and Patch Live Instances or Bake a New AMI?",
+    "description": "Choose between coordinated in-place patching and tested AMI replacement, with explicit draining, capacity, launch-template, and rollback controls.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "AWS",
+      "Systems Manager",
+      "Patch Manager",
+      "Auto Scaling",
+      "AMI"
+    ],
+    "post": "2026-11-19-patch-manager-auto-scaling-groups-live-patching-or-ami",
+    "readmePath": "posts/2026-11-19-patch-manager-auto-scaling-groups-live-patching-or-ami/README.md"
   }
 ]
