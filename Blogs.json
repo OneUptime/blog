@@ -822466,5 +822466,19 @@
     ],
     "post": "2026-11-19-how-to-trace-a-fulcio-signing-certificate-to-the-exact-ci-run-attempt",
     "readmePath": "posts/2026-11-19-how-to-trace-a-fulcio-signing-certificate-to-the-exact-ci-run-attempt/README.md"
+  },
+  {
+    "title": "How to Check Runner Environment Claims in Fulcio Certificates Before Accepting a Build",
+    "description": "Evaluate Fulcio runner environment metadata with provider-specific allowlists, missing-field rejection, and tests that keep runner claims separate from build provenance.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Fulcio",
+      "Sigstore",
+      "CI/CD",
+      "Security",
+      "Python"
+    ],
+    "post": "2026-11-19-how-to-check-runner-environment-claims-in-fulcio-certificates-before-accepting-a-build",
+    "readmePath": "posts/2026-11-19-how-to-check-runner-environment-claims-in-fulcio-certificates-before-accepting-a-build/README.md"
   }
 ]

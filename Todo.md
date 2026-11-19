@@ -122,10 +122,6 @@ All 200 titles were checked against the 61,019 entries in Blogs.json and the exi
 ## Fulcio
 
 
-15. How to Check Runner Environment Claims in Fulcio Certificates Before Accepting a Build
-
-    Research: [Source](https://github.com/sigstore/fulcio/issues/754) · [Documentation](https://github.com/sigstore/fulcio/blob/main/docs/oid-info.md).
-
 16. How to Encrypt the Ingress-to-Fulcio Hop for REST Certificate Requests
 
     Research: [Source](https://github.com/sigstore/fulcio/issues/2415) · [Documentation](https://github.com/sigstore/fulcio/blob/main/docs/setup.md).
