@@ -822438,5 +822438,19 @@
     ],
     "post": "2026-11-19-how-to-check-organization-restrictions-before-trusting-github-actions-in-a-private-fulcio-ca",
     "readmePath": "posts/2026-11-19-how-to-check-organization-restrictions-before-trusting-github-actions-in-a-private-fulcio-ca/README.md"
+  },
+  {
+    "title": "How to Update Fulcio Certificate Parsers for DER-Encoded Issuer Extensions",
+    "description": "Migrate Fulcio issuer extension parsing from legacy raw strings to strict DER UTF8String decoding while retaining explicit compatibility checks.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Fulcio",
+      "Sigstore",
+      "Go",
+      "Security",
+      "Troubleshooting"
+    ],
+    "post": "2026-11-19-how-to-update-fulcio-certificate-parsers-for-der-encoded-issuer-extensions",
+    "readmePath": "posts/2026-11-19-how-to-update-fulcio-certificate-parsers-for-der-encoded-issuer-extensions/README.md"
   }
 ]

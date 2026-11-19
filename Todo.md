@@ -122,10 +122,6 @@ All 200 titles were checked against the 61,019 entries in Blogs.json and the exi
 ## Fulcio
 
 
-12. How to Update Fulcio Certificate Parsers for DER-Encoded Issuer Extensions
-
-    Research: [Source](https://github.com/sigstore/fulcio/issues/754) · [Documentation](https://github.com/sigstore/fulcio/blob/main/docs/oid-info.md).
-
 13. How to Detect Repository Name Reuse with Immutable IDs in Fulcio Certificates
 
     Research: [Source](https://github.com/sigstore/fulcio/issues/754) · [Documentation](https://github.com/sigstore/fulcio/blob/main/docs/oid-info.md).
