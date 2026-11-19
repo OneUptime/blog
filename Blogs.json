@@ -822397,5 +822397,19 @@
     ],
     "post": "2026-11-19-how-to-investigate-fulcio-gitlab-signing-failures-when-ci-config-ref-uri-is-empty",
     "readmePath": "posts/2026-11-19-how-to-investigate-fulcio-gitlab-signing-failures-when-ci-config-ref-uri-is-empty/README.md"
+  },
+  {
+    "title": "How to Test a Custom OIDC Client Audience Across Sigstore Python and Fulcio",
+    "description": "Test that your private OIDC audience agrees across the identity provider, sigstore-python, and Fulcio, including local parsing and server-side rejection cases.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Fulcio",
+      "Sigstore",
+      "OIDC",
+      "Python",
+      "Troubleshooting"
+    ],
+    "post": "2026-11-19-how-to-test-a-custom-oidc-client-audience-across-sigstore-python-and-fulcio",
+    "readmePath": "posts/2026-11-19-how-to-test-a-custom-oidc-client-audience-across-sigstore-python-and-fulcio/README.md"
   }
 ]
