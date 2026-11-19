@@ -822844,5 +822844,17 @@
     ],
     "post": "2026-11-19-mlrun-reports-unauthorized-path-on-v3io-how-uid-mapping-ownership-and-security-admin-roles-interact",
     "readmePath": "posts/2026-11-19-mlrun-reports-unauthorized-path-on-v3io-how-uid-mapping-ownership-and-security-admin-roles-interact/README.md"
+  },
+  {
+    "title": "MLRun API Returns 412 “Waiting for Migrations”: How to Complete Database Migrations After an Upgrade",
+    "description": "Resolve MLRun's post-upgrade migration gate using the documented migration API, inspect migration progress, and verify the upgraded service without deleting metadata.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "MLOps",
+      "Kubernetes",
+      "Troubleshooting"
+    ],
+    "post": "2026-11-19-mlrun-api-returns-412-waiting-for-migrations-how-to-complete-database-migrations-after-an-upgrade",
+    "readmePath": "posts/2026-11-19-mlrun-api-returns-412-waiting-for-migrations-how-to-complete-database-migrations-after-an-upgrade/README.md"
   }
 ]

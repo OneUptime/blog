@@ -316,7 +316,6 @@ All 200 titles were checked against the 61,019 entries in Blogs.json and the exi
 
 ## Iguazio
 
-8. MLRun API Returns 412 “Waiting for Migrations”: How to Complete Database Migrations After an Upgrade
 9. `V3IO_ACCESS_KEY` or `V3IO_API` Is Missing: How to Configure Iguazio Credentials Without Hard-Coding Secrets
 10. MLRun Says “No Offline Targets”: How to Configure Parquet and NoSQL Targets for a Feature Set
 11. How to Read a CSV Logged as an MLRun Artifact Using Its Store URI Instead of a Local File Path
