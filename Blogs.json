@@ -822369,5 +822369,19 @@
     ],
     "post": "2026-11-19-how-to-diagnose-jenkins-oidc-issuer-mismatches-in-a-self-hosted-fulcio-deployment",
     "readmePath": "posts/2026-11-19-how-to-diagnose-jenkins-oidc-issuer-mismatches-in-a-self-hosted-fulcio-deployment/README.md"
+  },
+  {
+    "title": "How to Repair Missing GitLab CI Provider Metadata in a Fulcio Configuration",
+    "description": "Repair the link between a GitLab OIDC issuer and its Fulcio CI-provider metadata, then validate the resulting certificate identity and trust material.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Fulcio",
+      "Sigstore",
+      "GitLab",
+      "OIDC",
+      "Troubleshooting"
+    ],
+    "post": "2026-11-19-how-to-repair-missing-gitlab-ci-provider-metadata-in-a-fulcio-configuration",
+    "readmePath": "posts/2026-11-19-how-to-repair-missing-gitlab-ci-provider-metadata-in-a-fulcio-configuration/README.md"
   }
 ]

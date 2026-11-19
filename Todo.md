@@ -122,10 +122,6 @@ All 200 titles were checked against the 61,019 entries in Blogs.json and the exi
 ## Fulcio
 
 
-7. How to Repair Missing GitLab CI Provider Metadata in a Fulcio Configuration
-
-    Research: [Source](https://github.com/sigstore/cosign/issues/4399) · [Documentation](https://docs.gitlab.com/ci/yaml/signing_self_hosted/).
-
 8. How to Investigate Fulcio GitLab Signing Failures When ci_config_ref_uri Is Empty
 
     Research: [Source](https://github.com/sigstore/fulcio/issues/2189) · [Documentation](https://github.com/sigstore/fulcio/blob/main/docs/oidc.md).
