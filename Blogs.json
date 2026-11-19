@@ -823706,5 +823706,19 @@
     ],
     "post": "2026-11-19-session-manager-empty-logs-cloudwatch-s3-kms",
     "readmePath": "posts/2026-11-19-session-manager-empty-logs-cloudwatch-s3-kms/README.md"
+  },
+  {
+    "title": "How to Reach Private RDS Through SSM Remote-Host Port Forwarding—and Why Your Client Must Use `localhost`",
+    "description": "Connect to private RDS through an SSM relay while separating the local tunnel address from PostgreSQL authentication and TLS hostname verification.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "AWS",
+      "Systems Manager",
+      "Session Manager",
+      "RDS",
+      "PostgreSQL"
+    ],
+    "post": "2026-11-19-private-rds-ssm-remote-host-localhost-tls",
+    "readmePath": "posts/2026-11-19-private-rds-ssm-remote-host-localhost-tls/README.md"
   }
 ]

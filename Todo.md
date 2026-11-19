@@ -2,7 +2,6 @@
 
 ## Systems Manager
 
-11. How to Reach Private RDS Through SSM Remote-Host Port Forwarding—and Why Your Client Must Use `localhost`
 12. RDS IAM Authentication Through an SSM Tunnel: Fix Token Hostnames and TLS Certificate Validation
 13. How to Use OpenSSH `ProxyCommand` over Session Manager Without Opening Port 22
 14. SSM Parameter Store `AccessDeniedException`: Match the API Action, Parameter ARN, Path, and KMS Key
