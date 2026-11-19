@@ -263,10 +263,6 @@ All 200 titles were checked against the 61,019 entries in Blogs.json and the exi
 ## gRPC
 
 
-9. How to Carry Multiline Diagnostic Text in gRPC Metadata Without Invalid Header Values
-
-    Research: [Source](https://stackoverflow.com/questions/72951977/rpcexception-metadata-limitations) · [Documentation](https://grpc.io/docs/guides/metadata/).
-
 10. How to Resume a Go gRPC Subscription After Recreating a Broken Stream
 
     Research: [Source](https://stackoverflow.com/questions/71530942/how-to-re-establish-grpc-bidirectional-stream-if-internet-connection-is-down) · [Documentation](https://pkg.go.dev/google.golang.org/grpc#ClientStream).

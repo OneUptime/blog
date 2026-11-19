@@ -822625,5 +822625,18 @@
     ],
     "post": "2026-11-19-java-grpc-binary-metadata-interceptors",
     "readmePath": "posts/2026-11-19-java-grpc-binary-metadata-interceptors/README.md"
+  },
+  {
+    "title": "How to Carry Multiline Diagnostic Text in gRPC Metadata Without Invalid Header Values",
+    "description": "Transport short multiline diagnostic text as binary gRPC metadata and keep large or sensitive details in a controlled diagnostic store.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "gRPC",
+      "Python",
+      "Debugging",
+      "Troubleshooting"
+    ],
+    "post": "2026-11-19-grpc-multiline-diagnostic-binary-metadata",
+    "readmePath": "posts/2026-11-19-grpc-multiline-diagnostic-binary-metadata/README.md"
   }
 ]
