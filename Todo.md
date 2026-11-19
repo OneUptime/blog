@@ -1096,7 +1096,6 @@ All 200 titles were checked against the 61,019 entries in Blogs.json and the exi
 
 ## Horizontal Autoscaling
 
-7. How to Debug HPA Scale-Down When One of Several Metrics Is Missing or Still Above Target
 8. How to Detect Stale External Metrics That Pin an HPA at `maxReplicas`
 9. How to Avoid HPA Feedback Loops When Scaling on Per-Pod Request Concurrency
 10. How to Prevent Two HPAs from Fighting Over the Same Workload
