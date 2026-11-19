@@ -823180,5 +823180,18 @@
     ],
     "post": "2026-11-19-how-to-tune-the-hpa-controller-sync-period-without-overloading-the-metrics-pipeline",
     "readmePath": "posts/2026-11-19-how-to-tune-the-hpa-controller-sync-period-without-overloading-the-metrics-pipeline/README.md"
+  },
+  {
+    "title": "How to Alert When an HPA Is Saturated at `maxReplicas` Before Latency Breaches Its SLO",
+    "description": "Build HPA capacity alerts from kube-state-metrics, distinguish saturation from failed convergence, and size alert delays to the service response budget.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Kubernetes",
+      "HPA",
+      "Autoscaling",
+      "Troubleshooting"
+    ],
+    "post": "2026-11-19-how-to-alert-when-an-hpa-is-saturated-at-maxreplicas-before-latency-breaches-its-slo",
+    "readmePath": "posts/2026-11-19-how-to-alert-when-an-hpa-is-saturated-at-maxreplicas-before-latency-breaches-its-slo/README.md"
   }
 ]
