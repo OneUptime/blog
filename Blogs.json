@@ -823873,5 +823873,18 @@
     ],
     "post": "2026-11-19-openssh-rsa-no-mutual-signature-supported",
     "readmePath": "posts/2026-11-19-openssh-rsa-no-mutual-signature-supported/README.md"
+  },
+  {
+    "title": "“No Matching Host Key Type,” Cipher, or Key Exchange: Debug SSH Algorithm Negotiation Without Weakening Every Host",
+    "description": "Diagnose SSH host-key, cipher, MAC, and key-exchange mismatches, inspect effective policy, and scope temporary compatibility exceptions to one destination.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "SSH",
+      "OpenSSH",
+      "Security",
+      "Troubleshooting"
+    ],
+    "post": "2026-11-19-ssh-algorithm-negotiation-host-key-cipher-kex",
+    "readmePath": "posts/2026-11-19-ssh-algorithm-negotiation-host-key-cipher-kex/README.md"
   }
 ]
