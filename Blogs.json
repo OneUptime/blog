@@ -823847,5 +823847,18 @@
     ],
     "post": "2026-11-19-on-premises-node-missing-systems-manager",
     "readmePath": "posts/2026-11-19-on-premises-node-missing-systems-manager/README.md"
+  },
+  {
+    "title": "“Too Many Authentication Failures” Even with `-i`: Force the Intended Key with `IdentitiesOnly`",
+    "description": "Diagnose SSH authentication failures caused by excess identities, limit agent offers with IdentitiesOnly, and catch additive IdentityFile configuration.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "SSH",
+      "OpenSSH",
+      "Authentication",
+      "Troubleshooting"
+    ],
+    "post": "2026-11-19-ssh-too-many-authentication-failures-identitiesonly",
+    "readmePath": "posts/2026-11-19-ssh-too-many-authentication-failures-identitiesonly/README.md"
   }
 ]

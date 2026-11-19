@@ -2,7 +2,6 @@
 
 ## SSH
 
-1. “Too Many Authentication Failures” Even with `-i`: Force the Intended Key with `IdentitiesOnly`
 2. OpenSSH Upgrade Broke RSA Login: Fix “sign_and_send_pubkey: no mutual signature supported” Safely
 3. “No Matching Host Key Type,” Cipher, or Key Exchange: Debug SSH Algorithm Negotiation Without Weakening Every Host
 4. “REMOTE HOST IDENTIFICATION HAS CHANGED”: How to Verify the New Fingerprint Before Editing `known_hosts`
