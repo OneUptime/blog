@@ -823331,5 +823331,17 @@
     ],
     "post": "2026-11-19-how-to-enable-init-containers-for-knative-serving-startup-tasks",
     "readmePath": "posts/2026-11-19-how-to-enable-init-containers-for-knative-serving-startup-tasks/README.md"
+  },
+  {
+    "title": "How to Enable Persistent Volume Claims and Write Access in Knative Serving",
+    "description": "Enable Knative PVC and write extensions at the correct configuration source, mount a claim explicitly, and separate admission failures from storage permissions.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Knative",
+      "Kubernetes",
+      "Storage"
+    ],
+    "post": "2026-11-19-how-to-enable-persistent-volume-claims-and-write-access-in-knative-serving",
+    "readmePath": "posts/2026-11-19-how-to-enable-persistent-volume-claims-and-write-access-in-knative-serving/README.md"
   }
 ]
