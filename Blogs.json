@@ -823720,5 +823720,20 @@
     ],
     "post": "2026-11-19-private-rds-ssm-remote-host-localhost-tls",
     "readmePath": "posts/2026-11-19-private-rds-ssm-remote-host-localhost-tls/README.md"
+  },
+  {
+    "title": "RDS IAM Authentication Through an SSM Tunnel: Fix Token Hostnames and TLS Certificate Validation",
+    "description": "Connect to RDS PostgreSQL through an SSM tunnel with the correct IAM token endpoint, database permissions, and verified TLS identity.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "AWS",
+      "RDS",
+      "IAM",
+      "PostgreSQL",
+      "Systems Manager",
+      "TLS"
+    ],
+    "post": "2026-11-19-rds-iam-authentication-ssm-tunnel-token-hostnames-tls",
+    "readmePath": "posts/2026-11-19-rds-iam-authentication-ssm-tunnel-token-hostnames-tls/README.md"
   }
 ]

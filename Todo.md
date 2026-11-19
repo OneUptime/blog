@@ -2,7 +2,6 @@
 
 ## Systems Manager
 
-12. RDS IAM Authentication Through an SSM Tunnel: Fix Token Hostnames and TLS Certificate Validation
 13. How to Use OpenSSH `ProxyCommand` over Session Manager Without Opening Port 22
 14. SSM Parameter Store `AccessDeniedException`: Match the API Action, Parameter ARN, Path, and KMS Key
 15. How to Read an Entire Parameter Store Hierarchy Without Missing Paginated or Encrypted Values
