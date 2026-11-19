@@ -822975,5 +822975,17 @@
     ],
     "post": "2026-11-19-which-otlp-failures-should-retry-classifying-grpc-codes-and-http-statuses-without-retry-storms",
     "readmePath": "posts/2026-11-19-which-otlp-failures-should-retry-classifying-grpc-codes-and-http-statuses-without-retry-storms/README.md"
+  },
+  {
+    "title": "How to Test an OTLP Pipeline Without a Backend: Synthetic Telemetry, Debug Export, and File Capture",
+    "description": "Build a repeatable OTLP smoke test with a generated span, debug output, and a local JSON capture so you can isolate pipeline failures without a backend.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "OpenTelemetry",
+      "OTLP",
+      "Testing"
+    ],
+    "post": "2026-11-19-how-to-test-an-otlp-pipeline-without-a-backend-synthetic-telemetry-debug-export-and-file-capture",
+    "readmePath": "posts/2026-11-19-how-to-test-an-otlp-pipeline-without-a-backend-synthetic-telemetry-debug-export-and-file-capture/README.md"
   }
 ]
