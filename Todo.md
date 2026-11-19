@@ -2,7 +2,6 @@
 
 ## Iguazio
 
-18. MLRun Real-Time Ingestion Failed but the Notebook Succeeded: How to Inspect Error Streams and Nuclio Logs
 20. How to Configure Iguazio User Roles for Read-Only Access Without Accidentally Granting Service Administration
 
 ## Deployment Rework

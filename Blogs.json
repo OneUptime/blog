@@ -823431,5 +823431,18 @@
     ],
     "post": "2026-11-19-observe-nuclio-model-serving-metrics-iguazio",
     "readmePath": "posts/2026-11-19-observe-nuclio-model-serving-metrics-iguazio/README.md"
+  },
+  {
+    "title": "MLRun Real-Time Ingestion Failed but the Notebook Succeeded: How to Inspect Error Streams and Nuclio Logs",
+    "description": "Diagnose MLRun real-time ingestion failures by comparing notebook and deployed runtimes, reading V3IO error streams, and correlating failures with Nuclio processor logs.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "MLOps",
+      "Feature Store",
+      "Nuclio",
+      "Troubleshooting"
+    ],
+    "post": "2026-11-19-mlrun-real-time-ingestion-error-streams-nuclio-logs",
+    "readmePath": "posts/2026-11-19-mlrun-real-time-ingestion-error-streams-nuclio-logs/README.md"
   }
 ]
