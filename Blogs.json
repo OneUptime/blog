@@ -823037,5 +823037,18 @@
     ],
     "post": "2026-11-19-keeping-otlp-api-keys-out-of-collector-configmaps-environment-expansion-secret-mounts-and-header-rotation",
     "readmePath": "posts/2026-11-19-keeping-otlp-api-keys-out-of-collector-configmaps-environment-expansion-secret-mounts-and-header-rotation/README.md"
+  },
+  {
+    "title": "How to Read HPA AbleToScale, ScalingActive, and ScalingLimited Conditions During an Incident",
+    "description": "Read HPA conditions alongside their reasons, metric errors, and target state to identify the failing stage of an autoscaling incident.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Kubernetes",
+      "HPA",
+      "Autoscaling",
+      "Troubleshooting"
+    ],
+    "post": "2026-11-19-how-to-read-hpa-abletoscale-scalingactive-and-scalinglimited-conditions-during-an-incident",
+    "readmePath": "posts/2026-11-19-how-to-read-hpa-abletoscale-scalingactive-and-scalinglimited-conditions-during-an-incident/README.md"
   }
 ]

@@ -1096,7 +1096,6 @@ All 200 titles were checked against the 61,019 entries in Blogs.json and the exi
 
 ## Horizontal Autoscaling
 
-1. How to Read HPA AbleToScale, ScalingActive, and ScalingLimited Conditions During an Incident
 2. How to Recalculate an HPA Replica Decision by Hand from Current Metrics and Resource Requests
 3. How to Choose Between Utilization, AverageValue, and Value Targets in an HPA
 4. How to Prevent HPA Startup CPU Spikes from Triggering Premature Scale-Out
