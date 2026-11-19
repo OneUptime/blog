@@ -263,10 +263,6 @@ All 200 titles were checked against the 61,019 entries in Blogs.json and the exi
 ## gRPC
 
 
-20. How to Prevent Concurrent C++ gRPC Writes from Triggering Too Many Operations
-
-    Research: [Source](https://stackoverflow.com/questions/59436740/getting-abort-trap-6-from-google-speech-api) · [Documentation](https://grpc.io/docs/languages/cpp/best_practices/).
-
 ## PostgreSQL Operator
 
 

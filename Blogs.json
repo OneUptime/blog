@@ -822742,5 +822742,18 @@
     ],
     "post": "2026-11-19-grpc-metadata-limit-hides-server-error",
     "readmePath": "posts/2026-11-19-grpc-metadata-limit-hides-server-error/README.md"
+  },
+  {
+    "title": "How to Prevent Concurrent C++ gRPC Writes from Triggering Too Many Operations",
+    "description": "Fix overlapping C++ gRPC stream writes by waiting for write completion, preserving message lifetime, and giving producers one output owner.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "gRPC",
+      "C++",
+      "Concurrency",
+      "Streaming"
+    ],
+    "post": "2026-11-19-cpp-grpc-overlapping-writes-too-many-operations",
+    "readmePath": "posts/2026-11-19-cpp-grpc-overlapping-writes-too-many-operations/README.md"
   }
 ]
