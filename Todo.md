@@ -2,7 +2,6 @@
 
 ## Deployment Rework
 
-10. Flaky Pipeline or Deployment Rework? How to Separate Delivery Noise from Production Remediation
 11. How to Set Retry Budgets So Automatic Re-Runs Do Not Hide Chronic Deployment Failures
 12. How to Use Expand-and-Contract Database Migrations Without Losing the Rollback Path
 13. How to Test Rollbacks Against Both the Old and New Database Schema Before Production
