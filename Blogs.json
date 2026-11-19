@@ -823115,5 +823115,18 @@
     ],
     "post": "2026-11-19-how-to-detect-stale-external-metrics-that-pin-an-hpa-at-maxreplicas",
     "readmePath": "posts/2026-11-19-how-to-detect-stale-external-metrics-that-pin-an-hpa-at-maxreplicas/README.md"
+  },
+  {
+    "title": "How to Avoid HPA Feedback Loops When Scaling on Per-Pod Request Concurrency",
+    "description": "Design per-Pod request-concurrency metrics that decrease as capacity increases and avoid double normalization, hidden queues, and downstream overload loops.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Kubernetes",
+      "HPA",
+      "Autoscaling",
+      "Troubleshooting"
+    ],
+    "post": "2026-11-19-how-to-avoid-hpa-feedback-loops-when-scaling-on-per-pod-request-concurrency",
+    "readmePath": "posts/2026-11-19-how-to-avoid-hpa-feedback-loops-when-scaling-on-per-pod-request-concurrency/README.md"
   }
 ]

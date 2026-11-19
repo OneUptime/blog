@@ -1096,7 +1096,6 @@ All 200 titles were checked against the 61,019 entries in Blogs.json and the exi
 
 ## Horizontal Autoscaling
 
-9. How to Avoid HPA Feedback Loops When Scaling on Per-Pod Request Concurrency
 10. How to Prevent Two HPAs from Fighting Over the Same Workload
 11. How to Migrate HPA Manifests from `autoscaling/v2beta2` to `autoscaling/v2` Without Behavior Drift
 12. How to Keep HPA Replica Calculations Stable During a Deployment Rolling Update
