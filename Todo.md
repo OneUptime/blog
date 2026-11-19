@@ -263,10 +263,6 @@ All 200 titles were checked against the 61,019 entries in Blogs.json and the exi
 ## gRPC
 
 
-18. How to Preserve Unknown Protobuf Fields When Relaying gRPC Messages Through Older Services
-
-    Research: [Source](https://stackoverflow.com/questions/62346394/unable-to-unmarshal-json-into-protobuf-message) · [Documentation](https://protobuf.dev/programming-guides/proto3/).
-
 19. How to Diagnose gRPC Metadata Size Errors That Hide the Original Server Failure
 
     Research: [Source](https://stackoverflow.com/questions/77525513/texttospeech-synthesize-long-audio-error-resourceexhausted-429-received-metadata) · [Documentation](https://grpc.io/docs/guides/metadata/).

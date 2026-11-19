@@ -822716,5 +822716,18 @@
     ],
     "post": "2026-11-19-dotnet-grpc-callcredentials-missing",
     "readmePath": "posts/2026-11-19-dotnet-grpc-callcredentials-missing/README.md"
+  },
+  {
+    "title": "How to Preserve Unknown Protobuf Fields When Relaying gRPC Messages Through Older Services",
+    "description": "Preserve newly added protobuf fields through older gRPC relays, and test where JSON conversion or manual message rebuilding loses them.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "gRPC",
+      "Protobuf",
+      "Python",
+      "Debugging"
+    ],
+    "post": "2026-11-19-protobuf-preserve-unknown-fields-grpc-relay",
+    "readmePath": "posts/2026-11-19-protobuf-preserve-unknown-fields-grpc-relay/README.md"
   }
 ]
