@@ -263,10 +263,6 @@ All 200 titles were checked against the 61,019 entries in Blogs.json and the exi
 ## gRPC
 
 
-17. How to Resolve gRPC Too Many Pings Errors by Matching Client and Server Keepalive Policies
-
-    Research: [Source](https://stackoverflow.com/questions/57606303/grpc-arg-keepalive-permit-without-calls-for-java-servers) · [Documentation](https://grpc.io/docs/guides/keepalive/).
-
 18. How to Preserve Unknown Protobuf Fields When Relaying gRPC Messages Through Older Services
 
     Research: [Source](https://stackoverflow.com/questions/62346394/unable-to-unmarshal-json-into-protobuf-message) · [Documentation](https://protobuf.dev/programming-guides/proto3/).
