@@ -1096,7 +1096,6 @@ All 200 titles were checked against the 61,019 entries in Blogs.json and the exi
 
 ## Horizontal Autoscaling
 
-5. How to Tune HPA for Slow-Starting Pods Before Traffic Overruns Existing Replicas
 6. How to Configure Per-Direction HPA Tolerance in Kubernetes 1.35 to Filter Metric Noise
 7. How to Debug HPA Scale-Down When One of Several Metrics Is Missing or Still Above Target
 8. How to Detect Stale External Metrics That Pin an HPA at `maxReplicas`
