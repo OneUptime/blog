@@ -823167,5 +823167,18 @@
     ],
     "post": "2026-11-19-how-to-keep-hpa-replica-calculations-stable-during-a-deployment-rolling-update",
     "readmePath": "posts/2026-11-19-how-to-keep-hpa-replica-calculations-stable-during-a-deployment-rolling-update/README.md"
+  },
+  {
+    "title": "How to Tune the HPA Controller Sync Period Without Overloading the Metrics Pipeline",
+    "description": "Estimate HPA metrics-query pressure and tune the controller sync interval only after measuring source freshness, reconciliation delay, and time to ready capacity.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Kubernetes",
+      "HPA",
+      "Autoscaling",
+      "Troubleshooting"
+    ],
+    "post": "2026-11-19-how-to-tune-the-hpa-controller-sync-period-without-overloading-the-metrics-pipeline",
+    "readmePath": "posts/2026-11-19-how-to-tune-the-hpa-controller-sync-period-without-overloading-the-metrics-pipeline/README.md"
   }
 ]
