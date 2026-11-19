@@ -263,10 +263,6 @@ All 200 titles were checked against the 61,019 entries in Blogs.json and the exi
 ## gRPC
 
 
-4. How to Keep Slow Java gRPC onNext Handlers from Delaying Cancellation Callbacks
-
-    Research: [Source](https://stackoverflow.com/questions/53614704/blocking-inside-of-streamobserver-onnext) · [Documentation](https://grpc.github.io/grpc-java/javadoc/io/grpc/stub/StreamObserver.html).
-
 5. How to Prevent Bidirectional gRPC Streams from Deadlocking Under Backpressure
 
     Research: [Source](https://stackoverflow.com/questions/57375360/how-does-grpc-client-streaming-flow-control-work-in-go) · [Documentation](https://grpc.io/docs/guides/flow-control/).

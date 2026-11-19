@@ -822573,5 +822573,18 @@
     ],
     "post": "2026-11-19-java-grpc-streamobserver-multiple-producers",
     "readmePath": "posts/2026-11-19-java-grpc-streamobserver-multiple-producers/README.md"
+  },
+  {
+    "title": "How to Keep Slow Java gRPC onNext Handlers from Delaying Cancellation Callbacks",
+    "description": "Make Java gRPC cancellation responsive by shortening inbound callbacks, polling cancellation during bounded work, and controlling queued processing.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "gRPC",
+      "Java",
+      "Concurrency",
+      "Debugging"
+    ],
+    "post": "2026-11-19-java-grpc-slow-onnext-cancellation",
+    "readmePath": "posts/2026-11-19-java-grpc-slow-onnext-cancellation/README.md"
   }
 ]
