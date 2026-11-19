@@ -2,7 +2,6 @@
 
 ## Systems Manager
 
-7. How to Capture Complete SSM Run Command Output When the Console Truncates It
 8. How to Reboot Safely from SSM Run Command with Linux Exit Code 194 and Windows Exit Code 3010
 9. Least-Privilege Session Manager IAM: Restrict Users by Instance Tags, Session Documents, and Actions
 10. Why Session Manager Logs Are Empty: CloudWatch/S3/KMS Setup and the SSH/Port-Forwarding Blind Spot
