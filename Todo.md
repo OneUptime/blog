@@ -316,7 +316,6 @@ All 200 titles were checked against the 61,019 entries in Blogs.json and the exi
 
 ## Iguazio
 
-10. MLRun Says “No Offline Targets”: How to Configure Parquet and NoSQL Targets for a Feature Set
 11. How to Read a CSV Logged as an MLRun Artifact Using Its Store URI Instead of a Local File Path
 12. Spark Cannot Infer the Schema of MLRun Parquet Output: How to Find Empty Partitions and Inconsistent Types
 13. Iguazio Reports `No space left on device`: How to Find Feature Store, Trace, and Artifact Storage Growth

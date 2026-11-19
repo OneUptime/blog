@@ -822869,5 +822869,18 @@
     ],
     "post": "2026-11-19-v3io-access-key-or-v3io-api-is-missing-how-to-configure-iguazio-credentials-without-hard-coding-secrets",
     "readmePath": "posts/2026-11-19-v3io-access-key-or-v3io-api-is-missing-how-to-configure-iguazio-credentials-without-hard-coding-secrets/README.md"
+  },
+  {
+    "title": "MLRun Says “No Offline Targets”: How to Configure Parquet and NoSQL Targets for a Feature Set",
+    "description": "Fix missing offline feature-set targets by declaring Parquet and V3IO NoSQL destinations, ingesting data, and checking materialized target status.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "MLOps",
+      "Feature Store",
+      "Python",
+      "Troubleshooting"
+    ],
+    "post": "2026-11-19-mlrun-says-no-offline-targets-how-to-configure-parquet-and-nosql-targets-for-a-feature-set",
+    "readmePath": "posts/2026-11-19-mlrun-says-no-offline-targets-how-to-configure-parquet-and-nosql-targets-for-a-feature-set/README.md"
   }
 ]
