@@ -822520,5 +822520,19 @@
     ],
     "post": "2026-11-19-how-to-diagnose-fulcio-unsupported-key-errors-after-aws-kms-access-is-lost",
     "readmePath": "posts/2026-11-19-how-to-diagnose-fulcio-unsupported-key-errors-after-aws-kms-access-is-lost/README.md"
+  },
+  {
+    "title": "How to Check Whether a Container Image Verifier Supports Fulcio URI Identities",
+    "description": "Determine whether an image verification stack can match Fulcio URI SANs, distinguish policy-schema limitations from invalid certificates, and test identity enforcement end to end.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Fulcio",
+      "Sigstore",
+      "Cosign",
+      "Security",
+      "Troubleshooting"
+    ],
+    "post": "2026-11-19-how-to-check-whether-a-container-image-verifier-supports-fulcio-uri-identities",
+    "readmePath": "posts/2026-11-19-how-to-check-whether-a-container-image-verifier-supports-fulcio-uri-identities/README.md"
   }
 ]

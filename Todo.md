@@ -122,10 +122,6 @@ All 200 titles were checked against the 61,019 entries in Blogs.json and the exi
 ## Fulcio
 
 
-20. How to Check Whether a Container Image Verifier Supports Fulcio URI Identities
-
-    Research: [Source](https://gitlab.com/dunn.dev/immutable/basef/-/work_items/15) · [Documentation](https://github.com/sigstore/architecture-docs/blob/main/fulcio-spec.md).
-
 ## SSL Monitoring
 
 
