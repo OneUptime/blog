@@ -823307,5 +823307,17 @@
     ],
     "post": "2026-11-19-how-to-make-the-knative-serving-controller-trust-a-private-registry-ca",
     "readmePath": "posts/2026-11-19-how-to-make-the-knative-serving-controller-trust-a-private-registry-ca/README.md"
+  },
+  {
+    "title": "How to Skip Knative Image Tag Resolution for an HTTP-Only Development Registry",
+    "description": "Scope Knative tag-resolution skipping to a development registry while separately configuring node runtime transport, credentials, and immutable image references.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Knative",
+      "Kubernetes",
+      "Container Registry"
+    ],
+    "post": "2026-11-19-how-to-skip-knative-image-tag-resolution-for-an-http-only-development-registry",
+    "readmePath": "posts/2026-11-19-how-to-skip-knative-image-tag-resolution-for-an-http-only-development-registry/README.md"
   }
 ]
