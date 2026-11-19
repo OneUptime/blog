@@ -823355,5 +823355,17 @@
     ],
     "post": "2026-11-19-how-to-choose-pvc-access-modes-before-scaling-a-knative-service-across-nodes",
     "readmePath": "posts/2026-11-19-how-to-choose-pvc-access-modes-before-scaling-a-knative-service-across-nodes/README.md"
+  },
+  {
+    "title": "How to Probe Every User Container in a Knative Service with Sidecars",
+    "description": "Enable multi-container probing in Knative and give the traffic container and each required sidecar distinct readiness checks without exposing multiple traffic ports.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Knative",
+      "Kubernetes",
+      "Monitoring"
+    ],
+    "post": "2026-11-19-how-to-probe-every-user-container-in-a-knative-service-with-sidecars",
+    "readmePath": "posts/2026-11-19-how-to-probe-every-user-container-in-a-knative-service-with-sidecars/README.md"
   }
 ]
