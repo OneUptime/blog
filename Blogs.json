@@ -822341,5 +822341,19 @@
     ],
     "post": "2026-11-19-how-to-check-whether-a-new-ci-provider-is-trusted-by-the-public-fulcio-service",
     "readmePath": "posts/2026-11-19-how-to-check-whether-a-new-ci-provider-is-trusted-by-the-public-fulcio-service/README.md"
+  },
+  {
+    "title": "How to Diagnose Azure Pipelines OIDC Compatibility Before Using Fulcio for Signing",
+    "description": "Check Azure Pipelines token type, issuer, audience, and CI identity claims before assuming its workload federation tokens can request Fulcio certificates.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Fulcio",
+      "Sigstore",
+      "OIDC",
+      "Azure DevOps",
+      "CI/CD"
+    ],
+    "post": "2026-11-19-how-to-diagnose-azure-pipelines-oidc-compatibility-before-using-fulcio-for-signing",
+    "readmePath": "posts/2026-11-19-how-to-diagnose-azure-pipelines-oidc-compatibility-before-using-fulcio-for-signing/README.md"
   }
 ]
