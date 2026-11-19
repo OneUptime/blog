@@ -2,7 +2,6 @@
 
 ## Systems Manager
 
-6. `DeliveryTimedOut` vs. `ExecutionTimedOut` in SSM Run Command: Find Which Clock Expired
 7. How to Capture Complete SSM Run Command Output When the Console Truncates It
 8. How to Reboot Safely from SSM Run Command with Linux Exit Code 194 and Windows Exit Code 3010
 9. Least-Privilege Session Manager IAM: Restrict Users by Instance Tags, Session Documents, and Actions
