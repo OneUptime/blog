@@ -510,7 +510,6 @@ All 200 titles were checked against the 61,019 entries in Blogs.json and the exi
 
 ## OTLP
 
-7. Multi-Tenant OTLP Routing: Preserve Trusted Tenant Headers Without Accepting Spoofed Identity
 8. OTLP Partial-Success Responses: Surface Rejected Spans, Metrics, and Logs Before They Vanish
 9. Which OTLP Failures Should Retry? Classifying gRPC Codes and HTTP Statuses Without Retry Storms
 10. Recovering an OTLP Persistent Queue That Blocks Collector Startup After a Backend Outage

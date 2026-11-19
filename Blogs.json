@@ -822935,5 +822935,19 @@
     ],
     "post": "2026-11-19-debugging-otlp-grpc-goaway-and-frame-size-error-through-proxies-and-load-balancers",
     "readmePath": "posts/2026-11-19-debugging-otlp-grpc-goaway-and-frame-size-error-through-proxies-and-load-balancers/README.md"
+  },
+  {
+    "title": "Multi-Tenant OTLP Routing: Preserve Trusted Tenant Headers Without Accepting Spoofed Identity",
+    "description": "Route OTLP using tenant identity established by a trusted gateway, overwrite client-supplied tenant headers, and keep tenant separation intact through batching and queues.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "OpenTelemetry",
+      "OTLP",
+      "Multi-Tenant",
+      "Security",
+      "Routing"
+    ],
+    "post": "2026-11-19-multi-tenant-otlp-routing-preserve-trusted-tenant-headers-without-accepting-spoofed-identity",
+    "readmePath": "posts/2026-11-19-multi-tenant-otlp-routing-preserve-trusted-tenant-headers-without-accepting-spoofed-identity/README.md"
   }
 ]
