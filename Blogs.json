@@ -823219,5 +823219,18 @@
     ],
     "post": "2026-11-19-how-to-prevent-per-pod-metric-averages-from-hiding-a-hot-shard",
     "readmePath": "posts/2026-11-19-how-to-prevent-per-pod-metric-averages-from-hiding-a-hot-shard/README.md"
+  },
+  {
+    "title": "How to Handle Missing Metrics from New, Unready, and Terminating Pods in HPA Decisions",
+    "description": "Explain how HPA classifies missing, initializing, and terminating Pods, including the conservative CPU utilization fallback that changes replica recommendations.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Kubernetes",
+      "HPA",
+      "Autoscaling",
+      "Troubleshooting"
+    ],
+    "post": "2026-11-19-how-to-handle-missing-metrics-from-new-unready-and-terminating-pods-in-hpa-decisions",
+    "readmePath": "posts/2026-11-19-how-to-handle-missing-metrics-from-new-unready-and-terminating-pods-in-hpa-decisions/README.md"
   }
 ]
