@@ -10330,7 +10330,6 @@ All 200 titles were checked against the 61,019 entries in Blogs.json and the exi
 
 ## Knative Serving
 
-10. How to Fix Knative Readiness Failures Caused by the Wrong Container Listening Port
 11. How to Create Knative Services with the Kubernetes Python CustomObjectsApi
 12. How to Patch Knative Autoscaling Annotations Through the Kubernetes REST API
 13. How to Diagnose Knative Revisions That Survive Configured Garbage Collection

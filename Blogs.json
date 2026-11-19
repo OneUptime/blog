@@ -823379,5 +823379,17 @@
     ],
     "post": "2026-11-19-how-to-align-knative-startup-probes-with-the-revision-progress-deadline",
     "readmePath": "posts/2026-11-19-how-to-align-knative-startup-probes-with-the-revision-progress-deadline/README.md"
+  },
+  {
+    "title": "How to Fix Knative Readiness Failures Caused by the Wrong Container Listening Port",
+    "description": "Align a Knative application listener, PORT environment variable, declared container port, and readiness probe to fix connection-refused startup failures.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Knative",
+      "Kubernetes",
+      "Troubleshooting"
+    ],
+    "post": "2026-11-19-how-to-fix-knative-readiness-failures-caused-by-the-wrong-container-listening-port",
+    "readmePath": "posts/2026-11-19-how-to-fix-knative-readiness-failures-caused-by-the-wrong-container-listening-port/README.md"
   }
 ]
