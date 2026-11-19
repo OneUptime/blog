@@ -2,7 +2,6 @@
 
 ## Systems Manager
 
-16. How to Rotate a `SecureString` with Parameter Versions and Labels Without Breaking Consumers
 17. Patch Manager Stuck on “In Progress” or “Pending Reboot”: Trace the Agent, OS Updater, and Patch Logs
 18. Patch Manager for Auto Scaling Groups: Drain and Patch Live Instances or Bake a New AMI?
 19. Windows Patch Manager in a Private Subnet: Combine SSM Endpoints with WSUS or Update Egress

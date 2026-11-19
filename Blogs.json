@@ -823778,5 +823778,19 @@
     ],
     "post": "2026-11-19-read-entire-parameter-store-hierarchy-pagination-decryption",
     "readmePath": "posts/2026-11-19-read-entire-parameter-store-hierarchy-pagination-decryption/README.md"
+  },
+  {
+    "title": "How to Rotate a `SecureString` with Parameter Versions and Labels Without Breaking Consumers",
+    "description": "Rotate SecureString credentials through captured parameter versions, controlled label promotion, consumer adoption checks, and a usable rollback window.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "AWS",
+      "Systems Manager",
+      "Parameter Store",
+      "Secret Rotation",
+      "KMS"
+    ],
+    "post": "2026-11-19-rotate-securestring-parameter-versions-labels",
+    "readmePath": "posts/2026-11-19-rotate-securestring-parameter-versions-labels/README.md"
   }
 ]
