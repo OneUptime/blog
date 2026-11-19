@@ -823295,5 +823295,17 @@
     ],
     "post": "2026-11-19-how-to-persist-knative-configmap-changes-when-the-operator-keeps-reverting-them",
     "readmePath": "posts/2026-11-19-how-to-persist-knative-configmap-changes-when-the-operator-keeps-reverting-them/README.md"
+  },
+  {
+    "title": "How to Make the Knative Serving Controller Trust a Private Registry CA",
+    "description": "Configure private registry CA trust for the Knative Serving controller, then distinguish tag-resolution TLS failures from credentials and node image-pull failures.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Knative",
+      "Kubernetes",
+      "Security"
+    ],
+    "post": "2026-11-19-how-to-make-the-knative-serving-controller-trust-a-private-registry-ca",
+    "readmePath": "posts/2026-11-19-how-to-make-the-knative-serving-controller-trust-a-private-registry-ca/README.md"
   }
 ]

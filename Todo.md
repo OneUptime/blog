@@ -10330,7 +10330,6 @@ All 200 titles were checked against the 61,019 entries in Blogs.json and the exi
 
 ## Knative Serving
 
-3. How to Make the Knative Serving Controller Trust a Private Registry CA
 4. How to Skip Knative Image Tag Resolution for an HTTP-Only Development Registry
 5. How to Enable Init Containers for Knative Serving Startup Tasks
 6. How to Enable Persistent Volume Claims and Write Access in Knative Serving
