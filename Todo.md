@@ -1096,7 +1096,6 @@ All 200 titles were checked against the 61,019 entries in Blogs.json and the exi
 
 ## Horizontal Autoscaling
 
-16. How to Prevent Per-Pod Metric Averages from Hiding a Hot Shard
 17. How to Handle Missing Metrics from New, Unready, and Terminating Pods in HPA Decisions
 18. How to Drain Long-Lived Connections Safely When HPA Scales Down
 19. How to Make HPA Decisions Observable with Controller Metrics, Events, and Recommendation Dashboards

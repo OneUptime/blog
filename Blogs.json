@@ -823206,5 +823206,18 @@
     ],
     "post": "2026-11-19-how-to-stop-cpu-limits-and-throttling-from-distorting-hpa-scaling-signals",
     "readmePath": "posts/2026-11-19-how-to-stop-cpu-limits-and-throttling-from-distorting-hpa-scaling-signals/README.md"
+  },
+  {
+    "title": "How to Prevent Per-Pod Metric Averages from Hiding a Hot Shard",
+    "description": "Detect uneven per-Pod demand, identify whether replicas can relieve a hot shard, and align autoscaling boundaries with the application partition model.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Kubernetes",
+      "HPA",
+      "Autoscaling",
+      "Troubleshooting"
+    ],
+    "post": "2026-11-19-how-to-prevent-per-pod-metric-averages-from-hiding-a-hot-shard",
+    "readmePath": "posts/2026-11-19-how-to-prevent-per-pod-metric-averages-from-hiding-a-hot-shard/README.md"
   }
 ]
