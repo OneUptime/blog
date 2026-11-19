@@ -823456,5 +823456,19 @@
     ],
     "post": "2026-11-19-configure-iguazio-read-only-user-roles",
     "readmePath": "posts/2026-11-19-configure-iguazio-read-only-user-roles/README.md"
+  },
+  {
+    "title": "How to Calculate DORA Deployment Rework Rate from Deployment, Incident, and Hotfix Events",
+    "description": "Calculate deployment rework rate from linked production events, with explicit counting rules, a worked example, and SQL that avoids duplicate hotfix counts.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "DORA",
+      "DevOps",
+      "Incident Management",
+      "Software Delivery",
+      "SQLite"
+    ],
+    "post": "2026-11-19-calculate-dora-deployment-rework-rate",
+    "readmePath": "posts/2026-11-19-calculate-dora-deployment-rework-rate/README.md"
   }
 ]
