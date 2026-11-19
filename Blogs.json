@@ -823154,5 +823154,18 @@
     ],
     "post": "2026-11-19-how-to-migrate-hpa-manifests-from-autoscaling-v2beta2-to-autoscaling-v2-without-behavior-drift",
     "readmePath": "posts/2026-11-19-how-to-migrate-hpa-manifests-from-autoscaling-v2beta2-to-autoscaling-v2-without-behavior-drift/README.md"
+  },
+  {
+    "title": "How to Keep HPA Replica Calculations Stable During a Deployment Rolling Update",
+    "description": "Keep metric meaning and available capacity consistent across old and new ReplicaSets while HPA and the Deployment controller reconcile a rolling update.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Kubernetes",
+      "HPA",
+      "Autoscaling",
+      "Troubleshooting"
+    ],
+    "post": "2026-11-19-how-to-keep-hpa-replica-calculations-stable-during-a-deployment-rolling-update",
+    "readmePath": "posts/2026-11-19-how-to-keep-hpa-replica-calculations-stable-during-a-deployment-rolling-update/README.md"
   }
 ]

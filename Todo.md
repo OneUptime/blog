@@ -1096,7 +1096,6 @@ All 200 titles were checked against the 61,019 entries in Blogs.json and the exi
 
 ## Horizontal Autoscaling
 
-12. How to Keep HPA Replica Calculations Stable During a Deployment Rolling Update
 13. How to Tune the HPA Controller Sync Period Without Overloading the Metrics Pipeline
 14. How to Alert When an HPA Is Saturated at `maxReplicas` Before Latency Breaches Its SLO
 15. How to Stop CPU Limits and Throttling from Distorting HPA Scaling Signals
