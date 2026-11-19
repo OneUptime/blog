@@ -1096,7 +1096,6 @@ All 200 titles were checked against the 61,019 entries in Blogs.json and the exi
 
 ## Horizontal Autoscaling
 
-2. How to Recalculate an HPA Replica Decision by Hand from Current Metrics and Resource Requests
 3. How to Choose Between Utilization, AverageValue, and Value Targets in an HPA
 4. How to Prevent HPA Startup CPU Spikes from Triggering Premature Scale-Out
 5. How to Tune HPA for Slow-Starting Pods Before Traffic Overruns Existing Replicas

@@ -823050,5 +823050,18 @@
     ],
     "post": "2026-11-19-how-to-read-hpa-abletoscale-scalingactive-and-scalinglimited-conditions-during-an-incident",
     "readmePath": "posts/2026-11-19-how-to-read-hpa-abletoscale-scalingactive-and-scalinglimited-conditions-during-an-incident/README.md"
+  },
+  {
+    "title": "How to Recalculate an HPA Replica Decision by Hand from Current Metrics and Resource Requests",
+    "description": "Reconstruct an HPA CPU recommendation from matching Pod metrics and requests, then account for tolerance, missing samples, and scaling policies.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Kubernetes",
+      "HPA",
+      "Autoscaling",
+      "Troubleshooting"
+    ],
+    "post": "2026-11-19-how-to-recalculate-an-hpa-replica-decision-by-hand-from-current-metrics-and-resource-requests",
+    "readmePath": "posts/2026-11-19-how-to-recalculate-an-hpa-replica-decision-by-hand-from-current-metrics-and-resource-requests/README.md"
   }
 ]
