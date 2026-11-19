@@ -263,10 +263,6 @@ All 200 titles were checked against the 61,019 entries in Blogs.json and the exi
 ## gRPC
 
 
-16. How to Diagnose Missing CallCredentials on a .NET gRPC Channel
-
-    Research: [Source](https://stackoverflow.com/questions/58990213/asp-net-core-grpc-client-configuring-http-authorization) · [Documentation](https://learn.microsoft.com/en-us/aspnet/core/grpc/authn-and-authz).
-
 17. How to Resolve gRPC Too Many Pings Errors by Matching Client and Server Keepalive Policies
 
     Research: [Source](https://stackoverflow.com/questions/57606303/grpc-arg-keepalive-permit-without-calls-for-java-servers) · [Documentation](https://grpc.io/docs/guides/keepalive/).

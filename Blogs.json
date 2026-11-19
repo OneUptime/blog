@@ -822703,5 +822703,18 @@
     ],
     "post": "2026-11-19-java-grpc-background-call-cancellation-lifetime",
     "readmePath": "posts/2026-11-19-java-grpc-background-call-cancellation-lifetime/README.md"
+  },
+  {
+    "title": "How to Diagnose Missing CallCredentials on a .NET gRPC Channel",
+    "description": "Diagnose absent .NET gRPC call credentials by checking TLS, channel construction, client-factory registration, and token acquisition.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "gRPC",
+      ".NET",
+      "Security",
+      "Troubleshooting"
+    ],
+    "post": "2026-11-19-dotnet-grpc-callcredentials-missing",
+    "readmePath": "posts/2026-11-19-dotnet-grpc-callcredentials-missing/README.md"
   }
 ]
