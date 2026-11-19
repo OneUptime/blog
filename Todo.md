@@ -122,10 +122,6 @@ All 200 titles were checked against the 61,019 entries in Blogs.json and the exi
 ## Fulcio
 
 
-4. How to Check Whether a New CI Provider Is Trusted by the Public Fulcio Service
-
-    Research: [Source](https://github.com/sigstore/fulcio/issues/2442) · [Documentation](https://github.com/sigstore/fulcio/blob/main/docs/new-idp-requirements.md).
-
 5. How to Diagnose Azure Pipelines OIDC Compatibility Before Using Fulcio for Signing
 
     Research: [Source](https://github.com/sigstore/fulcio/issues/1803) · [Documentation](https://github.com/sigstore/fulcio/blob/main/docs/oidc.md).

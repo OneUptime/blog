@@ -822327,5 +822327,19 @@
     ],
     "post": "2026-11-19-how-to-assess-fulcio-exposure-to-oidc-discovery-redirect-and-jwks-substitution-flaws",
     "readmePath": "posts/2026-11-19-how-to-assess-fulcio-exposure-to-oidc-discovery-redirect-and-jwks-substitution-flaws/README.md"
+  },
+  {
+    "title": "How to Check Whether a New CI Provider Is Trusted by the Public Fulcio Service",
+    "description": "Check the public Fulcio configuration, issuer contract, and provider onboarding status before wiring a new CI platform into keyless signing.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Fulcio",
+      "Sigstore",
+      "OIDC",
+      "CI/CD",
+      "Cosign"
+    ],
+    "post": "2026-11-19-how-to-check-whether-a-new-ci-provider-is-trusted-by-the-public-fulcio-service",
+    "readmePath": "posts/2026-11-19-how-to-check-whether-a-new-ci-provider-is-trusted-by-the-public-fulcio-service/README.md"
   }
 ]
