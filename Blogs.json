@@ -823367,5 +823367,17 @@
     ],
     "post": "2026-11-19-how-to-probe-every-user-container-in-a-knative-service-with-sidecars",
     "readmePath": "posts/2026-11-19-how-to-probe-every-user-container-in-a-knative-service-with-sidecars/README.md"
+  },
+  {
+    "title": "How to Align Knative Startup Probes with the Revision Progress Deadline",
+    "description": "Budget Knative cold starts across startup probes and Revision progress deadlines, configure a per-Revision deadline, and diagnose initial-scale failures from actual timings.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Knative",
+      "Kubernetes",
+      "Troubleshooting"
+    ],
+    "post": "2026-11-19-how-to-align-knative-startup-probes-with-the-revision-progress-deadline",
+    "readmePath": "posts/2026-11-19-how-to-align-knative-startup-probes-with-the-revision-progress-deadline/README.md"
   }
 ]
