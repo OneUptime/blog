@@ -823833,5 +823833,19 @@
     ],
     "post": "2026-11-19-windows-patch-manager-private-subnet-ssm-wsus-egress",
     "readmePath": "posts/2026-11-19-windows-patch-manager-private-subnet-ssm-wsus-egress/README.md"
+  },
+  {
+    "title": "On-Premises Node Missing from Systems Manager: Debug Hybrid Activation, Region, IAM Role, and Agent Registration",
+    "description": "Diagnose missing hybrid managed nodes by checking account and Region, activation capacity, service-role permissions, local registration, credentials, and connectivity.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "AWS",
+      "Systems Manager",
+      "Hybrid Cloud",
+      "IAM",
+      "Troubleshooting"
+    ],
+    "post": "2026-11-19-on-premises-node-missing-systems-manager",
+    "readmePath": "posts/2026-11-19-on-premises-node-missing-systems-manager/README.md"
   }
 ]

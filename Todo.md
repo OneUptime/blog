@@ -1,9 +1,5 @@
 # Blog Post Ideas
 
-## Systems Manager
-
-20. On-Premises Node Missing from Systems Manager: Debug Hybrid Activation, Region, IAM Role, and Agent Registration
-
 ## SSH
 
 1. “Too Many Authentication Failures” Even with `-i`: Force the Intended Key with `IdentitiesOnly`
