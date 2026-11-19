@@ -510,7 +510,6 @@ All 200 titles were checked against the 61,019 entries in Blogs.json and the exi
 
 ## OTLP
 
-13. Duplicate Kubernetes Logs from stdout and OTLP: Choose One Ingestion Path per Pod
 14. How to Route OTLP Traces, Metrics, and Logs to Different Backends from One Collector
 15. OTLP/HTTP Protobuf vs JSON: Set the Correct `Content-Type`, Encoding, and Signal Path
 16. Gzip-Compressed OTLP Requests Fail to Decode: Trace `Content-Encoding` Across Every Hop

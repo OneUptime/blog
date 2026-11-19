@@ -822987,5 +822987,17 @@
     ],
     "post": "2026-11-19-how-to-test-an-otlp-pipeline-without-a-backend-synthetic-telemetry-debug-export-and-file-capture",
     "readmePath": "posts/2026-11-19-how-to-test-an-otlp-pipeline-without-a-backend-synthetic-telemetry-debug-export-and-file-capture/README.md"
+  },
+  {
+    "title": "Duplicate Kubernetes Logs from stdout and OTLP: Choose One Ingestion Path per Pod",
+    "description": "Trace duplicate Kubernetes log records to simultaneous stdout collection and OTLP export, then assign a single ingestion path without losing sidecar or startup logs.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "OpenTelemetry",
+      "Kubernetes",
+      "Logging"
+    ],
+    "post": "2026-11-19-duplicate-kubernetes-logs-from-stdout-and-otlp-choose-one-ingestion-path-per-pod",
+    "readmePath": "posts/2026-11-19-duplicate-kubernetes-logs-from-stdout-and-otlp-choose-one-ingestion-path-per-pod/README.md"
   }
 ]
