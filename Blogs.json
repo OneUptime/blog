@@ -823193,5 +823193,18 @@
     ],
     "post": "2026-11-19-how-to-alert-when-an-hpa-is-saturated-at-maxreplicas-before-latency-breaches-its-slo",
     "readmePath": "posts/2026-11-19-how-to-alert-when-an-hpa-is-saturated-at-maxreplicas-before-latency-breaches-its-slo/README.md"
+  },
+  {
+    "title": "How to Stop CPU Limits and Throttling from Distorting HPA Scaling Signals",
+    "description": "Diagnose how CPU limits cap observed usage, correlate throttling with request pressure, and choose HPA targets that reflect usable application capacity.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Kubernetes",
+      "HPA",
+      "Autoscaling",
+      "Troubleshooting"
+    ],
+    "post": "2026-11-19-how-to-stop-cpu-limits-and-throttling-from-distorting-hpa-scaling-signals",
+    "readmePath": "posts/2026-11-19-how-to-stop-cpu-limits-and-throttling-from-distorting-hpa-scaling-signals/README.md"
   }
 ]
