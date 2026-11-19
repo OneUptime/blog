@@ -822285,5 +822285,19 @@
     ],
     "post": "2026-11-18-how-to-reconnect-distributed-traces-during-a-migration-from-elastic-apm-to-opentelemetry",
     "readmePath": "posts/2026-11-18-how-to-reconnect-distributed-traces-during-a-migration-from-elastic-apm-to-opentelemetry/README.md"
+  },
+  {
+    "title": "How to Diagnose Fulcio OIDC Discovery Failures Behind Istio ServiceEntry Virtual IPs",
+    "description": "Find out whether Istio DNS capture makes an OIDC issuer resolve to a mesh virtual IP that Fulcio rejects, then choose a release-aware repair.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Fulcio",
+      "Sigstore",
+      "OIDC",
+      "Istio",
+      "Troubleshooting"
+    ],
+    "post": "2026-11-19-how-to-diagnose-fulcio-oidc-discovery-failures-behind-istio-serviceentry-virtual-ips",
+    "readmePath": "posts/2026-11-19-how-to-diagnose-fulcio-oidc-discovery-failures-behind-istio-serviceentry-virtual-ips/README.md"
   }
 ]

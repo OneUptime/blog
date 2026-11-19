@@ -122,10 +122,6 @@ All 200 titles were checked against the 61,019 entries in Blogs.json and the exi
 ## Fulcio
 
 
-1. How to Diagnose Fulcio OIDC Discovery Failures Behind Istio ServiceEntry Virtual IPs
-
-    Research: [Source](https://github.com/sigstore/fulcio/issues/2483) · [Documentation](https://github.com/sigstore/fulcio/blob/main/docs/oidc.md).
-
 2. How to Diagnose K3s Service Account Signing Regressions After a Fulcio Upgrade
 
     Research: [Source](https://github.com/sigstore/fulcio/issues/2355) · [Documentation](https://github.com/sigstore/fulcio/releases).
