@@ -2,7 +2,6 @@
 
 ## Deployment Rework
 
-2. What Counts as Deployment Rework? Classifying Rollbacks, Fix-Forwards, Hotfixes, Retries, and Failed Pipelines
 3. How to Link an Unplanned Fix Deployment to the Production Incident—and the Original Change
 6. Roll Back or Fix Forward? A Data-Aware Decision Tree for Failed Production Changes
 7. How to Redeploy the Last-Known-Good Artifact Without Rebuilding Old Source
