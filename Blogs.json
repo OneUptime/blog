@@ -822856,5 +822856,18 @@
     ],
     "post": "2026-11-19-mlrun-api-returns-412-waiting-for-migrations-how-to-complete-database-migrations-after-an-upgrade",
     "readmePath": "posts/2026-11-19-mlrun-api-returns-412-waiting-for-migrations-how-to-complete-database-migrations-after-an-upgrade/README.md"
+  },
+  {
+    "title": "`V3IO_ACCESS_KEY` or `V3IO_API` Is Missing: How to Configure Iguazio Credentials Without Hard-Coding Secrets",
+    "description": "Supply Iguazio V3IO endpoints and access keys through runtime environments and secret references, then verify the configuration without exposing credentials.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "MLOps",
+      "Security",
+      "Python",
+      "CI/CD"
+    ],
+    "post": "2026-11-19-v3io-access-key-or-v3io-api-is-missing-how-to-configure-iguazio-credentials-without-hard-coding-secrets",
+    "readmePath": "posts/2026-11-19-v3io-access-key-or-v3io-api-is-missing-how-to-configure-iguazio-credentials-without-hard-coding-secrets/README.md"
   }
 ]
