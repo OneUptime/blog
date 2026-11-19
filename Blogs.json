@@ -823512,5 +823512,19 @@
     ],
     "post": "2026-11-19-deployment-retry-budgets-failure-visibility",
     "readmePath": "posts/2026-11-19-deployment-retry-budgets-failure-visibility/README.md"
+  },
+  {
+    "title": "How to Trigger Automatic Rollback from SLOs Without Letting One Noisy Metric Revert a Healthy Release",
+    "description": "Build an SLO rollback policy with comparable release cohorts, minimum evidence, inconclusive states, and a bounded abort action.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "SLO",
+      "Argo Rollouts",
+      "Progressive Delivery",
+      "Prometheus",
+      "Rollback"
+    ],
+    "post": "2026-11-19-slo-automatic-rollback-noisy-metrics",
+    "readmePath": "posts/2026-11-19-slo-automatic-rollback-noisy-metrics/README.md"
   }
 ]
