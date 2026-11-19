@@ -823076,5 +823076,18 @@
     ],
     "post": "2026-11-19-how-to-choose-between-utilization-averagevalue-and-value-targets-in-an-hpa",
     "readmePath": "posts/2026-11-19-how-to-choose-between-utilization-averagevalue-and-value-targets-in-an-hpa/README.md"
+  },
+  {
+    "title": "How to Prevent HPA Startup CPU Spikes from Triggering Premature Scale-Out",
+    "description": "Align startup and readiness probes with CPU warmup so HPA evaluates serving capacity without mistaking initialization work for sustained demand.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Kubernetes",
+      "HPA",
+      "Autoscaling",
+      "Troubleshooting"
+    ],
+    "post": "2026-11-19-how-to-prevent-hpa-startup-cpu-spikes-from-triggering-premature-scale-out",
+    "readmePath": "posts/2026-11-19-how-to-prevent-hpa-startup-cpu-spikes-from-triggering-premature-scale-out/README.md"
   }
 ]
