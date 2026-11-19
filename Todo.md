@@ -263,10 +263,6 @@ All 200 titles were checked against the 61,019 entries in Blogs.json and the exi
 ## gRPC
 
 
-11. How to Find the Client Exception Hidden Behind Python gRPC Exception Iterating Requests
-
-    Research: [Source](https://stackoverflow.com/questions/70417991/grpc-about-a-client-to-server-stream-rpc-but-with-an-error-of-exception-itera) · [Documentation](https://grpc.github.io/grpc/python/grpc.html).
-
 12. How to Feed a C++ gRPC Streaming Reactor Without Blocking Its Callback Threads
 
     Research: [Source](https://stackoverflow.com/questions/79684222/how-to-safely-wait-for-new-data-in-a-grpc-c-server-streaming-reactor-using-the) · [Documentation](https://grpc.io/docs/languages/cpp/best_practices/).

@@ -822651,5 +822651,18 @@
     ],
     "post": "2026-11-19-go-grpc-resume-broken-subscription",
     "readmePath": "posts/2026-11-19-go-grpc-resume-broken-subscription/README.md"
+  },
+  {
+    "title": "How to Find the Client Exception Hidden Behind Python gRPC Exception Iterating Requests",
+    "description": "Expose the client-side generator exception behind Python gRPC request-iteration errors and distinguish it from serialization and server failures.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "gRPC",
+      "Python",
+      "Streaming",
+      "Debugging"
+    ],
+    "post": "2026-11-19-python-grpc-exception-iterating-requests",
+    "readmePath": "posts/2026-11-19-python-grpc-exception-iterating-requests/README.md"
   }
 ]
