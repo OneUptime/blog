@@ -263,10 +263,6 @@ All 200 titles were checked against the 61,019 entries in Blogs.json and the exi
 ## gRPC
 
 
-12. How to Feed a C++ gRPC Streaming Reactor Without Blocking Its Callback Threads
-
-    Research: [Source](https://stackoverflow.com/questions/79684222/how-to-safely-wait-for-new-data-in-a-grpc-c-server-streaming-reactor-using-the) · [Documentation](https://grpc.io/docs/languages/cpp/best_practices/).
-
 13. How to Diagnose Python gRPC AsyncIO Streaming Concurrency Limits with a Minimal Reproduction
 
     Research: [Source](https://stackoverflow.com/questions/79469878/is-the-asyncio-api-of-grpcio-production-ready) · [Documentation](https://grpc.github.io/grpc/python/grpc_asyncio.html).

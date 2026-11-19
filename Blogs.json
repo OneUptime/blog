@@ -822664,5 +822664,18 @@
     ],
     "post": "2026-11-19-python-grpc-exception-iterating-requests",
     "readmePath": "posts/2026-11-19-python-grpc-exception-iterating-requests/README.md"
+  },
+  {
+    "title": "How to Feed a C++ gRPC Streaming Reactor Without Blocking Its Callback Threads",
+    "description": "Feed a C++ gRPC server reactor through a bounded queue without waiting in callbacks, overlapping writes, or racing final cleanup.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "gRPC",
+      "C++",
+      "Streaming",
+      "Concurrency"
+    ],
+    "post": "2026-11-19-cpp-grpc-reactor-external-producer",
+    "readmePath": "posts/2026-11-19-cpp-grpc-reactor-external-producer/README.md"
   }
 ]
