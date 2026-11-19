@@ -823470,5 +823470,19 @@
     ],
     "post": "2026-11-19-calculate-dora-deployment-rework-rate",
     "readmePath": "posts/2026-11-19-calculate-dora-deployment-rework-rate/README.md"
+  },
+  {
+    "title": "How to Link an Unplanned Fix Deployment to the Production Incident—and the Original Change",
+    "description": "Connect fix deployments to incidents and original changes using stable identifiers, reviewed attribution, preserved evidence, and queryable relationships.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "DORA",
+      "Deployment",
+      "Incident Management",
+      "Change Management",
+      "GitHub"
+    ],
+    "post": "2026-11-19-link-fix-deployment-incident-original-change",
+    "readmePath": "posts/2026-11-19-link-fix-deployment-incident-original-change/README.md"
   }
 ]
