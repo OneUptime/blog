@@ -263,10 +263,6 @@ All 200 titles were checked against the 61,019 entries in Blogs.json and the exi
 ## gRPC
 
 
-8. How to Read Binary gRPC Metadata in Java Interceptors Without ASCII Parsing Errors
-
-    Research: [Source](https://stackoverflow.com/questions/73250530/invalid-argument-failed-to-parse-headers-when-adding-a-serverinterceptor) · [Documentation](https://grpc.io/docs/guides/metadata/).
-
 9. How to Carry Multiline Diagnostic Text in gRPC Metadata Without Invalid Header Values
 
     Research: [Source](https://stackoverflow.com/questions/72951977/rpcexception-metadata-limitations) · [Documentation](https://grpc.io/docs/guides/metadata/).

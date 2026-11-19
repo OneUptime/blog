@@ -822612,5 +822612,18 @@
     ],
     "post": "2026-11-19-grpc-large-request-retry-buffer-limits",
     "readmePath": "posts/2026-11-19-grpc-large-request-retry-buffer-limits/README.md"
+  },
+  {
+    "title": "How to Read Binary gRPC Metadata in Java Interceptors Without ASCII Parsing Errors",
+    "description": "Read Java gRPC binary metadata with correctly typed keys, preserve repeated values, and avoid decoding arbitrary headers as ASCII.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "gRPC",
+      "Java",
+      "Debugging",
+      "Protobuf"
+    ],
+    "post": "2026-11-19-java-grpc-binary-metadata-interceptors",
+    "readmePath": "posts/2026-11-19-java-grpc-binary-metadata-interceptors/README.md"
   }
 ]
