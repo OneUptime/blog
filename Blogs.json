@@ -823444,5 +823444,17 @@
     ],
     "post": "2026-11-19-mlrun-real-time-ingestion-error-streams-nuclio-logs",
     "readmePath": "posts/2026-11-19-mlrun-real-time-ingestion-error-streams-nuclio-logs/README.md"
+  },
+  {
+    "title": "How to Configure Iguazio User Roles for Read-Only Access Without Accidentally Granting Service Administration",
+    "description": "Configure Iguazio observer access by separating management policies, inherited permissions, project membership, and data access from service administration.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "MLOps",
+      "Security",
+      "Access Control"
+    ],
+    "post": "2026-11-19-configure-iguazio-read-only-user-roles",
+    "readmePath": "posts/2026-11-19-configure-iguazio-read-only-user-roles/README.md"
   }
 ]

@@ -1,9 +1,5 @@
 # Blog Post Ideas
 
-## Iguazio
-
-20. How to Configure Iguazio User Roles for Read-Only Access Without Accidentally Granting Service Administration
-
 ## Deployment Rework
 
 1. How to Calculate DORA Deployment Rework Rate from Deployment, Incident, and Hotfix Events
