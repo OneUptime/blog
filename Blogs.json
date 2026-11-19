@@ -823089,5 +823089,18 @@
     ],
     "post": "2026-11-19-how-to-prevent-hpa-startup-cpu-spikes-from-triggering-premature-scale-out",
     "readmePath": "posts/2026-11-19-how-to-prevent-hpa-startup-cpu-spikes-from-triggering-premature-scale-out/README.md"
+  },
+  {
+    "title": "How to Configure Per-Direction HPA Tolerance in Kubernetes 1.35 to Filter Metric Noise",
+    "description": "Configure separate scale-up and scale-down tolerance in Kubernetes 1.35 and verify its interaction with rounding, stabilization, and scaling policies.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Kubernetes",
+      "HPA",
+      "Autoscaling",
+      "Troubleshooting"
+    ],
+    "post": "2026-11-19-how-to-configure-per-direction-hpa-tolerance-in-kubernetes-1-35-to-filter-metric-noise",
+    "readmePath": "posts/2026-11-19-how-to-configure-per-direction-hpa-tolerance-in-kubernetes-1-35-to-filter-metric-noise/README.md"
   }
 ]
