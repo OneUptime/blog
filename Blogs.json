@@ -822560,5 +822560,18 @@
     ],
     "post": "2026-11-19-python-grpc-asyncio-different-event-loop",
     "readmePath": "posts/2026-11-19-python-grpc-asyncio-different-event-loop/README.md"
+  },
+  {
+    "title": "How to Serialize Writes from Multiple Producers to a Java gRPC StreamObserver",
+    "description": "Serialize Java gRPC stream writes and terminal events through one owner, then add explicit bounds for slow consumers.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "gRPC",
+      "Java",
+      "Concurrency",
+      "Streaming"
+    ],
+    "post": "2026-11-19-java-grpc-streamobserver-multiple-producers",
+    "readmePath": "posts/2026-11-19-java-grpc-streamobserver-multiple-producers/README.md"
   }
 ]

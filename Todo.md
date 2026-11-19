@@ -263,10 +263,6 @@ All 200 titles were checked against the 61,019 entries in Blogs.json and the exi
 ## gRPC
 
 
-3. How to Serialize Writes from Multiple Producers to a Java gRPC StreamObserver
-
-    Research: [Source](https://stackoverflow.com/questions/65665620/can-grpc-bidi-streaming-server-send-a-message-to-a-client-that-it-is-not-current) · [Documentation](https://grpc.github.io/grpc-java/javadoc/io/grpc/stub/StreamObserver.html).
-
 4. How to Keep Slow Java gRPC onNext Handlers from Delaying Cancellation Callbacks
 
     Research: [Source](https://stackoverflow.com/questions/53614704/blocking-inside-of-streamobserver-onnext) · [Documentation](https://grpc.github.io/grpc-java/javadoc/io/grpc/stub/StreamObserver.html).
