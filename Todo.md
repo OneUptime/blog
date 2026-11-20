@@ -2,7 +2,6 @@
 
 ## SSH
 
-16. SFTP “Bad Ownership or Modes for Chroot Directory”: Build a Root-Owned Jail with a Writable Upload Directory
 17. How to Create an SFTP-Only Account with `internal-sftp` and No Shell, Agent, or Port Forwarding
 18. How to Populate `known_hosts` in CI Without Setting `StrictHostKeyChecking=no`
 19. Multiple Git Identities on One SSH Host: Use Host Aliases, `IdentityFile`, and `IdentitiesOnly`
