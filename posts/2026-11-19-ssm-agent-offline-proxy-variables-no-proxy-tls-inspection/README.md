@@ -1,4 +1,4 @@
-# SSM Agent Keeps Going Offline Behind a Proxy: Configure Proxy Variables, `no_proxy`, and TLS Inspection
+# Fix SSM Agent Proxy Disconnects: `no_proxy` and TLS Inspection
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

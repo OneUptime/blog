@@ -1,4 +1,4 @@
-# How to Recalculate an HPA Replica Decision by Hand from Current Metrics and Resource Requests
+# Recalculate HPA Replica Decisions by Hand from Metrics and Resource Requests
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
@@ -58,7 +58,7 @@ print(utilization, raw_replicas)
 
 The integer division reflects the utilization percentage used by the [upstream utilization calculation](https://github.com/kubernetes/kubernetes/blob/v1.35.0/pkg/controller/podautoscaler/metrics/utilization.go). When requests differ across Pods, calculate total usage divided by total matching requests; averaging each Pod's percentage equally can give a different answer.
 
-CPU quantities need proper unit conversion. A resource metrics response may use nanocores (`n`), while requests commonly use millicores (`m`). One core equals `1000m` or `1000000000n`. Never add the numeric portions of unlike quantities.
+CPU quantities need proper unit conversion. A resource metrics response may use nanocores (`n`), while requests commonly use millicores (`m`). One core equals `1000m` or `1000000000n`. Never add the numeric portions of unlike quantities. To reproduce the linked Kubernetes v1.35.0 implementation exactly, also round each container CPU sample up to a whole millicore before summing: the [metrics client](https://github.com/kubernetes/kubernetes/blob/v1.35.0/pkg/controller/podautoscaler/metrics/client.go) uses `Quantity.MilliValue()`. For example, `300000001n` becomes `301m`; the whole-millicore samples above are unchanged.
 
 ## Check which requests actually apply
 

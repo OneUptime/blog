@@ -1,4 +1,4 @@
-# “Pseudo-terminal Will Not Be Allocated”: When to Use `-T`, `-t`, or `-tt` in SSH Automation
+# SSH Pseudo-Terminal Allocation: When to Use `-T`, `-t`, or `-tt`
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

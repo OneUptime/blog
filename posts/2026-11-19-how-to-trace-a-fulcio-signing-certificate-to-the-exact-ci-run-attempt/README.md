@@ -62,7 +62,7 @@ gh api repos/OWNER/REPOSITORY/actions/runs/RUN_ID/attempts/ATTEMPT \
   --jq '{id,run_attempt,head_sha,event,status,conclusion,html_url}'
 ```
 
-Compare `run_attempt` and `head_sha` with your evidence record. Next inspect the jobs and logs belonging to that attempt, not just a similarly timed successful build. A rerun may have different runner placement, permissions, or artifacts even when it uses the same source commit.
+Compare `run_attempt` and `head_sha` with your evidence record. Next inspect the jobs and logs belonging to that attempt, not just a similarly timed successful build. A rerun may have different runner placement or artifacts, but it uses the original triggering actor’s privileges and the same source commit and Git ref.
 
 A 404 response is ambiguous. Check repository permissions, whether the repository was renamed, and retention or deletion of run data. Do not conclude that the certificate contains a false claim merely because your account cannot retrieve a private run.
 

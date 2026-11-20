@@ -1,4 +1,4 @@
-# Validation Summary: SSH Tunnel Opens but the Application Cannot Connect: Debug Bind Addresses, `localhost`, IPv4/IPv6, and the Final Hop
+# Validation Summary: SSH Tunnel Opens but App Cannot Connect: Bind Addresses and Final-Hop Checks
 
 ## Status
 

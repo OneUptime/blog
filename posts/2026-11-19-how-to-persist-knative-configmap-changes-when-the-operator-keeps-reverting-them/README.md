@@ -71,7 +71,7 @@ Avoid maintaining a second manifest that independently owns the generated Config
 
 ## Separate configuration propagation from workload behavior
 
-Different settings take effect at different points. Some are watched dynamically, while others influence resources generated for a new Revision. An existing Revision is immutable and may retain decisions made when it was created. Consult the setting's specific documentation and create a controlled new Revision where necessary.
+Different settings take effect at different points. Some are watched dynamically, while others influence resources generated for a new Revision. An existing Revision is generally immutable and may retain decisions made when it was created. Consult the setting's specific documentation and create a controlled new Revision where necessary.
 
 For example, [deployment configuration](https://knative.dev/docs/serving/configuration/deployment/) includes the progress deadline and queue-proxy image. [Feature flags](https://knative.dev/docs/serving/configuration/feature-flags/) govern whether certain fields are accepted. Verify the generated resource or behavior relevant to the value you changed, not merely the ConfigMap text.
 

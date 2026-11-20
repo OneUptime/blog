@@ -1,4 +1,4 @@
-# How to Reboot Safely from SSM Run Command with Linux Exit Code 194 and Windows Exit Code 3010
+# Safe SSM Run Command Reboots: Linux Exit 194 and Windows Exit 3010
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

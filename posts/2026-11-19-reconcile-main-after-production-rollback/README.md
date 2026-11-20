@@ -1,4 +1,4 @@
-# Production Is Rolled Back but `main` Is Still Broken: How to Reconcile Git and the Running Release
+# Reconcile Broken `main` with the Running Release After a Production Rollback
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

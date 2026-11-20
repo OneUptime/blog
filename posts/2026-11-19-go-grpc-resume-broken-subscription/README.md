@@ -16,8 +16,8 @@ Use an opaque server-issued resume token or a documented ordered sequence. Save 
 
 For a sequence-based protocol, an example contract is:
 
-- `after = N` requests events strictly after sequence N;
-- events are ordered and have stable unique identifiers;
+- `after = N` requests new events strictly after sequence N, with the replay exception below;
+- distinct events have strictly increasing sequence numbers and stable unique identifiers;
 - replay may repeat the last processed event;
 - an expired cursor produces a specific error requiring a new snapshot.
 

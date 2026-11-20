@@ -1,4 +1,4 @@
-# How to Tune the HPA Controller Sync Period Without Overloading the Metrics Pipeline
+# Tune the HPA Controller Sync Period Without Overloading the Metrics Pipeline
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

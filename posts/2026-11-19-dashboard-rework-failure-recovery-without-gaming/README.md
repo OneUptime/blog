@@ -1,4 +1,4 @@
-# How to Dashboard Deployment Rework Rate with Change Failure Rate and Recovery Time Without Gaming the Numbers
+# Dashboard Rework Rate, Change Failure Rate, and Recovery Time Without Gaming
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

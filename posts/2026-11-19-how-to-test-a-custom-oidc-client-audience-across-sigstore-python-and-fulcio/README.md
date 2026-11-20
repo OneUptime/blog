@@ -98,7 +98,7 @@ Disabling ambient providers makes this test exercise the specified interactive i
 
 ## Test Fulcio and verification separately
 
-Obtain a real short-lived token from your trusted issuer and sign a harmless artifact. Verify the resulting bundle with the private trust configuration and exact identity policy. Then test a genuine token minted for a different audience and confirm Fulcio refuses it.
+Obtain a real short-lived token from your trusted issuer and sign a harmless artifact. Verify the resulting bundle with the private trust configuration and exact identity policy. Then test a genuine token minted for a different audience that does not include Fulcio's configured client ID. For this negative test, set the Python client ID to match that token's audience while leaving Fulcio's client ID unchanged, so the token passes local parsing and reaches Fulcio. Confirm that Fulcio rejects it for an audience mismatch.
 
 Record where rejection occurred: client parsing, discovery, server audience validation, identity mapping, or artifact verification. Changing the client ID does not repair missing CI claims or a mismatched proof-of-possession challenge.
 

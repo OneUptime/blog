@@ -1,4 +1,4 @@
-# How to Limit SSH Connection Floods with `MaxStartups` and `PerSourcePenalties` in OpenSSH 9.8+
+# OpenSSH 9.8+ Flood Limits: `MaxStartups` and `PerSourcePenalties`
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

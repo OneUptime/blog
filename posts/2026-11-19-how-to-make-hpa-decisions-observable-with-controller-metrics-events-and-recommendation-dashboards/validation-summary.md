@@ -1,4 +1,4 @@
-# Validation Summary: How to Make HPA Decisions Observable with Controller Metrics, Events, and Recommendation Dashboards
+# Validation Summary: Observe HPA Decisions with Controller Metrics, Events, and Dashboards
 
 ## Status
 validated

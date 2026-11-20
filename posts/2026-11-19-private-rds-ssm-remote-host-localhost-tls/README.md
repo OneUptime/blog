@@ -1,4 +1,4 @@
-# How to Reach Private RDS Through SSM Remote-Host Port Forwarding—and Why Your Client Must Use `localhost`
+# Private RDS via SSM Remote-Host Port Forwarding: Localhost and TLS
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -1,4 +1,4 @@
-# How to Chain a Local Port Forward Through Multiple SSH Jump Hosts with `ProxyJump`
+# Chain Local Port Forwards Through SSH Jump Hosts with `ProxyJump`
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
@@ -74,7 +74,7 @@ Host *
 
 Provision independently verified host-key or host-CA trust for all three SSH endpoints before connecting. `StrictHostKeyChecking yes` rejects unknown hosts. `IdentitiesOnly yes` limits identity selection to configured identities. [Client identity and trust settings](https://man.openbsd.org/ssh_config.5).
 
-All SSH client processes run locally; use local keys or the local agent for each authentication. Agent forwarding and copying private keys to the gateways are unnecessary. OpenSSH implements the chain with local `ssh -W` proxy processes, passing the remaining jump list and the explicit `-F` configuration path onward. [ProxyJump construction](https://github.com/openssh/openssh-portable/blob/V_10_3_P1/ssh.c#L1231).
+All SSH client processes run locally; use local keys or the local agent for each authentication. Agent forwarding and copying private keys to the gateways are unnecessary. OpenSSH implements the chain with local `ssh -W` proxy processes, passing the remaining jump list and the explicit `-F` configuration path onward. [ProxyJump construction](https://github.com/openssh/openssh-portable/blob/V_10_3_P1/ssh.c#L1322).
 
 Using `-F` selects this dedicated file and skips the usual client configuration files. Include any required organizational settings deliberately. `ControlPath none` prevents connection sharing, and the foreground setting keeps this invocation visible. [Alternate configuration files](https://man.openbsd.org/ssh.1#F), [connection sharing](https://man.openbsd.org/ssh_config.5#ControlPath).
 
@@ -88,7 +88,7 @@ Authentication and forwarding permission are separate checks. Each gateway needs
 | `10.20.0.5`, account `jump` | `10.30.0.8:22` |
 | `10.30.0.8`, account `tunnel` | `api.internal.example:443` |
 
-An administrator can scope `AllowTcpForwarding local` and the corresponding `PermitOpen` value to the intended account on each server. `yes` or `all` also permits the required forwarding direction. Here `local` describes forwarding from the SSH client's perspective, including the gateways' `-W` connections. `DisableForwarding yes` overrides forwarding permission. [Server forwarding controls](https://man.openbsd.org/sshd_config.5), [direct-tcpip authorization](https://github.com/openssh/openssh-portable/blob/V_10_3_P1/serverloop.c#L391).
+An administrator can scope `AllowTcpForwarding local` and the corresponding `PermitOpen` value to the intended account on each server. `yes` or `all` also permits the required forwarding direction. Here `local` describes forwarding from the SSH client's perspective, including the gateways' `-W` connections. `DisableForwarding yes` overrides forwarding permission. [Server forwarding controls](https://man.openbsd.org/sshd_config.5), [direct-tcpip authorization](https://github.com/openssh/openssh-portable/blob/V_10_3_P1/serverloop.c#L446).
 
 For example, the final relay's destination restriction is `PermitOpen api.internal.example:443`. Do not substitute its resolved IP in that rule while the client still requests the hostname: `PermitOpen` matches the requested destination without resolving names. The table uses each endpoint's actual `HostName` and port, not the local aliases `inner-hop` or `api-tunnel`. [PermitOpen matching](https://man.openbsd.org/sshd_config.5#PermitOpen).
 

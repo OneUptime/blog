@@ -1,4 +1,4 @@
-# Patch Manager Stuck on “In Progress” or “Pending Reboot”: Trace the Agent, OS Updater, and Patch Logs
+# Fix Patch Manager Stuck In Progress or Pending Reboot
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

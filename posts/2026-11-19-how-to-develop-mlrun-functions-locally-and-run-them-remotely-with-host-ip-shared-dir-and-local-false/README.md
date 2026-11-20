@@ -1,4 +1,4 @@
-# How to Develop MLRun Functions Locally and Run Them Remotely with `HOST_IP`, `SHARED_DIR`, and `local=False`
+# Run Local MLRun Functions Remotely: HOST_IP, SHARED_DIR, and local=False
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
@@ -35,7 +35,7 @@ For an existing remote MLRun cluster, obtain its client settings from the platfo
 export MLRUN_DBPATH=https://mlrun-api.example.com
 ```
 
-Configure authentication through the deployment's supported secret or environment mechanism. In an already running notebook, changing the shell environment elsewhere will not change the kernel's environment. Restart the kernel or apply the documented in-process configuration and reload it.
+Configure authentication through the deployment's supported secret or environment mechanism. In an already running notebook, changing the shell environment elsewhere will not change the kernel's environment. Restart Jupyter from the shell with the updated environment and start a new kernel, or apply the documented in-process configuration and reload it.
 
 Check the effective endpoint without printing credentials:
 

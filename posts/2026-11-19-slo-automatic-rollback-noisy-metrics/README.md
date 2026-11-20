@@ -1,4 +1,4 @@
-# How to Trigger Automatic Rollback from SLOs Without Letting One Noisy Metric Revert a Healthy Release
+# Trigger SLO-Based Automatic Rollbacks Without Reacting to Noisy Metrics
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

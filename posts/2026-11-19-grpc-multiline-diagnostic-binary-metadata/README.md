@@ -1,4 +1,4 @@
-# How to Carry Multiline Diagnostic Text in gRPC Metadata Without Invalid Header Values
+# Carry Multiline Diagnostic Text in gRPC Metadata Without Invalid Header Values
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -1,4 +1,4 @@
-# An MLRun Job Is Stuck in `Pending`: How to Check Kubernetes Events, Quotas, Volumes, and Node Placement
+# MLRun Jobs Stuck in `Pending`: Check Events, Quotas, Volumes, and Nodes
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
@@ -74,10 +74,12 @@ Look for impossible combinations: a required zone with no eligible GPU node, a r
 List the pod's referenced persistent volume claims, then inspect those claims and their events:
 
 ```bash
+kubectl -n "$JOB_NAMESPACE" get pod "$JOB_POD" \
+  -o jsonpath='{range .spec.volumes[*]}{.persistentVolumeClaim.claimName}{"\n"}{end}'
 kubectl -n "$JOB_NAMESPACE" get pvc
 kubectl -n "$JOB_NAMESPACE" describe pvc your-claim-name
 ```
 
-A pending claim, incompatible storage topology, or attachment failure needs a storage-specific repair. A bound claim also does not prove that mounting succeeded on the chosen node. [Kubernetes persistent-volume documentation](https://kubernetes.io/docs/concepts/storage/persistent-volumes/)
+A pending claim needs investigation, but with `WaitForFirstConsumer` it can be waiting normally for pod scheduling rather than indicating a storage fault. Check the claim events and StorageClass binding mode before changing storage. [Kubernetes volume binding modes](https://kubernetes.io/docs/concepts/storage/storage-classes/#volume-binding-mode) Incompatible storage topology or an attachment failure needs a storage-specific repair. A bound claim also does not prove that mounting succeeded on the chosen node. [Kubernetes persistent-volume documentation](https://kubernetes.io/docs/concepts/storage/persistent-volumes/)
 
 After one targeted correction, submit a small representative run and observe the transition into execution. Increasing MLRun's waiting timeout only changes how long it waits; it does not supply missing resources or fix a volume. Record the original event, configuration change, and successful pod transition so the same inherited setting is easier to recognize next time.

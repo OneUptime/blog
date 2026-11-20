@@ -12,7 +12,7 @@ The [gRPC AsyncIO API](https://grpc.github.io/grpc/python/grpc_asyncio.html) res
 
 ## Find the object that escaped its loop
 
-Common causes include a global async client constructed during import, a fixture whose scope exceeds its test loop, or a notebook cell that creates a client through `asyncio.run()` and then uses it from the notebook loop.
+Common causes include a global async client constructed during import, a fixture whose scope exceeds its test loop, or a notebook cell that uses a client created under a separate loop. In a notebook with an already-running loop, calling `asyncio.run()` directly fails before it can create the client.
 
 Record the running loop where you construct the client and where you invoke it:
 
@@ -25,7 +25,7 @@ def location(label):
     print(label, "thread", threading.get_ident(), "loop", id(loop))
 ```
 
-Different loop IDs are a useful lead. Do not use this diagnostic function outside a running coroutine and interpret its `RuntimeError` as a gRPC failure.
+Different loop IDs are a useful lead. Do not use this diagnostic function without a running event loop in the current thread and interpret its `RuntimeError` as a gRPC failure.
 
 ## Give the channel one async lifetime
 
@@ -49,7 +49,7 @@ if __name__ == "__main__":
 
 The example assumes the diagnostic service exists; replace the method and serialization with your generated service contract. Plaintext is confined to the loopback demonstration. Closing the async context also closes the channel before `asyncio.run()` tears down the loop.
 
-For a web application, use the framework's async startup/lifespan hook to create a channel per worker, then close it in that same lifespan's shutdown hook. Reuse it for requests handled by that worker's loop. Creating a channel for every request can hide the lifecycle bug while adding connection overhead.
+For a web application, use the framework's async startup/lifespan hook to create a channel per worker event loop, then close it in that same lifespan's shutdown hook. Reuse it for requests handled by that worker's loop. Creating a channel for every request can hide the lifecycle bug while adding connection overhead.
 
 ## Match the fix to the caller
 
@@ -65,7 +65,7 @@ For a web application, use the framework's async startup/lifespan hook to create
 
 ## Avoid fixes that hide the ownership error
 
-Calling `asyncio.set_event_loop()` does not move existing futures into the selected loop. Removing `await` leaves the operation unfinished. Nesting `asyncio.run()` inside an active event loop introduces another failure instead of repairing the original one.
+Calling `asyncio.set_event_loop()` does not move existing futures into the selected loop. Removing `await` does not fix loop ownership: gRPC schedules the RPC when the call object is created, but without awaiting it you do not wait for its result or observe its RPC error there. Nesting `asyncio.run()` inside an active event loop introduces another failure instead of repairing the original one.
 
 For a generated cloud client, inspect whether the library exposes an async transport backed by gRPC. Apply the same lifecycle rule to the high-level client, and use its documented async close method. Do not reach into private channel attributes as the first repair.
 

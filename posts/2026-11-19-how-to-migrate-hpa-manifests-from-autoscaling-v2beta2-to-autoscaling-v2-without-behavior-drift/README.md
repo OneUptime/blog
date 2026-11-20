@@ -1,4 +1,4 @@
-# How to Migrate HPA Manifests from `autoscaling/v2beta2` to `autoscaling/v2` Without Behavior Drift
+# Migrate HPA `autoscaling/v2beta2` to `autoscaling/v2` Without Behavior Drift
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

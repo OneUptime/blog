@@ -1,4 +1,4 @@
-# How to Configure Iguazio User Roles for Read-Only Access Without Accidentally Granting Service Administration
+# Configure Read-Only Iguazio Roles Without Granting Service Administration
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

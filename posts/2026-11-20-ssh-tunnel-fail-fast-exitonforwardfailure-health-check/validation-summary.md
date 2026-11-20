@@ -1,4 +1,4 @@
-# Validation Summary: How to Make an SSH Tunnel Fail Fast with `ExitOnForwardFailure` and a Health Check
+# Validation Summary: Fail Fast with SSH `ExitOnForwardFailure` and a Tunnel Health Check
 
 ## Status
 validated

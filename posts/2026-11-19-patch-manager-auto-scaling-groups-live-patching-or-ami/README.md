@@ -1,4 +1,4 @@
-# Patch Manager for Auto Scaling Groups: Drain and Patch Live Instances or Bake a New AMI?
+# Patch Manager for Auto Scaling: Patch Live Instances or Bake an AMI?
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
@@ -59,7 +59,7 @@ Run Command concurrency limits simultaneous commands, not unavailable applicatio
 
 In-place patching leaves the source AMI unchanged. Reproduce the fix in a clean build, test the resulting AMI, and publish a new launch-template version. Do not capture a serving instance's live disk, credentials, or mutable application state as the release image. Image Builder supports separate build and test stages, including launching test instances from the image. [Image workflows](https://docs.aws.amazon.com/imagebuilder/latest/userguide/manage-image-workflows.html)
 
-Update the ASG's actual launch-template reference. Creating a version does not select it; changing the template's default does not move an ASG pinned to a numbered version. Prefer explicit version numbers and AMI IDs, and reconcile infrastructure-as-code with the promotion. Existing instances still require their own remediation or replacement. [Template versions](https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/manage-launch-template-versions.html), [ASG updates](https://docs.aws.amazon.com/autoscaling/ec2/userguide/update-auto-scaling-group.html)
+For the in-place patching path, update the ASG's actual launch-template reference. For the replacement path below, pass the candidate version as `DesiredConfiguration` when starting the refresh instead of updating the ASG first, so rollback retains the previous working configuration. Creating a version does not select it; changing the template's default does not move an ASG pinned to a numbered version. Prefer explicit version numbers and AMI IDs, and reconcile infrastructure-as-code with the promotion. Existing instances still require their own remediation or replacement. [Template versions](https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/manage-launch-template-versions.html), [ASG updates](https://docs.aws.amazon.com/autoscaling/ec2/userguide/update-auto-scaling-group.html)
 
 ## Roll out the tested AMI deliberately
 

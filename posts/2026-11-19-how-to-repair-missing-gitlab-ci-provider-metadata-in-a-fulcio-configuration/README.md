@@ -14,7 +14,7 @@ Adding only `issuer-url` and `client-id` can leave discovery working while certi
 
 ## Confirm which configuration was loaded
 
-Record the Fulcio image digest, startup arguments, and mounted config path. A corrected file in a repository is irrelevant if the pod still mounts an older ConfigMap or starts with a different `--config-path`.
+Record the Fulcio image reference, startup arguments, and mounted config path. The deployment command below shows the configured image reference; also record the running container’s resolved image ID from the pod’s `.status.containerStatuses[].imageID`. A corrected file in a repository is irrelevant if the pod still mounts an older ConfigMap or starts with a different `--config-path`.
 
 ```bash
 kubectl -n sigstore get deploy fulcio -o json |
@@ -91,4 +91,4 @@ Reload the deployment through your normal rollout and request a certificate from
 
 Then verify the signed artifact with the private trusted root and exact issuer/SAN policy. The Fulcio code-signing chain, CT key, and Rekor trust are separate from GitLab's HTTPS CA. Keep all those checks enabled.
 
-Test a wrong audience and a different project as rejection cases. Once successful issuance and policy rejection both work, retain the mapping version with your deployment. Future upstream template changes should receive the same review as an authentication-policy change.
+Test that Fulcio rejects a token with the wrong audience, and that your verification policy rejects an artifact signed by a different project with a different SAN. The issuer configuration above does not itself restrict certificate issuance to one project. Once successful issuance and policy rejection both work, retain the mapping version with your deployment. Future upstream template changes should receive the same review as an authentication-policy change.

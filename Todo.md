@@ -1,5 +1,126 @@
 # Blog Post Ideas
 
+## Air-Gapped Observability and Monitoring
+
+Researched on 19 November 2026 against the existing blog catalog and backlog. Titles target specific how-to, troubleshooting, and comparison searches; search volume has not been measured. Each article should explain the offline constraint that makes it different from the existing general monitoring tutorials.
+
+### Architecture and Tool Selection
+
+Research: [OneUptime air-gapped deployment](https://oneuptime.com/enterprise/air-gapped/) · [Air-gapped observability](https://oneuptime.com/enterprise/air-gapped/observability).
+
+1. Air-Gapped Observability: How to Monitor Logs, Metrics, and Traces Without Internet Access
+
+    Scope: An end-to-end architecture with local collection, storage, querying, and alert evaluation.
+
+2. How to Choose Monitoring Tools for an Air-Gapped Environment
+
+    Scope: Compare offline installation, licensing, local storage, notification delivery, and ongoing maintenance requirements.
+
+3. Self-Hosted vs. Air-Gapped Monitoring: What Is the Difference?
+
+    Scope: Explain why self-hosting alone does not remove dependencies on public registries, identity providers, certificate services, and notification APIs.
+
+4. How to Test That Your Monitoring Stack Works Without Internet Access
+
+    Scope: Test cold starts, sign-in, telemetry ingestion, synthetic checks, and alert delivery with internet egress blocked; detect hidden runtime downloads.
+
+### Offline OneUptime Deployment and Recovery
+
+Research: [Air-gapped installation](https://oneuptime.com/docs/en/installation/air-gapped) · [Self-hosted deployment](https://oneuptime.com/enterprise/self-hosted/) · [Air-gapped observability and TLS constraints](https://oneuptime.com/enterprise/air-gapped/observability).
+
+5. How to Install OneUptime in Air-Gapped Kubernetes with an Offline Installation Bundle
+
+    Scope: Prepare the release bundle on a connected machine, verify the transfer, import images into a private registry, and install the bundled chart.
+
+6. How to Upgrade OneUptime in an Air-Gapped Kubernetes Cluster
+
+    Scope: Stage the target release and rollback artifacts before the maintenance window, account for changed image dependencies, and rehearse without registry access to the internet.
+
+7. How to Configure OneUptime HTTPS with an Internal Certificate Authority
+
+    Scope: Distribute CA trust and renew certificates without internet access; explain the documented OTLP/HTTP route when OneUptime's built-in gRPC ingress cannot obtain a public certificate.
+
+8. How to Restore Air-Gapped Monitoring from an Offline Bundle When the Private Registry Is Down
+
+    Scope: Bootstrap a replacement registry and monitoring deployment from retained images, charts, configuration, and database backups; test recovery on nodes without cached images.
+
+9. How to Configure Air-Gapped Monitoring with an Internal SAML or OIDC Identity Provider
+
+    Scope: Keep login, metadata discovery, signing keys, and certificate trust inside the network; test access during an identity-provider outage.
+
+### Air-Gapped Kubernetes Monitoring
+
+Research: [OpenTelemetry Collector Helm chart](https://opentelemetry.io/docs/platforms/kubernetes/helm/collector/) · [Auto-instrumentation image overrides](https://opentelemetry.io/docs/platforms/kubernetes/operator/automatic/) · [Operator webhook certificates](https://github.com/open-telemetry/opentelemetry-helm-charts/blob/main/charts/opentelemetry-operator/README.md) · [OneUptime Kubernetes agent](https://oneuptime.com/docs/en/monitor/kubernetes-agent) · [kube-prometheus-stack configuration](https://github.com/prometheus-community/helm-charts/blob/main/charts/kube-prometheus-stack/values.yaml).
+
+10. How to Install OpenTelemetry Collector in an Air-Gapped Kubernetes Cluster
+
+    Scope: Package the chart and the required Collector distribution, configure a local telemetry destination, and verify collection without public image pulls.
+
+11. How to Mirror OpenTelemetry Auto-Instrumentation Images for Offline Kubernetes
+
+    Scope: Cover the language-specific images injected into application pods, which are separate from the Operator and Collector images.
+
+12. How to Configure OpenTelemetry Operator Webhook Certificates with an Internal CA
+
+    Scope: Configure the supported user-supplied serving certificates and admission webhook CA bundle, including renewal and trust rotation inside an isolated cluster.
+
+13. How to Monitor Air-Gapped OpenShift Clusters with Restricted Security Policies
+
+    Scope: Combine offline image deployment with the OneUptime agent's restricted OpenShift configuration; identify which logs and metrics remain available without privileged collectors.
+
+14. How to Install kube-prometheus-stack in an Air-Gapped Kubernetes Cluster
+
+    Scope: Mirror chart dependencies, admission jobs, exporters, and Operator-managed images; keep Prometheus, Grafana, and Alertmanager functional locally.
+
+### Dashboards and Application Monitoring Without Internet Access
+
+Research: [Offline Grafana plugin installation](https://grafana.com/docs/grafana/latest/administration/plugin-management/plugin-install/) · [Grafana configuration](https://grafana.com/docs/grafana/latest/setup-grafana/configure-grafana/) · [OneUptime air-gapped monitoring](https://oneuptime.com/enterprise/air-gapped/) · [Internal application telemetry and session replay](https://oneuptime.com/enterprise/air-gapped/observability).
+
+15. How to Install Grafana Plugins in an Air-Gapped Environment
+
+    Scope: Transfer versioned plugin archives, install them locally, and validate signatures and compatibility without relying on the online plugin catalog.
+
+16. How to Stop Grafana from Making Internet Requests in an Air-Gapped Network
+
+    Scope: Audit update checks, usage reporting, plugin downloads, signature-key retrieval, and dashboard resources; verify behavior during startup and normal use.
+
+17. How to Run Synthetic Browser Monitoring in an Air-Gapped Network
+
+    Scope: Stage browser runtimes and test assets, use internal authentication, and identify application scripts or fonts that still load from public CDNs.
+
+18. How to Set Up Real User Monitoring for Internal Applications Without Cloud Services
+
+    Scope: Bundle browser instrumentation locally and route telemetry to a self-hosted endpoint, including internal TLS trust and browser-origin restrictions.
+
+19. How to Fix Missing Images and Fonts in Self-Hosted Session Replay
+
+    Scope: Reproduce playback in an air-gapped viewer's browser and make the original asset URLs available internally; do not assume the recording embeds every external resource.
+
+### Offline Alerting and Incident Response
+
+Research: [OneUptime air-gapped alerting](https://oneuptime.com/enterprise/air-gapped/) · [Mattermost integration](https://oneuptime.com/docs/en/workspace-connections/mattermost) · [Custom notification channels](https://oneuptime.com/docs/en/self-hosted/custom-notification-channels) · [Status page domains and certificates](https://oneuptime.com/docs/en/status-pages/branding-and-domains) · [Air-gapped AI](https://oneuptime.com/enterprise/air-gapped/ai).
+
+20. Air-Gapped Alerting: How to Deliver Incident Notifications Without Cloud Services
+
+    Scope: Design and test local delivery and acknowledgment paths using internal email, chat, or paging infrastructure; identify channels that still need external connectivity.
+
+21. How to Manage Air-Gapped Incidents with OneUptime and Mattermost
+
+    Scope: Connect both self-hosted services, verify internal callback routes, and test incident notifications and acknowledgments without cloud chat services.
+
+22. How to Connect an Internal Pager System to Self-Hosted OneUptime
+
+    Scope: Use signed custom-channel requests, retries, and acknowledgment callbacks; document the required Enterprise entitlement and the pager system's own delivery dependencies.
+
+23. How to Keep an Internal Status Page Available During a Kubernetes Outage
+
+    Scope: Place the OneUptime deployment and its DNS, identity, and storage dependencies outside the monitored cluster's failure domain; rehearse internal access during an outage.
+
+24. How to Connect OneUptime to Ollama for Air-Gapped Incident Investigations
+
+    Scope: Stage model artifacts before disconnecting, configure the internal inference endpoint, and validate tool calling and read-only incident investigation without hosted AI APIs.
+
+
 ## Aerospike
 
 1. Aerospike `INVALID_NODE_ERROR` in Docker or Testcontainers: Fix Advertised Addresses and Mapped Ports

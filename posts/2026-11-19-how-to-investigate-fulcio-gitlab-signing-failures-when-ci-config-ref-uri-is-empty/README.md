@@ -1,4 +1,4 @@
-# How to Investigate Fulcio GitLab Signing Failures When ci_config_ref_uri Is Empty
+# Investigate Fulcio GitLab Signing Failures with Empty ci_config_ref_uri
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

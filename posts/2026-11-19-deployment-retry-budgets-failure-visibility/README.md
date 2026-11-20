@@ -1,4 +1,4 @@
-# How to Set Retry Budgets So Automatic Re-Runs Do Not Hide Chronic Deployment Failures
+# Set Deployment Retry Budgets Without Hiding Chronic Failures Behind Re-Runs
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

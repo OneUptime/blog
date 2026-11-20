@@ -52,11 +52,11 @@ Query the external metrics API with the same namespace, metric, and selector:
 kubectl get --raw \
   '/apis/external.metrics.k8s.io/v1beta1/namespaces/production/queue_pending_jobs?labelSelector=queue%3Dinvoices' \
   > external-metric.json
-jq '.items[] | {metricName, metricLabels, value, timestamp, windowSeconds}' \
+jq '.items[] | {metricName, metricLabels, value, timestamp, window}' \
   external-metric.json
 ```
 
-Read `timestamp` and `windowSeconds` together with the adapter's documented timestamp semantics. The timestamp may describe an adapter evaluation rather than the original upstream sample. A freshly stamped cached value can still be stale for scaling purposes.
+Read `timestamp` and `window` (in seconds) together with the adapter's documented timestamp semantics. The timestamp may describe an adapter evaluation rather than the original upstream sample. A freshly stamped cached value can still be stale for scaling purposes.
 
 The [external metrics API definition](https://github.com/kubernetes/metrics/blob/master/pkg/apis/external_metrics/v1beta1/types.go) describes these fields. Kubernetes' [external metrics client](https://github.com/kubernetes/kubernetes/blob/v1.35.0/pkg/controller/podautoscaler/metrics/client.go) reads returned values; do not assume a universal HPA freshness deadline protects every adapter response.
 

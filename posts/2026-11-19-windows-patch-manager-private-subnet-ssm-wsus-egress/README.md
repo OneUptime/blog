@@ -1,4 +1,4 @@
-# Windows Patch Manager in a Private Subnet: Combine SSM Endpoints with WSUS or Update Egress
+# Windows Patch Manager in Private Subnets: SSM Endpoints, WSUS, and Egress
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

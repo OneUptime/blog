@@ -1,4 +1,4 @@
-# Validation Summary: How to Handle Missing Metrics from New, Unready, and Terminating Pods in HPA Decisions
+# Validation Summary: Handle Missing Metrics from New, Unready, and Terminating Pods in HPA Decisions
 
 ## Status
 

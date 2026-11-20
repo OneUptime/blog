@@ -1,4 +1,4 @@
-# How to Check Runner Environment Claims in Fulcio Certificates Before Accepting a Build
+# Check Runner Environment Claims in Fulcio Certificates Before Accepting Builds
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -1,4 +1,4 @@
-# `mlrun` Is Missing in an Iguazio Jupyter Service: How to Align the Notebook Client with the Cluster Version
+# `mlrun` Missing in Iguazio Jupyter: Align Client and Cluster Versions
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
@@ -12,7 +12,7 @@ Before installing anything, distinguish a missing package from an import that re
 
 ## Identify the active kernel
 
-Run this cell in the failing notebook:
+Run this cell in the failing notebook (requires Python 3.8 or newer for `importlib.metadata`):
 
 ```python
 import sys
@@ -69,6 +69,6 @@ Keep MLRun in the same requirements resolution as the other packages you add. An
 
 After restarting the kernel, repeat the metadata cell, then import MLRun and inspect `mlrun.__version__`. Next perform a permitted read-only API operation, such as loading an existing project. A successful import establishes Python installation; a successful API call establishes configuration and authentication.
 
-Finally, run a small existing test function through the intended runtime and inspect its image. The notebook environment and remote function image are separate dependency sets. Installing a package into Jupyter does not update an already-built job or serving image.
+Finally, run a small existing test function through the intended runtime and inspect its image. The notebook environment and remote function image are separate dependency sets. Installing a package into Jupyter does not update an already-built job or serving image. If you changed the MLRun client version, update and rebuild the runtime images to use that same MLRun version before testing remote execution, as required by the client setup guide.
 
 Record the interpreter path, client version, server version, and runtime image together. Repeat the check after a Jupyter service restart to confirm the installation persists under your image and environment strategy. This turns a one-cell repair into a reproducible development environment instead of a package that disappears at the next restart.

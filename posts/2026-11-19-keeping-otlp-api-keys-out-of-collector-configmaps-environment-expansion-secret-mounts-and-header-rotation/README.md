@@ -1,4 +1,4 @@
-# Keeping OTLP API Keys Out of Collector ConfigMaps: Environment Expansion, Secret Mounts, and Header Rotation
+# Keep OTLP API Keys Out of Collector ConfigMaps with Secrets and Header Rotation
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

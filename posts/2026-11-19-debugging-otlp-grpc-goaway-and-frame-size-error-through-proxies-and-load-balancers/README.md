@@ -1,4 +1,4 @@
-# Debugging OTLP/gRPC `GOAWAY` and `FRAME_SIZE_ERROR` Through Proxies and Load Balancers
+# Debug OTLP/gRPC `GOAWAY` and `FRAME_SIZE_ERROR` Via Proxies and Load Balancers
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

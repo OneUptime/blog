@@ -1,4 +1,4 @@
-# How to Read an Entire Parameter Store Hierarchy Without Missing Paginated or Encrypted Values
+# Read a Parameter Store Hierarchy with Pagination and Decryption
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

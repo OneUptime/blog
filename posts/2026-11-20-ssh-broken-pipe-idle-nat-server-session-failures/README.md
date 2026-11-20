@@ -1,4 +1,4 @@
-# `client_loop: send disconnect: Broken pipe`: Separate Idle NAT Timeouts from Server-Side Session Failures
+# SSH `Broken pipe`: Idle NAT Timeouts vs. Server Session Failures
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

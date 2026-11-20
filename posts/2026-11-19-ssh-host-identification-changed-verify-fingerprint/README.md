@@ -1,4 +1,4 @@
-# “REMOTE HOST IDENTIFICATION HAS CHANGED”: How to Verify the New Fingerprint Before Editing `known_hosts`
+# SSH Host Identification Has Changed: Verify Before Editing `known_hosts`
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
@@ -30,7 +30,7 @@ The command-line nickname is not necessarily the lookup name:
 | Same hostname, port 2222, no `HostKeyAlias` | `[app.example.com]:2222` |
 | `HostKeyAlias app-prod-trust`, including on port 2222 | `app-prod-trust` |
 
-OpenSSH lowercases `HostKeyAlias` before lookup; it does not automatically wrap the effective alias as `[alias]:port`. Without an alias, it constructs the hostname/port token; for a new nondefault-port destination, it can also try the hostname without the port. Canonicalization can change the hostname. If `CheckHostIP` produces an address-related warning, investigate that address entry separately. Follow the actual warning and debug output rather than removing every related name. [OpenSSH alias normalization](https://github.com/openssh/openssh-portable/blob/V_10_3_P1/ssh.c#L1290-L1292), [OpenSSH lookup implementation](https://github.com/openssh/openssh-portable/blob/V_10_3_P1/sshconnect.c), [hostname configuration](https://man.openbsd.org/ssh_config#CanonicalizeHostname)
+OpenSSH lowercases `HostKeyAlias` before lookup; it does not automatically wrap the effective alias as `[alias]:port`. Without an alias, it constructs the hostname/port token; for a new nondefault-port destination, it can also try the hostname without the port. Canonicalization can change the hostname. If `CheckHostIP` produces an address-related warning, investigate that address entry separately. Follow the actual warning and debug output rather than removing every related name. [OpenSSH alias normalization](https://github.com/openssh/openssh-portable/blob/V_10_3_P1/ssh.c#L1352-L1354), [OpenSSH lookup implementation](https://github.com/openssh/openssh-portable/blob/V_10_3_P1/sshconnect.c), [hostname configuration](https://man.openbsd.org/ssh_config#CanonicalizeHostname)
 
 For the second table row, assuming the warning identifies your ordinary user file:
 

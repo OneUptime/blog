@@ -1,4 +1,4 @@
-# How to Observe Nuclio Model-Serving Throughput, Latency, Errors, and Worker Saturation in Iguazio
+# Nuclio in Iguazio: Monitor Serving Latency, Errors, Throughput, and Saturation
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
@@ -98,7 +98,7 @@ print({"started_at_utc": run_started_at,
        "successful_p95_seconds": p95})
 ```
 
-This probe reports successful-response p95 separately from HTTP failures and transport failures, including truncated or malformed responses. It makes no retries and includes connection setup in response timing. It sends 50 requests with at most two active at once; the [10-second socket timeout](https://docs.python.org/3/library/urllib.request.html#urllib.request.urlopen) applies to blocking operations, not total run time. This sample cannot establish the service's maximum throughput. Also validate prediction content; HTTP 200 alone does not prove a correct inference.
+This probe reports successful-response p95 separately from HTTP failures and transport failures, including incomplete reads and malformed HTTP status lines detected by Python's HTTP client. It makes no retries and includes connection setup in response timing. It follows redirects by default, so the recorded status can be from the final response. It runs 50 invocations with at most two active at once; the [10-second socket timeout](https://docs.python.org/3/library/urllib.request.html#urllib.request.urlopen) applies to blocking operations, not total run time. This sample cannot establish the service's maximum throughput. Also validate prediction content; HTTP 200 alone does not prove a correct inference.
 
 Compare its timestamps with processor and ingress logs. A 503 generated before a request reaches a worker may not appear in a handler-failure counter. Use a defined client-success condition for availability, then use internal counters to locate failures.
 

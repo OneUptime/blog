@@ -1,4 +1,4 @@
-# How to Alert When an HPA Is Saturated at `maxReplicas` Before Latency Breaches Its SLO
+# Alert on HPA Saturation at `maxReplicas` Before Latency Breaches Its SLO
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

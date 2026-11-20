@@ -1,4 +1,4 @@
-# How to Rotate a `SecureString` with Parameter Versions and Labels Without Breaking Consumers
+# Rotate SecureString Parameters with Versions and Labels Safely
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

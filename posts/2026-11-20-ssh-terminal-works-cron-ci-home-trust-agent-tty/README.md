@@ -1,4 +1,4 @@
-# SSH Works in Your Terminal but Fails in Cron or CI: Recreate `HOME`, Host Trust, Agent, and TTY State
+# SSH Works in Terminal but Fails in Cron or CI: HOME, Trust, Agent, and TTY
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

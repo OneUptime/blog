@@ -1,4 +1,4 @@
-# SSH Pauses Before the Password Prompt: Isolate Reverse DNS, GSSAPI, PAM, and SSSD Delays
+# SSH Password Prompt Delays: Debug Reverse DNS, GSSAPI, PAM, and SSSD
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

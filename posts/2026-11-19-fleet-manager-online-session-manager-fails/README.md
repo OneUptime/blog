@@ -1,4 +1,4 @@
-# Node Appears in Fleet Manager but Session Manager Fails: Check `ssmmessages`, Session Preferences, and Agent Logs
+# Fleet Manager Online but Session Manager Fails: `ssmmessages` Checks
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

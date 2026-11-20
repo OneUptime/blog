@@ -1,4 +1,4 @@
-# Validation Summary: How to Rotate an OpenSSH Certificate Authority Without Locking Out Existing Users
+# Validation Summary: Rotate an OpenSSH Certificate Authority Without Locking Out Users
 
 ## Status
 validated

@@ -73,13 +73,13 @@ An error can race with an already accepted message. The coordinator's terminal s
 
 This adapter solves concurrent access, but it does not bound gRPC's outgoing buffering. For sustained streams, use `ServerCallStreamObserver` or `ClientCallStreamObserver` readiness with a bounded application queue.
 
-Have producers enqueue messages and notify one drain owner. The drain owner checks `isReady()` before sending, stops when readiness becomes false, and resumes on the readiness callback. It must also wake when a producer adds data while the stream is already ready; waiting only for a future readiness transition can strand queued messages.
+Have producers enqueue messages and notify one drain owner. The drain owner checks `isReady()` before sending, stops when readiness becomes false, and resumes on the readiness callback. It must also wake when a producer adds data while the stream is already ready; waiting only for a future readiness transition can strand queued messages. With a queue, successful completion must wait until all producers have finished and the queue has drained.
 
-Never spin or sleep inside `setOnReadyHandler()`. Recheck readiness when the callback runs, and serialize draining with completion and cancellation. Choose a queue-full policy that fits the protocol: pause upstream production, reject work, or deliberately drop documented lossy events.
+Register `setOnReadyHandler()` during the initial service invocation on the server, or in `ClientResponseObserver.beforeStart()` on the client. Never spin or sleep inside the registered readiness callback. Recheck readiness when the callback runs, and serialize draining with completion and cancellation. Choose a queue-full policy that fits the protocol: pause upstream production, reject work, or deliberately drop documented lossy events.
 
 ## Test more than the happy path
 
-Run two producers with distinct message IDs and verify that every accepted message arrives once. Add completion racing with a producer, producer failure, client cancellation, and a client that deliberately stops reading. Check that no output is submitted after the terminal event and that queued memory stays bounded.
+Run two producers with distinct message IDs and verify that every accepted message arrives once on a successfully completed RPC. A successful `send()` means local submission, not confirmed delivery to the peer. Add completion racing with a producer, producer failure, client cancellation, and a client that deliberately stops reading. Check that no output is submitted after the terminal event and that queued memory stays bounded.
 
 Use an in-process gRPC server and channel for integration tests instead of assuming a mock observer reproduces transport readiness. Thread serialization and slow-reader behavior are different checks.
 

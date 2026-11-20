@@ -1,4 +1,4 @@
-# “Too Many Authentication Failures” Even with `-i`: Force the Intended Key with `IdentitiesOnly`
+# SSH Too Many Authentication Failures: Select Keys with `IdentitiesOnly`
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

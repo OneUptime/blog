@@ -1,4 +1,4 @@
-# How to Diagnose Python gRPC AsyncIO Streaming Concurrency Limits with a Minimal Reproduction
+# Diagnose Python gRPC AsyncIO Streaming Concurrency with a Minimal Reproduction
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

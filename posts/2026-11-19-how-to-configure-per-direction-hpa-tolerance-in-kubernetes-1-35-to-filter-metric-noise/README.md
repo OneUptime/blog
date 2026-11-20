@@ -1,4 +1,4 @@
-# How to Configure Per-Direction HPA Tolerance in Kubernetes 1.35 to Filter Metric Noise
+# Filter Metric Noise with Per-Direction HPA Tolerance in Kubernetes 1.35
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

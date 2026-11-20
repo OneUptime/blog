@@ -1,4 +1,4 @@
-# Iguazio Spark Jobs Hit `ImagePullBackOff`: How to Publish MLRun’s Default Spark Images to the Cluster Registry
+# Fix Iguazio Spark `ImagePullBackOff` by Publishing MLRun Spark Images
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
@@ -51,8 +51,10 @@ RemoteSparkRuntime.deploy_default_image()
 For a Spark operator function, use the other documented helper instead:
 
 ```python
+import mlrun
 from mlrun.runtimes import Spark3Runtime
 
+mlrun.get_or_create_project("your-project-name")
 Spark3Runtime.deploy_default_image()
 ```
 
@@ -79,4 +81,4 @@ A `manifest unknown` response suggests checking the repository and published tag
 
 After correcting the cause, submit a small Spark job and inspect every relevant pod. For the operator runtime, verify both driver and executor images. A driver that starts successfully does not prove executors use an accessible reference.
 
-Finally, distinguish recovery stages in your incident notes: image published, image pulled, container started, and Spark application completed. Only the last stage proves the workload works. If the next error is a Python import failure or Spark version mismatch, the registry repair succeeded and exposed a separate runtime compatibility problem.
+Finally, distinguish recovery stages in your incident notes: image published, image pulled, container started, and Spark application completed. Only the last stage proves the workload works. If the previously blocked container starts and then reports a Python import failure or Spark version mismatch, investigate that runtime compatibility problem separately. This does not prove that every driver or executor can pull its image; confirm pulls in the relevant pod events.

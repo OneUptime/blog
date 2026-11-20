@@ -12,7 +12,7 @@ Give necessary initialization enough time in both places, then measure the whole
 
 ## Identify the two clocks
 
-A startup probe delays the kubelet's ordinary liveness and readiness checks until startup succeeds. If startup keeps failing beyond its configured allowance, Kubernetes restarts the container. The [Kubernetes probe documentation](https://kubernetes.io/docs/tasks/configure-pod-container/configure-liveness-readiness-startup-probes/) describes these mechanics.
+A startup probe delays the kubelet's ordinary liveness and readiness checks until startup succeeds. If startup keeps failing beyond its configured allowance, Kubernetes restarts the container. The [Kubernetes probe documentation](https://kubernetes.io/docs/tasks/configure-pod-container/configure-liveness-readiness-startup-probes/) describes these mechanics. Knative rewrites application readiness probes for the queue-proxy to execute, so do not assume that the startup probe delays those readiness checks; `/ready` must remain unsuccessful until initialization is complete.
 
 Knative separately applies a Revision progress deadline. Its [probing guide](https://knative.dev/docs/serving/services/configure-probing/#progress-deadline-and-startup-probes) says this deadline must exceed the maximum time the startup probe may need. The observed rollout can also include scheduling, image pulls, initialization, and volume setup.
 
@@ -57,7 +57,7 @@ spec:
             periodSeconds: 10
 ```
 
-The application must implement those endpoints. `/startup` should succeed when one-time initialization finishes, `/ready` when the instance can serve a request, and `/live` when restarting a stuck process would help. Avoid making liveness depend on a temporary outage in a shared backend.
+The application must implement those endpoints. `/startup` should succeed when one-time initialization finishes, `/ready` when the instance can serve a request, and `/live` while the process is healthy. `/live` should fail when the process is stuck and restarting it would help. Avoid making liveness depend on a temporary outage in a shared backend.
 
 The [deployment configuration reference](https://knative.dev/docs/serving/configuration/deployment/#configuring-progress-deadlines) documents the annotation and its duration format. Put it under the Service template's metadata so it belongs to the new Revision. A global `config-deployment` value changes the default for the installation; it is usually unnecessary for one unusual workload.
 

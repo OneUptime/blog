@@ -1,4 +1,4 @@
-# How to Mirror Knative Serving Control Plane and Queue Proxy Images for Offline Installation
+# Mirror Knative Serving Control Plane and Queue Proxy Images for Offline Installs
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

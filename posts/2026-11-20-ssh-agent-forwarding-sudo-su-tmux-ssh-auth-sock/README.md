@@ -1,4 +1,4 @@
-# SSH Agent Forwarding Breaks After `sudo`, `su`, or `tmux`: Follow the `SSH_AUTH_SOCK`
+# SSH Agent Forwarding After sudo, su, or tmux: Check SSH_AUTH_SOCK
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
@@ -16,7 +16,7 @@ OpenSSH creates the forwarded listener under the authenticated user's identity a
 
 Multiplexed SSH transports can also outlive an individual login shell, so “I closed a terminal” is not a precise lifetime test. [ControlPersist documentation](https://man.openbsd.org/ssh_config#ControlPersist)
 
-Do not start a new agent on the remote host as the first repair. That changes which agent the shell uses; a new empty agent does not recover the forwarded identities.
+Do not start a new agent on the remote host as the first repair. Adopting the new agent's environment changes which agent the shell uses; a new empty agent does not recover the forwarded identities.
 
 ## Capture the boundary where it breaks
 

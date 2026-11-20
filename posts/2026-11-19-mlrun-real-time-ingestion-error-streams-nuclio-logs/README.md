@@ -1,4 +1,4 @@
-# MLRun Real-Time Ingestion Failed but the Notebook Succeeded: How to Inspect Error Streams and Nuclio Logs
+# MLRun Ingestion Fails but Notebooks Succeed: Check Error Streams and Nuclio Logs
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -1,4 +1,4 @@
-# How to Preserve Logs, Traces, and State Before an Automatic Rollback Erases the Evidence
+# Preserve Logs, Traces, and State Before Automatic Rollback Erases Evidence
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

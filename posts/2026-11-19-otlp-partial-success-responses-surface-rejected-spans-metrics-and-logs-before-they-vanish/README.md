@@ -1,4 +1,4 @@
-# OTLP Partial-Success Responses: Surface Rejected Spans, Metrics, and Logs Before They Vanish
+# OTLP Partial-Success Responses: Detect Rejected Spans, Metrics, and Logs
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

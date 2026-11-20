@@ -1,4 +1,4 @@
-# RDS IAM Authentication Through an SSM Tunnel: Fix Token Hostnames and TLS Certificate Validation
+# RDS IAM Auth Through SSM Tunnels: Token Hostnames and TLS Validation
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

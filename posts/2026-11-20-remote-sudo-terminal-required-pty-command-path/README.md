@@ -1,4 +1,4 @@
-# Remote `sudo` Says “a Terminal Is Required”: Allocate a PTY or Change the Command Path?
+# Remote sudo Requires a Terminal: Allocate a PTY or Change the Command
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

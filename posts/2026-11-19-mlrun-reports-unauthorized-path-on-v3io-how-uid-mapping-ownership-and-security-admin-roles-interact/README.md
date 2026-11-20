@@ -1,4 +1,4 @@
-# MLRun Reports `Unauthorized path` on V3IO: How UID Mapping, Ownership, and Security-Admin Roles Interact
+# MLRun V3IO 'Unauthorized path': Check UIDs, Ownership, and Security-Admin Roles
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

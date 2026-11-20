@@ -1,4 +1,4 @@
-# MLRun Says “No Offline Targets”: How to Configure Parquet and NoSQL Targets for a Feature Set
+# Fix MLRun 'No Offline Targets' with Parquet and NoSQL Feature Set Targets
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
@@ -43,7 +43,7 @@ Also check any explicit target name passed to `to_dataframe()`. Asking for an ab
 
 ## Configure explicit destinations
 
-The following contextual example uses a disposable feature set in an Iguazio project. Its entities, timestamp column where needed, and transformation graph are already configured. Replace the project and path names with writable destinations reserved for this example:
+The following contextual example uses a disposable feature set with the default Storey engine (`engine="storey"`) in an Iguazio project. Its entities, timestamp column where needed, and transformation graph are already configured. Replace the project and path names with writable destinations reserved for this example:
 
 ```python
 from mlrun.datastore import NoSqlTarget, ParquetTarget

@@ -70,7 +70,7 @@ spec:
             - containerPort: 8080
 ```
 
-Confirm the controller no longer attempts the skipped tag lookup, then inspect the generated pod events and container `imageID` values. A new `ImagePullBackOff` means you have progressed to a different client or transport problem; examine node runtime configuration rather than adding more controller exceptions.
+Confirm the controller no longer attempts the skipped tag lookup, then inspect the generated pod events and container `imageID` values. A new `ImagePullBackOff` indicates a node-side image-pull failure; use the pod events to check the image reference, registry availability, credentials, and runtime transport configuration rather than adding more controller exceptions.
 
 A cached image can hide a broken registry path. Test on an uncached development node or use a genuinely new build reference, and make an HTTP request through the Knative route once readiness succeeds.
 

@@ -1,4 +1,4 @@
-# How to Test an OTLP Pipeline Without a Backend: Synthetic Telemetry, Debug Export, and File Capture
+# Test OTLP Without a Backend: Synthetic Telemetry, Debug Export, and File Capture
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

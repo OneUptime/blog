@@ -1,4 +1,4 @@
-# SSH Tunnel Opens but the Application Cannot Connect: Debug Bind Addresses, `localhost`, IPv4/IPv6, and the Final Hop
+# SSH Tunnel Opens but App Cannot Connect: Bind Addresses and Final-Hop Checks
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -1,4 +1,4 @@
-# How to Diagnose Azure Pipelines OIDC Compatibility Before Using Fulcio for Signing
+# Diagnose Azure Pipelines OIDC Compatibility Before Signing with Fulcio
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
@@ -55,7 +55,7 @@ curl --fail --silent --show-error \
   jq '.issuers'
 ```
 
-Check the exact issuer, expected audience, identity type, and required claim mapping. A token containing `api://AzureADTokenExchange` will not satisfy an issuer entry expecting `sigstore` unless the appropriate supported audience is present. Editing the decoded JSON breaks the token signature; renaming an environment variable does not change its audience.
+Check the issuer entry, expected audience, and identity type. The endpoint does not expose the full SAN and certificate-extension claim mappings; review those in the deployment's provider configuration or implementation. A token containing `api://AzureADTokenExchange` will not satisfy an issuer entry expecting `sigstore` unless the appropriate supported audience is present. Editing the decoded JSON breaks the token signature; renaming an environment variable does not change its audience.
 
 A private operator can choose a different client ID, but that changes the accepted credential contract. Review whether a token intended for another relying party should authorize signing at all. Keep the audience intentionally scoped to the selected trust design. [Fulcio's OIDC guide](https://github.com/sigstore/fulcio/blob/main/docs/oidc.md) describes issuer and CI-provider integration requirements.
 

@@ -1,4 +1,4 @@
-# MLRun Returns 404 for `/api/v1/client-spec`: How to Fix `MLRUN_DB` URL and Environment Configuration
+# Fix MLRun `/api/v1/client-spec` 404 Errors and `MLRUN_DB` Configuration
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
@@ -65,7 +65,7 @@ curl --silent --show-error --dump-header response-headers.txt \
 
 Use normal authenticated SDK access when the deployment requires credentials; do not treat an unauthenticated 401 as a broken route. Keep captured files private if the response contains environment details.
 
-An HTML page suggests a UI or proxy response. A JSON error from MLRun suggests that the request reached the API but the route or version differs. A redirect to login suggests an authentication boundary. A timeout or certificate error occurs before an HTTP 404 and should be diagnosed separately.
+An HTML page suggests a UI or proxy response. A JSON error from MLRun suggests that the request reached the API; inspect its status and message to distinguish routing, authentication, and other API errors. A 404 can also conceal a resource that the caller is not authorized to access. A redirect to login suggests an authentication boundary. A connection timeout or TLS certificate verification error can prevent an HTTP response and should be diagnosed separately; a read timeout can also occur after response headers arrive.
 
 ## Reload configuration and verify compatibility
 

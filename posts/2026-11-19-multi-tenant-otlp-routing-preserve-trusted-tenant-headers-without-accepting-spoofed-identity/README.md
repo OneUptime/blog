@@ -1,4 +1,4 @@
-# Multi-Tenant OTLP Routing: Preserve Trusted Tenant Headers Without Accepting Spoofed Identity
+# Multi-Tenant OTLP Routing: Preserve Tenant Headers and Prevent Identity Spoofing
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
@@ -12,7 +12,7 @@ Establish tenant identity from a verified credential, then let a trusted gateway
 
 ## Define the trust boundary
 
-This design uses an HTTPS gateway and Collector on the same host or in the same Kubernetes Pod network namespace:
+This design uses an HTTPS gateway and Collector sharing a network namespace, either as host processes or in the same Kubernetes Pod:
 
 ```mermaid
 flowchart LR
@@ -23,7 +23,7 @@ flowchart LR
     D --> F[Tenant B exporter]
 ```
 
-The gateway validates the credential, checks its tenant authorization, and replaces any caller-supplied tenant header. The Collector's loopback listener prevents another Pod from bypassing that gateway. If the components run separately, use a private listener with network restrictions and authenticated transport instead.
+The gateway validates the credential, checks its tenant authorization, and replaces any caller-supplied tenant header. The Collector's loopback listener prevents workloads in other network namespaces from bypassing that gateway. All processes sharing the Collector's network namespace must be trusted; this includes other containers in the same Pod and, with host networking, other processes and host-networked Pods on that node. If the components run separately, use a private listener with network restrictions and authenticated transport instead.
 
 Tenant identity must come from a verified token claim, credential lookup, or certificate mapping. A payload resource attribute such as `tenant.id` is also caller-controlled unless your trusted infrastructure derives and overwrites it.
 
@@ -122,6 +122,6 @@ The unmatched pipeline is a diagnostic fallback, not another customer's backend.
 
 ## Test attempted cross-tenant writes
 
-Send tenant A's credential with a forged tenant B header and a uniquely identifiable test span. It must land only in A's backend. Repeat with no tenant header, repeated headers, an invalid credential, and an unknown account. Confirm direct access to the Collector listener is unavailable from an untrusted workload.
+Send tenant A's credential with a forged tenant B header and a uniquely identifiable test span. It must land only in A's backend. With tenant A's valid credential, repeat with no tenant header and with repeated headers; both must still route only to A. Requests with an invalid credential or an unknown account must be rejected with 401 or 403 and reach neither backend. Confirm direct access to the Collector listener is unavailable from an untrusted workload.
 
 If you later consolidate exporters and copy headers dynamically, preserve the required metadata through every asynchronous component. The [headers setter extension](https://github.com/open-telemetry/opentelemetry-collector-contrib/blob/main/extension/headerssetterextension/README.md) documents metadata forwarding, but forwarding itself does not authenticate the value. Re-run the isolation tests after adding batching, persistent queues, or a new proxy hop.

@@ -1,4 +1,4 @@
-# How to Diagnose Fulcio OIDC Discovery Failures Behind Istio ServiceEntry Virtual IPs
+# Diagnose Fulcio OIDC Discovery Failures Behind Istio ServiceEntry Virtual IPs
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
@@ -29,23 +29,26 @@ flowchart LR
 
 ## Capture the failing pod's view
 
-Record the deployed image and effective arguments before changing configuration:
+Record the affected pod's image and configured command and arguments before changing configuration. These fields do not expand environment references or show defaults inherited from the image:
 
 ```bash
-kubectl -n sigstore get deploy fulcio -o json |
-  jq '.spec.template.spec.containers[] | {name, image, args}'
+POD='fulcio-REPLACE-WITH-AFFECTED-POD'
+kubectl -n sigstore get pod "$POD" -o json |
+  jq '.spec.containers[] | {name, image, command, args}'
 
 kubectl -n sigstore get serviceentries.networking.istio.io -o yaml
-kubectl -n sigstore logs deploy/fulcio -c fulcio --since=15m
+kubectl -n sigstore logs "$POD" -c fulcio --since=15m
 ```
 
-Adjust namespace, workload, and container names. Restrict access to collected logs and remove any credentials before sharing them.
+Set `POD` to the affected pod and adjust namespace and container names. Use that same pod for logs and DNS checks; targeting a Deployment can select a different replica. Restrict access to collected logs and remove any credentials before sharing them.
 
 Resolve the issuer from the affected pod. If the image includes `getent`:
 
 ```bash
-kubectl -n sigstore exec deploy/fulcio -c fulcio -- \
+kubectl -n sigstore exec "$POD" -c fulcio -- \
   getent ahostsv4 id.example.com
+kubectl -n sigstore exec "$POD" -c fulcio -- \
+  getent ahostsv6 id.example.com
 ```
 
 For minimal images, use an approved diagnostic container attached to that pod. A separate debug pod may have different DNS capture or mesh membership. Check every A and AAAA result rather than assuming the first address is the only one Fulcio can select.

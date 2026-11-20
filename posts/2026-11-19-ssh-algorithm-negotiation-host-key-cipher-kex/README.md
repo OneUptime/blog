@@ -1,4 +1,4 @@
-# “No Matching Host Key Type,” Cipher, or Key Exchange: Debug SSH Algorithm Negotiation Without Weakening Every Host
+# SSH Algorithm Negotiation: Fix Host Key, Cipher, and Key Exchange Errors
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

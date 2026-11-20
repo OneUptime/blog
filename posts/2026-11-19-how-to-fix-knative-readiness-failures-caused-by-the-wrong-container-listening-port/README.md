@@ -1,4 +1,4 @@
-# How to Fix Knative Readiness Failures Caused by the Wrong Container Listening Port
+# Fix Knative Readiness Failures Caused by the Wrong Container Listening Port
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

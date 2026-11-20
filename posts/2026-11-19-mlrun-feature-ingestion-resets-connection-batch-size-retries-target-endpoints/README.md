@@ -1,4 +1,4 @@
-# MLRun Feature Ingestion Resets the Connection: How to Tune Batch Size, Retries, and Target Endpoints
+# MLRun Feature Ingestion Resets: Tune Batch Size, Retries, and Target Endpoints
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

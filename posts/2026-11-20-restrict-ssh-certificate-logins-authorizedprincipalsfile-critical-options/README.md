@@ -1,4 +1,4 @@
-# How to Restrict SSH Certificate Logins with `AuthorizedPrincipalsFile` and Critical Options
+# Restrict SSH Certificate Logins: `AuthorizedPrincipalsFile` and Critical Options
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

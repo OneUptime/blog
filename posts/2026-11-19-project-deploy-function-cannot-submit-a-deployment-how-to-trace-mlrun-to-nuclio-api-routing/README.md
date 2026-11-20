@@ -1,4 +1,4 @@
-# `project.deploy_function()` Cannot Submit a Deployment: How to Trace MLRun-to-Nuclio API Routing
+# MLRun `project.deploy_function()` Failures: Trace Nuclio API Routing
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
@@ -31,7 +31,7 @@ Ask whether the MLRun API logged the request and whether a matching Nuclio funct
 
 Verify the effective `MLRUN_DBPATH` against the platform's API address. It should not be replaced with the Nuclio dashboard URL. A successful read-only project lookup establishes more than a browser opening the MLRun UI.
 
-A 404 for `/api/v1/client-spec` belongs to client-to-MLRun routing and should be resolved before function deployment. A 401 or 403 needs an authentication or project permission check. Preserve the responding service's error body so an ingress rejection is not mistaken for Nuclio rejecting a function specification.
+A 404 for `/api/v1/client-spec` occurs on the client-to-MLRun hop; check the API URL, ingress routing, and SDK/server API compatibility before function deployment. A 401 or 403 needs an authentication or project permission check. Preserve the responding service's error body so an ingress rejection is not mistaken for Nuclio rejecting a function specification.
 
 MLRun's [client setup documentation](https://docs.mlrun.org/en/stable/setup-guide.html) explains the API endpoint and remote credentials. Check the notebook kernel's loaded settings, including any environment file, rather than only the terminal environment.
 
@@ -61,7 +61,7 @@ kubectl -n default-tenant describe nucliofunction FUNCTION_NAME
 kubectl -n default-tenant logs POD_NAME --all-containers --since=15m
 ```
 
-Discover the relevant dashboard, controller, builder, or processor pod before using the log command. An image build succeeds under push credentials, while the resulting processor still needs pull access. A healthy dashboard does not establish either permission.
+Discover the relevant dashboard, controller, builder, or processor pod before using the log command. Building the image may require access to private base images; pushing it requires registry push access, while Kubernetes needs pull access to start the resulting processor pod. A healthy dashboard does not establish either permission.
 
 Avoid resubmitting rapidly under new names. That creates multiple partial functions and makes it harder to correlate logs with one attempt. Keep one controlled test deployment and record its identity across components.
 

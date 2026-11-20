@@ -1,4 +1,4 @@
-# OpenSSH Upgrade Broke RSA Login: Fix “sign_and_send_pubkey: no mutual signature supported” Safely
+# OpenSSH RSA Login: Fix `sign_and_send_pubkey: no mutual signature supported`
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
@@ -12,7 +12,7 @@ An SSH upgrade can leave an unchanged RSA key unable to log in:
 sign_and_send_pubkey: no mutual signature supported
 ```
 
-This message comes from client-side selection of a signature algorithm for user authentication. It does not establish that the key is corrupt or missing from `authorized_keys`. Identify the attempted key and the algorithms both ends support before replacing credentials or changing security settings. The [OpenSSH signing implementation](https://github.com/openssh/openssh-portable/blob/V_10_6_P2/sshconnect2.c#L1308) shows where this failure occurs.
+This message comes from client-side selection of a signature algorithm for user authentication. It does not establish that the key is corrupt or missing from `authorized_keys`. Identify the attempted key and the algorithms both ends support before replacing credentials or changing security settings. The [OpenSSH signing implementation](https://github.com/openssh/openssh-portable/blob/V_10_6_P2/sshconnect2.c#L1405) shows where this failure occurs.
 
 ## Separate the RSA key from its signature
 
@@ -52,7 +52,7 @@ ssh -vv -S none -o IdentitiesOnly=yes \
 
 [`-S none`](https://man.openbsd.org/ssh#S) prevents reuse of an already authenticated connection. `IdentitiesOnly` excludes unrelated agent identities, but other configured identity files can still participate. Compare the fingerprint in the attempted-key messages with the public-key fingerprint above.
 
-Read the failure in context: the remote software banner, `Offering public key` or `Trying private key`, and any `server-sig-algs` information. The server's advertised list helps OpenSSH select an RSA signature; missing or incompatible advertisements can prevent SHA-2 selection even when a server implementation has some SHA-2 support. This selection logic is visible in [OpenSSH's algorithm-selection code](https://github.com/openssh/openssh-portable/blob/V_10_6_P2/sshconnect2.c#L1081).
+Read the failure in context: the remote software banner, `Offering public key` or `Trying private key`, and any `server-sig-algs` information. The server's advertised list helps OpenSSH select an RSA signature; missing or incompatible advertisements can prevent SHA-2 selection even when a server implementation has some SHA-2 support. This selection logic is visible in [OpenSSH's algorithm-selection code](https://github.com/openssh/openssh-portable/blob/V_10_6_P2/sshconnect2.c#L1166).
 
 `ssh -Q PubkeyAcceptedAlgorithms` lists local implementation capabilities. It does not report the destination's capabilities or the effective allowlist for that host. Use `-G` and connection diagnostics for those questions. Redact account names, paths, and infrastructure details before sharing debug output.
 
@@ -102,4 +102,4 @@ ssh -vvv -S none -o IdentitiesOnly=yes \
   -i ~/.ssh/deploy_rsa deploy@legacy.example.com
 ```
 
-This deliberate replacement tests a plain RSA key and excludes certificate algorithms. If the account requires an RSA SSH certificate, include `rsa-sha2-512-cert-v01@openssh.com` and `rsa-sha2-256-cert-v01@openssh.com` in the test allowlist and verify that certificate identity separately. For the plain-key test, confirm the intended fingerprint, `signing using rsa-sha2-512` or `rsa-sha2-256`, and successful public-key authentication; finish any required additional factors. A signing attempt followed by password fallback does not verify the fix. The [OpenSSH debug call](https://github.com/openssh/openssh-portable/blob/V_10_6_P2/sshconnect2.c#L1318) emits that signature choice at debug level three. Finally, retry the normal application workflow with its usual configuration and confirm access succeeds after removing the exception.
+This deliberate replacement tests a plain RSA key and excludes certificate algorithms. If the account requires an RSA SSH certificate, include `rsa-sha2-512-cert-v01@openssh.com` and `rsa-sha2-256-cert-v01@openssh.com` in the test allowlist and verify that certificate identity separately. For the plain-key test, confirm the intended fingerprint, `signing using rsa-sha2-512` or `rsa-sha2-256`, and successful public-key authentication; finish any required additional factors. A signing attempt followed by password fallback does not verify the fix. The [OpenSSH debug call](https://github.com/openssh/openssh-portable/blob/V_10_6_P2/sshconnect2.c#L1408) emits that signature choice at debug level three. Finally, retry the normal application workflow with its usual configuration and confirm access succeeds after removing the exception.

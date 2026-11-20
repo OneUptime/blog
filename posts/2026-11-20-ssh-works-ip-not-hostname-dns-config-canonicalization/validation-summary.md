@@ -1,4 +1,4 @@
-# Validation Summary: SSH Works by IP but Not by Hostname: Inspect DNS, Host Blocks, Canonicalization, and Host-Key Entries
+# Validation Summary: SSH Works by IP but Not Hostname: DNS, Config, and Host-Key Checks
 
 ## Status
 validated

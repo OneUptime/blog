@@ -1,4 +1,4 @@
-# SSM Parameter Store `AccessDeniedException`: Match the API Action, Parameter ARN, Path, and KMS Key
+# SSM Parameter Store `AccessDeniedException`: Check IAM, Paths, and KMS
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

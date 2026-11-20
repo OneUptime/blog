@@ -19,7 +19,8 @@ Save the public configuration response with a timestamp:
 ```bash
 curl --fail --silent --show-error \
   https://fulcio.sigstore.dev/api/v2/configuration \
-  > fulcio-configuration.json
+  > fulcio-configuration.json &&
+  date -u '+%Y-%m-%dT%H:%M:%SZ' > fulcio-configuration-fetched-at.txt
 
 jq '.issuers[] | {
   issuerUrl,

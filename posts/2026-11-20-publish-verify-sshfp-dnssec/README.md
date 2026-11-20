@@ -1,4 +1,4 @@
-# How to Publish and Verify SSH Host Fingerprints with DNSSEC-Protected SSHFP Records
+# Publish and Verify SSH Host Fingerprints with DNSSEC and SSHFP
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

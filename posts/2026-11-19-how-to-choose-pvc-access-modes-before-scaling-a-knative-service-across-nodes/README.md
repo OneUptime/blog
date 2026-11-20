@@ -54,7 +54,7 @@ spec:
 
 `shared-filesystem` is an example name. It must refer to a provisioner that supports the requested mode. Adding `ReadWriteMany` to YAML cannot turn a single-node block volume into a shared filesystem. Do not edit an existing bound claim as a data migration strategy; provision compatible storage and migrate with backups and a controlled cutover.
 
-The [Knative storage guide](https://knative.dev/docs/serving/services/storage/) covers the PVC and write extensions required to reference the claim in a Service. The [StorageClass documentation](https://kubernetes.io/docs/concepts/storage/storage-classes/) covers provisioning and binding choices. Topology and `WaitForFirstConsumer` can affect where a volume is provisioned, but they do not change its supported access modes.
+The [Knative storage guide](https://knative.dev/docs/serving/services/storage/) covers the PVC extension required to reference the claim in a Service and the additional write extension required for writable access. The [StorageClass documentation](https://kubernetes.io/docs/concepts/storage/storage-classes/) covers provisioning and binding choices. Topology and `WaitForFirstConsumer` can affect where a volume is provisioned, but they do not change its supported access modes.
 
 ## Verify the actual placement and failure
 

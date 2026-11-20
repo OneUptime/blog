@@ -1,4 +1,4 @@
-# How to Read Binary gRPC Metadata in Java Interceptors Without ASCII Parsing Errors
+# Read Binary gRPC Metadata in Java Interceptors Without ASCII Parsing Errors
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
@@ -8,7 +8,7 @@ Description: Read Java gRPC binary metadata with correctly typed keys, preserve 
 
 An interceptor that prints every gRPC header can accidentally break calls it was meant to diagnose. A common mistake is constructing an ASCII metadata key for every name, including names ending in `-bin`.
 
-In Java, choose the marshaller from the metadata field's contract. The [Metadata API](https://grpc.github.io/grpc-java/javadoc/io/grpc/Metadata.html) uses `BINARY_BYTE_MARSHALLER` for raw bytes and `ASCII_STRING_MARSHALLER` for ordinary text. The suffix and marshaller must agree.
+In Java, choose the marshaller from the metadata field's contract. The [Metadata API](https://grpc.github.io/grpc-java/javadoc/io/grpc/Metadata.html) uses `BINARY_BYTE_MARSHALLER` for raw bytes and `ASCII_STRING_MARSHALLER` for printable ASCII text (characters `0x20`–`0x7E`, without leading or trailing spaces). The suffix and marshaller must agree.
 
 ## Read a known binary field explicitly
 

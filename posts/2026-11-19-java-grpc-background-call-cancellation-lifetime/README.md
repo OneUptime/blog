@@ -50,7 +50,7 @@ static void submitBackground(
 
 The thirty-second budget is an example policy, not a recommended universal value. It begins when the context is created, so time waiting in the executor queue consumes it. Use a bounded executor and account for queue delay when selecting the budget.
 
-The cleanup path handles rejection as well as normal completion. Record failed work through the application's job/error handling; a detached context does not provide durable storage or automatic retries.
+The cleanup path handles rejection that throws a runtime exception as well as normal completion. Configure the worker executor to throw on rejection, such as with `ThreadPoolExecutor.AbortPolicy`; a policy that silently discards tasks bypasses this cleanup path. Record failed work through the application's job/error handling; a detached context does not provide durable storage or automatic retries.
 
 ## Do not cancel an asynchronous call too early
 

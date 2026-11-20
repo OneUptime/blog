@@ -1,4 +1,4 @@
-# How to Make HPA Decisions Observable with Controller Metrics, Events, and Recommendation Dashboards
+# Observe HPA Decisions with Controller Metrics, Events, and Dashboards
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

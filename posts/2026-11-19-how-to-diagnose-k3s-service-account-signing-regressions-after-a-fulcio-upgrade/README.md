@@ -51,7 +51,7 @@ Review the ConfigMap or mounted configuration selected by `--config-path`. Check
 
 Current upstream code distinguishes directly configured Kubernetes issuers from wildcard meta-issuers. Its in-cluster path also depends on the default Kubernetes issuer configuration, and its cluster-CA path is `/var/run/fulcio/ca.crt`. The pod API-token path is the standard service-account mount. Read the implementation matching your version before assuming that a general OIDC `ca-cert` setting or a different filesystem path activates the same behavior. [Fulcio's configuration source](https://github.com/sigstore/fulcio/blob/main/pkg/config/config.go) shows these conditions.
 
-For a pod image with a shell, existence checks are sufficient to establish whether expected files are mounted:
+For a pod image with a shell, these checks establish whether the expected paths are readable; they do not prove that the files come from volume mounts:
 
 ```bash
 kubectl -n sigstore exec deploy/fulcio -c fulcio -- sh -c '

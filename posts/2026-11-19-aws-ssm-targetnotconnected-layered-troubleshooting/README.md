@@ -1,4 +1,4 @@
-# AWS SSM `TargetNotConnected`: A Layer-by-Layer Check of Agent, IAM, Region, DNS, and Egress
+# AWS SSM `TargetNotConnected`: Agent, IAM, Region, DNS, and Egress Checks
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

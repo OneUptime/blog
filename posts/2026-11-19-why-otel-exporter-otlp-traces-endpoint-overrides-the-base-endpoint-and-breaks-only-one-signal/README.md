@@ -1,4 +1,4 @@
-# Why `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT` Overrides the Base Endpoint—and Breaks Only One Signal
+# Why `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT` Overrides the Base OTLP Endpoint
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

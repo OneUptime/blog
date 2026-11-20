@@ -1,4 +1,4 @@
-# OTLP/HTTP Hits 413 “Payload Too Large”: Align SDK Batches, Reverse Proxies, and Backend Limits
+# Fix OTLP/HTTP 413 Errors: Align SDK Batches, Proxy Limits, and Backend Limits
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

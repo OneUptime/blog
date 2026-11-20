@@ -1,4 +1,4 @@
-# How to Preserve Unknown Protobuf Fields When Relaying gRPC Messages Through Older Services
+# Preserve Unknown Protobuf Fields in gRPC Relays Through Older Services
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

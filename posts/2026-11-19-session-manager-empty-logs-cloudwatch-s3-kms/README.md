@@ -1,4 +1,4 @@
-# Why Session Manager Logs Are Empty: CloudWatch/S3/KMS Setup and the SSH/Port-Forwarding Blind Spot
+# Empty Session Manager Logs: CloudWatch, S3, KMS, and SSH Limitations
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
@@ -90,7 +90,7 @@ Match the exact log-group name because the lookup accepts a prefix. These reads 
 
 - **Session data:** `kmsKeyId` requires `kms:GenerateDataKey` for the session caller and `kms:Decrypt` for the node, with compatible key-policy access. It does not select the S3 or CloudWatch encryption key. [Caller permissions](https://docs.aws.amazon.com/systems-manager/latest/userguide/getting-started-restrict-access-quickstart.html), [node permissions](https://docs.aws.amazon.com/systems-manager/latest/userguide/getting-started-create-iam-instance-profile.html)
 - **S3 objects:** the bucket's encryption configuration selects SSE-S3 or SSE-KMS. For SSE-KMS, the uploader needs `kms:GenerateDataKey`; multipart uploads also need `kms:Decrypt`. Readers need `kms:Decrypt` separately. [Session S3 configuration](https://docs.aws.amazon.com/systems-manager/latest/userguide/session-manager-logging-s3.html), [S3 KMS permissions](https://docs.aws.amazon.com/AmazonS3/latest/userguide/UsingKMSEncryption.html)
-- **CloudWatch logs:** default service-side encryption does not replace the KMS association required by Session Manager's encrypted-group option. Inspect the group's `kmsKeyId`. Its key policy must permit `logs.REGION.amazonaws.com`, scoped to the group's encryption context. AWS separately documents KMS permissions for identities reading/writing through Logs, using `kms:ViaService`. A disabled key can prevent reading existing events. [Session encryption option](https://docs.aws.amazon.com/systems-manager/latest/userguide/session-manager-logging-cloudwatch-logs.html), [CloudWatch KMS configuration](https://docs.aws.amazon.com/AmazonCloudWatch/latest/logs/encrypt-log-data-kms.html)
+- **CloudWatch logs:** default service-side encryption does not replace the KMS association required by Session Manager's encrypted-group option. Inspect the group's `kmsKeyId`. Its key policy must permit `logs.REGION.amazonaws.com`; AWS recommends scoping access to the intended account or log group using the encryption context. AWS separately documents KMS permissions for identities reading/writing through Logs, using `kms:ViaService`. A disabled key can prevent reading existing events. [Session encryption option](https://docs.aws.amazon.com/systems-manager/latest/userguide/session-manager-logging-cloudwatch-logs.html), [CloudWatch KMS configuration](https://docs.aws.amazon.com/AmazonCloudWatch/latest/logs/encrypt-log-data-kms.html)
 
 ## Follow the failed delivery operation
 

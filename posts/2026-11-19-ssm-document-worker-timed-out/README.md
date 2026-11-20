@@ -1,4 +1,4 @@
-# Fixing “document worker timed out” in SSM: Disk Space, Memory, File Descriptors, and Worker Logs
+# SSM `document worker timed out`: Disk, Memory, and Worker Log Checks
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

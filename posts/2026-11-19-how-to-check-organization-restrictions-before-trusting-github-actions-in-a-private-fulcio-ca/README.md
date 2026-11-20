@@ -1,4 +1,4 @@
-# How to Check Organization Restrictions Before Trusting GitHub Actions in a Private Fulcio CA
+# Check GitHub Actions Organization Restrictions in a Private Fulcio CA
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

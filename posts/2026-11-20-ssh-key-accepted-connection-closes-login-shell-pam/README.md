@@ -1,4 +1,4 @@
-# Public Key Is Accepted, Then SSH Immediately Closes: Check the Login Shell, PAM, Home Directory, and `ForceCommand`
+# SSH Key Accepted, Then Connection Closes: Shell, PAM, and ForceCommand
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

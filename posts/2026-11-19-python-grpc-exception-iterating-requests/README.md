@@ -1,4 +1,4 @@
-# How to Find the Client Exception Hidden Behind Python gRPC Exception Iterating Requests
+# Find Client Errors Behind Python gRPC 'Exception Iterating Requests'
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
@@ -30,7 +30,7 @@ def logged_requests(source):
         raise
 ```
 
-Use `logged_requests(build_requests())` as the request iterator passed to your generated stub. The log records a local traceback without dumping the request payload. Configure logging before starting the RPC, and do not install a handler that silently drops errors from background threads.
+Use `logged_requests(build_requests())` as the request iterator passed to your generated stub. The log records a local traceback without explicitly logging the request payload, although exception messages can still contain input data. Configure logging before starting the RPC, and do not install a handler that silently drops errors from background threads.
 
 The index is a diagnostic position, not an acknowledgement count. A yielded request might have been buffered, sent, or processed when the next iteration fails. Do not infer how many server-side effects happened from this number.
 

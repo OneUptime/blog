@@ -1,4 +1,4 @@
-# How to Calculate DORA Deployment Rework Rate from Deployment, Incident, and Hotfix Events
+# Compute DORA Deployment Rework Rate from Deployment, Incident, and Hotfix Events
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

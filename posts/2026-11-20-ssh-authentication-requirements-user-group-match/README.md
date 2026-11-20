@@ -1,4 +1,4 @@
-# How to Apply Different SSH Authentication Requirements by User and Group with `Match` Blocks
+# SSH Authentication by User and Group with `Match` Blocks
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

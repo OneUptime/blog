@@ -1,4 +1,4 @@
-# Gzip-Compressed OTLP Requests Fail to Decode: Trace `Content-Encoding` Across Every Hop
+# Fix Gzip OTLP Decode Failures: Trace `Content-Encoding` Across Every Hop
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

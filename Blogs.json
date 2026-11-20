@@ -822287,7 +822287,7 @@
     "readmePath": "posts/2026-11-18-how-to-reconnect-distributed-traces-during-a-migration-from-elastic-apm-to-opentelemetry/README.md"
   },
   {
-    "title": "How to Diagnose Fulcio OIDC Discovery Failures Behind Istio ServiceEntry Virtual IPs",
+    "title": "Diagnose Fulcio OIDC Discovery Failures Behind Istio ServiceEntry Virtual IPs",
     "description": "Find out whether Istio DNS capture makes an OIDC issuer resolve to a mesh virtual IP that Fulcio rejects, then choose a release-aware repair.",
     "authorGitHubUsername": "nawazdhandala",
     "tags": [
@@ -822315,7 +822315,7 @@
     "readmePath": "posts/2026-11-19-how-to-diagnose-k3s-service-account-signing-regressions-after-a-fulcio-upgrade/README.md"
   },
   {
-    "title": "How to Assess Fulcio Exposure to OIDC Discovery Redirect and JWKS Substitution Flaws",
+    "title": "Assess Fulcio Exposure to OIDC Discovery Redirect and JWKS Substitution Flaws",
     "description": "Assess Fulcio discovery redirect and JWKS substitution exposure using deployed versions, issuer configuration, network evidence, and current upstream security advisories.",
     "authorGitHubUsername": "nawazdhandala",
     "tags": [
@@ -822343,7 +822343,7 @@
     "readmePath": "posts/2026-11-19-how-to-check-whether-a-new-ci-provider-is-trusted-by-the-public-fulcio-service/README.md"
   },
   {
-    "title": "How to Diagnose Azure Pipelines OIDC Compatibility Before Using Fulcio for Signing",
+    "title": "Diagnose Azure Pipelines OIDC Compatibility Before Signing with Fulcio",
     "description": "Check Azure Pipelines token type, issuer, audience, and CI identity claims before assuming its workload federation tokens can request Fulcio certificates.",
     "authorGitHubUsername": "nawazdhandala",
     "tags": [
@@ -822357,7 +822357,7 @@
     "readmePath": "posts/2026-11-19-how-to-diagnose-azure-pipelines-oidc-compatibility-before-using-fulcio-for-signing/README.md"
   },
   {
-    "title": "How to Diagnose Jenkins OIDC Issuer Mismatches in a Self-Hosted Fulcio Deployment",
+    "title": "Diagnose Jenkins OIDC Issuer Mismatches in Self-Hosted Fulcio",
     "description": "Compare Jenkins token, discovery, and Fulcio issuer URLs precisely, including folder-scoped and externally hosted issuers, before changing signing policy.",
     "authorGitHubUsername": "nawazdhandala",
     "tags": [
@@ -822385,7 +822385,7 @@
     "readmePath": "posts/2026-11-19-how-to-repair-missing-gitlab-ci-provider-metadata-in-a-fulcio-configuration/README.md"
   },
   {
-    "title": "How to Investigate Fulcio GitLab Signing Failures When ci_config_ref_uri Is Empty",
+    "title": "Investigate Fulcio GitLab Signing Failures with Empty ci_config_ref_uri",
     "description": "Distinguish missing, null, and empty GitLab CI configuration claims in Fulcio failures, and repair the pipeline identity without fabricating certificate metadata.",
     "authorGitHubUsername": "nawazdhandala",
     "tags": [
@@ -822426,7 +822426,7 @@
     "readmePath": "posts/2026-11-19-how-to-restore-fulcio-signing-when-cosign-reports-an-invalid-tuf-key/README.md"
   },
   {
-    "title": "How to Check Organization Restrictions Before Trusting GitHub Actions in a Private Fulcio CA",
+    "title": "Check GitHub Actions Organization Restrictions in a Private Fulcio CA",
     "description": "Determine whether a private Fulcio deployment actually restricts GitHub organizations, then test issuance controls and artifact verification as separate policies.",
     "authorGitHubUsername": "nawazdhandala",
     "tags": [
@@ -822468,7 +822468,7 @@
     "readmePath": "posts/2026-11-19-how-to-trace-a-fulcio-signing-certificate-to-the-exact-ci-run-attempt/README.md"
   },
   {
-    "title": "How to Check Runner Environment Claims in Fulcio Certificates Before Accepting a Build",
+    "title": "Check Runner Environment Claims in Fulcio Certificates Before Accepting Builds",
     "description": "Evaluate Fulcio runner environment metadata with provider-specific allowlists, missing-field rejection, and tests that keep runner claims separate from build provenance.",
     "authorGitHubUsername": "nawazdhandala",
     "tags": [
@@ -822614,7 +822614,7 @@
     "readmePath": "posts/2026-11-19-grpc-large-request-retry-buffer-limits/README.md"
   },
   {
-    "title": "How to Read Binary gRPC Metadata in Java Interceptors Without ASCII Parsing Errors",
+    "title": "Read Binary gRPC Metadata in Java Interceptors Without ASCII Parsing Errors",
     "description": "Read Java gRPC binary metadata with correctly typed keys, preserve repeated values, and avoid decoding arbitrary headers as ASCII.",
     "authorGitHubUsername": "nawazdhandala",
     "tags": [
@@ -822627,7 +822627,7 @@
     "readmePath": "posts/2026-11-19-java-grpc-binary-metadata-interceptors/README.md"
   },
   {
-    "title": "How to Carry Multiline Diagnostic Text in gRPC Metadata Without Invalid Header Values",
+    "title": "Carry Multiline Diagnostic Text in gRPC Metadata Without Invalid Header Values",
     "description": "Transport short multiline diagnostic text as binary gRPC metadata and keep large or sensitive details in a controlled diagnostic store.",
     "authorGitHubUsername": "nawazdhandala",
     "tags": [
@@ -822653,7 +822653,7 @@
     "readmePath": "posts/2026-11-19-go-grpc-resume-broken-subscription/README.md"
   },
   {
-    "title": "How to Find the Client Exception Hidden Behind Python gRPC Exception Iterating Requests",
+    "title": "Find Client Errors Behind Python gRPC 'Exception Iterating Requests'",
     "description": "Expose the client-side generator exception behind Python gRPC request-iteration errors and distinguish it from serialization and server failures.",
     "authorGitHubUsername": "nawazdhandala",
     "tags": [
@@ -822679,7 +822679,7 @@
     "readmePath": "posts/2026-11-19-cpp-grpc-reactor-external-producer/README.md"
   },
   {
-    "title": "How to Diagnose Python gRPC AsyncIO Streaming Concurrency Limits with a Minimal Reproduction",
+    "title": "Diagnose Python gRPC AsyncIO Streaming Concurrency with a Minimal Reproduction",
     "description": "Isolate Python gRPC AsyncIO concurrency problems with a local streaming reproduction, then add application and deployment limits one at a time.",
     "authorGitHubUsername": "nawazdhandala",
     "tags": [
@@ -822718,7 +822718,7 @@
     "readmePath": "posts/2026-11-19-dotnet-grpc-callcredentials-missing/README.md"
   },
   {
-    "title": "How to Preserve Unknown Protobuf Fields When Relaying gRPC Messages Through Older Services",
+    "title": "Preserve Unknown Protobuf Fields in gRPC Relays Through Older Services",
     "description": "Preserve newly added protobuf fields through older gRPC relays, and test where JSON conversion or manual message rebuilding loses them.",
     "authorGitHubUsername": "nawazdhandala",
     "tags": [
@@ -822757,7 +822757,7 @@
     "readmePath": "posts/2026-11-19-cpp-grpc-overlapping-writes-too-many-operations/README.md"
   },
   {
-    "title": "`mlrun` Is Missing in an Iguazio Jupyter Service: How to Align the Notebook Client with the Cluster Version",
+    "title": "`mlrun` Missing in Iguazio Jupyter: Align Client and Cluster Versions",
     "description": "Repair a missing MLRun notebook package by checking the active Jupyter kernel, using Iguazio version alignment, and verifying client and runtime compatibility.",
     "authorGitHubUsername": "nawazdhandala",
     "tags": [
@@ -822770,7 +822770,7 @@
     "readmePath": "posts/2026-11-19-mlrun-is-missing-in-an-iguazio-jupyter-service-how-to-align-the-notebook-client-with-the-cluster-version/README.md"
   },
   {
-    "title": "MLRun Returns 404 for `/api/v1/client-spec`: How to Fix `MLRUN_DB` URL and Environment Configuration",
+    "title": "Fix MLRun `/api/v1/client-spec` 404 Errors and `MLRUN_DB` Configuration",
     "description": "Fix MLRun client-spec 404 errors by inspecting the effective API base URL, using MLRUN_DBPATH, and separating proxy routing from authentication and version compatibility.",
     "authorGitHubUsername": "nawazdhandala",
     "tags": [
@@ -822782,7 +822782,7 @@
     "readmePath": "posts/2026-11-19-mlrun-returns-404-for-api-v1-client-spec-how-to-fix-mlrun-db-url-and-environment-configuration/README.md"
   },
   {
-    "title": "`project.deploy_function()` Cannot Submit a Deployment: How to Trace MLRun-to-Nuclio API Routing",
+    "title": "MLRun `project.deploy_function()` Failures: Trace Nuclio API Routing",
     "description": "Trace a failed MLRun deploy_function request through the client, MLRun API, Nuclio dashboard, image build, and function readiness before changing endpoints.",
     "authorGitHubUsername": "nawazdhandala",
     "tags": [
@@ -822795,7 +822795,7 @@
     "readmePath": "posts/2026-11-19-project-deploy-function-cannot-submit-a-deployment-how-to-trace-mlrun-to-nuclio-api-routing/README.md"
   },
   {
-    "title": "Iguazio Spark Jobs Hit `ImagePullBackOff`: How to Publish MLRun’s Default Spark Images to the Cluster Registry",
+    "title": "Fix Iguazio Spark `ImagePullBackOff` by Publishing MLRun Spark Images",
     "description": "Diagnose missing MLRun Spark images, publish the runtime-specific default image, and separate registry failures from Spark execution errors.",
     "authorGitHubUsername": "nawazdhandala",
     "tags": [
@@ -822808,7 +822808,7 @@
     "readmePath": "posts/2026-11-19-iguazio-spark-jobs-hit-imagepullbackoff-how-to-publish-mlrun-s-default-spark-images-to-the-cluster-registry/README.md"
   },
   {
-    "title": "An MLRun Job Is Stuck in `Pending`: How to Check Kubernetes Events, Quotas, Volumes, and Node Placement",
+    "title": "MLRun Jobs Stuck in `Pending`: Check Events, Quotas, Volumes, and Nodes",
     "description": "Trace a pending MLRun run through Kubernetes admission, scheduling, image pulls, and volume setup using events and effective pod configuration.",
     "authorGitHubUsername": "nawazdhandala",
     "tags": [
@@ -822820,7 +822820,7 @@
     "readmePath": "posts/2026-11-19-an-mlrun-job-is-stuck-in-pending-how-to-check-kubernetes-events-quotas-volumes-and-node-placement/README.md"
   },
   {
-    "title": "How to Develop MLRun Functions Locally and Run Them Remotely with `HOST_IP`, `SHARED_DIR`, and `local=False`",
+    "title": "Run Local MLRun Functions Remotely: HOST_IP, SHARED_DIR, and local=False",
     "description": "Separate local Docker network and storage settings from remote MLRun execution, then submit a version-aligned job with local=False.",
     "authorGitHubUsername": "nawazdhandala",
     "tags": [
@@ -822833,7 +822833,7 @@
     "readmePath": "posts/2026-11-19-how-to-develop-mlrun-functions-locally-and-run-them-remotely-with-host-ip-shared-dir-and-local-false/README.md"
   },
   {
-    "title": "MLRun Reports `Unauthorized path` on V3IO: How UID Mapping, Ownership, and Security-Admin Roles Interact",
+    "title": "MLRun V3IO 'Unauthorized path': Check UIDs, Ownership, and Security-Admin Roles",
     "description": "Diagnose V3IO path authorization by comparing the job identity, numeric ownership, data policies, and the separate responsibilities of security administrators.",
     "authorGitHubUsername": "nawazdhandala",
     "tags": [
@@ -822846,7 +822846,7 @@
     "readmePath": "posts/2026-11-19-mlrun-reports-unauthorized-path-on-v3io-how-uid-mapping-ownership-and-security-admin-roles-interact/README.md"
   },
   {
-    "title": "MLRun API Returns 412 “Waiting for Migrations”: How to Complete Database Migrations After an Upgrade",
+    "title": "Fix MLRun API 412 'Waiting for Migrations' After an Upgrade",
     "description": "Resolve MLRun's post-upgrade migration gate using the documented migration API, inspect migration progress, and verify the upgraded service without deleting metadata.",
     "authorGitHubUsername": "nawazdhandala",
     "tags": [
@@ -822858,7 +822858,7 @@
     "readmePath": "posts/2026-11-19-mlrun-api-returns-412-waiting-for-migrations-how-to-complete-database-migrations-after-an-upgrade/README.md"
   },
   {
-    "title": "`V3IO_ACCESS_KEY` or `V3IO_API` Is Missing: How to Configure Iguazio Credentials Without Hard-Coding Secrets",
+    "title": "Configure Missing Iguazio V3IO_ACCESS_KEY and V3IO_API Credentials Securely",
     "description": "Supply Iguazio V3IO endpoints and access keys through runtime environments and secret references, then verify the configuration without exposing credentials.",
     "authorGitHubUsername": "nawazdhandala",
     "tags": [
@@ -822871,7 +822871,7 @@
     "readmePath": "posts/2026-11-19-v3io-access-key-or-v3io-api-is-missing-how-to-configure-iguazio-credentials-without-hard-coding-secrets/README.md"
   },
   {
-    "title": "MLRun Says “No Offline Targets”: How to Configure Parquet and NoSQL Targets for a Feature Set",
+    "title": "Fix MLRun 'No Offline Targets' with Parquet and NoSQL Feature Set Targets",
     "description": "Fix missing offline feature-set targets by declaring Parquet and V3IO NoSQL destinations, ingesting data, and checking materialized target status.",
     "authorGitHubUsername": "nawazdhandala",
     "tags": [
@@ -822884,7 +822884,7 @@
     "readmePath": "posts/2026-11-19-mlrun-says-no-offline-targets-how-to-configure-parquet-and-nosql-targets-for-a-feature-set/README.md"
   },
   {
-    "title": "OTLP/HTTP Returns 401: Adding Authorization with Static Headers or the `basicauth` Extension",
+    "title": "Fix OTLP/HTTP 401 Errors with Static Headers or the `basicauth` Extension",
     "description": "Trace OTLP HTTP 401 responses to the rejecting hop and configure static authorization headers or a Basic Auth client extension without exposing credentials.",
     "authorGitHubUsername": "nawazdhandala",
     "tags": [
@@ -822897,7 +822897,7 @@
     "readmePath": "posts/2026-11-19-otlp-http-returns-401-adding-authorization-with-static-headers-or-the-basicauth-extension/README.md"
   },
   {
-    "title": "Browser OTLP/HTTP Exports Fail Preflight: Configure Collector CORS Without Allowing Every Origin",
+    "title": "Fix Browser OTLP/HTTP Preflight Failures with Restricted Collector CORS",
     "description": "Fix browser OTLP HTTP preflight failures with explicit Collector origins and headers, then verify the proxy, CSP, and actual export request separately.",
     "authorGitHubUsername": "nawazdhandala",
     "tags": [
@@ -822910,7 +822910,7 @@
     "readmePath": "posts/2026-11-19-browser-otlp-http-exports-fail-preflight-configure-collector-cors-without-allowing-every-origin/README.md"
   },
   {
-    "title": "OTLP/HTTP Hits 413 “Payload Too Large”: Align SDK Batches, Reverse Proxies, and Backend Limits",
+    "title": "Fix OTLP/HTTP 413 Errors: Align SDK Batches, Proxy Limits, and Backend Limits",
     "description": "Diagnose OTLP HTTP 413 responses by locating the rejecting hop and coordinating batch item counts, request byte limits, compression, and oversized telemetry records.",
     "authorGitHubUsername": "nawazdhandala",
     "tags": [
@@ -822923,7 +822923,7 @@
     "readmePath": "posts/2026-11-19-otlp-http-hits-413-payload-too-large-align-sdk-batches-reverse-proxies-and-backend-limits/README.md"
   },
   {
-    "title": "Debugging OTLP/gRPC `GOAWAY` and `FRAME_SIZE_ERROR` Through Proxies and Load Balancers",
+    "title": "Debug OTLP/gRPC `GOAWAY` and `FRAME_SIZE_ERROR` Via Proxies and Load Balancers",
     "description": "Separate graceful HTTP/2 connection draining from framing errors and keepalive rejection when OTLP gRPC crosses proxies or load balancers.",
     "authorGitHubUsername": "nawazdhandala",
     "tags": [
@@ -822937,7 +822937,7 @@
     "readmePath": "posts/2026-11-19-debugging-otlp-grpc-goaway-and-frame-size-error-through-proxies-and-load-balancers/README.md"
   },
   {
-    "title": "Multi-Tenant OTLP Routing: Preserve Trusted Tenant Headers Without Accepting Spoofed Identity",
+    "title": "Multi-Tenant OTLP Routing: Preserve Tenant Headers and Prevent Identity Spoofing",
     "description": "Route OTLP using tenant identity established by a trusted gateway, overwrite client-supplied tenant headers, and keep tenant separation intact through batching and queues.",
     "authorGitHubUsername": "nawazdhandala",
     "tags": [
@@ -822951,7 +822951,7 @@
     "readmePath": "posts/2026-11-19-multi-tenant-otlp-routing-preserve-trusted-tenant-headers-without-accepting-spoofed-identity/README.md"
   },
   {
-    "title": "OTLP Partial-Success Responses: Surface Rejected Spans, Metrics, and Logs Before They Vanish",
+    "title": "OTLP Partial-Success Responses: Detect Rejected Spans, Metrics, and Logs",
     "description": "Detect OTLP partial-success rejection counts for traces, metrics, and logs, retain diagnostic warnings, and avoid replaying already accepted telemetry.",
     "authorGitHubUsername": "nawazdhandala",
     "tags": [
@@ -822964,7 +822964,7 @@
     "readmePath": "posts/2026-11-19-otlp-partial-success-responses-surface-rejected-spans-metrics-and-logs-before-they-vanish/README.md"
   },
   {
-    "title": "Which OTLP Failures Should Retry? Classifying gRPC Codes and HTTP Statuses Without Retry Storms",
+    "title": "Avoid OTLP Retry Storms: Classify gRPC Codes and HTTP Statuses",
     "description": "Classify OTLP HTTP and gRPC failures using the protocol retry rules, then bound retries, queues, and concurrency so backend incidents do not become retry storms.",
     "authorGitHubUsername": "nawazdhandala",
     "tags": [
@@ -822977,7 +822977,7 @@
     "readmePath": "posts/2026-11-19-which-otlp-failures-should-retry-classifying-grpc-codes-and-http-statuses-without-retry-storms/README.md"
   },
   {
-    "title": "How to Test an OTLP Pipeline Without a Backend: Synthetic Telemetry, Debug Export, and File Capture",
+    "title": "Test OTLP Without a Backend: Synthetic Telemetry, Debug Export, and File Capture",
     "description": "Build a repeatable OTLP smoke test with a generated span, debug output, and a local JSON capture so you can isolate pipeline failures without a backend.",
     "authorGitHubUsername": "nawazdhandala",
     "tags": [
@@ -822989,7 +822989,7 @@
     "readmePath": "posts/2026-11-19-how-to-test-an-otlp-pipeline-without-a-backend-synthetic-telemetry-debug-export-and-file-capture/README.md"
   },
   {
-    "title": "Duplicate Kubernetes Logs from stdout and OTLP: Choose One Ingestion Path per Pod",
+    "title": "Deduplicate Kubernetes Logs from stdout and OTLP with One Ingestion Path per Pod",
     "description": "Trace duplicate Kubernetes log records to simultaneous stdout collection and OTLP export, then assign a single ingestion path without losing sidecar or startup logs.",
     "authorGitHubUsername": "nawazdhandala",
     "tags": [
@@ -823001,7 +823001,7 @@
     "readmePath": "posts/2026-11-19-duplicate-kubernetes-logs-from-stdout-and-otlp-choose-one-ingestion-path-per-pod/README.md"
   },
   {
-    "title": "Gzip-Compressed OTLP Requests Fail to Decode: Trace `Content-Encoding` Across Every Hop",
+    "title": "Fix Gzip OTLP Decode Failures: Trace `Content-Encoding` Across Every Hop",
     "description": "Diagnose OTLP/HTTP gzip failures by comparing body bytes and Content-Encoding at each proxy hop, then verify the repair with a small controlled request.",
     "authorGitHubUsername": "nawazdhandala",
     "tags": [
@@ -823014,7 +823014,7 @@
     "readmePath": "posts/2026-11-19-gzip-compressed-otlp-requests-fail-to-decode-trace-content-encoding-across-every-hop/README.md"
   },
   {
-    "title": "Why `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT` Overrides the Base Endpoint—and Breaks Only One Signal",
+    "title": "Why `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT` Overrides the Base OTLP Endpoint",
     "description": "Resolve signal-specific OTLP endpoint overrides by inspecting the effective protocol and URL, including the HTTP path that base endpoints append automatically.",
     "authorGitHubUsername": "nawazdhandala",
     "tags": [
@@ -823027,7 +823027,7 @@
     "readmePath": "posts/2026-11-19-why-otel-exporter-otlp-traces-endpoint-overrides-the-base-endpoint-and-breaks-only-one-signal/README.md"
   },
   {
-    "title": "Keeping OTLP API Keys Out of Collector ConfigMaps: Environment Expansion, Secret Mounts, and Header Rotation",
+    "title": "Keep OTLP API Keys Out of Collector ConfigMaps with Secrets and Header Rotation",
     "description": "Use Kubernetes Secrets for Collector exporter credentials, understand environment and mounted-file refresh behavior, and rotate headers through a verified rollout.",
     "authorGitHubUsername": "nawazdhandala",
     "tags": [
@@ -823039,7 +823039,7 @@
     "readmePath": "posts/2026-11-19-keeping-otlp-api-keys-out-of-collector-configmaps-environment-expansion-secret-mounts-and-header-rotation/README.md"
   },
   {
-    "title": "How to Read HPA AbleToScale, ScalingActive, and ScalingLimited Conditions During an Incident",
+    "title": "Read HPA AbleToScale, ScalingActive, and ScalingLimited Conditions",
     "description": "Read HPA conditions alongside their reasons, metric errors, and target state to identify the failing stage of an autoscaling incident.",
     "authorGitHubUsername": "nawazdhandala",
     "tags": [
@@ -823052,7 +823052,7 @@
     "readmePath": "posts/2026-11-19-how-to-read-hpa-abletoscale-scalingactive-and-scalinglimited-conditions-during-an-incident/README.md"
   },
   {
-    "title": "How to Recalculate an HPA Replica Decision by Hand from Current Metrics and Resource Requests",
+    "title": "Recalculate HPA Replica Decisions by Hand from Metrics and Resource Requests",
     "description": "Reconstruct an HPA CPU recommendation from matching Pod metrics and requests, then account for tolerance, missing samples, and scaling policies.",
     "authorGitHubUsername": "nawazdhandala",
     "tags": [
@@ -823091,7 +823091,7 @@
     "readmePath": "posts/2026-11-19-how-to-prevent-hpa-startup-cpu-spikes-from-triggering-premature-scale-out/README.md"
   },
   {
-    "title": "How to Configure Per-Direction HPA Tolerance in Kubernetes 1.35 to Filter Metric Noise",
+    "title": "Filter Metric Noise with Per-Direction HPA Tolerance in Kubernetes 1.35",
     "description": "Configure separate scale-up and scale-down tolerance in Kubernetes 1.35 and verify its interaction with rounding, stabilization, and scaling policies.",
     "authorGitHubUsername": "nawazdhandala",
     "tags": [
@@ -823143,7 +823143,7 @@
     "readmePath": "posts/2026-11-19-how-to-prevent-two-hpas-from-fighting-over-the-same-workload/README.md"
   },
   {
-    "title": "How to Migrate HPA Manifests from `autoscaling/v2beta2` to `autoscaling/v2` Without Behavior Drift",
+    "title": "Migrate HPA `autoscaling/v2beta2` to `autoscaling/v2` Without Behavior Drift",
     "description": "Migrate HPA API versions while preserving metric targets, bounds, selectors, behavior, and ownership, then compare the effective configuration before rollout.",
     "authorGitHubUsername": "nawazdhandala",
     "tags": [
@@ -823169,7 +823169,7 @@
     "readmePath": "posts/2026-11-19-how-to-keep-hpa-replica-calculations-stable-during-a-deployment-rolling-update/README.md"
   },
   {
-    "title": "How to Tune the HPA Controller Sync Period Without Overloading the Metrics Pipeline",
+    "title": "Tune the HPA Controller Sync Period Without Overloading the Metrics Pipeline",
     "description": "Estimate HPA metrics-query pressure and tune the controller sync interval only after measuring source freshness, reconciliation delay, and time to ready capacity.",
     "authorGitHubUsername": "nawazdhandala",
     "tags": [
@@ -823182,7 +823182,7 @@
     "readmePath": "posts/2026-11-19-how-to-tune-the-hpa-controller-sync-period-without-overloading-the-metrics-pipeline/README.md"
   },
   {
-    "title": "How to Alert When an HPA Is Saturated at `maxReplicas` Before Latency Breaches Its SLO",
+    "title": "Alert on HPA Saturation at `maxReplicas` Before Latency Breaches Its SLO",
     "description": "Build HPA capacity alerts from kube-state-metrics, distinguish saturation from failed convergence, and size alert delays to the service response budget.",
     "authorGitHubUsername": "nawazdhandala",
     "tags": [
@@ -823221,7 +823221,7 @@
     "readmePath": "posts/2026-11-19-how-to-prevent-per-pod-metric-averages-from-hiding-a-hot-shard/README.md"
   },
   {
-    "title": "How to Handle Missing Metrics from New, Unready, and Terminating Pods in HPA Decisions",
+    "title": "Handle Missing Metrics from New, Unready, and Terminating Pods in HPA Decisions",
     "description": "Explain how HPA classifies missing, initializing, and terminating Pods, including the conservative CPU utilization fallback that changes replica recommendations.",
     "authorGitHubUsername": "nawazdhandala",
     "tags": [
@@ -823247,7 +823247,7 @@
     "readmePath": "posts/2026-11-19-how-to-drain-long-lived-connections-safely-when-hpa-scales-down/README.md"
   },
   {
-    "title": "How to Make HPA Decisions Observable with Controller Metrics, Events, and Recommendation Dashboards",
+    "title": "Observe HPA Decisions with Controller Metrics, Events, and Dashboards",
     "description": "Combine HPA status, controller metrics, retained events, and clearly labeled recommendation estimates to explain why requested capacity changed.",
     "authorGitHubUsername": "nawazdhandala",
     "tags": [
@@ -823273,7 +823273,7 @@
     "readmePath": "posts/2026-11-19-how-to-detect-and-prevent-manual-replica-overrides-on-hpa-controlled-workloads/README.md"
   },
   {
-    "title": "How to Mirror Knative Serving Control Plane and Queue Proxy Images for Offline Installation",
+    "title": "Mirror Knative Serving Control Plane and Queue Proxy Images for Offline Installs",
     "description": "Inventory and mirror Knative Serving images, explicitly override queue-proxy, and prove offline operation with a new Revision on an uncached node.",
     "authorGitHubUsername": "nawazdhandala",
     "tags": [
@@ -823381,7 +823381,7 @@
     "readmePath": "posts/2026-11-19-how-to-align-knative-startup-probes-with-the-revision-progress-deadline/README.md"
   },
   {
-    "title": "How to Fix Knative Readiness Failures Caused by the Wrong Container Listening Port",
+    "title": "Fix Knative Readiness Failures Caused by the Wrong Container Listening Port",
     "description": "Align a Knative application listener, PORT environment variable, declared container port, and readiness probe to fix connection-refused startup failures.",
     "authorGitHubUsername": "nawazdhandala",
     "tags": [
@@ -823393,7 +823393,7 @@
     "readmePath": "posts/2026-11-19-how-to-fix-knative-readiness-failures-caused-by-the-wrong-container-listening-port/README.md"
   },
   {
-    "title": "Iguazio Reports `No space left on device`: How to Find Feature Store, Trace, and Artifact Storage Growth",
+    "title": "Iguazio 'No space left on device': Find Feature Store, Trace and Artifact Growth",
     "description": "Identify the storage boundary behind an Iguazio write failure, attribute growth to feature data, monitoring records, or artifacts, and recover capacity without breaking consumers.",
     "authorGitHubUsername": "nawazdhandala",
     "tags": [
@@ -823406,7 +823406,7 @@
     "readmePath": "posts/2026-11-19-iguazio-no-space-left-on-device-feature-store-trace-artifact-storage-growth/README.md"
   },
   {
-    "title": "MLRun Feature Ingestion Resets the Connection: How to Tune Batch Size, Retries, and Target Endpoints",
+    "title": "MLRun Feature Ingestion Resets: Tune Batch Size, Retries, and Target Endpoints",
     "description": "Diagnose MLRun ingestion connection resets by identifying the failing endpoint, tuning Storey Parquet buffers, and applying retries only at the correct layer.",
     "authorGitHubUsername": "nawazdhandala",
     "tags": [
@@ -823419,7 +823419,7 @@
     "readmePath": "posts/2026-11-19-mlrun-feature-ingestion-resets-connection-batch-size-retries-target-endpoints/README.md"
   },
   {
-    "title": "How to Observe Nuclio Model-Serving Throughput, Latency, Errors, and Worker Saturation in Iguazio",
+    "title": "Nuclio in Iguazio: Monitor Serving Latency, Errors, Throughput, and Saturation",
     "description": "Diagnose Nuclio serving performance in Iguazio by discovering deployed metrics, measuring client latency and errors, and correlating worker queues with replica capacity.",
     "authorGitHubUsername": "nawazdhandala",
     "tags": [
@@ -823433,7 +823433,7 @@
     "readmePath": "posts/2026-11-19-observe-nuclio-model-serving-metrics-iguazio/README.md"
   },
   {
-    "title": "MLRun Real-Time Ingestion Failed but the Notebook Succeeded: How to Inspect Error Streams and Nuclio Logs",
+    "title": "MLRun Ingestion Fails but Notebooks Succeed: Check Error Streams and Nuclio Logs",
     "description": "Diagnose MLRun real-time ingestion failures by comparing notebook and deployed runtimes, reading V3IO error streams, and correlating failures with Nuclio processor logs.",
     "authorGitHubUsername": "nawazdhandala",
     "tags": [
@@ -823446,7 +823446,7 @@
     "readmePath": "posts/2026-11-19-mlrun-real-time-ingestion-error-streams-nuclio-logs/README.md"
   },
   {
-    "title": "How to Configure Iguazio User Roles for Read-Only Access Without Accidentally Granting Service Administration",
+    "title": "Configure Read-Only Iguazio Roles Without Granting Service Administration",
     "description": "Configure Iguazio observer access by separating management policies, inherited permissions, project membership, and data access from service administration.",
     "authorGitHubUsername": "nawazdhandala",
     "tags": [
@@ -823458,7 +823458,7 @@
     "readmePath": "posts/2026-11-19-configure-iguazio-read-only-user-roles/README.md"
   },
   {
-    "title": "How to Calculate DORA Deployment Rework Rate from Deployment, Incident, and Hotfix Events",
+    "title": "Compute DORA Deployment Rework Rate from Deployment, Incident, and Hotfix Events",
     "description": "Calculate deployment rework rate from linked production events, with explicit counting rules, a worked example, and SQL that avoids duplicate hotfix counts.",
     "authorGitHubUsername": "nawazdhandala",
     "tags": [
@@ -823472,7 +823472,7 @@
     "readmePath": "posts/2026-11-19-calculate-dora-deployment-rework-rate/README.md"
   },
   {
-    "title": "How to Link an Unplanned Fix Deployment to the Production Incident—and the Original Change",
+    "title": "Link Unplanned Fix Deployments to Production Incidents and Original Changes",
     "description": "Connect fix deployments to incidents and original changes using stable identifiers, reviewed attribution, preserved evidence, and queryable relationships.",
     "authorGitHubUsername": "nawazdhandala",
     "tags": [
@@ -823486,7 +823486,7 @@
     "readmePath": "posts/2026-11-19-link-fix-deployment-incident-original-change/README.md"
   },
   {
-    "title": "Production Is Rolled Back but `main` Is Still Broken: How to Reconcile Git and the Running Release",
+    "title": "Reconcile Broken `main` with the Running Release After a Production Rollback",
     "description": "Repair application main after a production rollback, preserve later changes, reconcile release manifests, and carry emergency fixes into the next normal build.",
     "authorGitHubUsername": "nawazdhandala",
     "tags": [
@@ -823500,7 +823500,7 @@
     "readmePath": "posts/2026-11-19-reconcile-main-after-production-rollback/README.md"
   },
   {
-    "title": "How to Set Retry Budgets So Automatic Re-Runs Do Not Hide Chronic Deployment Failures",
+    "title": "Set Deployment Retry Budgets Without Hiding Chronic Failures Behind Re-Runs",
     "description": "Bound deployment reruns with persistent attempt budgets, preserve first-attempt failure data, and escalate recurring faults even when retries succeed.",
     "authorGitHubUsername": "nawazdhandala",
     "tags": [
@@ -823514,7 +823514,7 @@
     "readmePath": "posts/2026-11-19-deployment-retry-budgets-failure-visibility/README.md"
   },
   {
-    "title": "How to Trigger Automatic Rollback from SLOs Without Letting One Noisy Metric Revert a Healthy Release",
+    "title": "Trigger SLO-Based Automatic Rollbacks Without Reacting to Noisy Metrics",
     "description": "Build an SLO rollback policy with comparable release cohorts, minimum evidence, inconclusive states, and a bounded abort action.",
     "authorGitHubUsername": "nawazdhandala",
     "tags": [
@@ -823528,7 +823528,7 @@
     "readmePath": "posts/2026-11-19-slo-automatic-rollback-noisy-metrics/README.md"
   },
   {
-    "title": "How to Preserve Logs, Traces, and State Before an Automatic Rollback Erases the Evidence",
+    "title": "Preserve Logs, Traces, and State Before Automatic Rollback Erases Evidence",
     "description": "Preserve failed-release identity, volatile Kubernetes state, and durable telemetry with bounded collection that does not hold up automatic recovery.",
     "authorGitHubUsername": "nawazdhandala",
     "tags": [
@@ -823542,7 +823542,7 @@
     "readmePath": "posts/2026-11-19-preserve-evidence-before-automatic-rollback/README.md"
   },
   {
-    "title": "How to Turn Deployment-Rework Postmortems into New Pipeline Checks and Release Guardrails",
+    "title": "Turn Deployment-Rework Postmortems into Pipeline Checks and Release Guardrails",
     "description": "Convert deployment-rework findings into reproducible assertions, enforced release checks, and owned guardrails with evidence of effectiveness.",
     "authorGitHubUsername": "nawazdhandala",
     "tags": [
@@ -823556,7 +823556,7 @@
     "readmePath": "posts/2026-11-19-turn-deployment-rework-postmortems-into-pipeline-checks/README.md"
   },
   {
-    "title": "How to Dashboard Deployment Rework Rate with Change Failure Rate and Recovery Time Without Gaming the Numbers",
+    "title": "Dashboard Rework Rate, Change Failure Rate, and Recovery Time Without Gaming",
     "description": "Build an auditable dashboard that aligns deployment rework, change failure, and recovery cohorts while exposing uncertainty and incentives to game the numbers.",
     "authorGitHubUsername": "nawazdhandala",
     "tags": [
@@ -823570,7 +823570,7 @@
     "readmePath": "posts/2026-11-19-dashboard-rework-failure-recovery-without-gaming/README.md"
   },
   {
-    "title": "AWS SSM `TargetNotConnected`: A Layer-by-Layer Check of Agent, IAM, Region, DNS, and Egress",
+    "title": "AWS SSM `TargetNotConnected`: Agent, IAM, Region, DNS, and Egress Checks",
     "description": "Diagnose AWS SSM TargetNotConnected by checking account and Region, agent health, node and caller permissions, regional endpoints, DNS, and outbound HTTPS.",
     "authorGitHubUsername": "nawazdhandala",
     "tags": [
@@ -823584,7 +823584,7 @@
     "readmePath": "posts/2026-11-19-aws-ssm-targetnotconnected-layered-troubleshooting/README.md"
   },
   {
-    "title": "Node Appears in Fleet Manager but Session Manager Fails: Check `ssmmessages`, Session Preferences, and Agent Logs",
+    "title": "Fleet Manager Online but Session Manager Fails: `ssmmessages` Checks",
     "description": "Diagnose Session Manager failures on an online managed node by checking messaging channels, the selected session document, logging, KMS, Run As, and agent evidence.",
     "authorGitHubUsername": "nawazdhandala",
     "tags": [
@@ -823598,7 +823598,7 @@
     "readmePath": "posts/2026-11-19-fleet-manager-online-session-manager-fails/README.md"
   },
   {
-    "title": "How to Run AWS Systems Manager in a Private Subnet with the Right VPC Endpoints, DNS, and Security Groups",
+    "title": "AWS Systems Manager in Private Subnets: VPC Endpoints, DNS, and Security",
     "description": "Configure private Systems Manager access with feature-specific endpoints, private DNS, security groups, S3 routes, and verification of the actual node path.",
     "authorGitHubUsername": "nawazdhandala",
     "tags": [
@@ -823612,7 +823612,7 @@
     "readmePath": "posts/2026-11-19-aws-systems-manager-private-subnet-endpoints-dns-security-groups/README.md"
   },
   {
-    "title": "SSM Agent Keeps Going Offline Behind a Proxy: Configure Proxy Variables, `no_proxy`, and TLS Inspection",
+    "title": "Fix SSM Agent Proxy Disconnects: `no_proxy` and TLS Inspection",
     "description": "Diagnose SSM Agent disconnects behind an HTTP proxy by correcting its service environment, protecting metadata access, and validating certificate trust and session channels.",
     "authorGitHubUsername": "nawazdhandala",
     "tags": [
@@ -823626,7 +823626,7 @@
     "readmePath": "posts/2026-11-19-ssm-agent-offline-proxy-variables-no-proxy-tls-inspection/README.md"
   },
   {
-    "title": "Fixing “document worker timed out” in SSM: Disk Space, Memory, File Descriptors, and Worker Logs",
+    "title": "SSM `document worker timed out`: Disk, Memory, and Worker Log Checks",
     "description": "Diagnose SSM document worker timeouts on Linux using matching worker logs, filesystem and memory evidence, process descriptor limits, and inotify usage.",
     "authorGitHubUsername": "nawazdhandala",
     "tags": [
@@ -823639,7 +823639,7 @@
     "readmePath": "posts/2026-11-19-ssm-document-worker-timed-out/README.md"
   },
   {
-    "title": "`DeliveryTimedOut` vs. `ExecutionTimedOut` in SSM Run Command: Find Which Clock Expired",
+    "title": "SSM `DeliveryTimedOut` vs. `ExecutionTimedOut`: Which Clock Expired?",
     "description": "Diagnose SSM Run Command timeouts using request and document limits, expiry timestamps, plugin evidence, concurrency, and error thresholds.",
     "authorGitHubUsername": "nawazdhandala",
     "tags": [
@@ -823666,7 +823666,7 @@
     "readmePath": "posts/2026-11-19-capture-complete-ssm-run-command-output/README.md"
   },
   {
-    "title": "How to Reboot Safely from SSM Run Command with Linux Exit Code 194 and Windows Exit Code 3010",
+    "title": "Safe SSM Run Command Reboots: Linux Exit 194 and Windows Exit 3010",
     "description": "Handle SSM Run Command reboots with explicit exit codes, persistent checkpoints, bounded retries, and post-boot verification on Linux and Windows.",
     "authorGitHubUsername": "nawazdhandala",
     "tags": [
@@ -823680,7 +823680,7 @@
     "readmePath": "posts/2026-11-19-ssm-run-command-safe-reboots-exit-194-3010/README.md"
   },
   {
-    "title": "Least-Privilege Session Manager IAM: Restrict Users by Instance Tags, Session Documents, and Actions",
+    "title": "Least-Privilege Session Manager IAM by Tags, Documents, and Actions",
     "description": "Build scoped Session Manager permissions for tagged EC2 instances, approved session documents, and caller-owned sessions while closing common authorization bypasses.",
     "authorGitHubUsername": "nawazdhandala",
     "tags": [
@@ -823694,7 +823694,7 @@
     "readmePath": "posts/2026-11-19-least-privilege-session-manager-iam/README.md"
   },
   {
-    "title": "Why Session Manager Logs Are Empty: CloudWatch/S3/KMS Setup and the SSH/Port-Forwarding Blind Spot",
+    "title": "Empty Session Manager Logs: CloudWatch, S3, KMS, and SSH Limitations",
     "description": "Diagnose missing Session Manager transcripts by checking session modes, upload timing, document inputs, destination permissions, encryption, and local recovery evidence.",
     "authorGitHubUsername": "nawazdhandala",
     "tags": [
@@ -823708,7 +823708,7 @@
     "readmePath": "posts/2026-11-19-session-manager-empty-logs-cloudwatch-s3-kms/README.md"
   },
   {
-    "title": "How to Reach Private RDS Through SSM Remote-Host Port Forwarding—and Why Your Client Must Use `localhost`",
+    "title": "Private RDS via SSM Remote-Host Port Forwarding: Localhost and TLS",
     "description": "Connect to private RDS through an SSM relay while separating the local tunnel address from PostgreSQL authentication and TLS hostname verification.",
     "authorGitHubUsername": "nawazdhandala",
     "tags": [
@@ -823722,7 +823722,7 @@
     "readmePath": "posts/2026-11-19-private-rds-ssm-remote-host-localhost-tls/README.md"
   },
   {
-    "title": "RDS IAM Authentication Through an SSM Tunnel: Fix Token Hostnames and TLS Certificate Validation",
+    "title": "RDS IAM Auth Through SSM Tunnels: Token Hostnames and TLS Validation",
     "description": "Connect to RDS PostgreSQL through an SSM tunnel with the correct IAM token endpoint, database permissions, and verified TLS identity.",
     "authorGitHubUsername": "nawazdhandala",
     "tags": [
@@ -823751,7 +823751,7 @@
     "readmePath": "posts/2026-11-19-openssh-proxycommand-session-manager-no-inbound-port-22/README.md"
   },
   {
-    "title": "SSM Parameter Store `AccessDeniedException`: Match the API Action, Parameter ARN, Path, and KMS Key",
+    "title": "SSM Parameter Store `AccessDeniedException`: Check IAM, Paths, and KMS",
     "description": "Diagnose Parameter Store access denials by matching the caller, retrieval action, resource path, and SecureString decryption permissions without printing parameter values.",
     "authorGitHubUsername": "nawazdhandala",
     "tags": [
@@ -823766,7 +823766,7 @@
     "readmePath": "posts/2026-11-19-ssm-parameter-store-accessdenied-action-arn-path-kms/README.md"
   },
   {
-    "title": "How to Read an Entire Parameter Store Hierarchy Without Missing Paginated or Encrypted Values",
+    "title": "Read a Parameter Store Hierarchy with Pagination and Decryption",
     "description": "Load a complete Parameter Store hierarchy with pagination, decryption, collision checks, and validation before replacing application configuration.",
     "authorGitHubUsername": "nawazdhandala",
     "tags": [
@@ -823780,7 +823780,7 @@
     "readmePath": "posts/2026-11-19-read-entire-parameter-store-hierarchy-pagination-decryption/README.md"
   },
   {
-    "title": "How to Rotate a `SecureString` with Parameter Versions and Labels Without Breaking Consumers",
+    "title": "Rotate SecureString Parameters with Versions and Labels Safely",
     "description": "Rotate SecureString credentials through captured parameter versions, controlled label promotion, consumer adoption checks, and a usable rollback window.",
     "authorGitHubUsername": "nawazdhandala",
     "tags": [
@@ -823794,7 +823794,7 @@
     "readmePath": "posts/2026-11-19-rotate-securestring-parameter-versions-labels/README.md"
   },
   {
-    "title": "Patch Manager Stuck on “In Progress” or “Pending Reboot”: Trace the Agent, OS Updater, and Patch Logs",
+    "title": "Fix Patch Manager Stuck In Progress or Pending Reboot",
     "description": "Diagnose stalled Patch Manager operations by correlating command status, patch compliance, agent logs, native updater activity, and post-reboot scans.",
     "authorGitHubUsername": "nawazdhandala",
     "tags": [
@@ -823807,7 +823807,7 @@
     "readmePath": "posts/2026-11-19-patch-manager-in-progress-pending-reboot/README.md"
   },
   {
-    "title": "Patch Manager for Auto Scaling Groups: Drain and Patch Live Instances or Bake a New AMI?",
+    "title": "Patch Manager for Auto Scaling: Patch Live Instances or Bake an AMI?",
     "description": "Choose between coordinated in-place patching and tested AMI replacement, with explicit draining, capacity, launch-template, and rollback controls.",
     "authorGitHubUsername": "nawazdhandala",
     "tags": [
@@ -823821,7 +823821,7 @@
     "readmePath": "posts/2026-11-19-patch-manager-auto-scaling-groups-live-patching-or-ami/README.md"
   },
   {
-    "title": "Windows Patch Manager in a Private Subnet: Combine SSM Endpoints with WSUS or Update Egress",
+    "title": "Windows Patch Manager in Private Subnets: SSM Endpoints, WSUS, and Egress",
     "description": "Design and verify private Windows Server patching by separating SSM and S3 connectivity from WSUS metadata, update content, and Microsoft Update egress.",
     "authorGitHubUsername": "nawazdhandala",
     "tags": [
@@ -823835,7 +823835,7 @@
     "readmePath": "posts/2026-11-19-windows-patch-manager-private-subnet-ssm-wsus-egress/README.md"
   },
   {
-    "title": "On-Premises Node Missing from Systems Manager: Debug Hybrid Activation, Region, IAM Role, and Agent Registration",
+    "title": "On-Premises Node Missing from SSM: Hybrid Activation and Agent Checks",
     "description": "Diagnose missing hybrid managed nodes by checking account and Region, activation capacity, service-role permissions, local registration, credentials, and connectivity.",
     "authorGitHubUsername": "nawazdhandala",
     "tags": [
@@ -823849,7 +823849,7 @@
     "readmePath": "posts/2026-11-19-on-premises-node-missing-systems-manager/README.md"
   },
   {
-    "title": "“Too Many Authentication Failures” Even with `-i`: Force the Intended Key with `IdentitiesOnly`",
+    "title": "SSH Too Many Authentication Failures: Select Keys with `IdentitiesOnly`",
     "description": "Diagnose SSH authentication failures caused by excess identities, limit agent offers with IdentitiesOnly, and catch additive IdentityFile configuration.",
     "authorGitHubUsername": "nawazdhandala",
     "tags": [
@@ -823862,7 +823862,7 @@
     "readmePath": "posts/2026-11-19-ssh-too-many-authentication-failures-identitiesonly/README.md"
   },
   {
-    "title": "OpenSSH Upgrade Broke RSA Login: Fix “sign_and_send_pubkey: no mutual signature supported” Safely",
+    "title": "OpenSSH RSA Login: Fix `sign_and_send_pubkey: no mutual signature supported`",
     "description": "Diagnose RSA signature negotiation failures after OpenSSH upgrades, restore SHA-2 authentication, and limit any temporary SHA-1 exception to one destination.",
     "authorGitHubUsername": "nawazdhandala",
     "tags": [
@@ -823875,7 +823875,7 @@
     "readmePath": "posts/2026-11-19-openssh-rsa-no-mutual-signature-supported/README.md"
   },
   {
-    "title": "“No Matching Host Key Type,” Cipher, or Key Exchange: Debug SSH Algorithm Negotiation Without Weakening Every Host",
+    "title": "SSH Algorithm Negotiation: Fix Host Key, Cipher, and Key Exchange Errors",
     "description": "Diagnose SSH host-key, cipher, MAC, and key-exchange mismatches, inspect effective policy, and scope temporary compatibility exceptions to one destination.",
     "authorGitHubUsername": "nawazdhandala",
     "tags": [
@@ -823888,7 +823888,7 @@
     "readmePath": "posts/2026-11-19-ssh-algorithm-negotiation-host-key-cipher-kex/README.md"
   },
   {
-    "title": "“REMOTE HOST IDENTIFICATION HAS CHANGED”: How to Verify the New Fingerprint Before Editing `known_hosts`",
+    "title": "SSH Host Identification Has Changed: Verify Before Editing `known_hosts`",
     "description": "Verify a changed SSH host key through a trusted channel, identify the exact known_hosts entry, and reconnect with host verification intact.",
     "authorGitHubUsername": "nawazdhandala",
     "tags": [
@@ -823901,7 +823901,7 @@
     "readmePath": "posts/2026-11-19-ssh-host-identification-changed-verify-fingerprint/README.md"
   },
   {
-    "title": "SSH Agent Forwarding Breaks After `sudo`, `su`, or `tmux`: Follow the `SSH_AUTH_SOCK`",
+    "title": "SSH Agent Forwarding After sudo, su, or tmux: Check SSH_AUTH_SOCK",
     "description": "Diagnose SSH agent forwarding failures across sudo, su, and tmux by checking the process environment, socket access, and connection lifetime.",
     "authorGitHubUsername": "nawazdhandala",
     "tags": [
@@ -823916,7 +823916,7 @@
     "readmePath": "posts/2026-11-20-ssh-agent-forwarding-sudo-su-tmux-ssh-auth-sock/README.md"
   },
   {
-    "title": "Public Key Is Accepted, Then SSH Immediately Closes: Check the Login Shell, PAM, Home Directory, and `ForceCommand`",
+    "title": "SSH Key Accepted, Then Connection Closes: Shell, PAM, and ForceCommand",
     "description": "Diagnose SSH connections that close after key acceptance by separating authentication, account policy, forced commands, shell startup, and home-directory failures.",
     "authorGitHubUsername": "nawazdhandala",
     "tags": [
@@ -823930,7 +823930,7 @@
     "readmePath": "posts/2026-11-20-ssh-key-accepted-connection-closes-login-shell-pam/README.md"
   },
   {
-    "title": "SSH Works in Your Terminal but Fails in Cron or CI: Recreate `HOME`, Host Trust, Agent, and TTY State",
+    "title": "SSH Works in Terminal but Fails in Cron or CI: HOME, Trust, Agent, and TTY",
     "description": "Reproduce SSH failures in cron and CI by making execution identity, home lookup, trusted hosts, credentials, terminal state, and time limits explicit.",
     "authorGitHubUsername": "nawazdhandala",
     "tags": [
@@ -823944,7 +823944,7 @@
     "readmePath": "posts/2026-11-20-ssh-terminal-works-cron-ci-home-trust-agent-tty/README.md"
   },
   {
-    "title": "“Pseudo-terminal Will Not Be Allocated”: When to Use `-T`, `-t`, or `-tt` in SSH Automation",
+    "title": "SSH Pseudo-Terminal Allocation: When to Use `-T`, `-t`, or `-tt`",
     "description": "Choose SSH terminal allocation deliberately, distinguish local stdin warnings from server refusals, and preserve command input, output, and exit status in automation.",
     "authorGitHubUsername": "nawazdhandala",
     "tags": [
@@ -823958,7 +823958,7 @@
     "readmePath": "posts/2026-11-20-ssh-pseudo-terminal-t-t-tt-automation/README.md"
   },
   {
-    "title": "Remote `sudo` Says “a Terminal Is Required”: Allocate a PTY or Change the Command Path?",
+    "title": "Remote sudo Requires a Terminal: Allocate a PTY or Change the Command",
     "description": "Separate sudo password prompts, requiretty policy, and application terminal needs, then choose an interactive SSH session or a narrowly authorized unattended command.",
     "authorGitHubUsername": "nawazdhandala",
     "tags": [
@@ -823972,7 +823972,7 @@
     "readmePath": "posts/2026-11-20-remote-sudo-terminal-required-pty-command-path/README.md"
   },
   {
-    "title": "SSH Pauses Before the Password Prompt: Isolate Reverse DNS, GSSAPI, PAM, and SSSD Delays",
+    "title": "SSH Password Prompt Delays: Debug Reverse DNS, GSSAPI, PAM, and SSSD",
     "description": "Locate SSH login delays with timed client and server evidence, separating destination DNS, reverse DNS, GSSAPI, NSS identity lookup, and PAM processing.",
     "authorGitHubUsername": "nawazdhandala",
     "tags": [
@@ -823987,7 +823987,7 @@
     "readmePath": "posts/2026-11-20-ssh-pauses-before-password-dns-gssapi-pam-sssd/README.md"
   },
   {
-    "title": "`client_loop: send disconnect: Broken pipe`: Separate Idle NAT Timeouts from Server-Side Session Failures",
+    "title": "SSH `Broken pipe`: Idle NAT Timeouts vs. Server Session Failures",
     "description": "Diagnose SSH broken pipe errors by correlating idle periods, network events, server policies, and remote job state before changing keepalives.",
     "authorGitHubUsername": "nawazdhandala",
     "tags": [
@@ -824000,7 +824000,7 @@
     "readmePath": "posts/2026-11-20-ssh-broken-pipe-idle-nat-server-session-failures/README.md"
   },
   {
-    "title": "“Remote Port Forwarding Failed for Listen Port”: Check Bind Conflicts, `GatewayPorts`, and Forwarding Policy",
+    "title": "SSH Remote Port Forwarding Failed: Bind Conflicts, GatewayPorts, and Policy",
     "description": "Diagnose SSH remote forwarding failures by separating server bind conflicts, requested listen addresses, forwarding permissions, and client-side destination failures.",
     "authorGitHubUsername": "nawazdhandala",
     "tags": [
@@ -824014,7 +824014,7 @@
     "readmePath": "posts/2026-11-20-ssh-remote-port-forwarding-failed-bind-gatewayports-policy/README.md"
   },
   {
-    "title": "SSH Tunnel Opens but the Application Cannot Connect: Debug Bind Addresses, `localhost`, IPv4/IPv6, and the Final Hop",
+    "title": "SSH Tunnel Opens but App Cannot Connect: Bind Addresses and Final-Hop Checks",
     "description": "Trace SSH tunnel failures from the listening socket through forwarding policy and the final TCP hop to application protocol, TLS, and authentication.",
     "authorGitHubUsername": "nawazdhandala",
     "tags": [
@@ -824028,7 +824028,7 @@
     "readmePath": "posts/2026-11-20-ssh-tunnel-opens-application-cannot-connect/README.md"
   },
   {
-    "title": "How to Make an SSH Tunnel Fail Fast with `ExitOnForwardFailure` and a Health Check",
+    "title": "Fail Fast with SSH `ExitOnForwardFailure` and a Tunnel Health Check",
     "description": "Gate a job on an owned SSH forward and a bounded HTTPS readiness check, with separate startup, health, and job failures.",
     "authorGitHubUsername": "nawazdhandala",
     "tags": [
@@ -824054,7 +824054,7 @@
     "readmePath": "posts/2026-11-20-populate-known-hosts-ci-strict-checking/README.md"
   },
   {
-    "title": "SSH Works by IP but Not by Hostname: Inspect DNS, Host Blocks, Canonicalization, and Host-Key Entries",
+    "title": "SSH Works by IP but Not Hostname: DNS, Config, and Host-Key Checks",
     "description": "Diagnose SSH hostname-only failures by comparing effective client configuration, resolver results, canonicalization passes, and the exact host-key lookup name.",
     "authorGitHubUsername": "nawazdhandala",
     "tags": [
@@ -824067,7 +824067,7 @@
     "readmePath": "posts/2026-11-20-ssh-works-ip-not-hostname-dns-config-canonicalization/README.md"
   },
   {
-    "title": "How to Rotate an OpenSSH Certificate Authority Without Locking Out Existing Users",
+    "title": "Rotate an OpenSSH Certificate Authority Without Locking Out Users",
     "description": "Rotate OpenSSH user and host certificate authorities with overlapping trust, isolated authentication checks, and explicit gates for retiring the old CA.",
     "authorGitHubUsername": "nawazdhandala",
     "tags": [
@@ -824107,7 +824107,7 @@
     "readmePath": "posts/2026-11-20-create-use-resident-openssh-fido2-security-key/README.md"
   },
   {
-    "title": "How to Apply Different SSH Authentication Requirements by User and Group with `Match` Blocks",
+    "title": "SSH Authentication by User and Group with `Match` Blocks",
     "description": "Build per-user and per-group SSH authentication policies with Match blocks, understand overlapping rules, and verify required authentication paths before rollout.",
     "authorGitHubUsername": "nawazdhandala",
     "tags": [
@@ -824148,7 +824148,7 @@
     "readmePath": "posts/2026-11-20-rotate-ssh-host-keys-updatehostkeys/README.md"
   },
   {
-    "title": "How to Publish and Verify SSH Host Fingerprints with DNSSEC-Protected SSHFP Records",
+    "title": "Publish and Verify SSH Host Fingerprints with DNSSEC and SSHFP",
     "description": "Publish trusted SSH host fingerprints in DNS, validate the DNSSEC chain and resolver path, and prove that OpenSSH authenticates a server through SSHFP.",
     "authorGitHubUsername": "nawazdhandala",
     "tags": [
@@ -824163,7 +824163,7 @@
     "readmePath": "posts/2026-11-20-publish-verify-sshfp-dnssec/README.md"
   },
   {
-    "title": "How to Chain a Local Port Forward Through Multiple SSH Jump Hosts with `ProxyJump`",
+    "title": "Chain Local Port Forwards Through SSH Jump Hosts with `ProxyJump`",
     "description": "Build a local forward through two SSH jump hosts with separate credentials, explicit destination permissions, and a check of the application beyond the final relay.",
     "authorGitHubUsername": "nawazdhandala",
     "tags": [
@@ -824177,7 +824177,7 @@
     "readmePath": "posts/2026-11-20-chain-local-port-forward-multiple-ssh-proxyjump/README.md"
   },
   {
-    "title": "How to Restrict SSH Certificate Logins with `AuthorizedPrincipalsFile` and Critical Options",
+    "title": "Restrict SSH Certificate Logins: `AuthorizedPrincipalsFile` and Critical Options",
     "description": "Restrict OpenSSH certificate access with account-specific principals, source-address and forced-command constraints, and tests that exclude alternative authentication paths.",
     "authorGitHubUsername": "nawazdhandala",
     "tags": [
@@ -824204,7 +824204,7 @@
     "readmePath": "posts/2026-11-20-forward-unix-domain-socket-over-ssh/README.md"
   },
   {
-    "title": "How to Limit SSH Connection Floods with `MaxStartups` and `PerSourcePenalties` in OpenSSH 9.8+",
+    "title": "OpenSSH 9.8+ Flood Limits: `MaxStartups` and `PerSourcePenalties`",
     "description": "Configure OpenSSH connection limits and source penalties, account for shared IP addresses, and verify that legitimate SSH access survives throttling.",
     "authorGitHubUsername": "nawazdhandala",
     "tags": [
@@ -824215,5 +824215,18 @@
     ],
     "post": "2026-11-20-ssh-connection-floods-maxstartups-persourcepenalties",
     "readmePath": "posts/2026-11-20-ssh-connection-floods-maxstartups-persourcepenalties/README.md"
+  },
+  {
+    "title": "Fix Aerospike `INVALID_NODE_ERROR` in Docker and Testcontainers",
+    "description": "Diagnose Aerospike client discovery failures in containers by checking seed endpoints, advertised addresses, alternate services, and Docker port mappings.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Aerospike",
+      "Docker",
+      "Testcontainers",
+      "Java",
+      "Troubleshooting"
+    ],
+    "post": "2026-11-20-aerospike-invalid-node-error-docker-testcontainers-advertised-addresses-mapped-ports"
   }
 ]

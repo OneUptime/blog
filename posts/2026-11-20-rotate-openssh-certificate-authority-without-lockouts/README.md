@@ -1,4 +1,4 @@
-# How to Rotate an OpenSSH Certificate Authority Without Locking Out Existing Users
+# Rotate an OpenSSH Certificate Authority Without Locking Out Users
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

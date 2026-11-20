@@ -1,4 +1,4 @@
-# Duplicate Kubernetes Logs from stdout and OTLP: Choose One Ingestion Path per Pod
+# Deduplicate Kubernetes Logs from stdout and OTLP with One Ingestion Path per Pod
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
@@ -46,7 +46,7 @@ For OTLP ownership, keep the OTLP logging bridge and exclude only that applicati
 
 ```yaml
 receivers:
-  filelog:
+  file_log:
     include:
       - /var/log/pods/*/*/*.log
     exclude:

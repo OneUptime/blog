@@ -1,4 +1,4 @@
-# How to Link an Unplanned Fix Deployment to the Production Incident—and the Original Change
+# Link Unplanned Fix Deployments to Production Incidents and Original Changes
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

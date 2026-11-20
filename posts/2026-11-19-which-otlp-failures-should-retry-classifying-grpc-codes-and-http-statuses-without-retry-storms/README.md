@@ -1,4 +1,4 @@
-# Which OTLP Failures Should Retry? Classifying gRPC Codes and HTTP Statuses Without Retry Storms
+# Avoid OTLP Retry Storms: Classify gRPC Codes and HTTP Statuses
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
@@ -28,13 +28,13 @@ A connection failure without a protocol response is a separate case. DNS outages
 
 ## Honor backpressure
 
-A server can provide a delay through HTTP `Retry-After` or gRPC `RetryInfo`. Respect it. Otherwise, use exponential backoff with jitter as implemented by the exporter rather than immediately looping around every failed call.
+A server can provide a delay through HTTP `Retry-After` or gRPC `RetryInfo`. Respect it when retrying a retryable failure. Check your exporter version: the current upstream Collector retry helper caps the server-requested delay at `max_interval`, so a longer requested delay may not be honored in full. Otherwise, use exponential backoff with jitter as implemented by the exporter rather than immediately looping around every failed call.
 
 Do not add an application-level retry wrapper around an SDK exporter without understanding its existing policy. A proxy retry, SDK retry, and Collector retry can multiply traffic and make incident timing difficult to understand. Their scopes also differ: the application may already have received an acknowledgement from the Collector while the Collector is still retrying its backend.
 
 ## Set a finite Collector retry budget
 
-This exporter fragment gives each attempt a timeout and limits the overall retry period:
+This exporter fragment gives each attempt a timeout and limits retry scheduling for each dequeued batch. The retry budget excludes time waiting in the queue, and an attempt started within the budget can finish after it expires:
 
 ```yaml
 exporters:

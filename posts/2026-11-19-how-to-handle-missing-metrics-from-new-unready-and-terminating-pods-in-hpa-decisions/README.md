@@ -1,4 +1,4 @@
-# How to Handle Missing Metrics from New, Unready, and Terminating Pods in HPA Decisions
+# Handle Missing Metrics from New, Unready, and Terminating Pods in HPA Decisions
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

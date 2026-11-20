@@ -1,4 +1,4 @@
-# How to Make an SSH Tunnel Fail Fast with `ExitOnForwardFailure` and a Health Check
+# Fail Fast with SSH `ExitOnForwardFailure` and a Tunnel Health Check
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

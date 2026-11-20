@@ -42,8 +42,16 @@ The following is **design pseudocode**, not a drop-in reactor implementation. Th
 
 ```text
 on producer offer(message):
-    reject if terminal or queue is full
+    reject if input closed, terminal requested, finish started, or queue is full
     enqueue an owned message
+    schedule drain
+
+on producer completion:
+    mark input closed
+    schedule drain
+
+on cancellation:
+    request terminal state and stop producers asynchronously
     schedule drain
 
 on write completion(ok):
@@ -67,9 +75,9 @@ The [ServerWriteReactor API](https://grpc.github.io/grpc/cpp/classgrpc_1_1_serve
 
 ## Make lifetime management explicit
 
-Most reactor reactions may overlap. A mutex around the queue is not enough if cancellation can delete the reactor while a producer still holds a raw pointer to it.
+Most reactor reactions may overlap. A mutex around the queue is not enough if cancellation leads to final cleanup while a producer still holds a raw pointer to the reactor.
 
-On cancellation, stop new offers, cancel or detach the producer subscription, and ensure all callbacks that could reference the reactor have finished before final deletion. `OnDone()` is the final gRPC reaction, but external application work must obey its own lifetime contract too.
+On cancellation, stop new offers, cancel or detach the producer subscription, and ensure all callbacks that could reference the reactor have finished before final deletion. The server must still call `Finish()` after cancellation; `OnDone()` runs only after `Finish()` and all other gRPC reactions have completed. External application work must obey its own lifetime contract too.
 
 Client-side reactor holds solve a specific client lifetime problem. They are not an API to copy into a server reactor. For server outside-reactor operations, coordinate shutdown and `Finish()` so no new operation starts after finishing begins.
 
@@ -77,7 +85,7 @@ Client-side reactor holds solve a specific client lifetime problem. They are not
 
 A stalled client must not cause unbounded server memory. Pick a maximum queued byte count as well as a message count if payload sizes vary. Pause an upstream producer, reject the subscription with a documented status, or drop events only when the protocol explicitly permits loss.
 
-Expose queued bytes and time since the last completed write. These distinguish an idle producer from a consumer that stopped reading.
+Expose queued bytes and time since the last completed write. These help distinguish an idle producer from a stalled write path, but do not prove that the client stopped reading: gRPC buffers writes, and write completion does not acknowledge application-level consumption.
 
 ## Exercise the races
 

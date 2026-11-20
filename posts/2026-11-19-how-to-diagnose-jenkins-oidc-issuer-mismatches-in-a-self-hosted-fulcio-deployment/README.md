@@ -1,4 +1,4 @@
-# How to Diagnose Jenkins OIDC Issuer Mismatches in a Self-Hosted Fulcio Deployment
+# Diagnose Jenkins OIDC Issuer Mismatches in Self-Hosted Fulcio
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

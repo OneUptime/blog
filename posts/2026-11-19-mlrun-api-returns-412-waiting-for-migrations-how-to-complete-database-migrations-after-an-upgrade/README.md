@@ -1,4 +1,4 @@
-# MLRun API Returns 412 “Waiting for Migrations”: How to Complete Database Migrations After an Upgrade
+# Fix MLRun API 412 'Waiting for Migrations' After an Upgrade
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

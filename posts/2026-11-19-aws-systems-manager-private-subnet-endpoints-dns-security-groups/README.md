@@ -1,4 +1,4 @@
-# How to Run AWS Systems Manager in a Private Subnet with the Right VPC Endpoints, DNS, and Security Groups
+# AWS Systems Manager in Private Subnets: VPC Endpoints, DNS, and Security
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

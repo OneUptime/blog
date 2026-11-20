@@ -1,4 +1,4 @@
-# SSH Works by IP but Not by Hostname: Inspect DNS, Host Blocks, Canonicalization, and Host-Key Entries
+# SSH Works by IP but Not Hostname: DNS, Config, and Host-Key Checks
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
@@ -104,4 +104,4 @@ ssh-keygen -F app-trust-alias -f "$HOME/.ssh/known_hosts"
 
 `-F` finds hashed entries too. If `CheckHostIP` reports an address-related conflict, inspect that separate entry. For host certificates, check trusted CA records and the expected hostname/principal. [Lookup options](https://man.openbsd.org/ssh-keygen#F), [host alias and certificate validation](https://man.openbsd.org/ssh_config#HostKeyAlias)
 
-Verify changed keys through an authenticated console or maintained inventory before editing trust. Use the [host-key verification workflow](/blog/post/2026-11-19-ssh-host-identification-changed-verify-fingerprint/view) for that repair. Keep strict checking enabled, fix the demonstrated mismatch, and repeat the original hostname connection with connection reuse disabled. Confirm the intended address, account, and verified server identity before calling the issue resolved.
+Verify changed keys through an authenticated console or maintained inventory before editing trust. Use the [host-key verification workflow](https://oneuptime.com/blog/post/2026-11-19-ssh-host-identification-changed-verify-fingerprint/view) for that repair. Keep strict checking enabled, fix the demonstrated mismatch, and repeat the original hostname connection with connection reuse disabled. Confirm the intended address, account, and verified server identity before calling the issue resolved.

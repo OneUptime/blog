@@ -1,4 +1,4 @@
-# Least-Privilege Session Manager IAM: Restrict Users by Instance Tags, Session Documents, and Actions
+# Least-Privilege Session Manager IAM by Tags, Documents, and Actions
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

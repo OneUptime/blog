@@ -1,4 +1,4 @@
-# On-Premises Node Missing from Systems Manager: Debug Hybrid Activation, Region, IAM Role, and Agent Registration
+# On-Premises Node Missing from SSM: Hybrid Activation and Agent Checks
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

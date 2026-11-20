@@ -1,4 +1,4 @@
-# How to Read HPA AbleToScale, ScalingActive, and ScalingLimited Conditions During an Incident
+# Read HPA AbleToScale, ScalingActive, and ScalingLimited Conditions
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
@@ -10,7 +10,7 @@ Description: Read HPA conditions alongside their reasons, metric errors, and tar
 
 A service is overloaded, the HPA still shows six replicas, and its conditions contain several `True` values. That is not enough to decide whether scaling works. Each condition answers a different question, and its reason and message carry the operational detail.
 
-Start by saving one complete snapshot before changing thresholds. Replace `production` and `checkout` throughout these examples with your namespace and HPA name.
+Start by saving one complete snapshot before changing thresholds. Replace `production` and `checkout` in the HPA commands with your namespace and HPA name. The Deployment commands assume the target is a Deployment also named `checkout`; use the kind and name from `spec.scaleTargetRef` for your actual target.
 
 ```bash
 kubectl get hpa checkout -n production -o json > hpa-incident.json
@@ -61,7 +61,7 @@ kubectl get --raw '/apis/metrics.k8s.io/v1beta1/namespaces/production/pods'
 kubectl get apiservices
 ```
 
-Do not route every failure to Metrics Server. `FailedGetExternalMetric` requires investigation of the external adapter and its upstream data source. `AmbiguousSelector` requires checking overlapping HPA targets. A missing CPU request is configuration failure, even when CPU samples are available.
+Do not route every failure to Metrics Server. `FailedGetExternalMetric` requires investigation of the external adapter and its upstream data source. `AmbiguousSelector` requires checking overlapping HPA targets. For a CPU utilization target, a missing CPU request in a relevant container is a configuration failure, even when CPU samples are available; an `AverageValue` target does not require CPU requests.
 
 For multiple metrics, inspect all metrics and warnings. A successful metric can support scale-up while another fails. Consequently, `ScalingActive=True` is not proof that every configured metric is healthy.
 

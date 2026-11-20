@@ -1,4 +1,4 @@
-# Iguazio Reports `No space left on device`: How to Find Feature Store, Trace, and Artifact Storage Growth
+# Iguazio 'No space left on device': Find Feature Store, Trace and Artifact Growth
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

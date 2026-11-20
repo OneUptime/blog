@@ -1,4 +1,4 @@
-# How to Turn Deployment-Rework Postmortems into New Pipeline Checks and Release Guardrails
+# Turn Deployment-Rework Postmortems into Pipeline Checks and Release Guardrails
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

@@ -1,4 +1,4 @@
-# Browser OTLP/HTTP Exports Fail Preflight: Configure Collector CORS Without Allowing Every Origin
+# Fix Browser OTLP/HTTP Preflight Failures with Restricted Collector CORS
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

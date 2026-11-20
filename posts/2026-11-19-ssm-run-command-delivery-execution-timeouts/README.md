@@ -1,4 +1,4 @@
-# `DeliveryTimedOut` vs. `ExecutionTimedOut` in SSM Run Command: Find Which Clock Expired
+# SSM `DeliveryTimedOut` vs. `ExecutionTimedOut`: Which Clock Expired?
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

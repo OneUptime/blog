@@ -1,4 +1,4 @@
-# How to Assess Fulcio Exposure to OIDC Discovery Redirect and JWKS Substitution Flaws
+# Assess Fulcio Exposure to OIDC Discovery Redirect and JWKS Substitution Flaws
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
@@ -10,7 +10,7 @@ Description: Assess Fulcio discovery redirect and JWKS substitution exposure usi
 
 A Fulcio deployment can validate token claims correctly and still have an unsafe route to the keys used for validation. OIDC discovery is part of the trust boundary: it tells Fulcio where to obtain an issuer's signing keys, and it can cause outbound requests from the CA's network.
 
-Assess the deployed build and configuration together. An affected version establishes exposure; it does not prove that someone exploited it. Conversely, a successful signing canary does not demonstrate that hostile discovery responses are rejected.
+Assess the deployed build and configuration together. An affected version with the relevant issuer configuration establishes exposure; it does not prove that someone exploited it. Conversely, a successful signing canary does not demonstrate that hostile discovery responses are rejected.
 
 ## Start with the correct advisories
 
@@ -22,7 +22,7 @@ Use those minimum versions to interpret history, then select a supported release
 
 ## Inventory the affected trust paths
 
-Capture the image digest and the configuration actually mounted in every replica:
+Start by capturing each replica’s image ID and the Deployment template’s configuration references:
 
 ```bash
 kubectl -n sigstore get pods -l app=fulcio -o json |
@@ -39,7 +39,7 @@ kubectl -n sigstore get deploy fulcio -o json |
   }'
 ```
 
-Adapt labels to the deployment. Store the output as restricted operational evidence because configuration locations and internal names can be sensitive.
+Adapt labels to the deployment. Resolve image IDs to immutable digests where needed, then inspect the configuration actually mounted in every replica; the Deployment template does not show file contents or prove that older replicas use the same configuration. Store the output as restricted operational evidence because configuration locations and internal names can be sensitive.
 
 For each issuer, record whether it is a fixed entry or a meta-issuer pattern; who controls discovery and JWKS; whether either endpoint redirects; whether local API credentials are attached; and which network destinations the pod can reach. Include old replicas and disaster-recovery installations.
 
@@ -51,7 +51,7 @@ For an administrator-approved issuer, inspect the initial response without follo
 
 ```bash
 ISSUER='https://id.example.com'
-curl --silent --show-error \
+curl -q --silent --show-error \
   --connect-timeout 5 --max-time 15 \
   --dump-header discovery.headers \
   --output discovery.json \

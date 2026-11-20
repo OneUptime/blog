@@ -1,4 +1,4 @@
-# OTLP/HTTP Returns 401: Adding Authorization with Static Headers or the `basicauth` Extension
+# Fix OTLP/HTTP 401 Errors with Static Headers or the `basicauth` Extension
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
@@ -92,4 +92,4 @@ Confirm the extension is both enabled in `service.extensions` and referenced by 
 
 Next send one identifiable test span, find it in the intended tenant, and watch the exporter error rate. Repeat after a controlled credential rotation. If curl succeeds but the Collector fails, compare the destination, proxy route, authentication scheme, and loaded credential version before changing retry settings.
 
-A 401 is a configuration or identity problem. Repeatedly sending the same unauthorized request will consume queue capacity without restoring delivery. Repair the credential or route, then verify successful export and the amount of telemetry lost during the interruption.
+A 401 is a configuration or identity problem. The OTLP HTTP exporter treats HTTP 401 as a permanent error and drops the failed batch instead of retrying it. Continued exports with the same invalid credentials will lose more telemetry. Repair the credential or route, then verify successful export and the amount of telemetry lost during the interruption.

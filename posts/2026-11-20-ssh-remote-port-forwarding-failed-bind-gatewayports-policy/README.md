@@ -1,4 +1,4 @@
-# “Remote Port Forwarding Failed for Listen Port”: Check Bind Conflicts, `GatewayPorts`, and Forwarding Policy
+# SSH Remote Port Forwarding Failed: Bind Conflicts, GatewayPorts, and Policy
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 

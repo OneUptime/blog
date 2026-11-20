@@ -1,4 +1,4 @@
-# `V3IO_ACCESS_KEY` or `V3IO_API` Is Missing: How to Configure Iguazio Credentials Without Hard-Coding Secrets
+# Configure Missing Iguazio V3IO_ACCESS_KEY and V3IO_API Credentials Securely
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
@@ -38,10 +38,14 @@ for name in ("MLRUN_DBPATH", "V3IO_API", "V3IO_USERNAME", "V3IO_ACCESS_KEY"):
 
 for name in ("MLRUN_DBPATH", "V3IO_API"):
     value = os.environ.get(name, "")
-    print(name, "host:", urlsplit(value).hostname)
+    try:
+        host = urlsplit(value).hostname
+    except ValueError:
+        host = "invalid URL"
+    print(name, "host:", host)
 ```
 
-The check intentionally does not print credential values. If your deployment uses an MLRun secret provider instead of environment variables, inspect that provider's configuration too; an absent environment variable alone does not prove the provider lacks the secret.
+The check intentionally does not print credential values or URL-parsing exceptions, which can contain the malformed input. It inspects the process environment rather than MLRun's complete effective configuration. MLRun can infer `V3IO_API` from `MLRUN_DBPATH` for supported remote Iguazio endpoint formats, so a missing environment variable alone does not prove the data endpoint is unconfigured. If your deployment uses an MLRun secret provider, inspect that provider's configuration too. [MLRun client environment guide](https://docs.mlrun.org/en/stable/setup-guide.html)
 
 An environment exported in a terminal after Jupyter started is not inherited retroactively by its kernel. Apply the change through the notebook service's supported configuration and restart the relevant process. Also check whether an older notebook cell overwrites the corrected values.
 
@@ -73,7 +77,7 @@ function.set_env_from_secret(
 )
 ```
 
-This references the stored value instead of embedding it in Python source. Confirm this API and your platform's secret-management workflow for the installed MLRun version. [MLRun secret-to-environment mapping](https://docs.mlrun.org/en/v1.9/secrets.html#mapping-secrets-to-environment)
+This references the stored value instead of embedding it in Python source. The mapping takes effect for functions executed remotely, where Kubernetes injects the value into the function pod; it does not populate the environment of a locally executed function. Confirm this API and your platform's secret-management workflow for the installed MLRun version. [MLRun secret-to-environment mapping](https://docs.mlrun.org/en/v1.9/secrets.html#mapping-secrets-to-environment)
 
 Configure endpoint and username settings through the same deployment workflow. Verify the rendered job references the expected secret name and key, then run the presence check inside a small diagnostic job. A secret available to the notebook is not automatically present in every Kubernetes namespace.
 
