@@ -824052,5 +824052,18 @@
     ],
     "post": "2026-11-20-populate-known-hosts-ci-strict-checking",
     "readmePath": "posts/2026-11-20-populate-known-hosts-ci-strict-checking/README.md"
+  },
+  {
+    "title": "SSH Works by IP but Not by Hostname: Inspect DNS, Host Blocks, Canonicalization, and Host-Key Entries",
+    "description": "Diagnose SSH hostname-only failures by comparing effective client configuration, resolver results, canonicalization passes, and the exact host-key lookup name.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "SSH",
+      "OpenSSH",
+      "DNS",
+      "Troubleshooting"
+    ],
+    "post": "2026-11-20-ssh-works-ip-not-hostname-dns-config-canonicalization",
+    "readmePath": "posts/2026-11-20-ssh-works-ip-not-hostname-dns-config-canonicalization/README.md"
   }
 ]
