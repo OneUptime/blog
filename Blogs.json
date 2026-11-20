@@ -823899,5 +823899,20 @@
     ],
     "post": "2026-11-19-ssh-host-identification-changed-verify-fingerprint",
     "readmePath": "posts/2026-11-19-ssh-host-identification-changed-verify-fingerprint/README.md"
+  },
+  {
+    "title": "SSH Agent Forwarding Breaks After `sudo`, `su`, or `tmux`: Follow the `SSH_AUTH_SOCK`",
+    "description": "Diagnose SSH agent forwarding failures across sudo, su, and tmux by checking the process environment, socket access, and connection lifetime.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "SSH",
+      "Agent Forwarding",
+      "Linux",
+      "Sudo",
+      "Tmux",
+      "Troubleshooting"
+    ],
+    "post": "2026-11-20-ssh-agent-forwarding-sudo-su-tmux-ssh-auth-sock",
+    "readmePath": "posts/2026-11-20-ssh-agent-forwarding-sudo-su-tmux-ssh-auth-sock/README.md"
   }
 ]
