@@ -2,7 +2,6 @@
 
 ## SSH
 
-7. Public Key Is Accepted, Then SSH Immediately Closes: Check the Login Shell, PAM, Home Directory, and `ForceCommand`
 8. SSH Works in Your Terminal but Fails in Cron or CI: Recreate `HOME`, Host Trust, Agent, and TTY State
 9. “Pseudo-terminal Will Not Be Allocated”: When to Use `-T`, `-t`, or `-tt` in SSH Automation
 10. Remote `sudo` Says “a Terminal Is Required”: Allocate a PTY or Change the Command Path?

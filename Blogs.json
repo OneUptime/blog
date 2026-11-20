@@ -823914,5 +823914,19 @@
     ],
     "post": "2026-11-20-ssh-agent-forwarding-sudo-su-tmux-ssh-auth-sock",
     "readmePath": "posts/2026-11-20-ssh-agent-forwarding-sudo-su-tmux-ssh-auth-sock/README.md"
+  },
+  {
+    "title": "Public Key Is Accepted, Then SSH Immediately Closes: Check the Login Shell, PAM, Home Directory, and `ForceCommand`",
+    "description": "Diagnose SSH connections that close after key acceptance by separating authentication, account policy, forced commands, shell startup, and home-directory failures.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "SSH",
+      "OpenSSH",
+      "Linux",
+      "PAM",
+      "Troubleshooting"
+    ],
+    "post": "2026-11-20-ssh-key-accepted-connection-closes-login-shell-pam",
+    "readmePath": "posts/2026-11-20-ssh-key-accepted-connection-closes-login-shell-pam/README.md"
   }
 ]
