@@ -2,7 +2,6 @@
 
 ## SSH
 
-5. SSH Keeps Offering the Wrong Key: Trace Agent Identities and Config Precedence with `ssh -G` and `-vvv`
 6. SSH Agent Forwarding Breaks After `sudo`, `su`, or `tmux`: Follow the `SSH_AUTH_SOCK`
 7. Public Key Is Accepted, Then SSH Immediately Closes: Check the Login Shell, PAM, Home Directory, and `ForceCommand`
 8. SSH Works in Your Terminal but Fails in Cron or CI: Recreate `HOME`, Host Trust, Agent, and TTY State
