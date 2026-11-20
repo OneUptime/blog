@@ -824188,5 +824188,19 @@
     ],
     "post": "2026-11-20-restrict-ssh-certificate-logins-authorizedprincipalsfile-critical-options",
     "readmePath": "posts/2026-11-20-restrict-ssh-certificate-logins-authorizedprincipalsfile-critical-options/README.md"
+  },
+  {
+    "title": "How to Forward a Unix Domain Socket over SSH",
+    "description": "Forward Unix domain sockets with OpenSSH, choose the correct direction, control listener permissions, and diagnose stale paths and failed application connections.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "SSH",
+      "OpenSSH",
+      "Unix Socket",
+      "Port Forwarding",
+      "Linux"
+    ],
+    "post": "2026-11-20-forward-unix-domain-socket-over-ssh",
+    "readmePath": "posts/2026-11-20-forward-unix-domain-socket-over-ssh/README.md"
   }
 ]
