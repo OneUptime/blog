@@ -823886,5 +823886,18 @@
     ],
     "post": "2026-11-19-ssh-algorithm-negotiation-host-key-cipher-kex",
     "readmePath": "posts/2026-11-19-ssh-algorithm-negotiation-host-key-cipher-kex/README.md"
+  },
+  {
+    "title": "“REMOTE HOST IDENTIFICATION HAS CHANGED”: How to Verify the New Fingerprint Before Editing `known_hosts`",
+    "description": "Verify a changed SSH host key through a trusted channel, identify the exact known_hosts entry, and reconnect with host verification intact.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "SSH",
+      "OpenSSH",
+      "Security",
+      "Troubleshooting"
+    ],
+    "post": "2026-11-19-ssh-host-identification-changed-verify-fingerprint",
+    "readmePath": "posts/2026-11-19-ssh-host-identification-changed-verify-fingerprint/README.md"
   }
 ]

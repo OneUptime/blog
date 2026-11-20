@@ -2,7 +2,6 @@
 
 ## SSH
 
-4. “REMOTE HOST IDENTIFICATION HAS CHANGED”: How to Verify the New Fingerprint Before Editing `known_hosts`
 5. SSH Keeps Offering the Wrong Key: Trace Agent Identities and Config Precedence with `ssh -G` and `-vvv`
 6. SSH Agent Forwarding Breaks After `sudo`, `su`, or `tmux`: Follow the `SSH_AUTH_SOCK`
 7. Public Key Is Accepted, Then SSH Immediately Closes: Check the Login Shell, PAM, Home Directory, and `ForceCommand`
