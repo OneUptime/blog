@@ -2,7 +2,6 @@
 
 ## SSH
 
-10. Remote `sudo` Says “a Terminal Is Required”: Allocate a PTY or Change the Command Path?
 11. SSH Pauses Before the Password Prompt: Isolate Reverse DNS, GSSAPI, PAM, and SSSD Delays
 12. `client_loop: send disconnect: Broken pipe`: Separate Idle NAT Timeouts from Server-Side Session Failures
 13. “Remote Port Forwarding Failed for Listen Port”: Check Bind Conflicts, `GatewayPorts`, and Forwarding Policy

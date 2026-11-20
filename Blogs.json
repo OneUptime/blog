@@ -823956,5 +823956,19 @@
     ],
     "post": "2026-11-20-ssh-pseudo-terminal-t-t-tt-automation",
     "readmePath": "posts/2026-11-20-ssh-pseudo-terminal-t-t-tt-automation/README.md"
+  },
+  {
+    "title": "Remote `sudo` Says “a Terminal Is Required”: Allocate a PTY or Change the Command Path?",
+    "description": "Separate sudo password prompts, requiretty policy, and application terminal needs, then choose an interactive SSH session or a narrowly authorized unattended command.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "SSH",
+      "OpenSSH",
+      "Sudo",
+      "Linux",
+      "Troubleshooting"
+    ],
+    "post": "2026-11-20-remote-sudo-terminal-required-pty-command-path",
+    "readmePath": "posts/2026-11-20-remote-sudo-terminal-required-pty-command-path/README.md"
   }
 ]
