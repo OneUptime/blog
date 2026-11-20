@@ -823928,5 +823928,19 @@
     ],
     "post": "2026-11-20-ssh-key-accepted-connection-closes-login-shell-pam",
     "readmePath": "posts/2026-11-20-ssh-key-accepted-connection-closes-login-shell-pam/README.md"
+  },
+  {
+    "title": "SSH Works in Your Terminal but Fails in Cron or CI: Recreate `HOME`, Host Trust, Agent, and TTY State",
+    "description": "Reproduce SSH failures in cron and CI by making execution identity, home lookup, trusted hosts, credentials, terminal state, and time limits explicit.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "SSH",
+      "OpenSSH",
+      "Cron",
+      "CI/CD",
+      "Troubleshooting"
+    ],
+    "post": "2026-11-20-ssh-terminal-works-cron-ci-home-trust-agent-tty",
+    "readmePath": "posts/2026-11-20-ssh-terminal-works-cron-ci-home-trust-agent-tty/README.md"
   }
 ]
