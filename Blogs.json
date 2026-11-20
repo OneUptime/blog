@@ -824091,5 +824091,19 @@
     ],
     "post": "2026-11-20-revoke-compromised-ssh-keys-certificates-openssh-krl",
     "readmePath": "posts/2026-11-20-revoke-compromised-ssh-keys-certificates-openssh-krl/README.md"
+  },
+  {
+    "title": "How to Create and Use a Resident OpenSSH FIDO2 Key on a Security Key",
+    "description": "Create a resident OpenSSH FIDO2 credential, recover its local key handles on another computer, and enforce touch and user verification when authenticating.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "SSH",
+      "OpenSSH",
+      "FIDO2",
+      "Security",
+      "Authentication"
+    ],
+    "post": "2026-11-20-create-use-resident-openssh-fido2-security-key",
+    "readmePath": "posts/2026-11-20-create-use-resident-openssh-fido2-security-key/README.md"
   }
 ]
