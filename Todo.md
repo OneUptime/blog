@@ -2,7 +2,6 @@
 
 ## SSH
 
-19. Multiple Git Identities on One SSH Host: Use Host Aliases, `IdentityFile`, and `IdentitiesOnly`
 20. SSH Works by IP but Not by Hostname: Inspect DNS, Host Blocks, Canonicalization, and Host-Key Entries
 21. How to Rotate an OpenSSH Certificate Authority Without Locking Out Existing Users
 22. How to Revoke Compromised SSH Keys and Certificates with an OpenSSH KRL
