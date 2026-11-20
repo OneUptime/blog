@@ -824026,5 +824026,18 @@
     ],
     "post": "2026-11-20-ssh-tunnel-opens-application-cannot-connect",
     "readmePath": "posts/2026-11-20-ssh-tunnel-opens-application-cannot-connect/README.md"
+  },
+  {
+    "title": "How to Make an SSH Tunnel Fail Fast with `ExitOnForwardFailure` and a Health Check",
+    "description": "Gate a job on an owned SSH forward and a bounded HTTPS readiness check, with separate startup, health, and job failures.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "SSH",
+      "OpenSSH",
+      "Networking",
+      "Troubleshooting"
+    ],
+    "post": "2026-11-20-ssh-tunnel-fail-fast-exitonforwardfailure-health-check",
+    "readmePath": "posts/2026-11-20-ssh-tunnel-fail-fast-exitonforwardfailure-health-check/README.md"
   }
 ]
