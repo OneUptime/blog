@@ -1,5 +1,7 @@
 # Blog Post Ideas
 
+Research added on 20 November 2026: 200 new how-to ideas across 10 topics from Topics.md, focused on observability, Kubernetes reliability, and disconnected operations. Community questions and related operational follow-ups informed the titles; popularity has not been measured. Source links accompany each new title. Historical issues and experimental features require version checks when drafting.
+
 ## Air-Gapped Observability and Monitoring
 
 Researched on 19 November 2026 against the existing blog catalog and backlog. Titles target specific how-to, troubleshooting, and comparison searches; search volume has not been measured. Each article should explain the offline constraint that makes it different from the existing general monitoring tutorials.
@@ -949,6 +951,88 @@ Research: [OneUptime air-gapped alerting](https://oneuptime.com/enterprise/air-g
 18. How to Enforce PDB Coverage for Deployments and StatefulSets Without Blocking Jobs or Single Replicas
 19. How to Alert Before a PDB Blocks Maintenance with `kube_poddisruptionbudget_status_pod_disruptions_allowed`
 20. How to Prevent a Helm Chart from Shipping a PDB That Deadlocks Single-Replica Installations
+
+### Research additions — 20 November 2026
+
+21. How to Repair Helm Release Metadata That Still References policy/v1beta1 PodDisruptionBudgets
+
+    Research: [Source](https://stackoverflow.com/questions/78303546/how-do-i-resolve-this-problem-with-upgrading-my-helm) · [Documentation](https://github.com/helm/helm-mapkubeapis).
+
+22. How to Remove Orphaned PodDisruptionBudgets Created by Helm Hooks
+
+    Research: [Source](https://github.com/helm/helm/issues/9206) · [Documentation](https://helm.sh/docs/topics/charts_hooks/).
+
+23. How to Fix Helm Values That Render Both minAvailable and maxUnavailable in a PodDisruptionBudget
+
+    Research: [Source](https://github.com/cert-manager/cert-manager/issues/6118) · [Documentation](https://kubernetes.io/docs/tasks/run-application/configure-pdb/).
+
+24. How to Fix CalculateExpectedPodCountFailed When a PodDisruptionBudget Matches Job Pods
+
+    Research: [Source](https://github.com/kubernetes/kubernetes/issues/129625) · [Documentation](https://kubernetes.io/docs/tasks/run-application/configure-pdb/).
+
+25. How to Configure PodDisruptionBudgets for RayCluster Pods Without a Scale Subresource
+
+    Research: [Source](https://github.com/ray-project/kuberay/issues/2662) · [Documentation](https://kubernetes.io/docs/tasks/run-application/configure-pdb/).
+
+26. How to Diagnose KubeVirt VMPool Evictions Blocked by PodDisruptionBudget Scale Lookups
+
+    Research: [Source](https://github.com/kubevirt/kubevirt/issues/18063) · [Documentation](https://www.kubernetes.dev/resources/keps/981/).
+
+27. How to Fix Vault Standby Readiness Responses That Exhaust a PodDisruptionBudget
+
+    Research: [Source](https://github.com/hashicorp/vault-helm/issues/1173) · [Documentation](https://developer.hashicorp.com/vault/api-docs/system/health).
+
+28. How to Unblock a StatefulSet Drain When Node Affinity Prevents Its Replacement Pod from Scheduling
+
+    Research: [Source](https://github.com/kubernetes/kubernetes/issues/91141) · [Documentation](https://kubernetes.io/docs/tasks/administer-cluster/safely-drain-node/).
+
+29. How to Investigate kubectl drain Retrying a StatefulSet Pod That Has Already Moved Nodes
+
+    Research: [Source](https://github.com/kubernetes/kubernetes/issues/138229) · [Documentation](https://github.com/kubernetes/kubectl/blob/master/pkg/drain/drain.go).
+
+30. How to Account for Application Warm-Up in PodDisruptionBudgets When minReadySeconds Does Not Apply
+
+    Research: [Source](https://github.com/kubernetes/community/issues/194) · [Documentation 1](https://kubernetes.io/docs/tasks/run-application/configure-pdb/) · [Documentation 2](https://kubernetes.io/docs/concepts/workloads/controllers/deployment/).
+
+31. How to Include ALB Target Health in PodDisruptionBudget Decisions with Readiness Gates
+
+    Research: [Source](https://github.com/aws/containers-roadmap/issues/2511) · [Documentation](https://kubernetes-sigs.github.io/aws-load-balancer-controller/latest/deploy/pod_readiness_gate/).
+
+32. How to Identify the PodDisruptionBudget Behind an EKS PodEvictionFailure Using Audit Logs
+
+    Research: [Source](https://www.reddit.com/r/kubernetes/comments/1khaah7) · [Documentation](https://repost.aws/knowledge-center/eks-node-group-update-failures).
+
+33. How to Resolve CoreDNS Add-on Upgrades That Conflict with an Existing PodDisruptionBudget
+
+    Research: [Source](https://www.reddit.com/r/aws/comments/tg2b57) · [Documentation](https://docs.aws.amazon.com/eks/latest/userguide/managing-coredns.html).
+
+34. How to Change an ECK PodDisruptionBudget Without the Operator Reverting the Edit
+
+    Research: [Source](https://discuss.elastic.co/t/poddisruptionbudget-was-restarting/273914) · [Documentation](https://www.elastic.co/docs/deploy-manage/deploy/cloud-on-k8s/pod-disruption-budget).
+
+35. How to Diagnose Elasticsearch Shard Health Blocking an ECK Node Drain
+
+    Research: [Source](https://discuss.elastic.co/t/eck-elasticsearch-performing-full-restart-of-es-nodes/312798) · [Documentation](https://www.elastic.co/docs/deploy-manage/deploy/cloud-on-k8s/pod-disruption-budget).
+
+36. How to Separate Elasticsearch Master and Data Node Disruption Budgets in ECK
+
+    Research: [Source](https://discuss.elastic.co/t/eck-elasticsearch-performing-full-restart-of-es-nodes/312798) · [Documentation](https://www.elastic.co/docs/deploy-manage/deploy/cloud-on-k8s/pod-disruption-budget).
+
+37. How to Avoid False PDB Alerts for the Protected CloudNativePG Primary
+
+    Research: [Source](https://github.com/cloudnative-pg/cloudnative-pg/discussions/3865) · [Documentation](https://cloudnative-pg.io/docs/current/kubernetes_upgrade/).
+
+38. How to Wait for PodDisruptionBudget Reconciliation Before Starting Automated Evictions
+
+    Research: [Source](https://github.com/kubernetes/kubernetes/issues/35324) · [Documentation](https://kubernetes.io/docs/reference/kubernetes-api/policy/pod-disruption-budget-v1/).
+
+39. How to Distinguish PDB Rejections from Broad Tolerations During an EKS Node Upgrade
+
+    Research: [Source](https://www.reddit.com/r/kubernetes/comments/1khaah7) · [Documentation](https://repost.aws/knowledge-center/eks-node-group-update-failures).
+
+40. How to Coordinate Maintenance Across Clusters When PodDisruptionBudgets Are Namespace-Scoped
+
+    Research: [Source](https://www.youtube.com/watch?v=2IPf_AyKSsU) · [Documentation](https://kubernetes.io/docs/concepts/workloads/pods/disruptions/).
 
 ## SpiceDB
 
@@ -2989,6 +3073,88 @@ Research: [OneUptime air-gapped alerting](https://oneuptime.com/enterprise/air-g
 18. Harbor Replication Fails with 401 or Skips Retagged Images: How to Trace Auth Redirects and Event Triggers
 19. How to Combine Harbor Tag Immutability and Retention Rules Without Deleting Rollback Images
 20. How to Monitor Harbor Pull Latency, Job Queue Backlogs, and Registry Errors with Metrics and Traces
+
+### Research additions — 20 November 2026
+
+21. How to Diagnose Harbor Push Errors Caused by Full Filesystems or Exhausted Inodes
+
+    Research: [Source](https://stackoverflow.com/questions/76800275/failed-to-push-images-to-harbor-with-500-error) · [Documentation](https://distribution.github.io/distribution/about/configuration/).
+
+22. How to Diagnose HTTP 413 During Harbor Replication of Large Layers to Azure ACR
+
+    Research: [Source](https://github.com/goharbor/harbor/issues/23015) · [Documentation](https://goharbor.io/docs/main/administration/configuring-replication/).
+
+23. How to Stop Harbor S3 Redirects from Sending Image Pulls to an Unreachable Internal Endpoint
+
+    Research: [Source](https://github.com/goharbor/harbor/issues/23050) · [Documentation](https://distribution.github.io/distribution/about/configuration/).
+
+24. How to Debug Harbor Artifact Listing Failures Caused by Proxy Decoding of Nested Repository Names
+
+    Research: [Source](https://serverfault.com/questions/1197874/harbor-fails-to-list-artifacts-400-ok-error-in-ui) · [Documentation](https://github.com/goharbor/harbor/blob/main/api/v2.0/swagger.yaml).
+
+25. How to Restore Harbor Project Access When Entra ID OIDC Group Claims Are Missing
+
+    Research: [Source](https://github.com/goharbor/harbor/issues/21121) · [Documentation](https://goharbor.io/docs/main/administration/configure-authentication/oidc-auth/).
+
+26. How to Recreate Harbor Project Memberships When Replication Copies Images but Not Access Rules
+
+    Research: [Source](https://www.reddit.com/r/devops/comments/o5ozf6) · [Documentation](https://goharbor.io/docs/main/administration/configuring-replication/).
+
+27. How to Keep Harbor Trivy Vulnerability Data Available After an Offline Scanner Restart
+
+    Research: [Source](https://github.com/goharbor/harbor/issues/12000) · [Documentation](https://goharbor.io/docs/main/administration/vulnerability-scanning/import-vulnerability-data/).
+
+28. How to Configure Separate Offline Sources for Harbor Trivy Vulnerability and Java Databases
+
+    Research: [Source](https://github.com/goharbor/harbor/issues/22232) · [Documentation](https://github.com/goharbor/harbor-helm/blob/main/values.yaml).
+
+29. How to Investigate Harbor Artifacts Stuck in the Scan Queue When No Scan Job Exists
+
+    Research: [Source](https://github.com/goharbor/harbor/issues/20760) · [Documentation](https://goharbor.io/docs/main/administration/vulnerability-scanning/stop-scan/).
+
+30. How to Rescan Images Already Stored in Harbor After Importing New Vulnerability Data
+
+    Research: [Source](https://www.reddit.com/r/kubernetes/comments/1wnisw3/how_do_you_continuously_monitor_running_images/) · [Documentation](https://goharbor.io/docs/main/administration/vulnerability-scanning/schedule-scans/).
+
+31. How to Test Harbor Vulnerability Blocking on the First Pull Through a Proxy Cache
+
+    Research: [Source](https://github.com/goharbor/harbor/issues/16732) · [Documentation](https://goharbor.io/docs/main/administration/vulnerability-scanning/deployment-security/).
+
+32. How to Set Expiring Harbor CVE Exceptions Without Disabling the Project Vulnerability Gate
+
+    Research: [Source 1](https://github.com/goharbor/harbor/issues/16732) · [Source 2](https://github.com/goharbor/harbor/issues/16842) · [Documentation](https://goharbor.io/docs/main/working-with-projects/project-configuration/configure-project-allowlist/).
+
+33. How to Reconcile Harbor Project CVE Allowlists After System-Wide Exceptions Are Removed
+
+    Research: [Source](https://github.com/goharbor/harbor/issues/16842) · [Documentation](https://goharbor.io/docs/main/working-with-projects/project-configuration/configure-project-allowlist/).
+
+34. How to Diagnose Harbor Webhook Retry Storms That Continue After a Webhook Is Disabled
+
+    Research: [Source](https://github.com/goharbor/harbor/issues/23793) · [Documentation](https://goharbor.io/docs/main/working-with-projects/project-configuration/configure-webhooks/).
+
+35. How to Reduce Harbor Database Connection Spikes During Concurrent Pushes to One Project
+
+    Research: [Source](https://github.com/goharbor/harbor/issues/15736) · [Documentation](https://github.com/goharbor/perf/wiki/Quota-Update).
+
+36. How to Explain Differences Between Harbor Project Quota Usage and Registry Disk Consumption
+
+    Research: [Source](https://github.com/goharbor/harbor/issues/17545) · [Documentation](https://goharbor.io/docs/main/administration/configure-project-quotas/).
+
+37. How to Prevent Harbor Vulnerability Scans from Refreshing Image Retention Pull Times
+
+    Research: [Source](https://github.com/goharbor/harbor/pull/17807) · [Documentation](https://goharbor.io/docs/main/install-config/configure-system-settings-cli/).
+
+38. How to Verify Harbor Audit Log Delivery When a Syslog Capture Shows Only Probe Traffic
+
+    Research: [Source](https://github.com/goharbor/harbor/issues/22610) · [Documentation](https://goharbor.io/docs/main/administration/log-rotation/).
+
+39. How to Diagnose Harbor Replication Policies That Cannot Be Disabled Because Their Scheduled Job Is Missing
+
+    Research: [Source](https://github.com/goharbor/harbor/issues/13342) · [Documentation](https://knowledge.broadcom.com/external/article/316803).
+
+40. How to Investigate Duplicate Harbor Repository Names After a PostgreSQL Collation Change
+
+    Research: [Source](https://github.com/goharbor/harbor/issues/17544) · [Documentation](https://github.com/goharbor/harbor/wiki/Harbor-FAQs).
 
 ## Retries
 
@@ -5110,6 +5276,88 @@ Research: [OneUptime air-gapped alerting](https://oneuptime.com/enterprise/air-g
 18. How to Diagnose PromQL Warnings from Mixed Classic and Native Histogram Samples
 19. How to Measure the Cardinality and Storage Savings of Native Histograms
 20. How to Verify Native Histogram Support Across Prometheus and Long-Term Metrics Storage
+
+### Research additions — 20 November 2026
+
+21. How to Investigate Native Histogram Reset Counts After a Resolution Change
+
+    Research: [Source](https://github.com/prometheus/prometheus/issues/16574) · [Documentation 1](https://prometheus.io/docs/specs/native_histograms/) · [Documentation 2](https://prometheus.io/docs/prometheus/latest/querying/functions/).
+
+22. How to Detect NaN Observations Hidden Outside Native Histogram Buckets
+
+    Research: [Source](https://github.com/prometheus/prometheus/issues/16578) · [Documentation 1](https://github.com/prometheus/prometheus/blob/main/promql/quantile.go) · [Documentation 2](https://prometheus.io/docs/specs/native_histograms/).
+
+23. How to Use delta for Native Gauge Histograms That Represent Current Queue Distributions
+
+    Research: [Source](https://stackoverflow.com/questions/74991963/what-is-the-difference-between-increase-and-delta-in-promql) · [Documentation 1](https://prometheus.io/docs/prometheus/latest/querying/functions/) · [Documentation 2](https://prometheus.io/docs/prometheus/latest/querying/basics/).
+
+24. How to Bound Native Histogram Memory Inside a Go Application Before Prometheus Scrapes It
+
+    Research: [Source](https://github.com/prometheus/prometheus/issues/12134) · [Documentation](https://github.com/prometheus/client_golang/blob/main/prometheus/histogram.go).
+
+25. How to Diagnose Mimir Exemplar Rejections When Native Histogram Remote Write Is Disabled
+
+    Research: [Source](https://github.com/prometheus/prometheus/issues/13552) · [Documentation](https://prometheus.io/docs/prometheus/latest/configuration/configuration/).
+
+26. How to Inspect Exported Native Histogram Buckets with prom2json
+
+    Research: [Source](https://github.com/prometheus/prometheus/issues/12146) · [Documentation](https://github.com/prometheus/prom2json).
+
+27. How to Tune NativeHistogramZeroThreshold for Measurements Clustered Around Zero
+
+    Research: [Source](https://github.com/prometheus/prometheus/issues/16573) · [Documentation](https://github.com/prometheus/client_golang/blob/main/prometheus/histogram.go).
+
+28. How to Check Native Histogram and Exemplar Loss in Rust OpenTelemetry Exporters
+
+    Research: [Source](https://github.com/open-telemetry/opentelemetry-rust/issues/3474) · [Documentation](https://opentelemetry.io/docs/specs/otel/compatibility/prometheus_and_openmetrics/).
+
+29. How to Size Prometheus Scrape Budgets When One Native Histogram Counts as One Sample
+
+    Research: [Source](https://github.com/prometheus/prometheus/issues/12134) · [Documentation](https://prometheus.io/docs/prometheus/latest/configuration/configuration/).
+
+30. How to Profile Native Histogram Query Regressions After a Prometheus Upgrade
+
+    Research: [Source](https://github.com/prometheus/prometheus/issues/18249) · [Documentation 1](https://github.com/prometheus/prometheus/pull/18252) · [Documentation 2](https://github.com/prometheus/prometheus/pull/18319).
+
+31. How to Investigate Native Histogram Chunk Growth in Grafana Mimir 2.17
+
+    Research: [Source](https://github.com/grafana/mimir/issues/16273) · [Documentation](https://github.com/prometheus/prometheus/pull/16893).
+
+32. How to Query Native Histograms After VictoriaMetrics Converts Them to vmrange Series
+
+    Research: [Source](https://github.com/VictoriaMetrics/VictoriaMetrics/issues/3733) · [Documentation](https://docs.victoriametrics.com/victoriametrics/integrations/prometheus/#native-histograms).
+
+33. How to Estimate Native Histogram Minimum and Maximum Without Treating Bucket Edges as Exact Samples
+
+    Research: [Source](https://www.reddit.com/r/PrometheusMonitoring/comments/1jco2rg) · [Documentation](https://prometheus.io/docs/prometheus/latest/querying/functions/).
+
+34. How to Separate Native Histogram Rate Recording Rules from Cumulative Histogram Queries
+
+    Research: [Source](https://github.com/prometheus/prometheus/issues/13934) · [Documentation 1](https://prometheus.io/docs/prometheus/latest/querying/functions/) · [Documentation 2](https://prometheus.io/docs/prometheus/latest/configuration/recording_rules/).
+
+35. How to Diagnose Native Histogram Arithmetic That Silently Removes Query Results
+
+    Research: [Source](https://github.com/prometheus/prometheus/issues/13934) · [Documentation](https://prometheus.io/docs/prometheus/latest/querying/operators/).
+
+36. How to Validate Native Histogram Reset Hints When Merging Out-of-Order Samples
+
+    Research: [Source](https://github.com/prometheus/prometheus/issues/15346) · [Documentation](https://prometheus.io/docs/specs/native_histograms/).
+
+37. How to Investigate Native Histogram rate Undercounts After Populated Buckets Disappear
+
+    Research: [Source](https://github.com/prometheus/prometheus/pull/19367) · [Documentation 1](https://prometheus.io/docs/prometheus/latest/querying/functions/) · [Documentation 2](https://github.com/prometheus/prometheus/releases).
+
+38. How to Diagnose Grafana Metrics Drilldown Showing Native Histograms as Gauges
+
+    Research: [Source](https://github.com/grafana/metrics-drilldown/issues/1228) · [Documentation](https://github.com/grafana/metrics-drilldown/pull/1396).
+
+39. How to Check Native Histogram Backfill Support Before Exporting TSDB Data as Text
+
+    Research: [Source](https://github.com/prometheus/prometheus/issues/12146) · [Documentation](https://prometheus.io/docs/prometheus/latest/storage/).
+
+40. How to Diagnose unknown metric type GAUGE_HISTOGRAM During Prometheus Federation
+
+    Research: [Source](https://github.com/prometheus/prometheus/issues/17405) · [Documentation](https://github.com/prometheus/prometheus/pull/17409).
 
 ## Tyk
 
@@ -9768,3 +10016,583 @@ Research: [OneUptime air-gapped alerting](https://oneuptime.com/enterprise/air-g
 20. How to Reconstruct a Container Crash from a Sysdig Capture in Sysdig Inspect
 
     Research: [Source](https://www.reddit.com/r/docker/comments/ijicp7/) · [Documentation](https://github.com/draios/sysdig-inspect/blob/dev/README.md).
+
+## OpenTelemetry Collector
+
+1. How to Migrate Collector Batching into Exporter Sending Queues Without Changing Flush Behavior
+
+    Research: [Source](https://github.com/open-telemetry/opentelemetry-collector-contrib/issues/42718) · [Documentation](https://opentelemetry.io/blog/2026/collector-batching-migration/).
+
+2. How to Give Each Collector Pipeline Its Own Persistent queue_batch Processor
+
+    Research: [Source](https://github.com/open-telemetry/opentelemetry-collector/issues/16398) · [Documentation](https://github.com/open-telemetry/opentelemetry-collector/blob/main/processor/queuebatchprocessor/README.md).
+
+3. How to Choose When a Collector Acknowledges OTLP Data with wait_for_result
+
+    Research: [Source](https://github.com/open-telemetry/opentelemetry-collector/issues/9243) · [Documentation](https://github.com/open-telemetry/opentelemetry-collector/blob/main/exporter/exporterhelper/README.md).
+
+4. How to Convert Collector Queue Capacity from Requests to Items or Bytes
+
+    Research: [Source](https://github.com/open-telemetry/opentelemetry-collector-contrib/issues/42718) · [Documentation](https://github.com/open-telemetry/opentelemetry-collector/blob/main/exporter/exporterhelper/README.md).
+
+5. How to Separate Collector Enqueue Failures from Export Retry Exhaustion
+
+    Research: [Source](https://www.reddit.com/r/OpenTelemetry/comments/1qq6hxr/otel_collector_elasticsearch_exporter_drops_logs/) · [Documentation](https://github.com/open-telemetry/opentelemetry-collector/blob/main/exporter/exporterhelper/README.md).
+
+6. How to Diagnose Hours-Long Collector Restarts with Large Persistent Queue Backlogs
+
+    Research: [Source](https://github.com/open-telemetry/opentelemetry-collector-contrib/issues/52868) · [Documentation](https://github.com/open-telemetry/opentelemetry-collector-contrib/blob/main/extension/storage/filestorage/README.md).
+
+7. How to Reserve Temporary Disk Space for Collector File Storage Compaction
+
+    Research: [Source](https://github.com/open-telemetry/opentelemetry-collector-contrib/issues/26256) · [Documentation](https://github.com/open-telemetry/opentelemetry-collector-contrib/blob/main/extension/storage/filestorage/README.md).
+
+8. How to Recover Collector File Storage After Power Loss Without Silently Discarding Queued Data
+
+    Research: [Source](https://github.com/open-telemetry/opentelemetry-collector-contrib/issues/49735) · [Documentation](https://github.com/open-telemetry/opentelemetry-collector-contrib/blob/main/extension/storage/filestorage/README.md).
+
+9. How to Diagnose a Stalled Collector Sending Queue When Health Checks Still Pass
+
+    Research: [Source](https://github.com/open-telemetry/opentelemetry-collector/issues/15700) · [Documentation](https://github.com/open-telemetry/opentelemetry-collector/blob/main/exporter/exporterhelper/README.md).
+
+10. How to Keep Tenant Headers Attached to Collector Batches Through a Gateway
+
+    Research: [Source](https://github.com/open-telemetry/opentelemetry-collector-contrib/issues/29676) · [Documentation](https://github.com/open-telemetry/opentelemetry-collector-contrib/blob/main/extension/headerssetterextension/README.md).
+
+11. How to Distinguish Collector Authentication Attributes from Telemetry Resource Attributes in headers_setter
+
+    Research: [Source](https://github.com/open-telemetry/opentelemetry-collector-contrib/issues/34257) · [Documentation](https://github.com/open-telemetry/opentelemetry-collector-contrib/blob/main/extension/headerssetterextension/README.md).
+
+12. How to Bound Per-Tenant Batch Cardinality in a Shared OpenTelemetry Collector
+
+    Research: [Source](https://github.com/open-telemetry/opentelemetry-collector-contrib/issues/29676) · [Documentation](https://github.com/open-telemetry/opentelemetry-collector/blob/main/processor/batchprocessor/README.md).
+
+13. How to Diagnose Missing Exporter Authentication After Collector Persistent-Queue Replay
+
+    Research: [Source](https://github.com/open-telemetry/opentelemetry-collector-contrib/issues/34257) · [Documentation](https://github.com/open-telemetry/opentelemetry-collector/blob/main/exporter/exporterhelper/README.md).
+
+14. How to Debug OTLP HTTP 200 Responses That Contain No Received Spans
+
+    Research: [Source](https://github.com/open-telemetry/opentelemetry-collector/discussions/12913) · [Documentation](https://opentelemetry.io/docs/specs/otlp/).
+
+15. How to Diagnose Collector Export Failures After an OTLP Backend Already Accepted the Data
+
+    Research: [Source](https://github.com/open-telemetry/opentelemetry-collector/issues/16389) · [Documentation](https://opentelemetry.io/docs/specs/otlp/).
+
+16. How to Keep Collector Pipeline Components from Disappearing When Config Files Are Merged
+
+    Research: [Source](https://github.com/open-telemetry/opentelemetry-collector/issues/8754) · [Documentation](https://github.com/open-telemetry/opentelemetry-collector/blob/main/confmap/README.md).
+
+17. How to Preserve Literal Dollar Signs in Collector Passwords and Prometheus Relabel Rules
+
+    Research: [Source](https://github.com/open-telemetry/opentelemetry-collector/issues/8215) · [Documentation](https://github.com/open-telemetry/opentelemetry-collector/blob/main/confmap/README.md).
+
+18. How to Diagnose Collector Startup Hangs After Kubernetes Metadata Initialization Fails
+
+    Research: [Source](https://github.com/open-telemetry/opentelemetry-collector/issues/16309) · [Documentation](https://github.com/open-telemetry/opentelemetry-collector-contrib/blob/main/processor/k8sattributesprocessor/README.md).
+
+19. How to Verify a Collector Binary Includes Every Component Before Reusing a Config
+
+    Research: [Source](https://stackoverflow.com/questions/78655292/using-transform-in-the-otel-collector) · [Documentation](https://opentelemetry.io/docs/collector/distributions/).
+
+20. How to Investigate Corrupted Profile Resource Attributes After Collector Queue Batching
+
+    Research: [Source](https://github.com/open-telemetry/opentelemetry-collector/issues/15084) · [Documentation](https://github.com/open-telemetry/opentelemetry-collector/blob/main/exporter/exporterhelper/README.md).
+
+
+## OTTL
+
+1. How to Replace StatsD Exporter Name Mappings with OTTL Attribute Extraction
+
+    Research: [Source](https://stackoverflow.com/questions/77695282/opentelemetry-collector-mapping-metric-name-to-labels) · [Documentation](https://github.com/open-telemetry/opentelemetry-collector-contrib/blob/main/processor/transformprocessor/README.md).
+
+2. How to Serialize an OTTL Map as JSON Without Double-Escaping Nested Values
+
+    Research: [Source](https://github.com/open-telemetry/opentelemetry-collector-contrib/issues/49715) · [Documentation](https://github.com/open-telemetry/opentelemetry-collector-contrib/blob/main/pkg/ottl/ottlfuncs/README.md).
+
+3. How to Parse Custom-Delimited Key-Value Log Fields with OTTL
+
+    Research: [Source](https://github.com/open-telemetry/opentelemetry-collector-contrib/issues/30998) · [Documentation](https://github.com/open-telemetry/opentelemetry-collector-contrib/blob/main/pkg/ottl/ottlfuncs/README.md).
+
+4. How to Parse Vendor Logs with OTTL Grok Patterns and Named Captures
+
+    Research: [Source](https://github.com/open-telemetry/opentelemetry-collector-contrib/issues/32593) · [Documentation](https://github.com/open-telemetry/opentelemetry-collector-contrib/blob/main/pkg/ottl/ottlfuncs/README.md).
+
+5. How to Lowercase OTTL Attribute Keys with Converter Functions in replace_all_patterns
+
+    Research: [Source](https://github.com/open-telemetry/opentelemetry-collector-contrib/issues/32342) · [Documentation](https://github.com/open-telemetry/opentelemetry-collector-contrib/blob/main/pkg/ottl/ottlfuncs/README.md).
+
+6. How to Extract URL Components with OTTL Without Publishing Embedded Credentials
+
+    Research: [Source](https://github.com/open-telemetry/opentelemetry-collector-contrib/issues/32433) · [Documentation](https://github.com/open-telemetry/opentelemetry-collector-contrib/blob/main/pkg/ottl/ottlfuncs/README.md).
+
+7. How to Handle NaN Metric Points in OTTL Before Exporting to InfluxDB
+
+    Research: [Source](https://stackoverflow.com/questions/79862853/opentelemetry-collector-with-prometheus-receiver-nan-values-to-influxdb-exporter) · [Documentation](https://github.com/open-telemetry/opentelemetry-collector-contrib/blob/main/processor/transformprocessor/README.md).
+
+8. How to Change Metric Descriptions with OTTL While Preserving Names and Values
+
+    Research: [Source](https://stackoverflow.com/questions/78655292/using-transform-in-the-otel-collector) · [Documentation](https://github.com/open-telemetry/opentelemetry-collector-contrib/blob/main/processor/transformprocessor/README.md).
+
+9. How to Pass Parsed Values Between OTTL Statement Groups with shared_cache
+
+    Research: [Source](https://github.com/open-telemetry/opentelemetry-collector-contrib/pull/50563) · [Documentation](https://github.com/open-telemetry/opentelemetry-collector-contrib/blob/main/processor/transformprocessor/README.md).
+
+10. How to Replace Removed Base64Decode Calls When Upgrading OTTL to v1
+
+    Research: [Source](https://github.com/open-telemetry/opentelemetry-collector-contrib/pull/50875) · [Documentation](https://opentelemetry.io/blog/2026/ottl-v1/).
+
+11. How to Audit OTTL set Statements After Nil Values Stop Being Ignored
+
+    Research: [Source](https://github.com/open-telemetry/opentelemetry-collector-contrib/issues/48714) · [Documentation](https://opentelemetry.io/blog/2026/ottl-v1/).
+
+12. How to Build an OTTL Attribute Allowlist from a Runtime Slice
+
+    Research: [Source](https://github.com/open-telemetry/opentelemetry-collector-contrib/issues/45980) · [Documentation](https://github.com/open-telemetry/opentelemetry-collector-contrib/blob/main/pkg/ottl/ottlfuncs/README.md).
+
+13. How to Preserve Required Correlation Fields When OTTL Limits Attribute Counts
+
+    Research: [Source](https://github.com/open-telemetry/opentelemetry-collector-contrib/issues/30998) · [Documentation](https://github.com/open-telemetry/opentelemetry-collector-contrib/blob/main/pkg/ottl/ottlfuncs/README.md).
+
+14. How to Flatten Nested Log Maps with OTTL Without Overwriting Dotted Keys
+
+    Research: [Source](https://stackoverflow.com/questions/75946018/access-the-keys-of-an-attribute-with-map-type-in-opentelemetry-collector) · [Documentation](https://github.com/open-telemetry/opentelemetry-collector-contrib/blob/main/pkg/ottl/ottlfuncs/README.md).
+
+15. How to Extract Average Metrics from Histograms with OTTL Without Replacing the Distribution
+
+    Research: [Source](https://github.com/open-telemetry/opentelemetry-collector-contrib/issues/49238) · [Documentation](https://github.com/open-telemetry/opentelemetry-collector-contrib/blob/main/processor/transformprocessor/README.md).
+
+16. How to Reduce Explicit Histogram Bucket Counts with OTTL for Backend Limits
+
+    Research: [Source](https://github.com/open-telemetry/opentelemetry-collector-contrib/issues/48527) · [Documentation](https://github.com/open-telemetry/opentelemetry-collector-contrib/blob/main/processor/transformprocessor/README.md).
+
+17. How to Inspect and Transform Metric Exemplars Through the OTTL Exemplar Context
+
+    Research: [Source](https://github.com/open-telemetry/opentelemetry-collector-contrib/pull/47490) · [Documentation](https://github.com/open-telemetry/opentelemetry-collector-contrib/blob/main/pkg/ottl/contexts/ottlexemplar/README.md).
+
+18. How to Prevent OTTL ParseJSON from Losing Precision in Large Numeric Identifiers
+
+    Research: [Source](https://github.com/open-telemetry/opentelemetry-collector-contrib/issues/30800) · [Documentation](https://github.com/open-telemetry/opentelemetry-collector-contrib/blob/main/pkg/ottl/ottlfuncs/README.md).
+
+19. How to Fix OTTL ExtractPatterns Statements That Return Maps Where Strings Are Required
+
+    Research: [Source](https://github.com/open-telemetry/opentelemetry-collector-contrib/issues/29435) · [Documentation](https://github.com/open-telemetry/opentelemetry-collector-contrib/blob/main/pkg/ottl/ottlfuncs/README.md).
+
+20. How to Diagnose OTTL Collection Comparisons That Crash the Collector
+
+    Research: [Source](https://github.com/open-telemetry/opentelemetry-collector-contrib/issues/52946) · [Documentation](https://github.com/open-telemetry/opentelemetry-collector-contrib/blob/main/pkg/ottl/README.md).
+
+
+## Tail Sampling
+
+1. How to Keep Traces Based on One Slow Database Span Instead of Total Trace Duration
+
+    Research: [Source](https://github.com/open-telemetry/opentelemetry-collector-contrib/issues/33034) · [Documentation](https://github.com/open-telemetry/opentelemetry-collector-contrib/blob/main/processor/tailsamplingprocessor/README.md).
+
+2. How to Exclude Asynchronous Follow-Up Work from Tail-Sampling Latency Decisions
+
+    Research: [Source](https://github.com/open-telemetry/opentelemetry-collector-contrib/issues/24912) · [Documentation](https://github.com/open-telemetry/opentelemetry-collector-contrib/blob/main/processor/tailsamplingprocessor/README.md).
+
+3. How to Test Tail-Sampling Latency Boundaries at Both Thresholds
+
+    Research: [Source](https://github.com/open-telemetry/opentelemetry-collector-contrib/issues/43948) · [Documentation](https://github.com/open-telemetry/opentelemetry-collector-contrib/blob/main/processor/tailsamplingprocessor/README.md).
+
+4. How to Keep Debug-Flagged Requests with Tail Sampling Without Changing Every Service
+
+    Research: [Source](https://www.reddit.com/r/kubernetes/comments/1vk2v5t/how_do_you_debug_a_specific_request_when_the/) · [Documentation](https://github.com/open-telemetry/opentelemetry-collector-contrib/blob/main/processor/tailsamplingprocessor/README.md).
+
+5. How to Retain Logs for Sampled Traces When Collector Pipelines Do Not Share Decisions
+
+    Research: [Source](https://github.com/open-telemetry/opentelemetry-collector-contrib/discussions/45857) · [Documentation](https://opentelemetry.io/docs/collector/architecture/).
+
+6. How to Split Unbounded Streaming Traces into Bounded Units Before Tail Sampling
+
+    Research: [Source](https://github.com/open-telemetry/opentelemetry-collector-contrib/issues/46642) · [Documentation](https://opentelemetry.io/docs/specs/otel/trace/api/).
+
+7. How to Reduce Repetitive Child Spans Separately from Tail-Sampling Decisions
+
+    Research: [Source](https://github.com/open-telemetry/opentelemetry-collector-contrib/issues/4959) · [Documentation](https://github.com/open-telemetry/opentelemetry-collector-contrib/blob/main/processor/tailsamplingprocessor/README.md).
+
+8. How to Tune Tail-Sampling Token-Bucket Bursts for Traces Larger Than the Per-Second Rate
+
+    Research: [Source](https://github.com/open-telemetry/opentelemetry-collector-contrib/pull/48226) · [Documentation](https://github.com/open-telemetry/opentelemetry-collector-contrib/blob/main/processor/tailsamplingprocessor/README.md).
+
+9. How to Recalculate Tail-Sampling Rate and Cache Limits When Enabling num_shards
+
+    Research: [Source](https://github.com/open-telemetry/opentelemetry-collector-contrib/pull/48699) · [Documentation](https://github.com/open-telemetry/opentelemetry-collector-contrib/blob/main/processor/tailsamplingprocessor/README.md).
+
+10. How to Preserve Consistent Sampling Thresholds Through Tail-Sampling Rate Limiters
+
+    Research: [Source](https://github.com/open-telemetry/opentelemetry-collector-contrib/issues/49710) · [Documentation](https://github.com/open-telemetry/opentelemetry-collector-contrib/blob/main/processor/tailsamplingprocessor/README.md).
+
+11. How to Validate Tail-Sampling Thresholds When Several Policies Keep the Same Trace
+
+    Research: [Source](https://github.com/open-telemetry/opentelemetry-collector-contrib/issues/48898) · [Documentation](https://github.com/open-telemetry/opentelemetry-collector-contrib/blob/main/processor/tailsamplingprocessor/README.md).
+
+12. How to Choose Between Fixed Tail-Sampling Policies and the Alpha Adaptive Processor
+
+    Research: [Source](https://github.com/open-telemetry/opentelemetry-collector-contrib/issues/49311) · [Documentation](https://github.com/open-telemetry/opentelemetry-collector-contrib/blob/main/processor/adaptivetailsamplingprocessor/README.md).
+
+13. How to Keep Rare Trace Patterns with Alpha Adaptive Tail-Sampling Fingerprints
+
+    Research: [Source](https://github.com/open-telemetry/opentelemetry-collector-contrib/issues/48898) · [Documentation](https://github.com/open-telemetry/opentelemetry-collector-contrib/blob/main/processor/adaptivetailsamplingprocessor/README.md).
+
+14. How to Distinguish any_span from same_span Rules in Alpha Adaptive Tail Sampling
+
+    Research: [Source](https://github.com/open-telemetry/opentelemetry-collector-contrib/issues/49311) · [Documentation](https://github.com/open-telemetry/opentelemetry-collector-contrib/blob/main/processor/adaptivetailsamplingprocessor/README.md).
+
+15. How to Prevent Catch-All Rules from Hiding Error Rules in Alpha Adaptive Tail Sampling
+
+    Research: [Source](https://github.com/open-telemetry/opentelemetry-collector-contrib/issues/49311) · [Documentation](https://github.com/open-telemetry/opentelemetry-collector-contrib/blob/main/processor/adaptivetailsamplingprocessor/README.md).
+
+16. How to Recognize Root Spans from External Parents in Alpha Adaptive Tail Sampling
+
+    Research: [Source](https://github.com/open-telemetry/opentelemetry-collector-contrib/issues/49311) · [Documentation](https://github.com/open-telemetry/opentelemetry-collector-contrib/blob/main/processor/adaptivetailsamplingprocessor/README.md).
+
+17. How to Measure Tail-Sampling Keep Rates Without Double-Counting Policy Votes
+
+    Research: [Source](https://github.com/open-telemetry/opentelemetry-collector-contrib/issues/38142) · [Documentation](https://github.com/open-telemetry/opentelemetry-collector-contrib/blob/main/processor/tailsamplingprocessor/documentation.md).
+
+18. How to Diagnose Tail-Sampling OTTL Policy Errors Separately from Nonmatching Traces
+
+    Research: [Source](https://github.com/open-telemetry/opentelemetry-collector-contrib/discussions/45440) · [Documentation](https://github.com/open-telemetry/opentelemetry-collector-contrib/blob/main/processor/tailsamplingprocessor/documentation.md).
+
+19. How to Assess Partial-Trace Decisions After Experimental Pebble Tail Storage Read Errors
+
+    Research: [Source](https://github.com/open-telemetry/opentelemetry-collector-contrib/issues/49906) · [Documentation](https://github.com/open-telemetry/opentelemetry-collector-contrib/blob/main/extension/tailstorage/pebbletailstorageextension/README.md).
+
+20. How to Diagnose Missing Kubernetes Attributes After Tail Sampling Rebuilds Span Batches
+
+    Research: [Source](https://github.com/open-telemetry/opentelemetry-collector-contrib/issues/38142) · [Documentation](https://github.com/open-telemetry/opentelemetry-collector-contrib/blob/main/processor/tailsamplingprocessor/README.md).
+
+
+## PromQL
+
+1. How to Keep PromQL topk Graphs to a Fixed Set of Series with the @ Modifier
+
+    Research: [Source](https://stackoverflow.com/questions/71552862/prometheus-topk-function-returning-all-results) · [Documentation 1](https://prometheus.io/docs/prometheus/latest/querying/basics/) · [Documentation 2](https://prometheus.io/docs/prometheus/latest/querying/operators/).
+
+2. How to Preserve the Winning Series Labels When Taking a PromQL Maximum
+
+    Research: [Source](https://stackoverflow.com/questions/78026139/use-max-by-in-promql-query-while-keeping-a-label-that-is-not-part-of-the-by) · [Documentation](https://prometheus.io/docs/prometheus/latest/querying/operators/).
+
+3. How to Distinguish PromQL Threshold-Breach Samples from Resampled Time Steps
+
+    Research: [Source](https://stackoverflow.com/questions/78227695/how-to-list-all-the-missing-series-though-the-count-over-time-over-a-condition-i) · [Documentation 1](https://prometheus.io/docs/prometheus/latest/querying/functions/) · [Documentation 2](https://prometheus.io/docs/prometheus/latest/querying/basics/).
+
+4. How to Count Distinct Label Values Seen Anywhere in a PromQL Time Window
+
+    Research: [Source](https://stackoverflow.com/questions/71323993/prometheus-query-to-count-unique-label-values-over-a-period/71332369) · [Documentation 1](https://prometheus.io/docs/prometheus/latest/querying/functions/) · [Documentation 2](https://prometheus.io/docs/prometheus/latest/querying/operators/).
+
+5. How to Retrieve Raw Prometheus Samples Instead of Resampled query_range Results
+
+    Research: [Source](https://stackoverflow.com/questions/62446427/promql-is-it-possible-to-get-total-count-in-query-range) · [Documentation 1](https://prometheus.io/docs/prometheus/latest/querying/basics/) · [Documentation 2](https://prometheus.io/docs/prometheus/latest/querying/api/).
+
+6. How to Combine PromQL Alert Conditions When One Side Has No Labels
+
+    Research: [Source](https://stackoverflow.com/questions/74489544/how-do-i-perform-a-logical-and-between-two-expressions-for-a-prometheus-alert) · [Documentation](https://prometheus.io/docs/prometheus/latest/querying/operators/).
+
+7. How to Return a Labeled 0 or 1 When Comparing Two PromQL Aggregations
+
+    Research: [Source](https://stackoverflow.com/questions/78385233/return-1-or-0-from-promql-query-if-the-output-out-both-promql-result-are-same) · [Documentation](https://prometheus.io/docs/prometheus/latest/querying/operators/).
+
+8. How to Find Applications That Never Expose a Tenant Label Using PromQL
+
+    Research: [Source](https://stackoverflow.com/questions/79061700/prometheus-list-labels-for-all-metrics-not-having-a-label) · [Documentation 1](https://prometheus.io/docs/prometheus/latest/querying/operators/) · [Documentation 2](https://prometheus.io/docs/prometheus/latest/querying/basics/).
+
+9. How to Preserve Unmatched Hardware Sensors When Enriching PromQL Labels
+
+    Research: [Source](https://stackoverflow.com/questions/72217597/prometheus-queries-how-to-give-a-default-label-when-it-is-missing/72218915) · [Documentation 1](https://prometheus.io/docs/prometheus/latest/querying/operators/) · [Documentation 2](https://prometheus.io/docs/prometheus/latest/querying/functions/).
+
+10. How to Apply label_replace to Counter Rates Without an Unnecessary PromQL Subquery
+
+    Research: [Source](https://stackoverflow.com/questions/51614030/prometheus-aggregate-and-relabel-by-regex) · [Documentation 1](https://prometheus.io/docs/prometheus/latest/querying/functions/) · [Documentation 2](https://prometheus.io/docs/prometheus/latest/querying/basics/).
+
+11. How to Detect One Disappearing Prometheus Series While Other Instances Still Report
+
+    Research: [Source](https://stackoverflow.com/questions/52815020/alert-on-missing-series-data/52819252) · [Documentation 1](https://prometheus.io/docs/prometheus/latest/querying/functions/) · [Documentation 2](https://prometheus.io/docs/prometheus/latest/querying/operators/).
+
+12. How to Fix PromQL Selectors Rejected Because Every Matcher Accepts an Empty String
+
+    Research: [Source](https://stackoverflow.com/questions/77086473/why-promql-expression-name-results-in-error-message) · [Documentation](https://prometheus.io/docs/prometheus/latest/querying/basics/).
+
+13. How to Compare the Current Hour with Matching Hours from Previous Days in PromQL
+
+    Research: [Source](https://stackoverflow.com/questions/78254674/compare-metric-to-itself-of-past-1-hour-for-the-past-x-days) · [Documentation 1](https://prometheus.io/docs/prometheus/latest/querying/basics/) · [Documentation 2](https://prometheus.io/docs/prometheus/latest/querying/functions/) · [Documentation 3](https://prometheus.io/docs/prometheus/latest/querying/operators/).
+
+14. How to Find a Metric Peak Timestamp with Experimental PromQL ts_of_max_over_time
+
+    Research: [Source](https://stackoverflow.com/questions/78237257/wrong-timestamp-in-promql) · [Documentation](https://prometheus.io/docs/prometheus/latest/querying/functions/).
+
+15. How to Estimate Container Running Time from container_last_seen in PromQL
+
+    Research: [Source](https://stackoverflow.com/questions/64309828/how-to-create-query-to-monitoring-how-many-minutes-docker-containers-ran-for-a-d) · [Documentation 1](https://prometheus.io/docs/prometheus/latest/querying/functions/) · [Documentation 2](https://prometheus.io/docs/prometheus/latest/querying/basics/).
+
+16. How to Choose delta or increase When a Prometheus Metric Can Decrease
+
+    Research: [Source](https://stackoverflow.com/questions/74991963/what-is-the-difference-between-increase-and-delta-in-promql) · [Documentation](https://prometheus.io/docs/prometheus/latest/querying/functions/).
+
+17. How to Diagnose PromQL group_left Joins That Lose Their Matching Label During Aggregation
+
+    Research: [Source](https://stackoverflow.com/questions/56162477/error-when-using-group-left-in-prometheus) · [Documentation](https://prometheus.io/docs/prometheus/latest/querying/operators/).
+
+18. How to Divide Several Node Memory Metrics by Total RAM Without Duplicate Label Sets
+
+    Research: [Source](https://stackoverflow.com/questions/70690645/divide-different-node-exporter-memory-types-by-the-total-memory-using-group-left) · [Documentation 1](https://prometheus.io/docs/prometheus/latest/querying/operators/) · [Documentation 2](https://prometheus.io/docs/prometheus/latest/querying/functions/).
+
+19. How to Count Replica Groups Where Every Instance Matches an Expected Metric Value
+
+    Research: [Source](https://stackoverflow.com/questions/79305974/prometheus-how-to-group-by-lable-2-metrics-and-filter-one-with-another) · [Documentation](https://prometheus.io/docs/prometheus/latest/querying/operators/).
+
+20. How to Subtract Each Cluster Minimum from Every Member Series in PromQL
+
+    Research: [Source](https://stackoverflow.com/questions/74814337/how-to-subtract-min-of-timeseries-every-interval) · [Documentation](https://prometheus.io/docs/prometheus/latest/querying/operators/).
+
+
+## Blackbox Exporter
+
+1. How to Trace Blackbox Exporter HTTP Status 0 to the Failing Network Phase
+
+    Research: [Source](https://stackoverflow.com/questions/76694627/prometheus-with-blackbox-exporter-http-status-code-of-0) · [Documentation](https://github.com/prometheus/blackbox_exporter).
+
+2. How to Align Blackbox Probe Deadlines with Prometheus Scrape Timeouts
+
+    Research: [Source](https://www.reddit.com/r/PrometheusMonitoring/comments/1h1um74) · [Documentation 1](https://github.com/prometheus/blackbox_exporter) · [Documentation 2](https://github.com/prometheus/blackbox_exporter/blob/master/prober/handler.go).
+
+3. How to Restore Missing Blackbox Target Parameters in a ServiceMonitor
+
+    Research: [Source](https://stackoverflow.com/questions/79409361/prometheus-blackbox-exporter-params-target-is-not-showing-up-in-prometheus-s) · [Documentation 1](https://prometheus-operator.dev/docs/api-reference/api/) · [Documentation 2](https://github.com/prometheus/blackbox_exporter).
+
+4. How to Fix Blackbox Endpoint 401s When Credentials Were Set on the Prometheus Scrape
+
+    Research: [Source](https://stackoverflow.com/questions/57863677/how-to-solve-the-promethesus-blackbox-exporter-401-error/74264283) · [Documentation](https://github.com/prometheus/blackbox_exporter/blob/master/CONFIGURATION.md).
+
+5. How to Probe an Authenticated API When the Browser Login Requires JavaScript
+
+    Research: [Source](https://stackoverflow.com/questions/50978939/prometheus-blackbox-exporter-with-endpoint-authentication/50981008) · [Documentation](https://github.com/prometheus/blackbox_exporter/blob/master/CONFIGURATION.md).
+
+6. How to Probe Every Backend IP Behind a Hostname While Preserving HTTP Host and TLS SNI
+
+    Research: [Source](https://stackoverflow.com/questions/74596879/how-can-i-specify-the-ip-address-for-each-target-in-prometheus-blackbox-exporter) · [Documentation](https://github.com/prometheus/blackbox_exporter).
+
+7. How to Monitor gRPC Health Services with Blackbox Exporter and Google Managed Prometheus
+
+    Research: [Source](https://stackoverflow.com/questions/76336665/how-to-configure-blackbox-exporter-with-google-managed-prometheus) · [Documentation 1](https://github.com/prometheus/blackbox_exporter/blob/master/CONFIGURATION.md) · [Documentation 2](https://cloud.google.com/stackdriver/docs/managed-prometheus/setup-managed).
+
+8. How to Validate JSON Health Responses with Blackbox Exporter CEL Checks
+
+    Research: [Source](https://stackoverflow.com/questions/57863677/how-to-solve-the-promethesus-blackbox-exporter-401-error/74264283) · [Documentation 1](https://github.com/prometheus/blackbox_exporter/pull/1255) · [Documentation 2](https://github.com/prometheus/blackbox_exporter/blob/master/CONFIGURATION.md).
+
+9. How to Send a Valid JSON POST Body from a File in Blackbox Exporter
+
+    Research: [Source](https://github.com/prometheus/blackbox_exporter/issues/539) · [Documentation](https://github.com/prometheus/blackbox_exporter/blob/master/CONFIGURATION.md).
+
+10. How to Test Multiple DNS Resolvers with One Blackbox Query Module
+
+    Research: [Source](https://www.reddit.com/r/PrometheusMonitoring/comments/c5efdt) · [Documentation](https://github.com/prometheus/blackbox_exporter/blob/master/CONFIGURATION.md).
+
+11. How to Separate Redirect Availability from Final-Page Latency in Blackbox Probes
+
+    Research: [Source](https://www.reddit.com/r/PrometheusMonitoring/comments/ss6ntx) · [Documentation 1](https://github.com/prometheus/blackbox_exporter/blob/master/prober/http.go) · [Documentation 2](https://github.com/prometheus/blackbox_exporter/blob/master/CONFIGURATION.md).
+
+12. How to Alert Separately on Blackbox Exporter Scrape Failures and Target Probe Failures
+
+    Research: [Source](https://www.reddit.com/r/PrometheusMonitoring/comments/swo4nt) · [Documentation 1](https://prometheus.io/docs/prometheus/latest/configuration/configuration/) · [Documentation 2](https://github.com/prometheus/blackbox_exporter).
+
+13. How to Restore Blackbox ICMP Socket Permissions After a Linux Upgrade
+
+    Research: [Source](https://www.reddit.com/r/PrometheusMonitoring/comments/1k9b6tk) · [Documentation 1](https://github.com/prometheus/blackbox_exporter/blob/master/prober/icmp.go) · [Documentation 2](https://github.com/prometheus/blackbox_exporter).
+
+14. How to Expose Partial Dual-Stack Outages with Separate Blackbox IPv4 and IPv6 Checks
+
+    Research: [Source](https://stackoverflow.com/questions/54773928/probes-returning-zero/55159455) · [Documentation](https://github.com/prometheus/blackbox_exporter/blob/master/CONFIGURATION.md).
+
+15. How to Let an HTTP Proxy Resolve Blackbox Probe Targets in a Restricted Network
+
+    Research: [Source](https://github.com/prometheus/blackbox_exporter/issues/1158) · [Documentation](https://github.com/prometheus/blackbox_exporter/blob/master/CONFIGURATION.md).
+
+16. How to Find Which Helm-Configured Targets Actually Reached Blackbox Exporter
+
+    Research: [Source](https://stackoverflow.com/questions/67186881/how-to-find-the-targets-that-a-helm-configured-prometheus-blackbox-exporter-cont) · [Documentation 1](https://github.com/prometheus/blackbox_exporter) · [Documentation 2](https://github.com/prometheus-community/helm-charts/tree/main/charts/prometheus-blackbox-exporter).
+
+17. How to Investigate Blackbox HTTP 403s That Change with the Target Hostname
+
+    Research: [Source](https://stackoverflow.com/questions/72576362/prometheus-blackbox-exporter-return-403) · [Documentation 1](https://github.com/prometheus/blackbox_exporter/blob/master/prober/http.go) · [Documentation 2](https://github.com/prometheus/blackbox_exporter/blob/master/CONFIGURATION.md).
+
+18. How to Debug a Blackbox Body Match When Probe Logs Do Not Include the Response
+
+    Research: [Source](https://github.com/prometheus/blackbox_exporter/issues/1536) · [Documentation 1](https://github.com/prometheus/blackbox_exporter/blob/master/prober/http.go) · [Documentation 2](https://github.com/prometheus/blackbox_exporter).
+
+19. How to Check TLS Certificate Expiry on Cassandra Ports with Blackbox TCP Probes
+
+    Research: [Source](https://www.reddit.com/r/PrometheusMonitoring/comments/fdh8zl) · [Documentation 1](https://github.com/prometheus/blackbox_exporter/blob/master/prober/tcp.go) · [Documentation 2](https://github.com/prometheus/blackbox_exporter/blob/master/CONFIGURATION.md).
+
+20. How to Keep Blackbox Exporter TLS Settings Separate from Probe Target mTLS
+
+    Research: [Source](https://stackoverflow.com/questions/77614389/why-cant-prometheus-blackbox-exporter-verify-a-tls-endpoints-self-signed-certif) · [Documentation 1](https://github.com/prometheus/blackbox_exporter/blob/master/CONFIGURATION.md) · [Documentation 2](https://prometheus-operator.dev/docs/api-reference/api/).
+
+
+## Air-Gapped Backups
+
+1. How to Assess the Backup Exposure Window of a NAS That Powers On Only for Scheduled Copies
+
+    Research: [Source](https://www.reddit.com/r/sysadmin/comments/181cyli) · [Documentation](https://www.cisa.gov/sites/default/files/publications/CISA_MS-ISAC_Ransomware%20Guide_S508C.pdf).
+
+2. How to Verify That an Offline Backup Is Physically Disconnected from Production
+
+    Research: [Source 1](https://www.reddit.com/r/sysadmin/comments/hy6ljb) · [Source 2](https://www.reddit.com/r/msp/comments/of4ykc) · [Documentation](https://www.cisa.gov/sites/default/files/publications/CISA_MS-ISAC_Ransomware%20Guide_S508C.pdf).
+
+3. How to Choose USB Disks or LTO Tape for Air-Gapped Backups Based on Restore Time
+
+    Research: [Source](https://www.reddit.com/r/sysadmin/comments/o27hbj) · [Documentation](https://pbs.proxmox.com/docs/tape-backup.html).
+
+4. How to Set an Offline Backup Rotation Schedule from the Maximum Acceptable Data Loss
+
+    Research: [Source 1](https://www.reddit.com/r/sysadmin/comments/o27hbj) · [Source 2](https://www.reddit.com/r/Proxmox/comments/1k9o4bg) · [Documentation](https://www.cisa.gov/sites/default/files/publications/CISA_MS-ISAC_Ransomware%20Guide_S508C.pdf).
+
+5. How to Rotate Proxmox Backup USB Drives with Separate Removable Datastores
+
+    Research: [Source](https://forum.proxmox.com/threads/rotate-removable-hdd.159694/) · [Documentation](https://pbs.proxmox.com/docs/storage.html).
+
+6. How to Add an Existing ext4 or XFS Disk as a Removable Proxmox Backup Datastore
+
+    Research: [Source](https://www.reddit.com/r/Proxmox/comments/1t8sr5b/how_to_add_a_usb_drive_as_a_datastore_for_pbs/) · [Documentation](https://pbs.proxmox.com/docs/storage.html).
+
+7. How to Disconnect a Proxmox Backup Datastore After Running Jobs Have Finished
+
+    Research: [Source](https://forum.proxmox.com/threads/how-to-properly-disable-temporarerly-a-datastore.168409/) · [Documentation](https://pbs.proxmox.com/docs/storage.html).
+
+8. How to Reattach an Offline Proxmox Backup Disk to a Replacement Server Without Reinitializing It
+
+    Research: [Source 1](https://www.reddit.com/r/Proxmox/comments/1u7yfbn/pbs_backup_recovery_os_drive_died_but_backups/) · [Source 2](https://www.reddit.com/r/Proxmox/comments/1feq6bw) · [Documentation](https://pbs.proxmox.com/docs/storage.html).
+
+9. How to Test an Encrypted Proxmox Tape Restore into a Separate Empty Datastore
+
+    Research: [Source](https://forum.proxmox.com/threads/tape-encryption-keys-testing-restore.103847/) · [Documentation](https://pbs.proxmox.com/docs/tape-backup.html).
+
+10. How to Rebuild a Proxmox Tape Catalog After Losing the Original Backup Server
+
+    Research: [Source](https://www.reddit.com/r/Proxmox/comments/1i17ihq) · [Documentation](https://pbs.proxmox.com/docs/tape-backup.html).
+
+11. How to Escrow Offline Backup Keys So Recovery Does Not Depend on the Lost Server
+
+    Research: [Source 1](https://www.reddit.com/r/homelab/comments/17pyc97) · [Source 2](https://www.reddit.com/r/sysadmin/comments/e1r0u5) · [Documentation](https://pbs.proxmox.com/docs/backup-client.html).
+
+12. How to Estimate the Temporary Disk Capacity Needed to Restore Air-Gapped Tape Backups
+
+    Research: [Source](https://www.reddit.com/r/Proxmox/comments/1i17ihq) · [Documentation](https://pbs.proxmox.com/docs/tape-backup.html).
+
+13. How to Copy Restic Snapshots to Offline Disks Without Mirroring Source-Side Deletions
+
+    Research: [Source](https://www.reddit.com/r/restic/comments/1krv1aq/how_to_do_multidestionation_backup_properly/) · [Documentation](https://restic.readthedocs.io/en/stable/045_working_with_repos.html).
+
+14. How to Schedule Restic Data Readback Checks Before Returning Backup Disks to Offline Storage
+
+    Research: [Source](https://forum.restic.net/t/do-you-use-check-read-data/8930/13) · [Documentation](https://restic.readthedocs.io/en/stable/045_working_with_repos.html).
+
+15. How to Reclaim Space on a Nearly Full Offline Restic Disk When Prune Needs Working Space
+
+    Research: [Source](https://forum.restic.net/t/my-backup-hdd-is-completely-full-now-how-to-prune/4461) · [Documentation](https://restic.readthedocs.io/en/stable/060_forget.html).
+
+16. How to Detect Missing Source Mounts Before Creating an Incomplete Offline Restic Snapshot
+
+    Research: [Source](https://forum.restic.net/t/behavior-with-mounted-unmounted-external-drives/2041) · [Documentation](https://restic.readthedocs.io/en/stable/040_backup.html).
+
+17. How to Test a Restic Recovery from an Offline USB Drive on a Different Operating System
+
+    Research: [Source](https://forum.restic.net/t/macos-backup-on-usb-drive-restore-mount-on-linux-not-working/3352) · [Documentation](https://restic.readthedocs.io/en/stable/050_restore.html).
+
+18. How to Package Backup Clients and Recovery Instructions with Air-Gapped Backup Media
+
+    Research: [Source](https://www.reddit.com/r/sysadmin/comments/p2ppye) · [Documentation](https://www.cisa.gov/sites/default/files/publications/CISA_MS-ISAC_Ransomware%20Guide_S508C.pdf).
+
+19. How to Retain Known-Good Offline Backup Generations When Ransomware Is Detected Late
+
+    Research: [Source 1](https://www.reddit.com/r/msp/comments/g1dzkb/how_do_you_airgap_your_backups/) · [Source 2](https://www.reddit.com/r/sysadmin/comments/e1r0u5) · [Documentation](https://restic.readthedocs.io/en/stable/060_forget.html).
+
+20. How to Alert on Missed Air-Gapped Backup Rotations Using Transfer and Verification Receipts
+
+    Research: [Source](https://www.reddit.com/r/sysadmin/comments/e1r0u5) · [Documentation](https://www.cisa.gov/sites/default/files/publications/CISA_MS-ISAC_Ransomware%20Guide_S508C.pdf).
+
+
+## Zarf
+
+1. How to Package a Monitoring Helm Release with Zarf for Disconnected Kubernetes Deployment
+
+    Research: [Source](https://www.reddit.com/r/kubernetes/comments/1rwy7dw/air_gapped_on_premise_deployments/) · [Documentation](https://docs.zarf.dev/ref/create/).
+
+2. How to Find Operator-Created Images That Zarf Cannot Discover by Rendering Helm Charts
+
+    Research: [Source](https://github.com/zarf-dev/zarf/discussions/2061) · [Documentation](https://docs.zarf.dev/commands/zarf_dev_find-images/).
+
+3. How to Diagnose Zarf Registry CrashLoopBackOff on Mixed AMD64 and ARM64 Clusters
+
+    Research: [Source](https://github.com/zarf-dev/zarf/discussions/3759) · [Documentation](https://docs.zarf.dev/ref/init-package/).
+
+4. How to Initialize Zarf Against an Existing Registry with Separate Pull and Push Credentials
+
+    Research: [Source](https://github.com/zarf-dev/zarf/issues/3729) · [Documentation](https://docs.zarf.dev/ref/init-package/).
+
+5. How to Bootstrap Multi-Node Air-Gapped K3s Before Initializing Zarf
+
+    Research: [Source](https://github.com/zarf-dev/zarf/discussions/4761) · [Documentation](https://docs.zarf.dev/ref/init-package/).
+
+6. How to Diagnose Zarf Image Pulls When NodePort Registry Access Is Blocked by the Cluster Network
+
+    Research: [Source](https://github.com/zarf-dev/zarf/discussions/4761) · [Documentation](https://docs.zarf.dev/ref/init-package/).
+
+7. How to Plan K3s Upgrades Separately from Zarf Package and Init Upgrades
+
+    Research: [Source](https://www.reddit.com/r/kubernetes/comments/1foobm6) · [Documentation 1](https://docs.zarf.dev/best-practices/upgrading-zarf/) · [Documentation 2](https://docs.k3s.io/upgrades/manual).
+
+8. How to Supply Environment-Specific Helm Configuration Through Zarf Package Values
+
+    Research: [Source](https://github.com/zarf-dev/zarf/discussions/4847) · [Documentation](https://docs.zarf.dev/ref/package-values/).
+
+9. How to Pass YAML Lists into Zarf Manifests Without Turning Them into Literal Strings
+
+    Research: [Source](https://github.com/zarf-dev/zarf/discussions/4152) · [Documentation](https://docs.zarf.dev/best-practices/variables-to-values/).
+
+10. How to Share Configuration Across Imported Zarf Components Without Duplicating Every Variable
+
+    Research: [Source](https://github.com/zarf-dev/zarf/discussions/3983) · [Documentation 1](https://docs.zarf.dev/ref/examples/composable-packages/) · [Documentation 2](https://docs.zarf.dev/ref/package-values/).
+
+11. How to Test Zarf Package Redeployment for Idempotency When Components Run Custom Actions
+
+    Research: [Source](https://github.com/zarf-dev/zarf/discussions/4956) · [Documentation](https://docs.zarf.dev/ref/actions/).
+
+12. How to Avoid Mutable Image Tag Conflicts Between Independently Deployed Zarf Packages
+
+    Research: [Source](https://github.com/zarf-dev/zarf/discussions/4956) · [Documentation](https://docs.zarf.dev/ref/components/).
+
+13. How to Investigate Zarf Rewriting Argo CD Repositories That Should Use an Existing Git Server
+
+    Research: [Source](https://github.com/zarf-dev/zarf/discussions/2454) · [Documentation 1](https://docs.zarf.dev/ref/examples/argocd/) · [Documentation 2](https://docs.zarf.dev/ref/init-package/).
+
+14. How to Build Differential Zarf Packages Against the Correct Offline Baseline
+
+    Research: [Source](https://github.com/zarf-dev/zarf/discussions/1438) · [Documentation](https://docs.zarf.dev/tutorials/9-package-create-differential/).
+
+15. How to Check Whether Zarf Registry Pruning Is Safe After a Differential Package Deployment
+
+    Research: [Source](https://github.com/zarf-dev/zarf/issues/5539) · [Documentation](https://docs.zarf.dev/tutorials/9-package-create-differential/).
+
+16. How to Choose Registry and Git Destinations Explicitly When Mirroring Zarf Package Resources
+
+    Research: [Source](https://github.com/zarf-dev/zarf/issues/2389) · [Documentation](https://docs.zarf.dev/commands/zarf_package_mirror-resources/).
+
+17. How to Validate a Zarf Package Signature After Transferring It into an Air-Gapped Network
+
+    Research: [Source](https://www.reddit.com/r/kubernetes/comments/1rwy7dw/air_gapped_on_premise_deployments/) · [Documentation](https://docs.zarf.dev/tutorials/5-package-signing-and-verification/).
+
+18. How to Turn a Zarf Skeleton Package into a Deployable Bundle with Downloaded Dependencies
+
+    Research: [Source](https://github.com/zarf-dev/zarf/discussions/3983) · [Documentation 1](https://docs.zarf.dev/faq/) · [Documentation 2](https://docs.zarf.dev/ref/examples/composable-packages/).
+
+19. How to Speed Up Zarf Package Creation for Large Local Docker Images Using a Local Registry
+
+    Research: [Source](https://docs.zarf.dev/faq/) · [Documentation](https://docs.zarf.dev/ref/create/).
+
+20. How to Verify a Zarf Package Contains Every Required Image Before Crossing the Air Gap
+
+    Research: [Source 1](https://www.reddit.com/r/kubernetes/comments/1jjj4vp) · [Source 2](https://github.com/zarf-dev/zarf/discussions/2061) · [Documentation 1](https://docs.zarf.dev/commands/zarf_package_inspect_images/) · [Documentation 2](https://docs.zarf.dev/ref/deploy/).
