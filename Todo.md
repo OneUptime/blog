@@ -2,7 +2,6 @@
 
 ## SSH
 
-21. How to Rotate an OpenSSH Certificate Authority Without Locking Out Existing Users
 22. How to Revoke Compromised SSH Keys and Certificates with an OpenSSH KRL
 23. How to Create and Use a Resident OpenSSH FIDO2 Key on a Security Key
 24. How to Apply Different SSH Authentication Requirements by User and Group with `Match` Blocks

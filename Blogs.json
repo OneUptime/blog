@@ -824065,5 +824065,18 @@
     ],
     "post": "2026-11-20-ssh-works-ip-not-hostname-dns-config-canonicalization",
     "readmePath": "posts/2026-11-20-ssh-works-ip-not-hostname-dns-config-canonicalization/README.md"
+  },
+  {
+    "title": "How to Rotate an OpenSSH Certificate Authority Without Locking Out Existing Users",
+    "description": "Rotate OpenSSH user and host certificate authorities with overlapping trust, isolated authentication checks, and explicit gates for retiring the old CA.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "OpenSSH",
+      "SSH",
+      "Security",
+      "Linux"
+    ],
+    "post": "2026-11-20-rotate-openssh-certificate-authority-without-lockouts",
+    "readmePath": "posts/2026-11-20-rotate-openssh-certificate-authority-without-lockouts/README.md"
   }
 ]
