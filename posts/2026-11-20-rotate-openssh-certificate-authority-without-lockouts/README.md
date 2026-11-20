@@ -72,7 +72,7 @@ ssh-keygen -s ./user_ca_v2 -I 'rotation-canary-v2' -z 42 \
 ssh-keygen -L -f alice-new-cert.pub
 ```
 
-This deliberately limited shell canary has no forwarding permissions. Allocate production serials through your issuer, and preserve each account's existing principals, critical options, extensions, and authorization policy when reissuing real credentials. Check the signing CA fingerprint and validity interval in `-L` output. The five-minute backdating allowance is an example, not a substitute for synchronized clocks. [Signing and certificate options](https://man.openbsd.org/ssh-keygen#CERTIFICATES)
+This deliberately limited shell canary has no certificate permissions for TCP/Unix-socket, agent, or X11 forwarding. Tunnel-device forwarding is controlled separately by the server's `PermitTunnel`; verify its effective value for the canary account is `no` if tunnels must be denied. [Forwarding request handlers](https://github.com/openssh/openssh-portable/blob/V_9_9_P1/serverloop.c), [PermitTunnel](https://man.openbsd.org/sshd_config#PermitTunnel). Allocate production serials through your issuer, and preserve each account's existing principals, critical options, extensions, and authorization policy when reissuing real credentials. Check the signing CA fingerprint and validity interval in `-L` output. The five-minute backdating allowance is an example, not a substitute for synchronized clocks. [Signing and certificate options](https://man.openbsd.org/ssh-keygen#CERTIFICATES)
 
 Return the new certificate to the canary's client. For an Ed25519 key and an account requiring only public-key authentication, run:
 
