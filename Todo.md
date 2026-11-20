@@ -2,7 +2,6 @@
 
 ## SSH
 
-35. How to Keep a Remote Job Running After the SSH Session Disconnects
 36. How to Resume Interrupted File Transfers with `rsync` over SSH
 37. How to Recover an SSHFS Mount After “Transport Endpoint Is Not Connected”
 38. How to Escape from a Frozen SSH Session Without Killing the Terminal
