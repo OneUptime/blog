@@ -824012,5 +824012,19 @@
     ],
     "post": "2026-11-20-ssh-remote-port-forwarding-failed-bind-gatewayports-policy",
     "readmePath": "posts/2026-11-20-ssh-remote-port-forwarding-failed-bind-gatewayports-policy/README.md"
+  },
+  {
+    "title": "SSH Tunnel Opens but the Application Cannot Connect: Debug Bind Addresses, `localhost`, IPv4/IPv6, and the Final Hop",
+    "description": "Trace SSH tunnel failures from the listening socket through forwarding policy and the final TCP hop to application protocol, TLS, and authentication.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "SSH",
+      "OpenSSH",
+      "Networking",
+      "IPv6",
+      "Troubleshooting"
+    ],
+    "post": "2026-11-20-ssh-tunnel-opens-application-cannot-connect",
+    "readmePath": "posts/2026-11-20-ssh-tunnel-opens-application-cannot-connect/README.md"
   }
 ]

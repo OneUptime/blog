@@ -2,7 +2,6 @@
 
 ## SSH
 
-14. SSH Tunnel Opens but the Application Cannot Connect: Debug Bind Addresses, `localhost`, IPv4/IPv6, and the Final Hop
 15. How to Make an SSH Tunnel Fail Fast with `ExitOnForwardFailure` and a Health Check
 16. SFTP “Bad Ownership or Modes for Chroot Directory”: Build a Root-Owned Jail with a Writable Upload Directory
 17. How to Create an SFTP-Only Account with `internal-sftp` and No Shell, Agent, or Port Forwarding
