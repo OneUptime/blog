@@ -824161,5 +824161,19 @@
     ],
     "post": "2026-11-20-publish-verify-sshfp-dnssec",
     "readmePath": "posts/2026-11-20-publish-verify-sshfp-dnssec/README.md"
+  },
+  {
+    "title": "How to Chain a Local Port Forward Through Multiple SSH Jump Hosts with `ProxyJump`",
+    "description": "Build a local forward through two SSH jump hosts with separate credentials, explicit destination permissions, and a check of the application beyond the final relay.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "SSH",
+      "OpenSSH",
+      "ProxyJump",
+      "Port Forwarding",
+      "Networking"
+    ],
+    "post": "2026-11-20-chain-local-port-forward-multiple-ssh-proxyjump",
+    "readmePath": "posts/2026-11-20-chain-local-port-forward-multiple-ssh-proxyjump/README.md"
   }
 ]
