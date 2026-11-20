@@ -824119,5 +824119,19 @@
     ],
     "post": "2026-11-20-ssh-authentication-requirements-user-group-match",
     "readmePath": "posts/2026-11-20-ssh-authentication-requirements-user-group-match/README.md"
+  },
+  {
+    "title": "How to Audit Which Public Key Authenticated Each SSH Session",
+    "description": "Correlate OpenSSH authentication fingerprints, certificate identities, and session records while accounting for partial authentication and connection sharing.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "SSH",
+      "OpenSSH",
+      "Authentication",
+      "Auditing",
+      "Linux"
+    ],
+    "post": "2026-11-20-audit-public-key-authenticated-ssh-session",
+    "readmePath": "posts/2026-11-20-audit-public-key-authenticated-ssh-session/README.md"
   }
 ]
