@@ -824078,5 +824078,18 @@
     ],
     "post": "2026-11-20-rotate-openssh-certificate-authority-without-lockouts",
     "readmePath": "posts/2026-11-20-rotate-openssh-certificate-authority-without-lockouts/README.md"
+  },
+  {
+    "title": "How to Revoke Compromised SSH Keys and Certificates with an OpenSSH KRL",
+    "description": "Revoke SSH keys, certificate serials, and compromised CAs with an OpenSSH KRL, preserve existing revocations, and verify enforcement across servers and clients.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "OpenSSH",
+      "SSH",
+      "Security",
+      "Linux"
+    ],
+    "post": "2026-11-20-revoke-compromised-ssh-keys-certificates-openssh-krl",
+    "readmePath": "posts/2026-11-20-revoke-compromised-ssh-keys-certificates-openssh-krl/README.md"
   }
 ]

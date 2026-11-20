@@ -2,7 +2,6 @@
 
 ## SSH
 
-22. How to Revoke Compromised SSH Keys and Certificates with an OpenSSH KRL
 23. How to Create and Use a Resident OpenSSH FIDO2 Key on a Security Key
 24. How to Apply Different SSH Authentication Requirements by User and Group with `Match` Blocks
 25. How to Audit Which Public Key Authenticated Each SSH Session
