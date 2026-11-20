@@ -823985,5 +823985,18 @@
     ],
     "post": "2026-11-20-ssh-pauses-before-password-dns-gssapi-pam-sssd",
     "readmePath": "posts/2026-11-20-ssh-pauses-before-password-dns-gssapi-pam-sssd/README.md"
+  },
+  {
+    "title": "`client_loop: send disconnect: Broken pipe`: Separate Idle NAT Timeouts from Server-Side Session Failures",
+    "description": "Diagnose SSH broken pipe errors by correlating idle periods, network events, server policies, and remote job state before changing keepalives.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "SSH",
+      "Linux",
+      "Networking",
+      "Troubleshooting"
+    ],
+    "post": "2026-11-20-ssh-broken-pipe-idle-nat-server-session-failures",
+    "readmePath": "posts/2026-11-20-ssh-broken-pipe-idle-nat-server-session-failures/README.md"
   }
 ]
