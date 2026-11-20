@@ -824039,5 +824039,18 @@
     ],
     "post": "2026-11-20-ssh-tunnel-fail-fast-exitonforwardfailure-health-check",
     "readmePath": "posts/2026-11-20-ssh-tunnel-fail-fast-exitonforwardfailure-health-check/README.md"
+  },
+  {
+    "title": "How to Populate `known_hosts` in CI Without Setting `StrictHostKeyChecking=no`",
+    "description": "Build a verified SSH known_hosts file, deliver it to ephemeral CI jobs, and reject unknown or changed server keys with strict checking enabled.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "SSH",
+      "OpenSSH",
+      "CI/CD",
+      "Security"
+    ],
+    "post": "2026-11-20-populate-known-hosts-ci-strict-checking",
+    "readmePath": "posts/2026-11-20-populate-known-hosts-ci-strict-checking/README.md"
   }
 ]

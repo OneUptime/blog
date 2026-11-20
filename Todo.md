@@ -2,7 +2,6 @@
 
 ## SSH
 
-18. How to Populate `known_hosts` in CI Without Setting `StrictHostKeyChecking=no`
 19. Multiple Git Identities on One SSH Host: Use Host Aliases, `IdentityFile`, and `IdentitiesOnly`
 20. SSH Works by IP but Not by Hostname: Inspect DNS, Host Blocks, Canonicalization, and Host-Key Entries
 21. How to Rotate an OpenSSH Certificate Authority Without Locking Out Existing Users
