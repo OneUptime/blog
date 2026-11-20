@@ -2,7 +2,6 @@
 
 ## SSH
 
-34. How to Repair Stale SSH Multiplexing Sockets After a Crash
 35. How to Keep a Remote Job Running After the SSH Session Disconnects
 36. How to Resume Interrupted File Transfers with `rsync` over SSH
 37. How to Recover an SSHFS Mount After “Transport Endpoint Is Not Connected”
