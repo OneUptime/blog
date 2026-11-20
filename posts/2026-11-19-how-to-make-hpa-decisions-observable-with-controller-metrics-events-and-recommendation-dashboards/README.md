@@ -52,7 +52,7 @@ Add min/max series, the target workload's available replicas, and annotations fr
 
 The [Kubernetes 1.35 HPA metrics source](https://github.com/kubernetes/kubernetes/blob/v1.35.0/pkg/controller/podautoscaler/monitor/metrics.go) includes reconciliation and metric-computation counters and duration histograms. They are alpha metrics in that release, so verify names and availability on the actual controller-manager endpoint.
 
-For example, count reconciliation errors by category:
+For example, show the per-second rate of reconciliation errors by category:
 
 ```promql
 sum by (error) (
