@@ -1,9 +1,5 @@
 # Blog Post Ideas
 
-## SSH
-
-40. How to Limit SSH Connection Floods with `MaxStartups` and `PerSourcePenalties` in OpenSSH 9.8+
-
 ## Aerospike
 
 1. Aerospike `INVALID_NODE_ERROR` in Docker or Testcontainers: Fix Advertised Addresses and Mapped Ports

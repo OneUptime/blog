@@ -824202,5 +824202,18 @@
     ],
     "post": "2026-11-20-forward-unix-domain-socket-over-ssh",
     "readmePath": "posts/2026-11-20-forward-unix-domain-socket-over-ssh/README.md"
+  },
+  {
+    "title": "How to Limit SSH Connection Floods with `MaxStartups` and `PerSourcePenalties` in OpenSSH 9.8+",
+    "description": "Configure OpenSSH connection limits and source penalties, account for shared IP addresses, and verify that legitimate SSH access survives throttling.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "SSH",
+      "OpenSSH",
+      "Security",
+      "Rate Limiting"
+    ],
+    "post": "2026-11-20-ssh-connection-floods-maxstartups-persourcepenalties",
+    "readmePath": "posts/2026-11-20-ssh-connection-floods-maxstartups-persourcepenalties/README.md"
   }
 ]
