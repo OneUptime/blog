@@ -2,7 +2,6 @@
 
 ## SSH
 
-26. How to Restrict One `authorized_keys` Entry by Source IP, Command, and Forwarding
 27. How to Rotate SSH Host Keys Gracefully with `UpdateHostKeys`
 28. How to Publish and Verify SSH Host Fingerprints with DNSSEC-Protected SSHFP Records
 29. How to Chain a Local Port Forward Through Multiple SSH Jump Hosts with `ProxyJump`
