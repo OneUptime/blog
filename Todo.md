@@ -988,17 +988,37 @@ Research: [OneUptime air-gapped alerting](https://oneuptime.com/enterprise/air-g
     Completed: [Article](posts/2026-11-20-default-serviceaccount-token-mount-api-dependent-workloads/README.md) (20 November 2026).
 40. How to Default Pod Security Context Fields with a Mutating Webhook Without Weakening Existing Settings
 
+    Completed: [Article](posts/2026-11-20-default-pod-security-context-preserve-existing-settings/README.md) (20 November 2026).
+
 ## TeamCity
 
 1. Fixing TeamCity “No Compatible Agents”: Authorization, Agent Pools, Implicit Requirements, and Missing Tools
+
+    Completed: [Article](posts/2026-11-20-fix-teamcity-no-compatible-agents/README.md) (20 November 2026).
 2. Running Docker Builds on TeamCity Agents: Host Socket vs. Docker-in-Docker
+
+    Completed: [Article](posts/2026-11-20-teamcity-docker-builds-host-socket-vs-dind/README.md) (20 November 2026).
 3. Building a Custom TeamCity Agent Image with Pinned JDK, Node.js, Docker, and CLI Toolchains
+
+    Completed: [Article](posts/2026-11-20-custom-teamcity-agent-image-pinned-toolchains/README.md) (20 November 2026).
 7. TeamCity Snapshot vs. Artifact Dependencies: Keeping Source Revisions and Build Outputs Aligned
+
+    Completed: [Article](posts/2026-11-20-teamcity-snapshot-artifact-dependencies-aligned-builds/README.md) (20 November 2026).
 13. Keeping Secrets Out of TeamCity Kotlin DSL and Logs with Password Parameters and HashiCorp Vault
+
+    Completed: [Article](posts/2026-11-20-teamcity-secrets-password-parameters-hashicorp-vault/README.md) (20 November 2026).
 15. Designing TeamCity Clean-Up Rules That Preserve Artifacts Still Needed by Build Chains
+
+    Completed: [Article](posts/2026-11-20-teamcity-cleanup-preserve-build-chain-artifacts/README.md) (20 November 2026).
 16. Backing Up and Restoring TeamCity with an External Database, Data Directory, and Artifact Store
+
+    Completed: [Article](posts/2026-11-20-teamcity-backup-restore-external-database-artifacts/README.md) (20 November 2026).
 17. Upgrading TeamCity Server and Agents with a Tested Backup and Rollback Plan
+
+    Completed: [Article](posts/2026-11-20-upgrade-teamcity-server-agents-backup-rollback/README.md) (20 November 2026).
 18. Running TeamCity Behind NGINX with HTTPS, Correct Forwarded Headers, and Working Agent Connections
+
+    Completed: [Article](posts/2026-11-20-teamcity-nginx-https-forwarded-headers-agents/README.md) (20 November 2026).
 19. Autoscaling Ephemeral TeamCity Agents on Kubernetes Without Losing Build Caches
 
 ## cAdvisor

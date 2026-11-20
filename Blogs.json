@@ -827429,5 +827429,113 @@
       "DevOps"
     ],
     "post": "2026-11-20-default-serviceaccount-token-mount-api-dependent-workloads"
+  },
+  {
+    "title": "Default Pod Security Contexts Without Weakening Existing Settings",
+    "description": "Apply narrow security-context defaults, preserve Pod and container overrides, and separate compatibility-aware mutation from security enforcement.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Kubernetes",
+      "Security",
+      "DevOps"
+    ],
+    "post": "2026-11-20-default-pod-security-context-preserve-existing-settings"
+  },
+  {
+    "title": "Fix TeamCity No Compatible Agents Without Hiding Missing Tools",
+    "description": "Diagnose TeamCity agent eligibility in order: connection, authorization, pools, requirement mismatches, unresolved parameters, and actual tool access.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "CI/CD",
+      "DevOps"
+    ],
+    "post": "2026-11-20-fix-teamcity-no-compatible-agents"
+  },
+  {
+    "title": "Docker Builds on TeamCity: Host Socket vs. Docker-in-Docker",
+    "description": "Choose a Docker setup for TeamCity agents by understanding daemon access, workspace paths, cache ownership, credentials, and isolation limits.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Docker",
+      "CI/CD",
+      "DevOps"
+    ],
+    "post": "2026-11-20-teamcity-docker-builds-host-socket-vs-dind"
+  },
+  {
+    "title": "Build a Custom TeamCity Agent Image with Pinned Toolchains",
+    "description": "Build a repeatable TeamCity agent image with verified tool archives, an explicit build JDK, controlled PATH, and checks before pool rollout.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Docker",
+      "CI/CD",
+      "DevOps"
+    ],
+    "post": "2026-11-20-custom-teamcity-agent-image-pinned-toolchains"
+  },
+  {
+    "title": "Keep TeamCity Snapshot and Artifact Dependencies Aligned",
+    "description": "Pair TeamCity snapshot and artifact dependencies so tests and deployments use the intended build output, even when newer builds finish concurrently.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "CI/CD",
+      "DevOps"
+    ],
+    "post": "2026-11-20-teamcity-snapshot-artifact-dependencies-aligned-builds"
+  },
+  {
+    "title": "Keep Secrets Out of TeamCity Kotlin DSL and Build Logs",
+    "description": "Use TeamCity password references and HashiCorp Vault remote parameters without committing credentials, printing them, or confusing masking with isolation.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "CI/CD",
+      "Security",
+      "DevOps"
+    ],
+    "post": "2026-11-20-teamcity-secrets-password-parameters-hashicorp-vault"
+  },
+  {
+    "title": "Preserve Build-Chain Artifacts with TeamCity Clean-Up Rules",
+    "description": "Design TeamCity retention around downstream consumers, dependency protection, release keep rules, and a staging rehearsal before deleting build data.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "CI/CD",
+      "DevOps"
+    ],
+    "post": "2026-11-20-teamcity-cleanup-preserve-build-chain-artifacts"
+  },
+  {
+    "title": "Back Up and Restore TeamCity Database, Data, and Artifacts",
+    "description": "Build a coordinated TeamCity recovery set covering the external database, data directory, artifact storage, encryption keys, and isolated restore tests.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "CI/CD",
+      "Backup",
+      "DevOps"
+    ],
+    "post": "2026-11-20-teamcity-backup-restore-external-database-artifacts"
+  },
+  {
+    "title": "Upgrade TeamCity Server and Agents with a Tested Rollback Plan",
+    "description": "Plan a TeamCity upgrade around data-format conversion, agent readiness, a restored rehearsal environment, and a clear point for rollback decisions.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "CI/CD",
+      "DevOps",
+      "Backup"
+    ],
+    "post": "2026-11-20-upgrade-teamcity-server-agents-backup-rollback"
+  },
+  {
+    "title": "Run TeamCity Behind NGINX with HTTPS and Working Agents",
+    "description": "Configure TeamCity behind NGINX with HTTPS, WebSocket forwarding, Tomcat proxy settings, certificate trust, and practical agent acceptance checks.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "CI/CD",
+      "Nginx",
+      "SSL",
+      "DevOps"
+    ],
+    "post": "2026-11-20-teamcity-nginx-https-forwarded-headers-agents"
   }
 ]

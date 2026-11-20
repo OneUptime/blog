@@ -1,0 +1,30 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-20",
+  "runtimeTestsPerformed": true,
+  "infrastructureDeploymentPerformed": false,
+  "sources": [
+    "https://www.jetbrains.com/help/teamcity/configuring-dependencies.html",
+    "https://www.jetbrains.com/help/teamcity/artifact-dependencies.html",
+    "https://www.jetbrains.com/help/teamcity/configuring-general-settings.html",
+    "https://www.jetbrains.com/help/teamcity/build-artifact.html",
+    "https://www.jetbrains.com/help/teamcity/kotlin-dsl-documentation/root/reuse-builds/",
+    "https://www.jetbrains.com/help/teamcity/kotlin-dsl-documentation/root/failure-action/",
+    "https://www.jetbrains.com/help/teamcity/kotlin-dsl-documentation/root/snapshot-dependency/",
+    "https://www.jetbrains.com/help/teamcity/kotlin-dsl-documentation/root/artifact-dependency/",
+    "https://www.jetbrains.com/help/teamcity/build-chain.html",
+    "https://docs.python.org/3.11/library/hashlib.html"
+  ],
+  "tests": [
+    "Python 3.11.13 checksum example executed: matching and changed bytes, missing key, wrong type, invalid checksum, missing file, malformed JSON and non-object JSON",
+    "Two Kotlin fragments structurally checked and reviewed against official API documentation",
+    "Mermaid structurally checked: four nodes and five edges",
+    "Generated social image visually reviewed"
+  ],
+  "limitations": [
+    "No TeamCity server, build chain, artifact transfer or concurrency rehearsal executed",
+    "Kotlin DSL fragments were not compiled; documentation pages showed 2026.2 except SnapshotDependency reference served 2026.1",
+    "Checksum fixture proves file consistency only, not provenance authenticity",
+    "Mermaid structurally checked, not rendered"
+  ]
+}

@@ -1,0 +1,26 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-20",
+  "runtimeTestsPerformed": false,
+  "infrastructureDeploymentPerformed": false,
+  "sources": [
+    "https://docs.docker.com/engine/security/",
+    "https://github.com/JetBrains/teamcity-docker-images/blob/2ff7c4a1cc8c5bc10f7b52ded42f85d5bf1615ff/dockerhub/teamcity-agent/README.md",
+    "https://docs.docker.com/engine/storage/bind-mounts/",
+    "https://docs.docker.com/engine/security/protect-access/",
+    "https://docs.docker.com/reference/cli/docker/version/",
+    "https://www.jetbrains.com/help/teamcity/configuring-connections-to-docker.html"
+  ],
+  "tests": [
+    "Three shell blocks passed sh -n",
+    "Static launch checks verified five matching host paths, socket mode without privileged flag, and DinD mode without host socket",
+    "Mermaid structurally checked: seven nodes and six edges",
+    "Social image generated and visually reviewed"
+  ],
+  "limitations": [
+    "Docker and TeamCity were not executed; no live builds, cache behavior, certificate trust or artifact collection tested",
+    "Image digests are explicit deployment-specific placeholders, not tested release selections",
+    "Launch settings checked against JetBrains source commit 2ff7c4a1cc8c5bc10f7b52ded42f85d5bf1615ff",
+    "Mermaid was structurally checked, not rendered"
+  ]
+}

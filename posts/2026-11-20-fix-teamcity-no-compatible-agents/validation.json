@@ -1,0 +1,29 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-20",
+  "runtimeTestsPerformed": true,
+  "infrastructureDeploymentPerformed": false,
+  "sources": [
+    "https://www.jetbrains.com/help/teamcity/install-and-start-teamcity-agents.html",
+    "https://www.jetbrains.com/help/teamcity/configuring-agent-pools.html",
+    "https://www.jetbrains.com/help/teamcity/viewing-build-agent-details.html",
+    "https://www.jetbrains.com/help/teamcity/configuring-agent-requirements.html",
+    "https://www.jetbrains.com/help/teamcity/kotlin-dsl-documentation/root/requirements/",
+    "https://www.jetbrains.com/help/teamcity/configuring-build-parameters.html",
+    "https://www.jetbrains.com/help/teamcity/command-line.html"
+  ],
+  "tests": [
+    "Both shell examples passed sh -n",
+    "Release-channel script executed with supplied, missing and empty variables; expected success/failures verified",
+    "PATH diagnostic executed locally and produced three bounded tool-presence lines",
+    "Kotlin fragments checked structurally for balanced delimiters and reviewed against official Requirements/parameter APIs",
+    "Social image generated and visually reviewed"
+  ],
+  "limitations": [
+    "No TeamCity server, build agent, build configuration or queue action executed",
+    "Kotlin fragments were not compiled or imported into TeamCity",
+    "Local PATH results do not describe an actual TeamCity agent and do not prove tools run",
+    "JDK parameter name must be checked against actual agent reports",
+    "Documentation scope is TeamCity On-Premises2026.2 classic build configurations"
+  ]
+}

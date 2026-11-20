@@ -1,0 +1,40 @@
+# Validation summary
+
+Reviewed NGINX forwarding, WebSocket negotiation, Tomcat public URL attributes, TeamCity Server URL and agent certificate trust against official sources. The example is explicitly a single-server same-host deployment.
+
+## Checks performed
+
+- NGINX1.30.7 compiled from official HTTPS source archive and nginx -t passed with temporary certificate paths, loopback ports and enclosing configuration
+- Real local TLS proxy against Python HTTP fixture preserved Host, Origin, Referer, X-TC-CSRF-Token and hidden/colon artifact path
+- Spoofed forwarding headers overwritten or removed; forwarded scheme/port/client address verified
+- HTTP101 upgrade response forwarded; no WebSocket frames tested
+- Tomcat connector XML parsed; shell example passed sh -n
+- Mermaid structurally checked: five nodes and five edges
+- Generated social image visually reviewed
+
+## Limitations
+
+- No TeamCity server, Tomcat runtime, browser session or build agent tested
+- Local self-signed fixture certificate trusted explicitly by test client; no verification disabled
+- Test changed listen port, upstream port and certificate paths; production DNS/certificates not tested
+- No large upload, buffering pressure, timeout or full WebSocket session tested
+- Official NGINX source archive downloaded over HTTPS; PGP signature not independently verified
+- Mermaid structurally checked, not rendered
+
+## Sources reviewed
+
+- https://nginx.org/en/docs/http/configuring_https_servers.html
+- https://www.jetbrains.com/help/teamcity/configuring-proxy-server.html
+- https://nginx.org/en/docs/http/websocket.html
+- https://nginx.org/en/docs/http/ngx_http_proxy_module.html
+- https://tomcat.apache.org/tomcat-9.0-doc/config/http.html
+- https://www.jetbrains.com/help/teamcity/configuring-proxy-server.html#TeamCity+Tomcat+Configuration
+- https://www.jetbrains.com/help/teamcity/configuring-server-url.html
+- https://www.jetbrains.com/help/teamcity/configure-agent-installation.html
+- https://www.jetbrains.com/help/teamcity/using-https-to-access-teamcity-server.html
+- https://nginx.org/en/docs/switches.html
+- https://nginx.org/en/download.html
+
+## Repository checks
+
+The repository validator passed for this post in an isolated fixture with its catalog entry, author list, tag allowlist, and social image. Shell examples, if present, passed bash syntax checking. The full existing catalog was not revalidated.

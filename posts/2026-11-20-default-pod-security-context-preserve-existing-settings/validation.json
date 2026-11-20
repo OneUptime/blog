@@ -1,0 +1,29 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-20",
+  "runtimeTestsPerformed": true,
+  "infrastructureDeploymentPerformed": false,
+  "sources": [
+    "https://kubernetes.io/docs/tasks/configure-pod-container/security-context/",
+    "https://github.com/kubernetes/api/blob/v0.35.0/core/v1/types.go",
+    "https://kubernetes.io/docs/tutorials/security/seccomp/",
+    "https://kubernetes.io/docs/concepts/security/pod-security-standards/",
+    "https://kubernetes.io/docs/concepts/security/pod-security-admission/",
+    "https://pypi.org/project/jsonpatch/1.33/"
+  ],
+  "tests": [
+    "Exact Python3.11 helper executed with jsonpatch1.33",
+    "Ten cases covered missing/null/empty context, siblings, null profile, three explicit profiles, Windows and missing OS",
+    "Four malformed inputs rejected; explicit empty profile preserved for normal validation",
+    "Verified container overrides and unrelated fields unchanged, input preservation and idempotence",
+    "Linux Pod outputs and wrapped YAML fragment passed Kubernetesv1.35.0 OpenAPI",
+    "Social image generated and visually reviewed"
+  ],
+  "limitations": [
+    "No live admission server, Pod Security Admission, container runtime or syscall behavior executed",
+    "Windows fixture only tests no-op helper behavior; it is not a valid Windows deployment",
+    "Helper only defaults Pod-level seccomp for explicitly Linux workloads",
+    "Preserving an explicit profile is not evidence that it complies with security policy",
+    "Example is not a full Restricted-compliance implementation"
+  ]
+}
