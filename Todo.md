@@ -1021,17 +1021,37 @@ Research: [OneUptime air-gapped alerting](https://oneuptime.com/enterprise/air-g
     Completed: [Article](posts/2026-11-20-teamcity-nginx-https-forwarded-headers-agents/README.md) (20 November 2026).
 19. Autoscaling Ephemeral TeamCity Agents on Kubernetes Without Losing Build Caches
 
+    Completed: [Article](posts/2026-11-20-autoscale-ephemeral-teamcity-kubernetes-agents-caches/README.md) (20 November 2026).
+
 ## cAdvisor
 
 1. Running cAdvisor Safely with Docker Compose: Required Host Mounts, Devices, and Read-Only Access
+
+    Completed: [Article](posts/2026-11-20-cadvisor-docker-compose-host-mounts-devices-read-only/README.md) (20 November 2026).
 2. Fixing Prometheus-to-cAdvisor “Connection Refused” in Docker Compose: Service DNS vs. `localhost`
+
+    Completed: [Article](posts/2026-11-20-fix-prometheus-cadvisor-connection-refused-compose-dns/README.md) (20 November 2026).
 3. Monitoring Multiple Docker Hosts with cAdvisor: Per-Host Scrapes and Stable Prometheus Labels
+
+    Completed: [Article](posts/2026-11-20-monitor-multiple-docker-hosts-cadvisor-stable-labels/README.md) (20 November 2026).
 4. Deploying cAdvisor as a Docker Swarm Global Service Without Scraping the Same Node Twice
+
+    Completed: [Article](posts/2026-11-20-cadvisor-docker-swarm-global-service-duplicate-scrapes/README.md) (20 November 2026).
 5. Scraping Kubernetes cAdvisor Metrics Through the Kubelet: `/metrics/cadvisor`, TLS, and RBAC
+
+    Completed: [Article](posts/2026-11-20-scrape-kubelet-cadvisor-metrics-tls-rbac/README.md) (20 November 2026).
 6. Kubelet-Embedded vs. Standalone cAdvisor: Avoiding Duplicate Container Metrics in Kubernetes
+
+    Completed: [Article](posts/2026-11-20-kubelet-standalone-cadvisor-duplicate-container-metrics/README.md) (20 November 2026).
 7. Troubleshooting Missing cAdvisor Metrics on cgroup v2 and Rootless Docker
+
+    Completed: [Article](posts/2026-11-20-cadvisor-missing-metrics-cgroup-v2-rootless-docker/README.md) (20 November 2026).
 8. Why cAdvisor Disk I/O Metrics Disappear: Device Mounts, cgroup Controllers, and Rootless Limits
+
+    Completed: [Article](posts/2026-11-20-cadvisor-disk-io-missing-device-cgroup-rootless/README.md) (20 November 2026).
 9. Selecting cAdvisor Metric Groups Correctly with `enable_metrics` and `disable_metrics`
+
+    Completed: [Article](posts/2026-11-20-select-cadvisor-metric-groups-enable-disable/README.md) (20 November 2026).
 10. Reducing cAdvisor Cardinality with Container Label Whitelists and Prometheus Relabeling
 11. Calculating Container CPU Cores, Percent, and Throttling from cAdvisor Metrics
 12. cAdvisor Memory Metrics Explained: Usage, Working Set, RSS, Cache, and Container Limits

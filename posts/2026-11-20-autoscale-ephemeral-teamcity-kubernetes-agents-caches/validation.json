@@ -1,0 +1,26 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-20",
+  "runtimeTestsPerformed": true,
+  "infrastructureDeploymentPerformed": false,
+  "sources": [
+    "https://www.jetbrains.com/help/teamcity/teamcity-integration-with-cloud-solutions.html",
+    "https://www.jetbrains.com/help/teamcity/setting-up-teamcity-for-kubernetes.html",
+    "https://docs.npmjs.com/cli/v11/commands/npm-ci/",
+    "https://docs.npmjs.com/cli/v11/commands/npm-cache/",
+    "https://teamcity.jetbrains.com/app/dsl-documentation/buildFeatures/build-cache-feature/index.html",
+    "https://www.jetbrains.com/help/teamcity/build-cache.html",
+    "https://kubernetes.io/docs/concepts/storage/persistent-volumes/#access-modes"
+  ],
+  "tests": [
+    "Shell example passed sh -n and bash -n syntax review.",
+    "Actual npm 11.10.0 fixture ran the shell step twice with a dependency-free locked package and passing test script; verified stale node_modules removal and local cache creation. Inconsistent manifest/lockfile failed with offline npm ci.",
+    "Kotlin documented properties and balanced braces checked; Mermaid seven edges structurally checked.",
+    "Social image generated with repository script and visually reviewed: readable title, no clipping."
+  ],
+  "limitations": [
+    "No TeamCity server, Kubernetes cluster, agent lifecycle, licenses, package cache upload/download, concurrent publication, PVC attachment or retention exercised.",
+    "The npm fixture had no dependencies and does not demonstrate dependency download cache hits or timing improvements.",
+    "Kotlin fragment not compiled; Mermaid not rendered. Image digest and toolchain selection remain deployment-specific."
+  ]
+}

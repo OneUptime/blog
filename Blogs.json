@@ -827537,5 +827537,116 @@
       "DevOps"
     ],
     "post": "2026-11-20-teamcity-nginx-https-forwarded-headers-agents"
+  },
+  {
+    "title": "Autoscale TeamCity Kubernetes Agents Without Losing Build Caches",
+    "description": "Scale disposable TeamCity agents on Kubernetes while keeping reusable dependency caches outside pods, with clear trust boundaries and cold-start checks.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Kubernetes",
+      "CI/CD",
+      "DevOps"
+    ],
+    "post": "2026-11-20-autoscale-ephemeral-teamcity-kubernetes-agents-caches"
+  },
+  {
+    "title": "Run cAdvisor with Docker Compose: Mounts, Devices, and Access",
+    "description": "Understand cAdvisor's host mounts and privileges, deploy a pinned Compose example, and verify container metrics without exposing its endpoint publicly.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Docker",
+      "Monitoring",
+      "Prometheus"
+    ],
+    "post": "2026-11-20-cadvisor-docker-compose-host-mounts-devices-read-only"
+  },
+  {
+    "title": "Fix Prometheus-to-cAdvisor Connection Refused in Docker Compose",
+    "description": "Diagnose Prometheus-to-cAdvisor connection failures by checking container-local addresses, service DNS, network membership, ports, and loaded configuration.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Docker",
+      "Prometheus",
+      "Monitoring"
+    ],
+    "post": "2026-11-20-fix-prometheus-cadvisor-connection-refused-compose-dns"
+  },
+  {
+    "title": "Monitor Multiple Docker Hosts with cAdvisor and Stable Labels",
+    "description": "Scrape cAdvisor separately on each Docker host, keep host identity stable across address changes, and validate inventory labels before discovery updates.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Docker",
+      "Prometheus",
+      "Monitoring"
+    ],
+    "post": "2026-11-20-monitor-multiple-docker-hosts-cadvisor-stable-labels"
+  },
+  {
+    "title": "Deploy cAdvisor in Docker Swarm Without Duplicate Node Scrapes",
+    "description": "Run cAdvisor as a Swarm global service and select one host-published target per node, with discovery filters and checks for duplicate monitoring paths.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Docker",
+      "Prometheus",
+      "Monitoring"
+    ],
+    "post": "2026-11-20-cadvisor-docker-swarm-global-service-duplicate-scrapes"
+  },
+  {
+    "title": "Scrape Kubelet cAdvisor Metrics with Verified TLS and Scoped RBAC",
+    "description": "Collect kubelet cAdvisor metrics with node discovery, trusted serving certificates, rotating ServiceAccount tokens, and narrowly scoped metrics permissions.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Kubernetes",
+      "Prometheus",
+      "Monitoring",
+      "Security"
+    ],
+    "post": "2026-11-20-scrape-kubelet-cadvisor-metrics-tls-rbac"
+  },
+  {
+    "title": "Avoid Duplicate Metrics from Kubelet and Standalone cAdvisor",
+    "description": "Compare kubelet and standalone cAdvisor collection, identify overlapping container series, and migrate to one authoritative source without hiding missing data.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Kubernetes",
+      "Prometheus",
+      "Monitoring"
+    ],
+    "post": "2026-11-20-kubelet-standalone-cadvisor-duplicate-container-metrics"
+  },
+  {
+    "title": "Diagnose Missing cAdvisor Metrics on cgroup v2 and Rootless Docker",
+    "description": "Trace missing cAdvisor data through Docker identity, cgroup delegation, exporter visibility, and scrape filtering without weakening host security blindly.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Docker",
+      "Linux",
+      "Monitoring"
+    ],
+    "post": "2026-11-20-cadvisor-missing-metrics-cgroup-v2-rootless-docker"
+  },
+  {
+    "title": "Diagnose Missing cAdvisor Disk I/O Metrics",
+    "description": "Distinguish disk I/O counters from filesystem usage, trace cgroup accounting and device identity, and test a small staging write without destructive benchmarks.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Docker",
+      "Linux",
+      "Monitoring"
+    ],
+    "post": "2026-11-20-cadvisor-disk-io-missing-device-cgroup-rootless"
+  },
+  {
+    "title": "Select cAdvisor Metric Groups with enable_metrics and disable_metrics",
+    "description": "Configure cAdvisor metric groups without unexpected defaults, understand allowlist precedence, and verify exported families before changing dashboards.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Docker",
+      "Prometheus",
+      "Monitoring"
+    ],
+    "post": "2026-11-20-select-cadvisor-metric-groups-enable-disable"
   }
 ]
