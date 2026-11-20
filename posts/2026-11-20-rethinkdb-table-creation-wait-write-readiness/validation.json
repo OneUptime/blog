@@ -1,0 +1,35 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-20",
+  "runtimeTestsPerformed": true,
+  "infrastructureDeploymentPerformed": false,
+  "versions": {
+    "python": "3.11.13",
+    "rethinkdbPythonDriver": "2.4.10.post1",
+    "serverSource": "2.4.4"
+  },
+  "checks": [
+    "Python examples parsed and bootstrap matches tested module",
+    "Mock paths checked new and existing table, create/wait/write ordering and no write after wait failure",
+    "Actual driver constructed creation, readiness, status and config queries",
+    "Server 2.4.4 source inspected: readiness wait within table_create has ten-second timer and can return normally on expiry",
+    "Mermaid six-node five-edge structure checked",
+    "Social image visually reviewed, readable and unclipped"
+  ],
+  "limitations": [
+    "No live database or write executed",
+    "No actual readiness latency, network timeout, failover, permission or migration concurrency test",
+    "Probe wrapper does not implement uncertain-write reconciliation",
+    "No Mermaid browser rendering"
+  ],
+  "sources": [
+    "https://rethinkdb.com/api/python/table_create/",
+    "https://github.com/rethinkdb/rethinkdb/blob/v2.4.4/src/clustering/administration/real_reql_cluster_interface.cc",
+    "https://rethinkdb.com/api/python/wait/",
+    "https://rethinkdb.com/api/python/index_wait/",
+    "https://rethinkdb.com/api/python/insert/",
+    "https://rethinkdb.com/api/python/status/",
+    "https://rethinkdb.com/api/python/config/",
+    "https://rethinkdb.com/docs/system-tables/"
+  ]
+}

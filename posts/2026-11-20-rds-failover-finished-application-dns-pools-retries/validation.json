@@ -1,0 +1,30 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-20",
+  "runtimeTestsPerformed": false,
+  "infrastructureDeploymentPerformed": false,
+  "sources": [
+    "https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/Concepts.MultiAZ.Failover.html",
+    "https://bind9.readthedocs.io/en/v9.18.33/manpages.html#dig-dns-lookup-utility",
+    "https://www.postgresql.org/docs/17/libpq-pgpass.html",
+    "https://www.postgresql.org/docs/17/app-psql.html",
+    "https://www.postgresql.org/docs/17/libpq-connect.html",
+    "https://www.postgresql.org/docs/17/libpq-ssl.html",
+    "https://www.postgresql.org/docs/17/functions-info.html",
+    "https://www.postgresql.org/docs/17/functions-admin.html",
+    "https://github.com/brettwooldridge/HikariCP/blob/HikariCP-6.3.0/README.md#gear-configuration-knobs-baby",
+    "https://aws.amazon.com/builders-library/timeouts-retries-and-backoff-with-jitter/"
+  ],
+  "tests": [
+    "Two Bash examples passed bash -n",
+    "Mermaid structurally checked: eight nodes and seven edges; not rendered",
+    "PostgreSQL 17 client flags, connection parameters and SQL functions checked against official documentation",
+    "HikariCP maxLifetime behavior checked in 6.3.0 tagged README",
+    "Generated social image visually reviewed without clipping"
+  ],
+  "limitations": [
+    "No psql binary or PostgreSQL parser available locally; SQL was source-reviewed, not executed",
+    "No RDS connection, DNS lookup, pool recovery, failover or load test performed",
+    "Fresh probe is not proof of application authorization or successful business transactions"
+  ]
+}

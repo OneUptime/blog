@@ -1,0 +1,32 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-20",
+  "runtimeTestsPerformed": true,
+  "infrastructureDeploymentPerformed": false,
+  "tests": [
+    "CDKTF0.21.0 asset fixture synthesized via ts-node/App.synth; output includes manifest, stack JSON and payload",
+    "Executed exact article Python fingerprint on generated output and a copied fixture; bytes matched",
+    "Deliberately altered, missing, added files and symlink all rejected; restored copy accepted",
+    "Installed cdktf0.21.0 deploy-help and tagged deploy source verified skip-synth and output options",
+    "All Bash examples passed syntax checking; seven-node six-edge Mermaid structure checked",
+    "Generated1280x720 social image visually reviewed: full title fits and is readable"
+  ],
+  "limitations": [
+    "No CI service upload/download or cloud deployment tested; local copy only",
+    "cdktf deploy skip-synth command was not executed; verified through help and official source",
+    "Saved-plan workflow source-reviewed here; previous local fixture confirmed saved-plan apply but no cross-runner portability test",
+    "Fingerprint covers file paths and bytes, not authentication, permissions, empty directories or external references",
+    "Python3.9.6 local execution; source API docs3.13; Mermaid not browser-rendered"
+  ],
+  "sources": [
+    "https://developer.hashicorp.com/terraform/cdktf",
+    "https://developer.hashicorp.com/terraform/cdktf/concepts/assets",
+    "https://developer.hashicorp.com/terraform/language/files/dependency-lock",
+    "https://docs.python.org/3.13/library/pathlib.html",
+    "https://docs.python.org/3.13/library/hashlib.html",
+    "https://developer.hashicorp.com/terraform/cdktf/cli-reference/commands",
+    "https://github.com/hashicorp/terraform-cdk/blob/v0.21.0/packages/cdktf-cli/src/bin/cmds/deploy.ts",
+    "https://developer.hashicorp.com/terraform/cli/commands/plan",
+    "https://developer.hashicorp.com/terraform/cli/commands/apply"
+  ]
+}

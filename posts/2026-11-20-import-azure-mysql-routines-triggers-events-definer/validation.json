@@ -1,0 +1,34 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-20",
+  "runtimeTestsPerformed": false,
+  "infrastructureDeploymentPerformed": false,
+  "sources": [
+    "https://dev.mysql.com/doc/refman/8.0/en/stored-objects-security.html",
+    "https://learn.microsoft.com/en-us/azure/mysql/flexible-server/how-to-troubleshoot-common-errors",
+    "https://dev.mysql.com/doc/refman/8.0/en/information-schema-routines-table.html",
+    "https://dev.mysql.com/doc/refman/8.0/en/information-schema-triggers-table.html",
+    "https://dev.mysql.com/doc/refman/8.0/en/information-schema-events-table.html",
+    "https://dev.mysql.com/doc/mysql-shell/26.10/en/mysql-shell-utilities-dump-instance-schema.html",
+    "https://github.com/mysql/mysql-shell/blob/26.10.0/modules/util/dump/dump_schemas_options.cc",
+    "https://github.com/mysql/mysql-shell/blob/26.10.0/modules/util/dump/ddl_dumper_options.cc",
+    "https://learn.microsoft.com/en-us/azure/mysql/flexible-server/concepts-server-parameters",
+    "https://dev.mysql.com/doc/refman/8.0/en/stored-programs-logging.html",
+    "https://dev.mysql.com/doc/mysql-shell/26.10/en/mysql-shell-utilities-load-dump.html"
+  ],
+  "tests": [
+    "Three JavaScript snippets passed Node 24.1 syntax checking",
+    "sqlglot 28.0.0 parsed inventory as three-branch UNION ALL and runtime inspection as SELECT",
+    "MySQL Shell 26.10.0 tagged dump/load source verified ddlOnly/routines/triggers/events/strip_definers/dryRun options",
+    "Reviewed explicit definer removal versus INVOKER conversion, trigger/event owner persistence and Azure function-creator parameter default",
+    "Mermaid six nodes/five edges checked structurally",
+    "Generated social image visually reviewed without clipping"
+  ],
+  "limitations": [
+    "No MySQL Shell dump/load or database SQL executed",
+    "No Azure server, privilege grant, scheduler change, function or trigger test performed",
+    "JavaScript parsing does not validate API calls or database authorization",
+    "Schema-only artifact intentionally contains no table data",
+    "Mermaid not rendered"
+  ]
+}

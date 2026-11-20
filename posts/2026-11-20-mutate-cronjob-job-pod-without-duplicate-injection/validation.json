@@ -1,0 +1,31 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-20",
+  "runtimeTestsPerformed": false,
+  "infrastructureDeploymentPerformed": false,
+  "sources": [
+    "https://github.com/kubernetes/kubernetes/blob/v1.35.0/pkg/controller/cronjob/utils.go",
+    "https://kubernetes.io/docs/concepts/workloads/controllers/cron-jobs/",
+    "https://kubernetes.io/docs/reference/access-authn-authz/extensible-admission-controllers/#reinvocation-policy",
+    "https://kubernetes.io/docs/reference/kubectl/generated/kubectl_create/kubectl_create_job/",
+    "https://github.com/kubernetes/kubectl/blob/v0.35.0/pkg/cmd/create/create_job.go",
+    "https://kubernetes.io/docs/reference/kubectl/generated/kubectl_get/",
+    "https://kubernetes.io/docs/concepts/workloads/controllers/job/",
+    "https://kubernetes.io/docs/concepts/workloads/pods/sidecar-containers/#jobs-with-sidecar-containers",
+    "https://raw.githubusercontent.com/kubernetes/kubernetes/v1.35.0/api/openapi-spec/swagger.json"
+  ],
+  "tests": [
+    "CronJob YAML parsed and checked against Kubernetesv1.35.0 OpenAPI",
+    "Manually derived Job/Pod fixtures passed respective schemas; Job purpose and Pod profile annotations remained separate",
+    "Checked suspended schedule and absence of injected helper in supplied template",
+    "Both shell blocks passed bash -n; command behavior reviewed against tagged kubectl source",
+    "Four-node/three-edge Mermaid checked structurally only",
+    "Social image generated and visually reviewed"
+  ],
+  "limitations": [
+    "No CronJob controller, Job controller, API request or injection handler executed",
+    "Derived fixtures are structural checks, not execution of Kubernetes copying behavior",
+    "Profile version and placeholder application image require real implementation",
+    "No scheduled/manual Job execution, retry or batch-completion behavior tested"
+  ]
+}

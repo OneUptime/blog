@@ -1,0 +1,27 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-20",
+  "runtimeTestsPerformed": true,
+  "infrastructureDeploymentPerformed": false,
+  "tests": [
+    "Python 3.11.13 local macOS runs with 1 and 1000 empty files each produced seven correctly ordered JSON records with correct counts and nonnegative durations",
+    "Counts 0 and 10001 rejected; own temporary directories removed after runs",
+    "Published Python matches executed fixture and parses; shell invocation passes Bash syntax",
+    "Python API semantics, GNU listing behavior, NFS cache effects and IOR project scope reviewed against official sources",
+    "Generated social image visually inspected: readable title without clipping"
+  ],
+  "sources": [
+    "https://man7.org/linux/man-pages/man1/ls.1.html",
+    "https://docs.python.org/3.11/library/tempfile.html",
+    "https://docs.python.org/3.11/library/time.html#time.perf_counter",
+    "https://docs.python.org/3.11/library/os.html#os.scandir",
+    "https://ior.readthedocs.io/en/latest/",
+    "https://man7.org/linux/man-pages/man5/nfs.5.html"
+  ],
+  "limitations": [
+    "No NFS/SMB, remote server, parallel workload, durability or cold-cache benchmark performed",
+    "Probe excludes deletion timing and uses one freshly created directory; client and server caches are not bypassed",
+    "Local results validate the fixture, not storage product performance",
+    "No diagram needed: phase table and executable probe explain the comparison"
+  ]
+}

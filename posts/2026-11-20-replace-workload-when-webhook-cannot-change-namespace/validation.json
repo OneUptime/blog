@@ -1,0 +1,33 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-20",
+  "runtimeTestsPerformed": true,
+  "infrastructureDeploymentPerformed": false,
+  "sources": [
+    "https://github.com/kubernetes/apiserver/blob/v0.35.0/pkg/registry/rest/create.go",
+    "https://github.com/kubernetes/apimachinery/blob/v0.35.0/pkg/api/validation/objectmeta.go",
+    "https://kubernetes.io/docs/reference/access-authn-authz/extensible-admission-controllers/#side-effects",
+    "https://kubernetes.io/docs/concepts/security/service-accounts/",
+    "https://kubernetes.io/docs/concepts/services-networking/network-policies/",
+    "https://kubernetes.io/docs/concepts/architecture/garbage-collection/#owners-and-dependents",
+    "https://github.com/kubernetes-sigs/kustomize/releases/tag/kustomize%2Fv5.7.1",
+    "https://kubernetes.io/docs/tasks/manage-kubernetes-objects/kustomization/",
+    "https://kubernetes.io/docs/reference/kubectl/generated/kubectl_apply/",
+    "https://kubernetes.io/docs/concepts/services-networking/service/",
+    "https://kubernetes.io/docs/concepts/storage/persistent-volumes/#binding"
+  ],
+  "tests": [
+    "Executed Kustomize v5.7.1 build on exact published YAML files",
+    "Both rendered objects passed Kubernetes v1.35.0 OpenAPI validation; IntOrString schema adapted to allow documented integer/string alternatives",
+    "Checked destination namespaces and preserved selectors, port, replica count and placeholder image",
+    "Both shell blocks passed bash -n",
+    "Eight-node seven-edge Mermaid checked structurally only",
+    "Generated social image and visually inspected readable unclipped title"
+  ],
+  "limitations": [
+    "No API server requests, deployments, traffic transitions or database recovery executed",
+    "Minimal rendering fixture requires approved image, application probes, resource settings and dependency configuration",
+    "Server dry-run command reviewed against documentation, not executed",
+    "Mermaid not visually rendered"
+  ]
+}

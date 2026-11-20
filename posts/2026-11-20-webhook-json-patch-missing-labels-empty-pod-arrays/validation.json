@@ -1,0 +1,29 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-20",
+  "runtimeTestsPerformed": true,
+  "infrastructureDeploymentPerformed": false,
+  "sources": [
+    "https://www.rfc-editor.org/rfc/rfc6902.txt",
+    "https://github.com/kubernetes/api/blob/v0.35.0/core/v1/types.go",
+    "https://kubernetes.io/docs/concepts/overview/working-with-objects/labels/",
+    "https://kubernetes.io/docs/concepts/containers/images/#specifying-imagepullsecrets-on-a-pod",
+    "https://www.rfc-editor.org/rfc/rfc6901.txt",
+    "https://github.com/stefankoegl/python-json-patch/blob/v1.33/jsonpatch.py",
+    "https://kubernetes.io/docs/concepts/cluster-administration/admission-webhooks-good-practices/#mutating-webhook-ordering-and-idempotence"
+  ],
+  "tests": [
+    "Both Python snippets extracted and executed using Python 3.11.13/jsonpatch 1.33",
+    "25 cross-product combinations of label maps and imagePullSecrets states applied successfully with input, unrelated fields and existing list order preserved",
+    "Repeated mutation returned no operations for all 25 successful fixtures",
+    "15 malformed/conflicting object cases and 3 invalid Secret-name argument cases rejected",
+    "JSON Pointer tilde/slash escape order checked",
+    "Generated social image visually inspected; full title fits legibly"
+  ],
+  "limitations": [
+    "No Kubernetes API admission, webhook endpoint, registry Secret or image pull tested",
+    "Fixture includes placeholder image and deliberately unknown field to test preservation; not a deployable manifest",
+    "Raw null/missing shapes are defensive unit-test cases, not claims about API-server wire normalization",
+    "Builder does not fully validate Pod schema or Secret-name syntax; caller scopes CREATE requests and Kubernetes validates resources"
+  ]
+}

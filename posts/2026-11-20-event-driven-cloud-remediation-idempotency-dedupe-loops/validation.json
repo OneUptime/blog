@@ -1,0 +1,29 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-20",
+  "runtimeTestsPerformed": true,
+  "infrastructureDeploymentPerformed": false,
+  "tests": [
+    "Boto3 1.40.76 Stubber verified five marker read/write/no-op cases",
+    "Operation key determinism and account/region/episode/desired-result separation passed",
+    "Permission error propagation passed",
+    "Published functions match tested AST; Python syntax parsed",
+    "Mermaid eight nodes/eight edges structurally checked",
+    "Image visually inspected: readable and unclipped"
+  ],
+  "sources": [
+    "https://docs.aws.amazon.com/eventbridge/latest/userguide/eb-event-patterns.html",
+    "https://docs.aws.amazon.com/eventbridge/latest/userguide/eb-rule-retry-policy.html",
+    "https://docs.aws.amazon.com/eventbridge/latest/userguide/eb-service-event-cloudtrail.html",
+    "https://docs.aws.amazon.com/eventbridge/latest/userguide/eb-event-patterns-content-based-filtering.html",
+    "https://docs.aws.amazon.com/AWSEC2/latest/APIReference/API_CreateTags.html",
+    "https://docs.aws.amazon.com/amazondynamodb/latest/APIReference/API_PutItem.html",
+    "https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/TTL.html"
+  ],
+  "limitations": [
+    "No EventBridge delivery or pattern deployment",
+    "No live EC2 tags, DynamoDB conditional writes, TTL, leases, suppression or crash recovery",
+    "Marker is informational and does not provide atomic ownership validation",
+    "Mermaid not rendered"
+  ]
+}

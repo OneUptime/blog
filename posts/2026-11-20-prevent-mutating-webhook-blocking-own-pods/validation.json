@@ -1,0 +1,32 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-20",
+  "runtimeTestsPerformed": true,
+  "infrastructureDeploymentPerformed": false,
+  "sources": [
+    "https://kubernetes.io/docs/concepts/workloads/controllers/deployment/",
+    "https://kubernetes.io/docs/concepts/cluster-administration/admission-webhooks-good-practices/#avoid-self-mutations",
+    "https://kubernetes.io/docs/concepts/overview/working-with-objects/namespaces/#automatic-labelling",
+    "https://kubernetes.io/docs/reference/access-authn-authz/extensible-admission-controllers/#matching-requests-namespaceselector",
+    "https://kubernetes.io/docs/concepts/services-networking/endpoint-slices/",
+    "https://kubernetes.io/docs/tasks/debug/debug-application/debug-service/",
+    "https://kubernetes.io/docs/reference/kubectl/generated/kubectl_get/",
+    "https://kubernetes.io/docs/concepts/scheduling-eviction/topology-spread-constraints/",
+    "https://kubernetes.io/docs/concepts/workloads/pods/disruptions/",
+    "https://raw.githubusercontent.com/kubernetes/apimachinery/v0.35.0/pkg/apis/meta/v1/helpers.go",
+    "https://raw.githubusercontent.com/kubernetes/kubernetes/v1.35.0/api/openapi-spec/swagger.json"
+  ],
+  "tests": [
+    "16 selector cases executed with apimachinery v0.35.0 and Go1.25.0, testing two exclusions and retained enrollment matchLabels",
+    "Fragment checked in a complete synthetic MutatingWebhookConfiguration against Kubernetes v1.35.0 OpenAPI",
+    "Six read-only commands passed bash syntax checks; flags checked against official kubectl documentation",
+    "Mermaid dependency cycle structurally checked: four nodes and four edges; no diagram rendering",
+    "Generated social image visually reviewed"
+  ],
+  "limitations": [
+    "No node disrupted, webhook disabled, configuration applied or live recovery rehearsed",
+    "Selector library tests do not exercise API-server namespace caches or full admission matching",
+    "Names and excluded namespaces require environment-specific dependency inventory",
+    "Endpoint presence alone does not verify control-plane connectivity or certificate trust"
+  ]
+}

@@ -1,0 +1,26 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-20",
+  "runtimeTestsPerformed": true,
+  "infrastructureDeploymentPerformed": false,
+  "tests": [
+    "Terraform 1.11.4 init without backend, fmt, validate and six plan-only tests passed",
+    "Contract accepts reviewed fixture and rejects wrong account, schema, Region, duplicate subnet IDs and malformed IDs",
+    "Published HCL matches tested main configuration and test subset",
+    "Mermaid six nodes/six edges structurally checked",
+    "Generated image visually reviewed and unclipped"
+  ],
+  "sources": [
+    "https://developer.hashicorp.com/terraform/language/modules/develop/composition",
+    "https://developer.hashicorp.com/terraform/cli/workspaces",
+    "https://developer.hashicorp.com/terraform/language/state/remote-state-data",
+    "https://developer.hashicorp.com/terraform/language/values/variables",
+    "https://developer.hashicorp.com/terraform/language/tests",
+    "https://developer.hashicorp.com/terraform/language/meta-arguments/lifecycle"
+  ],
+  "limitations": [
+    "Provider-free interface example only; no cloud resources or providers used",
+    "No live account, subnet, permission isolation, state transfer or teardown tests",
+    "Mermaid not rendered"
+  ]
+}

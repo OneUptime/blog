@@ -1,0 +1,27 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-20",
+  "runtimeTestsPerformed": true,
+  "infrastructureDeploymentPerformed": false,
+  "tests": [
+    "PowerShell 7.4.6: twelve constructed-input cases passed, two accepted and ten rejected with fixed messages",
+    "Published script exactly matches tested validator; local example produces expected sanitized output",
+    "JSON request parsed; Mermaid eight nodes/seven edges checked structurally",
+    "Generated social image visually reviewed for readable unclipped title"
+  ],
+  "sources": [
+    "https://learn.microsoft.com/en-us/azure/automation/automation-webhooks",
+    "https://learn.microsoft.com/en-us/azure/automation/automation-security-overview",
+    "https://learn.microsoft.com/en-us/powershell/module/microsoft.powershell.utility/convertfrom-json?view=powershell-5.1",
+    "https://learn.microsoft.com/en-us/powershell/module/az.automation/new-azautomationwebhook?view=azps-16.5.0",
+    "https://learn.microsoft.com/en-us/powershell/module/az.automation/set-azautomationwebhook?view=azps-16.0.0",
+    "https://learn.microsoft.com/en-us/azure/automation/automation-runbook-output-and-messages",
+    "https://learn.microsoft.com/en-us/azure/automation/automation-secure-asset-encryption"
+  ],
+  "limitations": [
+    "Windows PowerShell 5.1 and Azure webhook input conversion not executed; article explicitly distinguishes local 7.4.6 tests",
+    "No Azure webhook creation, rotation, revocation, job input logging or resource operations tested",
+    "Validator is not authentication or strict canonical JSON; duplicate-key parsing limitation documented",
+    "Mermaid not rendered"
+  ]
+}

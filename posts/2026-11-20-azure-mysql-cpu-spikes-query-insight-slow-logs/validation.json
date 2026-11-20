@@ -1,0 +1,29 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-20",
+  "runtimeTestsPerformed": false,
+  "infrastructureDeploymentPerformed": false,
+  "sources": [
+    "https://learn.microsoft.com/en-us/azure/mysql/flexible-server/concepts-monitor-mysql-reference",
+    "https://learn.microsoft.com/en-us/azure/mysql/flexible-server/tutorial-query-performance-insights",
+    "https://learn.microsoft.com/en-us/azure/mysql/flexible-server/concepts-monitor-mysql",
+    "https://learn.microsoft.com/en-us/kusto/query/summarize-operator?view=microsoft-fabric",
+    "https://learn.microsoft.com/en-us/kusto/query/bin-function?view=microsoft-fabric",
+    "https://dev.mysql.com/doc/refman/8.0/en/slow-query-log.html",
+    "https://dev.mysql.com/doc/refman/8.0/en/performance-schema-statement-summary-tables.html",
+    "https://dev.mysql.com/doc/refman/8.0/en/performance-schema-timing.html",
+    "https://dev.mysql.com/doc/refman/8.0/en/explain.html"
+  ],
+  "tests": [
+    "Two SQL SELECT blocks parsed with sqlglot 28.0.0 MySQL dialect",
+    "KQL fields reviewed against Microsoft workbook example; aggregation operators checked against official references",
+    "Mermaid structural check: six nodes, five edges",
+    "Social image visually inspected: readable title without clipping"
+  ],
+  "limitations": [
+    "No Azure resource or live MySQL server queried",
+    "SQL parser acceptance does not verify permissions, server instrumentation, or results",
+    "KQL not executed in Log Analytics; actual workspace schema and timing must be checked",
+    "Mermaid structurally checked, not rendered"
+  ]
+}

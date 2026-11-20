@@ -1,0 +1,29 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-20",
+  "runtimeTestsPerformed": true,
+  "infrastructureDeploymentPerformed": false,
+  "tests": [
+    "Article main.ts exactly matched isolated lab; CDKTF0.21.0 synth twice with TF_VAR_environment staging and production produced identical JSON with ${var.environment}",
+    "Terraform1.11.4 local resource-free plans returned staging and production; explicit-var override won; missing input failed as expected",
+    "Retested plans with empty isolated TF_CLI_CONFIG_FILE to avoid unrelated local provider override configuration",
+    "Optional TypeScript synthesis input snippet executed: staging/production accepted, invalid input rejected",
+    "Shell syntax and JSON parsing passed; six-node five-edge Mermaid structural check passed",
+    "Generated1280x720 social image visually reviewed: title readable, no clipping"
+  ],
+  "limitations": [
+    "No apply, saved state, resources, cloud provider, or remote execution tested",
+    "Node24.1.0/macOS arm64; TypeScript5.8.3, ts-node10.9.2, constructs10.8.1",
+    "Mermaid checked structurally, not browser-rendered"
+  ],
+  "sources": [
+    "https://developer.hashicorp.com/terraform/cdktf",
+    "https://developer.hashicorp.com/terraform/cdktf/concepts/tokens",
+    "https://developer.hashicorp.com/terraform/cli/config/environment-variables#tf_var_name",
+    "https://developer.hashicorp.com/terraform/cdktf/concepts/variables-and-outputs",
+    "https://developer.hashicorp.com/terraform/cli/commands/plan",
+    "https://nodejs.org/api/process.html#processenv",
+    "https://developer.hashicorp.com/terraform/language/expressions/conditionals",
+    "https://developer.hashicorp.com/terraform/language/values/variables"
+  ]
+}

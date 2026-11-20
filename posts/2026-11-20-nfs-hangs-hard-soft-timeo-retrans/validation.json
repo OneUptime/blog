@@ -1,0 +1,26 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-20",
+  "runtimeTestsPerformed": false,
+  "infrastructureDeploymentPerformed": false,
+  "tests": [
+    "Two Linux read-only command blocks passed bash -n; flags and output columns checked against findmnt and procps manuals",
+    "NFS retry options, decisecond units, TCP backoff, soft-timeout risk and obsolete intr behavior reviewed against nfs(5)",
+    "Mermaid six nodes and five edges structurally checked",
+    "Social image generated and visually reviewed: title readable without clipping"
+  ],
+  "sources": [
+    "https://man7.org/linux/man-pages/man1/df.1.html",
+    "https://man7.org/linux/man-pages/man1/ls.1.html",
+    "https://man7.org/linux/man-pages/man5/nfs.5.html",
+    "https://man7.org/linux/man-pages/man8/findmnt.8.html",
+    "https://man7.org/linux/man-pages/man1/ps.1.html",
+    "https://man7.org/linux/man-pages/man1/timeout.1.html",
+    "https://man7.org/linux/man-pages/man8/umount.8.html"
+  ],
+  "limitations": [
+    "No Linux NFS mount, outage, process inspection, command runtime or recovery test performed",
+    "Shell syntax checking does not establish tool availability or behavior in an incident",
+    "Mermaid not rendered; recovery procedure is a proposed staging assessment"
+  ]
+}

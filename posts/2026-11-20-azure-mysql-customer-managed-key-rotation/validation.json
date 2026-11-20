@@ -1,0 +1,31 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-20",
+  "runtimeTestsPerformed": true,
+  "infrastructureDeploymentPerformed": false,
+  "sources": [
+    "https://learn.microsoft.com/en-us/azure/mysql/security/security-customer-managed-key",
+    "https://learn.microsoft.com/en-us/azure/key-vault/general/soft-delete-overview",
+    "https://learn.microsoft.com/en-us/azure/mysql/security/security-how-to-data-encryption-portal",
+    "https://learn.microsoft.com/en-us/azure/key-vault/general/rbac-guide",
+    "https://learn.microsoft.com/en-us/cli/azure/keyvault/key?view=azure-cli-latest",
+    "https://learn.microsoft.com/en-us/azure/mysql/security/security-how-to-data-encryption-cli",
+    "https://github.com/Azure/azure-cli/blob/azure-cli-2.80.0/src/azure-cli/azure/cli/command_modules/mysql/custom.py",
+    "https://github.com/Azure/azure-cli/blob/azure-cli-2.80.0/src/azure-cli/azure/cli/command_modules/mysql/_util.py",
+    "https://learn.microsoft.com/en-us/azure/key-vault/keys/how-to-configure-key-rotation"
+  ],
+  "tests": [
+    "Three Bash snippets passed bash -n",
+    "Azure CLI 2.80.0 MySQL update, encryption helper and Key Vault command registration reviewed",
+    "JMESPath 1.0.1 projection executed against synthetic populated and missing-field records",
+    "Mermaid six nodes/five edges structurally checked",
+    "Generated social image visually inspected without clipping"
+  ],
+  "limitations": [
+    "No Azure CLI commands executed against Azure; no encryption change, key rotation, restore or permission assignment performed",
+    "Synthetic projection testing does not prove service response or key adoption",
+    "Example deliberately excludes replicas, geo-redundant backup and additional identity dependencies",
+    "No automatic MySQL key-adoption interval assumed",
+    "Mermaid not rendered"
+  ]
+}

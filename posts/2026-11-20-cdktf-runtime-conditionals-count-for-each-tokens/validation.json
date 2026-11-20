@@ -1,0 +1,41 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-20",
+  "runtimeTestsPerformed": true,
+  "infrastructureDeploymentPerformed": false,
+  "versions": {
+    "cdktf": "0.21.0",
+    "terraform": "1.11.4",
+    "typescript": "5.8.3",
+    "constructs": "10.8.1",
+    "ts-node": "10.9.2"
+  },
+  "checks": [
+    "Complete TypeScript compiled and App synthesized",
+    "Local Terraform init and validate passed",
+    "False plan zero resources; true plan exactly counted[0] and named[primary] create actions",
+    "Synthesized configuration SHA-256 identical across both plans",
+    "Invalid boolean maybe failed as expected",
+    "JavaScript Boolean of unresolved boolean token returned true despite false default",
+    "Shell syntax and Mermaid five-node four-edge structure checked",
+    "CDKTF CLI synth passed",
+    "Social image visually reviewed: readable and unclipped"
+  ],
+  "limitations": [
+    "No apply or cloud resources",
+    "No state-address migration or live enabled-to-disabled transition tested",
+    "No browser Mermaid rendering"
+  ],
+  "sources": [
+    "https://developer.hashicorp.com/terraform/cdktf",
+    "https://developer.hashicorp.com/terraform/cdktf/concepts/tokens",
+    "https://developer.hashicorp.com/terraform/language/resources/terraform-data",
+    "https://github.com/hashicorp/terraform-cdk/blob/v0.21.0/packages/cdktf/lib/terraform-functions.ts",
+    "https://developer.hashicorp.com/terraform/cdktf/concepts/iterators",
+    "https://developer.hashicorp.com/terraform/cli/commands/plan",
+    "https://developer.hashicorp.com/terraform/language/meta-arguments/count",
+    "https://developer.hashicorp.com/terraform/language/meta-arguments/for_each",
+    "https://developer.hashicorp.com/terraform/language/modules/develop/refactoring",
+    "https://developer.hashicorp.com/terraform/language/expressions/conditionals"
+  ]
+}

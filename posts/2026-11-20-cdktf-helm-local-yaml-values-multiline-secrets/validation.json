@@ -1,0 +1,43 @@
+{
+  "status": "validated",
+  "date": "2026-11-20",
+  "runtimeTestsPerformed": true,
+  "infrastructureDeploymentPerformed": false,
+  "versions": {
+    "node": "24.1.0",
+    "cdktf": "0.21.0",
+    "constructs": "10.8.1",
+    "typescript": "5.8.3",
+    "ts-node": "10.9.2",
+    "helmBinding": "12.1.2",
+    "terraformHelmProviderSchema": "3.1.1",
+    "helmCLI": "3.17.3"
+  },
+  "checks": [
+    "TypeScript compile passed",
+    "App synthesis preserved complete raw YAML string",
+    "Published JavaScript equality check passed",
+    "Helm lint and template passed; rendered newline escapes asserted",
+    "Mermaid structure: six nodes, five directed edges",
+    "Bash syntax passed",
+    "CDKTF CLI synth passed",
+    "Social image generated and visually inspected: readable title, no clipping"
+  ],
+  "limitations": [
+    "No Kubernetes API, Helm release install, Terraform provider plan or apply",
+    "No production secrets or write-only secret delivery tested",
+    "No browser Mermaid rendering"
+  ],
+  "sources": [
+    "https://developer.hashicorp.com/terraform/cdktf",
+    "https://github.com/cdktf/cdktf-provider-helm/tree/v12.1.2",
+    "https://github.com/hashicorp/terraform-provider-helm/blob/v3.1.1/docs/resources/release.md",
+    "https://helm.sh/docs/chart_template_guide/yaml_techniques/",
+    "https://nodejs.org/docs/latest-v24.x/api/fs.html#fsreadfilesyncpath-options",
+    "https://helm.sh/docs/helm/helm_lint/",
+    "https://helm.sh/docs/helm/helm_template/",
+    "https://developer.hashicorp.com/terraform/language/manage-sensitive-data",
+    "https://developer.hashicorp.com/terraform/cdktf/concepts/functions",
+    "https://developer.hashicorp.com/terraform/language/functions/file"
+  ]
+}

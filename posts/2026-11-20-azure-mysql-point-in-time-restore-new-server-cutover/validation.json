@@ -1,0 +1,29 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-20",
+  "runtimeTestsPerformed": false,
+  "infrastructureDeploymentPerformed": false,
+  "sources": [
+    "https://learn.microsoft.com/en-us/azure/mysql/flexible-server/concepts-backup-restore",
+    "https://learn.microsoft.com/en-us/azure/mysql/flexible-server/how-to-restore-server-cli",
+    "https://dev.mysql.com/doc/refman/8.0/en/show-events.html",
+    "https://learn.microsoft.com/en-us/azure/mysql/flexible-server/how-to-restore-server-portal",
+    "https://github.com/Azure/azure-cli/blob/azure-cli-2.80.0/src/azure-cli/azure/cli/command_modules/rdbms/_params.py",
+    "https://learn.microsoft.com/en-us/cli/azure/mysql/flexible-server?view=azure-cli-latest#az-mysql-flexible-server-show",
+    "https://dev.mysql.com/doc/refman/8.4/en/connection-options.html"
+  ],
+  "tests": [
+    "Three Bash blocks passed bash -n",
+    "SHOW EVENTS parsed with sqlglot 28.0.0 MySQL dialect",
+    "Azure CLI 2.80.0 official tagged argument source reviewed for restore-time and source-server; source parsed as Python",
+    "Restore and show flags cross-checked against official CLI reference",
+    "Mermaid structural check: seven nodes, six edges",
+    "Social image visually inspected: readable title without clipping"
+  ],
+  "limitations": [
+    "Azure CLI and MySQL CLI not installed or executed",
+    "No restore, cloud resource creation, SQL execution, or application cutover performed",
+    "Network isolation, permissions, capacity, backup availability, and data correctness require environment-specific checks",
+    "Mermaid structurally checked, not rendered"
+  ]
+}

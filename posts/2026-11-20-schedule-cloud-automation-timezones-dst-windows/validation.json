@@ -1,0 +1,26 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-20",
+  "runtimeTestsPerformed": true,
+  "infrastructureDeploymentPerformed": false,
+  "tests": [
+    "Python 3.11.13 with tzdata 2025.2 and empty PYTHONTZPATH: 15 local timezone cases passed",
+    "Published helper matches executed file; example output matches documented UTC instants and missing-time rejection",
+    "Bash snippets syntax checked; Mermaid eight nodes/seven edges structurally checked",
+    "Generated social image visually reviewed: readable, unclipped title"
+  ],
+  "sources": [
+    "https://docs.aws.amazon.com/scheduler/latest/UserGuide/schedule-types.html",
+    "https://docs.cloud.google.com/scheduler/docs/configuring/cron-job-schedules",
+    "https://pypi.org/project/tzdata/2025.2/",
+    "https://docs.python.org/3.11/library/zoneinfo.html",
+    "https://docs.cloud.google.com/scheduler/docs/overview",
+    "https://docs.python.org/3.11/library/time.html#time.monotonic"
+  ],
+  "limitations": [
+    "No live cloud scheduler, delivery, durable claim, maintenance worker or outage test",
+    "Reference timezone database pinned for fixture reproducibility, not asserted to contain current production rules",
+    "Helper resolves one local time; it does not parse cron or emulate provider scheduling policies",
+    "Mermaid not rendered"
+  ]
+}

@@ -1,0 +1,31 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-20",
+  "runtimeTestsPerformed": true,
+  "infrastructureDeploymentPerformed": false,
+  "sources": [
+    "https://kubernetes.io/docs/concepts/workloads/controllers/deployment/",
+    "https://kubernetes.io/docs/concepts/workloads/controllers/replicaset/",
+    "https://kubernetes.io/docs/concepts/workloads/pods/#pod-templates",
+    "https://kubernetes.io/docs/reference/access-authn-authz/extensible-admission-controllers/#matching-requests-rules",
+    "https://kubernetes.io/docs/concepts/workloads/controllers/statefulset/#update-strategies",
+    "https://kubernetes.io/docs/concepts/workloads/controllers/daemonset/#updating-a-daemonset",
+    "https://kubernetes.io/docs/reference/kubectl/generated/kubectl_get/",
+    "https://kubernetes.io/docs/concepts/cluster-administration/admission-webhooks-good-practices/#mutating-webhook-ordering-and-idempotence",
+    "https://raw.githubusercontent.com/kubernetes/kubernetes/v1.35.0/api/openapi-spec/swagger.json",
+    "https://github.com/kubernetes/client-go/blob/v0.35.0/util/jsonpath/jsonpath.go"
+  ],
+  "tests": [
+    "Deployment manifest and both rule fragments inside complete synthetic webhooks passed v1.35.0 OpenAPI shape checks",
+    "Verified Deployment selector/template label consistency and nested input annotation placement",
+    "Actual client-go0.35.0 JSONPath evaluated published nested path and top-level comparison against fixture",
+    "Two inspection commands passed shell syntax check; six-node/five-edge Mermaid checked structurally only",
+    "Social image generated and visually reviewed"
+  ],
+  "limitations": [
+    "No workload, controller, webhook or rollout executed",
+    "Application image and custom profile contract require real implementation before deployment",
+    "JSONPath fixture tests do not prove controller propagation or admission behavior",
+    "Rules are alternative fragments and require complete client/trust/scope configuration"
+  ]
+}

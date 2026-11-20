@@ -1,0 +1,31 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-20",
+  "runtimeTestsPerformed": true,
+  "infrastructureDeploymentPerformed": false,
+  "tests": [
+    "PyYAML6.0.2 parsed three YAML documents",
+    "Selector, service, replica count and volume-template associations checked",
+    "Startup shell executed against stub for all three ordinals; correct names, directory and two peers verified",
+    "Bash and embedded POSIX shell syntax passed",
+    "Mermaid seven nodes/six edges structurally checked",
+    "Social image visually inspected, readable and unclipped"
+  ],
+  "sources": [
+    "https://kubernetes.io/docs/concepts/workloads/controllers/statefulset/",
+    "https://github.com/rethinkdb/rethinkdb/blob/v2.4.4/src/clustering/administration/main/command_line.cc",
+    "https://github.com/docker-library/official-images/blob/master/library/rethinkdb",
+    "https://github.com/rethinkdb/rethinkdb-dockerfiles/blob/48876a66c3be922c6b01c436bf78d662e53bceef/bookworm/2.4.4/Dockerfile",
+    "https://kubernetes.io/docs/concepts/services-networking/network-policies/",
+    "https://kubernetes.io/docs/concepts/storage/persistent-volumes/",
+    "https://rethinkdb.com/docs/cli-options/",
+    "https://kubernetes.io/docs/concepts/services-networking/dns-pod-service/",
+    "https://kubernetes.io/docs/reference/kubectl/generated/kubectl_apply/"
+  ],
+  "limitations": [
+    "No Kubernetes API validation or deployment",
+    "No live storage provisioning, DNS, network policy, image execution, pod restart or RethinkDB replication test",
+    "Image tag source verified but registry digest not resolved",
+    "Mermaid not rendered"
+  ]
+}

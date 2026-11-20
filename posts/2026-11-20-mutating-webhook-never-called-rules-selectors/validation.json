@@ -1,0 +1,35 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-20",
+  "runtimeTestsPerformed": false,
+  "infrastructureDeploymentPerformed": false,
+  "sources": [
+    "https://github.com/kubernetes/api/blob/v0.35.0/admission/v1/types.go",
+    "https://kubernetes.io/docs/reference/access-authn-authz/admission-controllers/",
+    "https://kubernetes.io/docs/reference/kubectl/generated/kubectl_api-resources/",
+    "https://github.com/kubernetes/kubernetes/blob/v1.35.0/staging/src/k8s.io/apiserver/pkg/admission/plugin/webhook/predicates/rules/rules.go",
+    "https://github.com/kubernetes/api/blob/v0.35.0/admissionregistration/v1/types.go",
+    "https://kubernetes.io/docs/reference/access-authn-authz/extensible-admission-controllers/#matching-requests-matchpolicy",
+    "https://github.com/kubernetes/kubernetes/blob/v1.35.0/staging/src/k8s.io/apiserver/pkg/admission/plugin/webhook/predicates/namespace/matcher.go",
+    "https://github.com/kubernetes/kubernetes/blob/v1.35.0/staging/src/k8s.io/apiserver/pkg/admission/plugin/webhook/predicates/object/matcher.go",
+    "https://kubernetes.io/docs/reference/kubectl/generated/kubectl_create/",
+    "https://kubernetes.io/docs/reference/access-authn-authz/extensible-admission-controllers/#matching-requests-matchconditions",
+    "https://raw.githubusercontent.com/kubernetes/kubernetes/v1.35.0/api/openapi-spec/swagger.json"
+  ],
+  "tests": [
+    "Two YAML blocks parsed with PyYAML 6.0.2",
+    "Rules, selectors, synthetic complete webhook entry containing the fragment, and Pod validated against official Kubernetes v1.35.0 OpenAPI definitions using jsonschema 4.25.1 Draft4Validator",
+    "Negative field-type fixtures rejected; Pod label matches object selector and exact CREATE/core-v1/pods scope checked",
+    "Two Bash blocks passed bash -n",
+    "Official v1.35.0 rule, namespace-selector and object-selector matchers reviewed",
+    "Mermaid six nodes/five edges structurally checked",
+    "Generated social image visually inspected; complete title legible and unclipped"
+  ],
+  "limitations": [
+    "No Kubernetes API request, server-side dry run, webhook registration or live matching performed",
+    "OpenAPI shape checks do not implement all Kubernetes custom validation, admission rules, CEL expressions or transport behavior",
+    "Fragment intentionally incomplete; schema harness supplied a synthetic client configuration and required fields",
+    "Probe image is an explicitly marked placeholder requiring replacement before cluster testing",
+    "Mermaid not rendered"
+  ]
+}

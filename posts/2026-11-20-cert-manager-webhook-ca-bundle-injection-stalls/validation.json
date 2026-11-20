@@ -1,0 +1,36 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-20",
+  "runtimeTestsPerformed": true,
+  "infrastructureDeploymentPerformed": false,
+  "sources": [
+    "https://cert-manager.io/docs/concepts/ca-injector/",
+    "https://kubernetes.io/docs/reference/kubectl/generated/kubectl_get/",
+    "https://github.com/cert-manager/cert-manager/blob/v1.19.1/pkg/controller/cainjector/sources.go",
+    "https://cert-manager.io/docs/usage/certificate/#target-secret",
+    "https://kubernetes.io/docs/reference/kubectl/generated/kubectl_logs/",
+    "https://github.com/cert-manager/cert-manager/blob/v1.19.1/cmd/cainjector/app/options/options.go",
+    "https://github.com/cert-manager/cert-manager/blob/v1.19.1/pkg/controller/cainjector/reconciler.go",
+    "https://kubernetes.io/docs/reference/kubectl/generated/kubectl_auth/kubectl_auth_can-i/",
+    "https://github.com/cert-manager/cert-manager/blob/v1.19.1/deploy/charts/cert-manager/templates/cainjector-rbac.yaml",
+    "https://github.com/cert-manager/cert-manager/blob/v1.19.1/internal/cainjector/feature/features.go",
+    "https://github.com/cert-manager/cert-manager/blob/v1.19.1/internal/cainjector/bundle/bundle.go",
+    "https://docs.python.org/3.11/library/ssl.html#ssl.PEM_cert_to_DER_cert",
+    "https://github.com/cert-manager/cert-manager/blob/v1.19.1/pkg/controller/cainjector/injectables.go"
+  ],
+  "tests": [
+    "Reviewed cert-manager v1.19.1 source reader, reconciler, injectable targets, flags, RBAC template, feature defaults and bundle merge implementation",
+    "Three Bash blocks passed bash -n; metadata fragment parsed with PyYAML 6.0.2",
+    "Extracted fingerprint comparison executed with Python 3.11.13 against four real certificate-set fixtures across two webhook entries: identical, overlap, reordered/duplicate and missing-current-CA",
+    "Empty and malformed Base64 rejected",
+    "Mermaid six nodes/five edges structurally checked",
+    "Generated social image visually inspected; complete title legible without clipping"
+  ],
+  "limitations": [
+    "No live cert-manager controller, Kubernetes resources, RBAC impersonation or certificate issuance/rotation executed",
+    "Fingerprint comparison checks certificate bytes only, not X.509 validity, trust-chain verification or expiry",
+    "CA merge behavior source-reviewed, not executed as the Go controller",
+    "Shell commands syntax/source checked only; YAML fragment is intentionally incomplete",
+    "Mermaid not rendered"
+  ]
+}

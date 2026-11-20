@@ -1,0 +1,29 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-20",
+  "runtimeTestsPerformed": true,
+  "infrastructureDeploymentPerformed": false,
+  "sources": [
+    "https://learn.microsoft.com/en-us/azure/mysql/flexible-server/how-to-restore-dropped-server",
+    "https://learn.microsoft.com/en-us/azure/azure-monitor/fundamentals/activity-log-schema",
+    "https://learn.microsoft.com/en-us/azure/mysql/flexible-server/concepts-backup-restore",
+    "https://docs.python.org/3.11/library/datetime.html",
+    "https://learn.microsoft.com/en-us/rest/api/mysql/servers/create?view=rest-mysql-2024-12-30",
+    "https://learn.microsoft.com/en-us/azure/azure-resource-manager/management/async-operations",
+    "https://learn.microsoft.com/en-us/azure/azure-resource-manager/management/lock-resources"
+  ],
+  "tests": [
+    "Article helper executed with Python 3.11.13: expected 15-minute UTC subtraction and valid JSON output",
+    "Offset timestamp crossing prior UTC date produced expected result; missing timezone rejected",
+    "REST 2024-12-30 path and restore fields reviewed against official API reference",
+    "Deleted-server name, subscription, resource-group and timestamp procedure reviewed against dedicated Microsoft guide",
+    "Mermaid structural check: seven nodes, six edges",
+    "Social image visually inspected: readable title without clipping"
+  ],
+  "limitations": [
+    "Local runtime tests only prepare JSON and do not establish backup availability",
+    "No Azure authentication, API request, resource creation, database connection, or recovery performed",
+    "REST body source-reviewed, not validated by Azure or a downloaded OpenAPI schema",
+    "Mermaid structurally checked, not rendered"
+  ]
+}

@@ -1,0 +1,27 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-20",
+  "runtimeTestsPerformed": true,
+  "infrastructureDeploymentPerformed": false,
+  "tests": [
+    "Python 3.11 planner: eight scenarios passed including retained dependency closure, ordering, missing dependencies, duplicate IDs, invalid flags and cycles",
+    "Published Python matches tested file exactly",
+    "Mermaid six nodes and four relationships structurally checked",
+    "Social image visually reviewed: readable and unclipped"
+  ],
+  "sources": [
+    "https://docs.aws.amazon.com/ebs/latest/userguide/ebs-deleting-volume.html",
+    "https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/terminating-instances.html",
+    "https://docs.aws.amazon.com/ebs/latest/userguide/ebs-deleting-snapshot.html",
+    "https://docs.aws.amazon.com/vpc/latest/userguide/nat-gateway-working-with.html#nat-gateway-deleting",
+    "https://docs.python.org/3.11/library/graphlib.html",
+    "https://docs.aws.amazon.com/AWSCloudFormation/latest/TemplateReference/aws-attribute-deletionpolicy.html",
+    "https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/elastic-ip-addresses-eip.html"
+  ],
+  "limitations": [
+    "No cloud API calls or resource deletions",
+    "Planner consumes reviewed inventory; it does not discover service dependencies",
+    "No real asynchronous deletion, restore, billing or inventory pagination tested",
+    "Mermaid not rendered"
+  ]
+}

@@ -1,0 +1,30 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-20",
+  "runtimeTestsPerformed": true,
+  "infrastructureDeploymentPerformed": false,
+  "sources": [
+    "https://kubernetes.io/docs/tasks/configure-pod-container/configure-service-account/#opt-out-of-api-credential-automounting",
+    "https://github.com/kubernetes/client-go/blob/v0.35.0/rest/config.go",
+    "https://github.com/kubernetes/kubernetes/blob/v1.35.0/pkg/kubeapiserver/options/plugins.go",
+    "https://github.com/kubernetes/kubernetes/blob/v1.35.0/plugin/pkg/admission/serviceaccount/admission.go",
+    "https://kubernetes.io/docs/reference/access-authn-authz/rbac/",
+    "https://kubernetes.io/docs/concepts/storage/projected-volumes/#serviceaccounttoken",
+    "https://kubernetes.io/docs/reference/access-authn-authz/service-accounts-admin/#bound-service-account-token-volume-mechanism"
+  ],
+  "tests": [
+    "Both exact Python3.11 snippets executed; template patches applied with jsonpatch1.33",
+    "Four absent/null/true/false cases passed preservation and idempotence checks; eight invalid cases rejected",
+    "Patched Deployment fixtures and wrapped YAML template passed Kubernetesv1.35.0 OpenAPI",
+    "Two synthetic inspection fixtures produced expected projection names and audiences without credential values",
+    "Reviewed v1.35 ServiceAccount ordering, mounting and precedence source plus client-go v0.35.0 InClusterConfig",
+    "Six-node five-edge Mermaid checked structurally; social image generated and visually reviewed"
+  ],
+  "limitations": [
+    "No API server, ServiceAccount admission plugin, controller rollout or real API client executed",
+    "Late Pod flag mutation not removing existing mounts is a source-and-patch inference, not a live cluster experiment",
+    "Helper assumes approved Deployment classification and does not remove explicit projections or enforce credential prohibition",
+    "Projection inspection does not detect every credential source",
+    "Mermaid not rendered visually"
+  ]
+}

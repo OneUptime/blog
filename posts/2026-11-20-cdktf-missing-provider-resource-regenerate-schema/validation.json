@@ -1,0 +1,39 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-20",
+  "runtimeTestsPerformed": true,
+  "infrastructureDeploymentPerformed": false,
+  "versions": {
+    "cdktf": "0.21.0",
+    "terraform": "1.11.4",
+    "random": "3.6.3",
+    "typescript": "5.8.3",
+    "constructs": "10.8.1",
+    "ts-node": "10.9.2"
+  },
+  "checks": [
+    "Fresh cdktf get generated Random bindings",
+    "TypeScript compile and CDKTF CLI synth passed",
+    "Terraform local backend init passed",
+    "Published schema assertion passed",
+    "Terraform validate valid=true",
+    "Synthesized length 16 and exact 3.6.3 requirement checked",
+    "Bash syntax and Mermaid six-node five-edge structure checked",
+    "Social image visually inspected: readable and unclipped"
+  ],
+  "limitations": [
+    "No apply, cloud API or production upgrade",
+    "No claim of reproducing a particular prebuilt package defect",
+    "No browser Mermaid rendering"
+  ],
+  "sources": [
+    "https://developer.hashicorp.com/terraform/cdktf",
+    "https://developer.hashicorp.com/terraform/cdktf/concepts/providers",
+    "https://developer.hashicorp.com/terraform/cdktf/cli-reference/commands#get",
+    "https://github.com/hashicorp/terraform-provider-random/blob/v3.6.3/docs/resources/bytes.md",
+    "https://developer.hashicorp.com/terraform/cli/commands/init",
+    "https://developer.hashicorp.com/terraform/cli/commands/providers/schema",
+    "https://developer.hashicorp.com/terraform/language/files/dependency-lock",
+    "https://developer.hashicorp.com/terraform/cli/commands/validate"
+  ]
+}

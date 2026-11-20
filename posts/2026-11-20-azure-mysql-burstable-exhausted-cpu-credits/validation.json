@@ -1,0 +1,30 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-20",
+  "runtimeTestsPerformed": false,
+  "infrastructureDeploymentPerformed": false,
+  "sources": [
+    "https://learn.microsoft.com/en-us/azure/mysql/flexible-server/concepts-service-tiers-storage",
+    "https://learn.microsoft.com/en-us/azure/virtual-machines/sizes/b-series-cpu-credit-model",
+    "https://learn.microsoft.com/en-us/azure/mysql/flexible-server/concepts-monitor-mysql-reference",
+    "https://learn.microsoft.com/en-us/cli/azure/monitor/metrics?view=azure-cli-latest",
+    "https://learn.microsoft.com/en-us/azure/mysql/flexible-server/how-to-troubleshoot-high-cpu-utilization",
+    "https://dev.mysql.com/doc/refman/8.0/en/performance-schema-statement-summary-tables.html"
+  ],
+  "tests": [
+    "Bash metric collection example passed bash -n",
+    "MySQL statement-digest SELECT parsed with sqlglot 28.0.0",
+    "Azure CLI 2.80.0 monitor metric arguments and command registration checked in tagged source",
+    "MySQL-specific metric identifiers, 15-minute credit intervals and aggregations checked against official monitoring reference",
+    "Illustrative net-drain arithmetic checked: 90 credits over 30 minutes equals 3 per minute and 30 minutes remaining",
+    "Mermaid six nodes/six edges structurally checked",
+    "Generated social image visually reviewed without clipping"
+  ],
+  "limitations": [
+    "No Azure metric query, MySQL query, load test, resize or mitigation executed",
+    "SQL parsing does not test Performance Schema enablement, permissions or runtime behavior",
+    "Illustrative credit arithmetic is not a forecast guarantee",
+    "No incident data or live database was used",
+    "Mermaid not rendered"
+  ]
+}

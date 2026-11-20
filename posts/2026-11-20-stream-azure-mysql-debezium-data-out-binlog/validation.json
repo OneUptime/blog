@@ -1,0 +1,38 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-20",
+  "runtimeTestsPerformed": false,
+  "infrastructureDeploymentPerformed": false,
+  "sources": [
+    "https://learn.microsoft.com/en-us/azure/mysql/flexible-server/concepts-data-out-replication",
+    "https://debezium.io/releases/3.3/release-notes.html",
+    "https://debezium.io/releases/3.3/",
+    "https://learn.microsoft.com/en-us/azure/mysql/flexible-server/how-to-data-out-replication",
+    "https://github.com/debezium/debezium/blob/v3.3.2.Final/documentation/modules/ROOT/partials/modules/all-connectors/shared-mariadb-mysql.adoc",
+    "https://learn.microsoft.com/en-us/azure/mysql/flexible-server/concepts-server-parameters#binlog_expire_logs_seconds",
+    "https://github.com/debezium/debezium/blob/v3.3.2.Final/documentation/modules/ROOT/partials/modules/all-connectors/ref-mariadb-mysql-adv-connector-cfg-props.adoc",
+    "https://github.com/debezium/debezium/blob/v3.3.2.Final/debezium-connector-binlog/src/main/java/io/debezium/connector/binlog/BinlogSnapshotChangeEventSource.java",
+    "https://kafka.apache.org/41/configuration/configuration-providers/",
+    "https://kafka.apache.org/41/security/authentication-using-sasl/",
+    "https://github.com/debezium/debezium/blob/v3.3.2.Final/documentation/modules/ROOT/partials/modules/all-connectors/ref-mariadb-mysql-rqd-connector-cfg-props.adoc",
+    "https://debezium.io/documentation/reference/3.3/connectors/mysql.html#mysql-property-database-ssl-mode",
+    "https://github.com/debezium/debezium/blob/v3.3.2.Final/documentation/modules/ROOT/partials/modules/all-connectors/ref-connector-pass-through-database-history-properties-for-configuring-producer-and-consumer-clients.adoc",
+    "https://debezium.io/documentation/reference/3.3/configuration/storage.html"
+  ],
+  "tests": [
+    "Connector JSON parsed and Debezium property names matched official v3.3.2.Final tagged documentation",
+    "Table inclusion patterns checked for intended tables and rejection of wrong database/unescaped-dot lookalikes",
+    "Database verify_identity and symmetric history producer/consumer SASL_SSL and hostname verification settings checked",
+    "MySQL configuration SELECT parsed with sqlglot 28.0.0",
+    "Reviewed tagged snapshot locking implementation and Kafka 4.1 FileConfigProvider syntax",
+    "Mermaid eight nodes/eight edges structurally checked",
+    "Generated social image visually inspected without clipping"
+  ],
+  "limitations": [
+    "No Kafka Connect configuration validation endpoint, connector deployment, MySQL snapshot or binlog streaming executed",
+    "JSON/property checks do not prove grants, truststore compatibility, secret substitution, Kafka ACLs or connectivity",
+    "Example is scoped to MySQL 8.0.46, Debezium 3.3.2.Final and Kafka Connect 4.1.0 with InnoDB/schema freeze and accelerated logs disabled",
+    "No Azure authentication compatibility workaround or automatic log-recovery guarantee claimed",
+    "Mermaid not rendered"
+  ]
+}

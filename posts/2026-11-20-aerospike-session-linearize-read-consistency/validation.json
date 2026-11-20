@@ -1,0 +1,31 @@
+{
+  "status": "validated",
+  "date": "2026-11-20",
+  "runtimeTestsPerformed": false,
+  "localCodeTestsPerformed": true,
+  "versions": {
+    "Java client": "10.5.0 jdk8 artifact",
+    "javac": "17.0.16",
+    "server scope": "Enterprise 8.2 SC namespace"
+  },
+  "tests": [
+    "Compiled Java policy helper and read invocation against actual pinned artifact",
+    "Executed assertions for SESSION and LINEARIZE, copied timeout fields, distinct returned policies, and base-policy isolation",
+    "Reviewed client-session boundary, strict master routing, relaxed modes, and per-record versus transaction scope",
+    "1280x720 social image generated and visually inspected"
+  ],
+  "limitations": [
+    "No database read/write or distributed consistency history executed",
+    "Local policy tests do not validate server guarantees or failover behavior",
+    "No measured latency or availability comparison",
+    "Finite staging histories can detect violations but cannot prove all-case linearizability"
+  ],
+  "sources": [
+    "https://aerospike.com/docs/database/learn/strong-consistency/",
+    "https://github.com/aerospike/aerospike-client-java/blob/10.5.0/client/src/com/aerospike/client/policy/ReadModeSC.java",
+    "https://aerospike.com/docs/database/learn/architecture/clustering/consistency-modes/",
+    "https://github.com/aerospike/aerospike-client-java/blob/10.5.0/client/src/com/aerospike/client/policy/Policy.java",
+    "https://aerospike.com/docs/database/learn/policies/",
+    "https://aerospike.com/docs/develop/client-matrix/"
+  ]
+}

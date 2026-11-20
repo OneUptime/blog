@@ -1,0 +1,36 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-20",
+  "validationScope": "Official documentation, pinned source, release metadata and model manifest review; syntax and image checks",
+  "runtimeTestsPerformed": false,
+  "oneuptimeSourceCommit": "0de2d9ceac0a2404f5df7ad1f9ab1e22c56bea7e",
+  "ollamaVersion": "0.40.16",
+  "modelManifestSha256": "500a1f067a9f782620b40bee6f7b0c89e17ae61f686b92c24933e4ca4b2b8b41",
+  "tests": [
+    "Verified Ollama release assets and environment settings against v0.40.16 source",
+    "Downloaded official qwen3:8b manifest; SHA-256 matches article and displayed model identifier; parsed four layers",
+    "Verified native /api/chat construction and options merge in pinned OneUptime source",
+    "All shell snippets passed bash -n; Additional Parameters JSON parsed and expected value checked",
+    "Mermaid references checked structurally; 1280x720 social image visually inspected"
+  ],
+  "limitations": [
+    "Ollama binary unavailable; no model weights downloaded, runtime installed or model loaded",
+    "No GPU, model-store restore, CA trust, inference, tool execution or OneUptime investigation tested",
+    "No offline egress rehearsal; example combination is source-checked, not a tested compatibility claim",
+    "Mermaid not browser-rendered"
+  ],
+  "sources": [
+    "https://github.com/ollama/ollama/releases/tag/v0.40.16",
+    "https://ollama.com/library/qwen3:8b",
+    "https://github.com/ollama/ollama/blob/v0.40.16/envconfig/config.go",
+    "https://docs.ollama.com/api/tags",
+    "https://docs.ollama.com/import",
+    "https://github.com/OneUptime/oneuptime/blob/0de2d9ceac0a2404f5df7ad1f9ab1e22c56bea7e/packages/Common/Server/Utils/LLM/LLMService.ts",
+    "https://oneuptime.com/docs/en/ai/llm-provider#which-provider-ai-uses",
+    "https://oneuptime.com/docs/en/ai/llm-provider#ollama-self-hosted",
+    "https://docs.ollama.com/capabilities/tool-calling",
+    "https://oneuptime.com/docs/en/ai/ai-sre",
+    "https://registry.ollama.ai/v2/library/qwen3/manifests/8b",
+    "https://github.com/ollama/ollama/blob/v0.40.16/server/images.go"
+  ]
+}

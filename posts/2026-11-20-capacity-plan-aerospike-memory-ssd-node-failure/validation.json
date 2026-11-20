@@ -1,0 +1,36 @@
+{
+  "status": "validated",
+  "date": "2026-11-20",
+  "runtimeTestsPerformed": false,
+  "localCodeTestsPerformed": true,
+  "versions": {
+    "server scope": "Enterprise 8.2 with SSD data and shared-memory primary indexes",
+    "local Python": "3.15.0",
+    "snippet minimum Python": "3.9"
+  },
+  "tests": [
+    "Executed exact calculator from README",
+    "Checked five-node values against independently calculated byte totals: 18252800000 index, 664755200000 data capacity within ceiling tolerance",
+    "Checked six-to-five-node scaling equals 1.2 within rounding tolerance",
+    "Insufficient node count raises ValueError",
+    "Reviewed growth/replication applied once, illustrative tombstone sizing, overhead exclusions and staging benchmark boundary",
+    "1280x720 social image generated and visually inspected"
+  ],
+  "limitations": [
+    "No Aerospike server, device benchmark, or node-failure rehearsal",
+    "Estimates exclude secondary/set indexes, arena/structure overhead, device reservations, and operational memory; prose requires these additions",
+    "Imbalance, stored sizes, tombstone count, and occupancy are illustrative inputs",
+    "Capacity estimates are not hardware throughput recommendations"
+  ],
+  "sources": [
+    "https://aerospike.com/docs/develop/data-modeling/record-sizing/",
+    "https://aerospike.com/docs/database/learn/architecture/durable-deletes/",
+    "https://aerospike.com/docs/database/manage/namespace/durability/",
+    "https://aerospike.com/docs/database/manage/planning/capacity/",
+    "https://aerospike.com/docs/develop/data-modeling/indexes/",
+    "https://aerospike.com/docs/database/observe/index-memory-allocation/",
+    "https://aerospike.com/docs/database/learn/best-practices/",
+    "https://aerospike.com/docs/database/reference/faq/ops-disk-defrag/",
+    "https://aerospike.com/docs/database/manage/planning/ssd/advanced-sizing/"
+  ]
+}

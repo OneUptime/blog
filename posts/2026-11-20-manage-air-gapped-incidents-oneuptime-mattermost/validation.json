@@ -1,0 +1,32 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-20",
+  "validationScope": "Official documentation and pinned source review, actual local Helm render, syntax and image checks",
+  "runtimeTestsPerformed": false,
+  "oneuptimeSourceCommit": "0de2d9ceac0a2404f5df7ad1f9ab1e22c56bea7e",
+  "chartVersion": "17.0.0",
+  "chartSha256": "f6ec64764b3fab5ee60a78bdec027fb9eacca6d2d63964c43000bb7ddaf9899a",
+  "tests": [
+    "Helm 3.12.3 rendered official OneUptime 17.0.0 package with exact article override: 29 YAML objects; all six relevant environment entries matched expected values",
+    "Article YAML matched rendered input; bash snippet passed bash -n",
+    "Sequence diagram participants and arrow references checked structurally",
+    "Metadata and existing tags reviewed; social image 1280x720 visually inspected and readable"
+  ],
+  "limitations": [
+    "Render used chart defaults plus article override, not a deployed installation values file",
+    "No cluster API validation, live OneUptime or Mattermost, bot creation, message delivery, callback or permissions test",
+    "No CA trust or network outage rehearsal",
+    "Mermaid not browser-rendered"
+  ],
+  "sources": [
+    "https://oneuptime.com/docs/en/workspace-connections/mattermost#network-and-self-hosting",
+    "https://helm-chart.oneuptime.com/oneuptime-17.0.0.tgz",
+    "https://github.com/OneUptime/oneuptime/blob/0de2d9ceac0a2404f5df7ad1f9ab1e22c56bea7e/HelmChart/Public/oneuptime/values.yaml",
+    "https://docs.mattermost.com/administration-guide/configure/environment-configuration-settings#allow-untrusted-internal-connections",
+    "https://docs.mattermost.com/developers/integrate/reference/bot-accounts",
+    "https://oneuptime.com/docs/en/workspace-connections/mattermost#connect-mattermost",
+    "https://oneuptime.com/docs/en/workspace-connections/mattermost#connect-your-own-mattermost-account",
+    "https://docs.mattermost.com/developers/integrate/plugins/interactive-messages",
+    "https://docs.mattermost.com/deployment-guide/air-gapped-operations/disable-phone-home-features"
+  ]
+}

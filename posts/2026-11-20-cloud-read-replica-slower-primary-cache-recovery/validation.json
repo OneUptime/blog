@@ -1,0 +1,26 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-20",
+  "runtimeTestsPerformed": false,
+  "infrastructureDeploymentPerformed": false,
+  "sources": [
+    "https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/USER_ReadRepl.html",
+    "https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/rds-metrics.html",
+    "https://www.postgresql.org/docs/17/using-explain.html",
+    "https://www.postgresql.org/docs/17/sql-explain.html",
+    "https://www.postgresql.org/docs/17/hot-standby.html",
+    "https://www.postgresql.org/docs/17/monitoring-stats.html#MONITORING-PG-STAT-DATABASE-CONFLICTS-VIEW",
+    "https://www.postgresql.org/docs/17/runtime-config-replication.html#RUNTIME-CONFIG-REPLICATION-STANDBY"
+  ],
+  "tests": [
+    "Both SQL blocks parsed with pglast 7.24 / PostgreSQL parser 17.7 (four statements and one statement)",
+    "PostgreSQL 17 EXPLAIN flags, recovery conflict columns, standby restrictions and parameter tradeoffs source-reviewed",
+    "RDS resource metrics and applicability checked against official definitions",
+    "Generated social image visually reviewed without clipping"
+  ],
+  "limitations": [
+    "No live primary/replica queries, EXPLAIN execution, workload comparison or cache experiment performed",
+    "Parser checks syntax only; example orders schema, permissions and cost are reader prerequisites",
+    "No capacity upgrade, parameter modification, cache clearing or restart performed"
+  ]
+}

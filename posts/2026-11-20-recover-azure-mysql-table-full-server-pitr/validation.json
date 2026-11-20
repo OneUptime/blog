@@ -1,0 +1,31 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-20",
+  "runtimeTestsPerformed": true,
+  "infrastructureDeploymentPerformed": false,
+  "sources": [
+    "https://learn.microsoft.com/en-us/azure/mysql/flexible-server/concepts-backup-restore",
+    "https://learn.microsoft.com/en-us/azure/mysql/flexible-server/how-to-restore-server-portal",
+    "https://dev.mysql.com/doc/refman/8.0/en/mysqldump.html",
+    "https://github.com/mysql/mysql-server/blob/mysql-8.0.46/client/mysqldump.cc",
+    "https://dev.mysql.com/doc/refman/8.0/en/mysqldump-sql-format.html",
+    "https://dev.mysql.com/doc/refman/8.0/en/reloading-sql-format-dumps.html",
+    "https://dev.mysql.com/doc/refman/8.0/en/join.html"
+  ],
+  "tests": [
+    "Two Bash examples passed bash -n",
+    "Reviewed MySQL 8.0.46 mysqldump option definitions and emitted foreign-key-check session statements in tagged source",
+    "MySQL SELECT parsed with sqlglot 28.0.0",
+    "Exact missing-ID query executed on synthetic SQLite attached schemas: missing rows returned, modified existing row preserved, no candidates when all IDs present",
+    "Reviewed Azure full-server restore scope, UTC recovery point and isolated scratch reconciliation",
+    "Mermaid eight nodes/eight edges structurally checked",
+    "Social image visually reviewed without clipping"
+  ],
+  "limitations": [
+    "No Azure restore, mysqldump export, MySQL import or production repair executed",
+    "SQLite fixtures test anti-join logic only, not MySQL runtime/collation or real business correctness",
+    "Scratch table definition and current snapshot require environment-specific preparation",
+    "No restored database or production data was used",
+    "Mermaid not rendered"
+  ]
+}

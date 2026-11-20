@@ -1,0 +1,23 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-20",
+  "runtimeTestsPerformed": false,
+  "infrastructureDeploymentPerformed": false,
+  "sources": [
+    "https://www.rfc-editor.org/rfc/rfc8365.html#section-10",
+    "https://www.cisco.com/c/en/us/td/docs/dcn/nx-os/nexus9000/104x/configuration/vxlan/cisco-nexus-9000-series-nx-os-vxlan-configuration-guide-release-104x/m_configuring_multisite_93x.html",
+    "https://www.rfc-editor.org/rfc/rfc7348.html",
+    "https://raw.githubusercontent.com/iputils/iputils/20240905/doc/ping.xml"
+  ],
+  "tests": [
+    "Bash syntax checked for bounded iputils probes",
+    "MTU arithmetic checked for plain untagged inner Ethernet over IPv4 VXLAN",
+    "NX-OS 10.4 guide checked for hardware inspection command, tracked bandwidth and link tracking",
+    "Mermaid structurally checked: seven nodes and six edges; not rendered",
+    "Generated social image visually checked: readable title, no clipping"
+  ],
+  "limitations": [
+    "No DCI, switch, ping, traffic policing, packet capture, failover or application partition test performed",
+    "No universal storm-control percentage or convergence promise; limits require deployed platform validation"
+  ]
+}

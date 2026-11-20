@@ -1,0 +1,11 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-20",
+  "validationScope": "Official tagged chart-source review; local Helm renders with disposable CA/leaf and overlap CA bundle; Secret/admission/conversion assertions; OpenSSL offline hostname verification; shell, YAML, Mermaid structure, metadata and image review.",
+  "runtimeTestsPerformed": false,
+  "localRenderingTestsPerformed": true,
+  "chartVersionReviewed": "0.129.1",
+  "operatorVersionReviewed": "0.162.0",
+  "helmVersion": "3.12.3",
+  "wordCountWhitespace": 1363
+}

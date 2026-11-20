@@ -1,0 +1,33 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-20",
+  "runtimeTestsPerformed": true,
+  "infrastructureDeploymentPerformed": false,
+  "versions": {
+    "python": "3.11.13",
+    "rethinkdbPythonDriver": "2.4.10.post1"
+  },
+  "checks": [
+    "All Python blocks parsed",
+    "Pinned driver constructed inventory, config/status, tagged preview/application, readiness queries",
+    "Site-loss majority arithmetic tested for 2+1, 2+2 and 2+2+1 layouts",
+    "Official tag mapping, primary selection, voting, reconfiguration and emergency-repair documentation reviewed",
+    "Mermaid five-node five-edge structure checked",
+    "Social image visually reviewed; readable and unclipped"
+  ],
+  "limitations": [
+    "No live database, server tag modification, dry-run response or reconfiguration",
+    "No backfill, network partition, inter-site latency or client-routing test",
+    "Majority arithmetic assumes stable configured voters and mutually reachable survivors",
+    "No browser Mermaid rendering"
+  ],
+  "sources": [
+    "https://rethinkdb.com/docs/failover/",
+    "https://rethinkdb.com/docs/sharding-and-replication/",
+    "https://rethinkdb.com/docs/system-tables/",
+    "https://rethinkdb.com/api/python/reconfigure/",
+    "https://rethinkdb.com/api/python/wait/",
+    "https://rethinkdb.com/api/python/status/",
+    "https://rethinkdb.com/api/python/reconfigure/#emergency-repair-mode"
+  ]
+}

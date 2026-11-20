@@ -1,0 +1,41 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-20",
+  "runtimeTestsPerformed": true,
+  "infrastructureDeploymentPerformed": false,
+  "localStateWritePerformed": true,
+  "versions": {
+    "cdktf": "0.21.0",
+    "terraform": "1.11.4",
+    "typescript": "5.8.3",
+    "constructs": "10.8.1",
+    "ts-node": "10.9.2"
+  },
+  "checks": [
+    "Complete TypeScript compiled and App synthesized",
+    "Both disposable local backends initialized",
+    "Only original terraform_data marker applied locally; no external resources",
+    "Destruction plans: original one delete, renamed zero actions; neither applied",
+    "Original state marker retained; state list and workspace checked",
+    "Renamed state list returned missing-state error as documented",
+    "Shell syntax and Mermaid seven-node six-edge structure checked",
+    "CDKTF CLI synth passed",
+    "Social image visually reviewed: readable title, no clipping"
+  ],
+  "limitations": [
+    "No cloud resources, remote backend credentials, state migration, import or destroy executed",
+    "No browser Mermaid rendering"
+  ],
+  "sources": [
+    "https://developer.hashicorp.com/terraform/cdktf",
+    "https://github.com/hashicorp/terraform-cdk/blob/v0.21.0/packages/cdktf-cli/src/bin/cmds/destroy.ts",
+    "https://developer.hashicorp.com/terraform/cli/commands/workspace/show",
+    "https://developer.hashicorp.com/terraform/cli/commands/state/list",
+    "https://developer.hashicorp.com/terraform/cli/commands/init",
+    "https://developer.hashicorp.com/terraform/language/resources/terraform-data",
+    "https://developer.hashicorp.com/terraform/cli/commands/plan",
+    "https://developer.hashicorp.com/terraform/language/backend/s3",
+    "https://developer.hashicorp.com/terraform/cdktf/concepts/remote-backends",
+    "https://developer.hashicorp.com/terraform/cli/commands/state/pull"
+  ]
+}

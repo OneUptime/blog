@@ -1,0 +1,32 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-20",
+  "runtimeTestsPerformed": true,
+  "infrastructureDeploymentPerformed": false,
+  "sources": [
+    "https://cert-manager.io/docs/troubleshooting/webhook/",
+    "https://kubernetes.io/docs/concepts/services-networking/service/#defining-a-service",
+    "https://kubernetes.io/docs/tasks/debug/debug-application/debug-service/",
+    "https://kubernetes.io/docs/concepts/services-networking/endpoint-slices/#conditions",
+    "https://docs.python.org/3.11/library/socket.html#socket.create_connection",
+    "https://kubernetes.io/docs/concepts/services-networking/network-policies/",
+    "https://docs.cloud.google.com/kubernetes-engine/docs/troubleshooting/network-isolation",
+    "https://kubernetes.io/docs/reference/access-authn-authz/extensible-admission-controllers/#timeouts",
+    "https://raw.githubusercontent.com/kubernetes/kubernetes/v1.35.0/api/openapi-spec/swagger.json"
+  ],
+  "tests": [
+    "Extracted TCP probe executed with Python 3.11.13 against loopback listener, non-listening reserved port and missing arguments; success/timeout/usage outcomes checked",
+    "Service YAML parsed with PyYAML 6.0.2 and validated with jsonschema 4.25.1 against official Kubernetes v1.35.0 OpenAPI Service definition",
+    "Three Bash blocks passed bash -n",
+    "Mermaid seven nodes/six edges including separate probe-source path structurally checked",
+    "Generated social image visually inspected; complete title legible and unclipped"
+  ],
+  "limitations": [
+    "No Kubernetes resource reads, NetworkPolicy/firewall changes, API-server network probe or admission requests executed",
+    "TCP runtime test was local loopback only, without TLS, DNS timing tests or live Kubernetes routing",
+    "OpenAPI validation checks shape, not backend listener existence or Service reachability",
+    "GKE firewall behavior is explicitly provider-specific, not a universal port policy",
+    "Mermaid not rendered",
+    "The local non-listening-port case returned TimeoutError on this host; no real connection-refused result claimed"
+  ]
+}

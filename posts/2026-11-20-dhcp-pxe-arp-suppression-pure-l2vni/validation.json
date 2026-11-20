@@ -1,0 +1,34 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-20",
+  "runtimeTestsPerformed": true,
+  "infrastructureDeploymentPerformed": false,
+  "tests": [
+    "Synthetic DHCP Discover and ARP Probe pcap decoded using tcpdump4.99.1 Apple161",
+    "Combined article filter retained both fixtures; DHCP-port-only filter omitted ARP probe",
+    "Verified Discover transaction ID/client MAC/broadcast flags and zero-source ARP target",
+    "Three shell examples passed syntax checks; seven-node/six-edge Mermaid structurally checked",
+    "Linux6.12 suppression/flood paths, DHCP/TFTP RFCs and UEFI boot stages source-reviewed",
+    "Social image generated and visually inspected without clipping"
+  ],
+  "sources": [
+    "https://uefi.org/specs/UEFI/2.10/13_Protocols_Media_Access.html",
+    "https://www.rfc-editor.org/rfc/rfc2131.html",
+    "https://raw.githubusercontent.com/the-tcpdump-group/tcpdump/tcpdump-4.99.5/tcpdump.1.in",
+    "https://raw.githubusercontent.com/the-tcpdump-group/libpcap/libpcap-1.10.5/pcap-filter.manmisc.in",
+    "https://raw.githubusercontent.com/iproute2/iproute2/v6.12.0/man/man8/bridge.8",
+    "https://raw.githubusercontent.com/FRRouting/frr/frr-10.2.1/bgpd/bgp_evpn_vty.c",
+    "https://www.rfc-editor.org/rfc/rfc8365.html",
+    "https://www.rfc-editor.org/rfc/rfc5227.html",
+    "https://raw.githubusercontent.com/torvalds/linux/v6.12/net/bridge/br_arp_nd_proxy.c",
+    "https://raw.githubusercontent.com/torvalds/linux/v6.12/net/bridge/br_forward.c",
+    "https://docs.frrouting.org/en/stable-10.2/evpn.html",
+    "https://www.rfc-editor.org/rfc/rfc1350.html"
+  ],
+  "limitations": [
+    "Synthetic decoding only; no live DHCP lease, PXE firmware, EVPN or kernel suppression test",
+    "Untagged client-facing filter does not directly filter encapsulated underlay packets",
+    "No relay, IPv6 or boot-file transfer execution",
+    "Mermaid structurally checked, not rendered"
+  ]
+}

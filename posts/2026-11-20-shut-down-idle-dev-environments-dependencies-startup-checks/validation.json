@@ -1,0 +1,29 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-20",
+  "runtimeTestsPerformed": true,
+  "infrastructureDeploymentPerformed": false,
+  "tests": [
+    "Python3.11.13 dependency ordering and seven eligibility rejection cases passed",
+    "Cycle rejection passed",
+    "Published planner matches tested AST",
+    "AWS CLI2.38.1 stop input skeleton generated locally",
+    "Bash syntax passed; Mermaid six nodes/four edges structurally checked",
+    "Image visually inspected: readable and unclipped"
+  ],
+  "sources": [
+    "https://docs.python.org/3.11/library/graphlib.html",
+    "https://docs.aws.amazon.com/AWSEC2/latest/APIReference/API_StopInstances.html",
+    "https://docs.aws.amazon.com/cli/latest/reference/ec2/wait/instance-stopped.html",
+    "https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/Stop_Start.html",
+    "https://docs.aws.amazon.com/autoscaling/ec2/userguide/as-enter-exit-standby.html",
+    "https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/USER_StopInstance.html",
+    "https://docs.aws.amazon.com/cli/latest/reference/ec2/wait/instance-status-ok.html"
+  ],
+  "limitations": [
+    "No AWS API calls or instance stop/start",
+    "No live metric collector, leases, drain logic, managed-service adapter, or startup probe exercised",
+    "Input verification flags require a real timestamped evidence layer",
+    "Mermaid not rendered"
+  ]
+}

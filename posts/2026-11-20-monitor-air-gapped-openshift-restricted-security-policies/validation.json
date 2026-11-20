@@ -1,0 +1,9 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-20",
+  "validationScope": "Official sources, pinned chart render and security/image assertions, YAML and shell checks, Mermaid structure and image visual review.",
+  "runtimeTestsPerformed": false,
+  "chartVersionReviewed": "17.0.0",
+  "openShiftDocumentationVersion": "4.20",
+  "wordCountWhitespace": 1422
+}

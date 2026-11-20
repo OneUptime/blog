@@ -1,0 +1,33 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-20",
+  "runtimeTestsPerformed": true,
+  "infrastructureDeploymentPerformed": false,
+  "tests": [
+    "Rechecked CLI debug and installed dependency inventory in existing isolated lab: CLI/core0.21.0, constructs10.8.1, TypeScript5.8.3, ts-node10.9.2, Node24.1.0, Terraform1.11.4",
+    "Queried exact npm package metadata; provider-random12.0.1 wraps provider3.7.2, peer and engine requirements confirmed",
+    "Reused successful lab build/synth and Terraform init-backend=false/validate-json evidence from preceding article; generated lab uses random3.6.3, not the prebuilt comparison package",
+    "All shell snippets passed bash -n; seven-node six-edge Mermaid structure checked; metadata reviewed",
+    "Generated social image visually reviewed: readable title, no clipping,1280x720"
+  ],
+  "limitations": [
+    "No infrastructure applied or planned; no cloud credentials or remote state checked",
+    "npm ci repair procedure source-reviewed, not executed for this article; original lab installed via npm install",
+    "Prebuilt Random12.0.1 metadata inspected but package not installed in lab",
+    "Python/Java/jsii consumer paths not executed; no cross-platform support certification",
+    "Mermaid structure checked but diagram not browser-rendered"
+  ],
+  "sources": [
+    "https://developer.hashicorp.com/terraform/cdktf",
+    "https://developer.hashicorp.com/terraform/cdktf/test/debugging",
+    "https://docs.npmjs.com/cli/v11/commands/npm-ls/",
+    "https://registry.npmjs.org/cdktf/0.21.0",
+    "https://registry.npmjs.org/@cdktf/provider-random/12.0.1",
+    "https://docs.npmjs.com/cli/v11/commands/npm-view/",
+    "https://typestrong.org/ts-node/docs/installation/",
+    "https://aws.github.io/jsii/user-guides/lib-user/",
+    "https://docs.npmjs.com/cli/v11/commands/npm-ci/",
+    "https://developer.hashicorp.com/terraform/language/files/dependency-lock",
+    "https://developer.hashicorp.com/terraform/cli/commands/validate"
+  ]
+}

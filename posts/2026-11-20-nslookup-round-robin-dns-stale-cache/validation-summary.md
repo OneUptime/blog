@@ -1,0 +1,37 @@
+# Validation summary
+
+## Checks performed
+
+Reviewed official RRset, BIND9.18.33 ordering/query, Windows debug, Route53 policy, serve-stale and anycast documentation
+
+All Bash snippets passed bash -n; exact sample loop executed with command doubles and verified six queries and five ten-second wait requests
+
+Local BIND9.10.6 binary received three loopback DNS fixtures with reordered and changed A RRsets; all expected addresses displayed and successful statuses returned
+
+Address-set comparisons and 300 minus 120 second TTL example checked
+
+Mermaid six-node five-edge flowchart checked structurally; generated 1280x720 social image visually inspected
+
+## Limitations
+
+No live DNS cache, BIND named ordering policy, Route53 service or anycast deployment tested
+
+Sample loop used command doubles; fixture replies were synthesized, not observations of a real cache aging
+
+No Windows execution or application traffic-distribution testing
+
+Mermaid not browser-rendered
+
+## Sources reviewed
+
+- https://www.rfc-editor.org/rfc/rfc2181.html#section-5
+- https://bind9.readthedocs.io/en/v9.18.33/reference.html#namedconf-statement-rrset-order
+- https://bind9.readthedocs.io/en/v9.18.33/manpages.html#nslookup-name-server-lookup-utility
+- https://learn.microsoft.com/en-us/windows-server/administration/windows-commands/nslookup-set-debug
+- https://docs.aws.amazon.com/Route53/latest/DeveloperGuide/routing-policy-multivalue.html
+- https://www.rfc-editor.org/rfc/rfc8767.html
+- https://www.rfc-editor.org/rfc/rfc4786.html
+
+## Repository checks
+
+The repository validator passed for this post in an isolated fixture with its catalog entry, author list, tag allowlist, and social image. Shell examples, if present, passed bash syntax checking. The full existing catalog was not revalidated.

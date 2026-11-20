@@ -1,0 +1,26 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-20",
+  "runtimeTestsPerformed": true,
+  "infrastructureDeploymentPerformed": false,
+  "tests": [
+    "Python 3.11.13/SQLite 3.54.1 local publication example executed with expected output",
+    "Ten destination scenarios passed: new/stale/repeated token, independent resource, newer generation, missing target, four invalid inputs",
+    "Published Python equals tested file",
+    "Mermaid seven nodes/seven edges structurally checked",
+    "Generated image visually inspected and unclipped"
+  ],
+  "sources": [
+    "https://kubernetes.io/docs/concepts/workloads/controllers/cron-jobs/#concurrency-policy",
+    "https://aws.amazon.com/builders-library/leader-election-in-distributed-systems/",
+    "https://redis.io/docs/latest/develop/clients/patterns/distributed-locks/#disclaimer-about-consistency",
+    "https://docs.python.org/3.11/library/sqlite3.html",
+    "https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/TTL.html"
+  ],
+  "limitations": [
+    "No distributed lease coordinator, token allocation or clock behavior tested",
+    "In-memory local SQL model only; no process pause, network partition or database recovery test",
+    "No cloud API supports or enforces this example token automatically",
+    "Mermaid not rendered"
+  ]
+}

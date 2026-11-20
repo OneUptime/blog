@@ -1,0 +1,28 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-20",
+  "runtimeTestsPerformed": true,
+  "infrastructureDeploymentPerformed": false,
+  "sources": [
+    "https://www.rfc-editor.org/rfc/rfc7348.html#section-7",
+    "https://www.wireguard.com/protocol/",
+    "https://www.rfc-editor.org/rfc/rfc4459.html",
+    "https://www.rfc-editor.org/rfc/rfc7348.html#section-5",
+    "https://raw.githubusercontent.com/iproute2/iproute2/v6.12.0/man/man8/ip-link.8.in",
+    "https://raw.githubusercontent.com/iproute2/iproute2/v6.12.0/man/man8/ip-route.8.in",
+    "https://docs.kernel.org/networking/vxlan.html",
+    "https://www.wireguard.com/quickstart/",
+    "https://www.rfc-editor.org/rfc/rfc8201.html"
+  ],
+  "tests": [
+    "Python 3.11.13 nested MTU calculation executed; results 1370 and 1350 verified",
+    "Bash syntax passed for read-only iproute2 inspection block; tagged 6.12.0 manuals reviewed",
+    "Mermaid structurally checked: six nodes and five edges, not rendered",
+    "Generated social image visually reviewed: no clipping"
+  ],
+  "limitations": [
+    "No VPN deployment, cryptographic configuration, public-path MTU, NAT traversal or VXLAN forwarding test",
+    "1420-byte encrypted-interface MTU is an explicit hypothetical input, not measured or recommended",
+    "No device configuration or key material provided"
+  ]
+}

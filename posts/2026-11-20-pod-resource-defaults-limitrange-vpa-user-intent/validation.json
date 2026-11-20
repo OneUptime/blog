@@ -1,0 +1,28 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-20",
+  "runtimeTestsPerformed": true,
+  "infrastructureDeploymentPerformed": false,
+  "sources": [
+    "https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/",
+    "https://kubernetes.io/docs/concepts/policy/limit-range/",
+    "https://github.com/kubernetes/kubernetes/blob/v1.35.0/plugin/pkg/admission/limitranger/admission.go",
+    "https://kubernetes.io/docs/concepts/policy/resource-quotas/",
+    "https://github.com/kubernetes/autoscaler/blob/vertical-pod-autoscaler-1.3.0/vertical-pod-autoscaler/pkg/apis/autoscaling.k8s.io/v1/types.go",
+    "https://pkg.go.dev/k8s.io/apimachinery@v0.35.0/pkg/api/resource#Quantity.Cmp"
+  ],
+  "tests": [
+    "Exact Go helper compiled with Go1.25.0 and Kubernetes API/apimachineryv0.35.0",
+    "Eight table cases passed: empty, explicit, zero, lower limit, equal limit, equivalent units, invalid profile and unconfigured profile",
+    "Verified input preservation and idempotence after applying additions; additional extended-resource/profile-isolation test passed",
+    "LimitRange YAML passed Kubernetesv1.35.0 OpenAPI",
+    "VPA1.3.0 controlled-values and mode claims checked against tagged source",
+    "Generated social image visually reviewed"
+  ],
+  "limitations": [
+    "No live LimitRange plugin, VPA installation, quota evaluation or admission sequence tested",
+    "Helper assumes caller-established ownership and handles only container CPU/memory requests",
+    "Patch construction and AdmissionReview response wiring omitted",
+    "Example resource amounts are illustrative, not measured recommendations"
+  ]
+}

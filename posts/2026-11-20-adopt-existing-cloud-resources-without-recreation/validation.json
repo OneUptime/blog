@@ -1,0 +1,29 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-20",
+  "runtimeTestsPerformed": true,
+  "infrastructureDeploymentPerformed": false,
+  "tests": [
+    "Terraform 1.11.4 init with backend disabled and AWS provider 6.25.0 completed",
+    "Terraform validate and fmt -check passed for complete published HCL",
+    "Published HCL matches checked file",
+    "Mermaid seven nodes/six edges structurally checked",
+    "Generated image visually reviewed and unclipped"
+  ],
+  "sources": [
+    "https://developer.hashicorp.com/terraform/language/import/single-resource",
+    "https://developer.hashicorp.com/terraform/language/modules/develop/refactoring",
+    "https://raw.githubusercontent.com/hashicorp/terraform-provider-aws/v6.25.0/website/docs/r/vpc.html.markdown",
+    "https://raw.githubusercontent.com/hashicorp/terraform-provider-aws/v6.25.0/website/docs/index.html.markdown",
+    "https://developer.hashicorp.com/terraform/cli/commands/plan",
+    "https://developer.hashicorp.com/terraform/cli/commands/show",
+    "https://developer.hashicorp.com/terraform/cli/commands/apply",
+    "https://developer.hashicorp.com/terraform/language/import/generating-configuration"
+  ],
+  "limitations": [
+    "No AWS resource reads, import plan, apply or state adoption",
+    "No provider authentication or allowed-account guard execution",
+    "Local validation does not establish an import-only plan or unchanged workload health",
+    "Mermaid not rendered"
+  ]
+}

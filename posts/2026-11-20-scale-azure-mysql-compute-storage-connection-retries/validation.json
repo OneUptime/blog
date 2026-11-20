@@ -1,0 +1,30 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-20",
+  "runtimeTestsPerformed": true,
+  "infrastructureDeploymentPerformed": false,
+  "sources": [
+    "https://learn.microsoft.com/en-us/azure/mysql/flexible-server/concepts-service-tiers-storage",
+    "https://learn.microsoft.com/en-us/azure/mysql/flexible-server/concepts-server-parameters",
+    "https://learn.microsoft.com/en-us/azure/architecture/best-practices/transient-faults",
+    "https://dev.mysql.com/doc/relnotes/connector-python/en/news-9-1-0.html",
+    "https://dev.mysql.com/doc/connector-python/en/connector-python-connectargs.html",
+    "https://github.com/mysql/mysql-connector-python/blob/9.1.0/mysql-connector-python/lib/mysql/connector/errorcode.py",
+    "https://github.com/mysql/mysql-connector-python/blob/9.1.0/mysql-connector-python/lib/mysql/connector/network.py",
+    "https://learn.microsoft.com/en-us/azure/mysql/flexible-server/how-to-troubleshoot-connectivity-issues",
+    "https://learn.microsoft.com/en-us/azure/architecture/patterns/retry",
+    "https://learn.microsoft.com/en-us/azure/mysql/flexible-server/how-to-manage-server-portal"
+  ],
+  "tests": [
+    "Executed extracted Python helper with installed Connector/Python 9.1.0 and mocked connection boundary: nine success/failure sequences plus missing environment configuration",
+    "Verified four-attempt maximum, backoff bounds, immediate auth/capacity/TLS failures, original exception propagation and verified TLS options",
+    "Mermaid six nodes and five edges structurally checked",
+    "Generated social image visually inspected; title legible and unclipped"
+  ],
+  "limitations": [
+    "No Azure scaling, DNS resolution, TLS handshake, real MySQL connection or transaction performed",
+    "Connection and sleep calls mocked; tests exercise helper control flow with real driver error classes",
+    "No pool integration or production recovery time measured",
+    "Mermaid structurally checked, not rendered"
+  ]
+}

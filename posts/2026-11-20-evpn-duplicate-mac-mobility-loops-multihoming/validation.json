@@ -1,0 +1,28 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-20",
+  "runtimeTestsPerformed": false,
+  "infrastructureDeploymentPerformed": false,
+  "tests": [
+    "Three shell blocks passed bash syntax checks",
+    "FRR10.2.1 MAC/duplicate/ES/ES-EVI commands checked in tagged source",
+    "RFC7432 mobility/ESI distinctions and Cumulus5.10 detection/freeze/multihoming limitations reviewed",
+    "Mermaid six nodes/five edges structurally checked",
+    "Generated social image visually inspected without clipping"
+  ],
+  "sources": [
+    "https://www.rfc-editor.org/rfc/rfc7432.html",
+    "https://raw.githubusercontent.com/FRRouting/frr/frr-10.2.1/bgpd/bgp_evpn_vty.c",
+    "https://raw.githubusercontent.com/FRRouting/frr/frr-10.2.1/zebra/zebra_vty.c",
+    "https://www.rfc-editor.org/rfc/rfc7432.html#section-15",
+    "https://docs.nvidia.com/networking-ethernet-software/cumulus-linux-510/Network-Virtualization/Ethernet-Virtual-Private-Network-EVPN/EVPN-Multihoming/",
+    "https://raw.githubusercontent.com/iproute2/iproute2/v6.12.0/man/man8/bridge.8",
+    "https://docs.nvidia.com/networking-ethernet-software/cumulus-linux-510/Network-Virtualization/Ethernet-Virtual-Private-Network-EVPN/EVPN-Enhancements/"
+  ],
+  "limitations": [
+    "No FRR CLI parser or live mobility/duplicate-detection test",
+    "Timeline is illustrative, not measured; no physical cabling or loop verification",
+    "Platform detection behavior is explicitly scoped to cited Cumulus5.10 example",
+    "Mermaid structurally checked, not rendered"
+  ]
+}

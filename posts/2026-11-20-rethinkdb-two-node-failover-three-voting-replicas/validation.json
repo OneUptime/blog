@@ -1,0 +1,32 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-20",
+  "runtimeTestsPerformed": true,
+  "infrastructureDeploymentPerformed": false,
+  "versions": {
+    "python": "3.11.13",
+    "rethinkdbPythonDriver": "2.4.10.post1"
+  },
+  "checks": [
+    "All Python examples parsed and audit helper matches tested file",
+    "Majority calculations for one through five voters and non-voting exclusion tested",
+    "Actual driver constructed config/status/reconfigure preview/application/readiness queries",
+    "Official failover requirements and reconfigure side effects reviewed",
+    "Mermaid six-node four-edge structure checked",
+    "Image visually inspected; readable without clipping"
+  ],
+  "limitations": [
+    "No cluster, topology change, backfill or live failover",
+    "Arithmetic helper does not validate actual readiness or simulate elections",
+    "No client reconnection, data preservation, availability timing or server-side dry run tested",
+    "No Mermaid browser rendering"
+  ],
+  "sources": [
+    "https://rethinkdb.com/docs/failover/",
+    "https://rethinkdb.com/docs/sharding-and-replication/",
+    "https://rethinkdb.com/api/python/config/",
+    "https://rethinkdb.com/api/python/status/",
+    "https://rethinkdb.com/docs/system-tables/",
+    "https://rethinkdb.com/api/python/reconfigure/"
+  ]
+}

@@ -1,0 +1,31 @@
+{
+  "status": "validated",
+  "date": "2026-11-20",
+  "runtimeTestsPerformed": false,
+  "localCodeTestsPerformed": true,
+  "versions": {
+    "server documentation scope": "Enterprise 8.2",
+    "tomb-raider-unmark-threads introduced": "8.1.2"
+  },
+  "tests": [
+    "Bash syntax passed",
+    "Local Bash function stub: all six asinfo calls preserve node order and exact arguments",
+    "Injected failure on second stub call exits with status 7 and skips later nodes",
+    "Source review: age versus period versus sleep units, removal conditions, low-write storage retention",
+    "1280x720 social image generated and visually inspected"
+  ],
+  "limitations": [
+    "Stub testing exercises shell orchestration only; no asinfo executable or Aerospike server used",
+    "No tombstone age, storage reclamation, XDR delivery, or tuning performance measured"
+  ],
+  "sources": [
+    "https://aerospike.com/docs/database/learn/architecture/durable-deletes/",
+    "https://support.aerospike.com/hc/en-us/articles/49939152086555-How-to-recover-tombstones-faster",
+    "https://aerospike.com/docs/database/reference/info/",
+    "https://aerospike.com/docs/database/reference/metrics/",
+    "https://aerospike.com/docs/database/reference/config/",
+    "https://aerospike.com/docs/database/reference/config/#tomb-raider-unmark-threads",
+    "https://aerospike.com/docs/database/reference/logs/",
+    "https://support.aerospike.com/hc/en-us/articles/49938439804059-Durable-delete-tombstones-never-removed-in-system-where-load-is-extremely-low"
+  ]
+}

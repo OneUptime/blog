@@ -1,0 +1,31 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-20",
+  "runtimeTestsPerformed": true,
+  "infrastructureDeploymentPerformed": false,
+  "tests": [
+    "Loaded official Az.Automation 1.11.2 with Az.Accounts 5.3.0 under PowerShell 7.4.6 and inspected import/export/publish parameter metadata",
+    "Confirmed Export slot ValidateSet includes Draft and Published",
+    "Nine local comparison cases: four BOM/newline equivalences accepted; five content changes rejected",
+    "Four published PowerShell blocks parsed; comparison helper matches tested implementation",
+    "Mermaid eight nodes/seven edges structurally checked",
+    "Generated social image visually reviewed: title readable and unclipped"
+  ],
+  "sources": [
+    "https://learn.microsoft.com/en-us/azure/automation/manage-runbooks",
+    "https://learn.microsoft.com/en-us/azure/automation/source-control-integration",
+    "https://www.powershellgallery.com/packages/Az.Automation/1.11.2",
+    "https://learn.microsoft.com/en-us/powershell/module/az.accounts/get-azcontext",
+    "https://learn.microsoft.com/en-us/powershell/module/microsoft.powershell.utility/get-filehash?view=powershell-7.4",
+    "https://learn.microsoft.com/en-us/dotnet/api/system.management.automation.language.parser.parsefile?view=powershellsdk-7.4.0",
+    "https://learn.microsoft.com/en-us/powershell/module/az.automation/import-azautomationrunbook?view=azps-16.5.0",
+    "https://learn.microsoft.com/en-us/powershell/module/az.automation/export-azautomationrunbook?view=azps-16.5.0",
+    "https://learn.microsoft.com/en-us/powershell/module/az.automation/publish-azautomationrunbook?view=azps-16.5.0"
+  ],
+  "limitations": [
+    "No Azure authentication, import, export, publish, source sync or job execution performed",
+    "Content checks are not an atomic compare-and-publish API and require coordination of all writers",
+    "Cloud runbook runtime and dependency compatibility not tested",
+    "Mermaid not rendered"
+  ]
+}

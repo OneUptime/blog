@@ -1,0 +1,30 @@
+{
+  "status": "validated",
+  "date": "2026-11-20",
+  "runtimeTestsPerformed": false,
+  "localCodeTestsPerformed": true,
+  "versions": {
+    "Java client": "10.5.0 (jdk8 artifact)",
+    "javac": "17.0.16"
+  },
+  "tests": [
+    "Java helper compiled against actual pinned client jar",
+    "Local assertions: copied policy, expiration -2, UPDATE_ONLY, inherited timeout, original policy unchanged, non-expiring Record TTL conversion",
+    "Bash syntax checked",
+    "Metadata and article self-review",
+    "1280x720 social image generated and visually reviewed; readable title with no clipping"
+  ],
+  "limitations": [
+    "No Aerospike server available; no database writes, expiry timing, namespace configuration, or read-touch behavior executed",
+    "Acceptance procedure is source-verified guidance, not a live test report"
+  ],
+  "sources": [
+    "https://github.com/aerospike/aerospike-client-java/blob/10.5.0/client/src/com/aerospike/client/policy/WritePolicy.java",
+    "https://aerospike.com/docs/database/manage/namespace/retention/",
+    "https://aerospike.com/docs/database/reference/config/",
+    "https://github.com/aerospike/aerospike-client-java/blob/10.5.0/client/src/com/aerospike/client/policy/RecordExistsAction.java",
+    "https://github.com/aerospike/aerospike-client-java/blob/10.5.0/client/src/com/aerospike/client/Record.java",
+    "https://github.com/aerospike/aerospike-client-java/blob/10.5.0/client/src/com/aerospike/client/policy/Policy.java",
+    "https://aerospike.com/docs/database/reference/info/"
+  ]
+}

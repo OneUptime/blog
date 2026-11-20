@@ -1,0 +1,25 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-20",
+  "runtimeTestsPerformed": true,
+  "infrastructureDeploymentPerformed": false,
+  "tests": [
+    "Python 3.11.13 wrapper tested successful command, exit code 7, missing executable status 127 and refusal to reuse evidence directory",
+    "Wrapper timed actual local restic 0.18.1 explicit snapshot subfolder restore; 1000 restored paths and SHA-256 hashes matched fixture manifest",
+    "Published wrapper matches executed source; shell syntax and hypothetical arithmetic checked",
+    "Mermaid six nodes/five edges structurally checked",
+    "Generated social image visually inspected: readable and unclipped title"
+  ],
+  "sources": [
+    "https://docs.aws.amazon.com/wellarchitected/latest/reliability-pillar/rel_planning_for_recovery_objective_defined_recovery.html",
+    "https://docs.python.org/3.11/library/time.html#time.perf_counter",
+    "https://docs.python.org/3.11/library/subprocess.html#subprocess.run",
+    "https://restic.readthedocs.io/en/v0.18.1/050_restore.html"
+  ],
+  "limitations": [
+    "No production RTO, remote filesystem, large-scale metadata throughput, Windows permission restore or application recovery test",
+    "Synthetic local restore duration is not presented as a capacity benchmark",
+    "Wrapper does not enforce deadlines and interrupted runs may lack final evidence",
+    "Mermaid not rendered"
+  ]
+}

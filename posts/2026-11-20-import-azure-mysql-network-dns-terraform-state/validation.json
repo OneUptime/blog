@@ -1,0 +1,34 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-20",
+  "runtimeTestsPerformed": false,
+  "infrastructureDeploymentPerformed": false,
+  "sources": [
+    "https://developer.hashicorp.com/terraform/cli/commands/import",
+    "https://developer.hashicorp.com/terraform/cli/commands/show",
+    "https://github.com/hashicorp/terraform-provider-azurerm/blob/v5.14.0/website/docs/index.html.markdown",
+    "https://github.com/hashicorp/terraform-provider-azurerm/blob/v5.14.0/website/docs/r/mysql_flexible_server.html.markdown",
+    "https://github.com/hashicorp/terraform-provider-azurerm/blob/v5.14.0/website/docs/r/virtual_network.html.markdown",
+    "https://github.com/hashicorp/terraform-provider-azurerm/blob/v5.14.0/website/docs/r/subnet.html.markdown",
+    "https://github.com/hashicorp/terraform-provider-azurerm/blob/v5.14.0/website/docs/r/private_dns_zone.html.markdown",
+    "https://github.com/hashicorp/terraform-provider-azurerm/blob/v5.14.0/website/docs/r/private_dns_zone_virtual_network_link.html.markdown",
+    "https://developer.hashicorp.com/terraform/language/import/generating-configuration",
+    "https://developer.hashicorp.com/terraform/language/meta-arguments/lifecycle",
+    "https://developer.hashicorp.com/terraform/language/import/single-resource"
+  ],
+  "tests": [
+    "Terraform 1.11.4 init -backend=false installed AzureRM 5.14.0, reported signed by HashiCorp",
+    "Both HCL blocks parsed and formatted by Terraform fmt; article updated with formatted output",
+    "Loaded actual provider schema locally; verified five resource types, DNS link private_dns_zone_id, write-only password field and registration setting",
+    "Reviewed five import ID shapes against pinned official resource docs; reviewed inline/standalone subnet conflict and replacement-sensitive server IDs",
+    "Two Bash blocks passed bash -n",
+    "Mermaid structural check: five nodes and five edges",
+    "Social image visually reviewed: readable, no clipping"
+  ],
+  "limitations": [
+    "No Azure credentials, API reads, configuration generation, import, plan or apply performed",
+    "No full terraform validate: imported resource blocks must first be generated from real resources",
+    "Provider schema and HCL checks do not establish a no-change plan for any real deployment",
+    "Mermaid not rendered"
+  ]
+}

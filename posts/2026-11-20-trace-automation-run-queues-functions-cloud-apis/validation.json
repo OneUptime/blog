@@ -1,0 +1,31 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-20",
+  "runtimeTestsPerformed": true,
+  "infrastructureDeploymentPerformed": false,
+  "tests": [
+    "Boto3 1.40.76 producer SendMessage metadata checked with botocore Stubber",
+    "Two records with separate run IDs and one invocation ID retain separate API request IDs",
+    "UnauthorizedOperation logged with request ID and re-raised",
+    "Two malformed UUID inputs rejected before client call",
+    "Published Python exactly matches tested helpers",
+    "Mermaid eight nodes/eight edges structurally checked",
+    "Generated image visually reviewed and unclipped"
+  ],
+  "sources": [
+    "https://docs.aws.amazon.com/AWSSimpleQueueService/latest/SQSDeveloperGuide/sqs-message-metadata.html",
+    "https://docs.aws.amazon.com/lambda/latest/dg/with-sqs.html",
+    "https://docs.aws.amazon.com/lambda/latest/dg/python-context.html",
+    "https://boto3.amazonaws.com/v1/documentation/api/latest/guide/error-handling.html",
+    "https://docs.aws.amazon.com/AmazonCloudWatch/latest/logs/CWL_AnalyzeLogData-discoverable-fields.html",
+    "https://docs.aws.amazon.com/awscloudtrail/latest/userguide/cloudtrail-event-reference-record-contents.html",
+    "https://opentelemetry.io/docs/concepts/context-propagation/"
+  ],
+  "limitations": [
+    "No AWS calls, SQS delivery or Lambda deployment",
+    "Logs Insights query not executed",
+    "No live CloudTrail matching, OpenTelemetry propagation or SDK internal retry tracing tested",
+    "Helper is not a complete batch handler",
+    "Mermaid not rendered"
+  ]
+}

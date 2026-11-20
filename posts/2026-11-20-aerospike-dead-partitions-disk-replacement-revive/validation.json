@@ -1,0 +1,36 @@
+{
+  "status": "validated",
+  "date": "2026-11-20",
+  "runtimeTestsPerformed": false,
+  "localCodeTestsPerformed": false,
+  "versions": {
+    "server scope": "Enterprise 8.2",
+    "asadm source": "5.2.0",
+    "auto-revive erased-device safeguard release": "7.1.0.9 AER-6772"
+  },
+  "tests": [
+    "Bash syntax passed",
+    "Parsed tagged revive controller to verify namespace argument, node dispatch, and required recluster follow-up",
+    "Reviewed unavailable versus dead partitions, storage-loss recovery boundary, and auto-revive exclusion",
+    "Reviewed writer fencing through restore, controlled verification traffic, then ordinary writers",
+    "1280x720 social image generated and visually inspected"
+  ],
+  "limitations": [
+    "No Aerospike connection, disk operation, revival, restoration, or recovery test was performed",
+    "Interactive commands were source-checked only",
+    "A zero dead-partition count is not a data-completeness check"
+  ],
+  "sources": [
+    "https://aerospike.com/docs/database/reference/metrics/",
+    "https://aerospike.com/docs/database/tools/asadm/live-mode/",
+    "https://aerospike.com/docs/database/reference/info/",
+    "https://aerospike.com/docs/database/reference/logs/",
+    "https://aerospike.com/docs/database/learn/strong-consistency/",
+    "https://aerospike.com/docs/database/reference/info/#revive",
+    "https://github.com/aerospike/aerospike-admin/blob/5.2.0/lib/live_cluster/manage_controller.py",
+    "https://aerospike.com/docs/database/manage/cluster/consistency/",
+    "https://aerospike.com/docs/database/reference/config/#auto-revive",
+    "https://aerospike.com/docs/database/release/7-1-0-9/",
+    "https://support.aerospike.com/hc/en-us/articles/49938423911963-How-to-add-replace-and-remove-disks"
+  ]
+}

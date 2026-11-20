@@ -1,0 +1,25 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-20",
+  "runtimeTestsPerformed": false,
+  "infrastructureDeploymentPerformed": false,
+  "sources": [
+    "https://docs.cloud.google.com/sql/docs/postgres/iam-logins",
+    "https://www.postgresql.org/docs/17/functions-info.html",
+    "https://docs.cloud.google.com/sql/docs/postgres/add-manage-iam-users",
+    "https://www.postgresql.org/docs/17/sql-grant.html",
+    "https://www.postgresql.org/docs/17/role-membership.html",
+    "https://www.postgresql.org/docs/17/ddl-rowsecurity.html",
+    "https://www.postgresql.org/docs/17/sql-alterdefaultprivileges.html"
+  ],
+  "tests": [
+    "Four SQL blocks parsed with pglast 7.24 / PostgreSQL 17.7 parser; statement counts [1, 7, 1, 1]",
+    "Official Cloud SQL IAM identity mapping and PostgreSQL 17 privileges, role inheritance and row security reviewed",
+    "Mermaid structurally checked: seven nodes and six edges; not rendered",
+    "Generated social image visually reviewed; readable and unclipped"
+  ],
+  "limitations": [
+    "No Cloud SQL IAM login, role creation, grants, query execution or policy tests performed",
+    "Existing privileges, migration ownership and provider-admin authority require environment-specific verification"
+  ]
+}

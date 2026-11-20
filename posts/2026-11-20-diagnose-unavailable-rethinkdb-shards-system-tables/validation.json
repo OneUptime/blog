@@ -1,0 +1,32 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-20",
+  "runtimeTestsPerformed": true,
+  "infrastructureDeploymentPerformed": false,
+  "versions": {
+    "python": "3.11.13",
+    "rethinkdbPythonDriver": "2.4.10.post1"
+  },
+  "checks": [
+    "All Python examples parsed",
+    "Pinned driver constructed UUID config/status, job filter, table/server stats and server-status queries",
+    "Sample stats cases distinguished missing rows, error records and valid zero rates",
+    "Official system-table, jobs, stats and status schemas reviewed",
+    "Mermaid six-node five-edge structure checked",
+    "Image visually reviewed; readable without clipping"
+  ],
+  "limitations": [
+    "No live cluster observations, administrative permission test or diagnostic query execution",
+    "No resource bottleneck, replica state transition or recovery verified",
+    "Snapshots described are separate observations, not atomic state",
+    "No Mermaid browser rendering"
+  ],
+  "sources": [
+    "https://rethinkdb.com/docs/system-tables/",
+    "https://rethinkdb.com/api/python/status/",
+    "https://rethinkdb.com/docs/failover/",
+    "https://rethinkdb.com/docs/system-jobs/",
+    "https://rethinkdb.com/docs/system-stats/",
+    "https://rethinkdb.com/api/python/wait/"
+  ]
+}

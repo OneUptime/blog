@@ -1,0 +1,29 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-20",
+  "runtimeTestsPerformed": true,
+  "infrastructureDeploymentPerformed": false,
+  "sources": [
+    "https://learn.microsoft.com/en-us/azure/mysql/flexible-server/concepts-read-replicas",
+    "https://github.com/sysown/proxysql/releases/tag/v3.0.12",
+    "https://proxysql.com/documentation/ssl-support/",
+    "https://github.com/sysown/proxysql/blob/v3.0.12/lib/mysql_connection.cpp",
+    "https://github.com/sysown/proxysql/blob/v3.0.12/include/ProxySQL_Admin_Tables_Definitions.h",
+    "https://proxysql.com/documentation/backend-server-configuration/",
+    "https://proxysql.com/documentation/users-configuration/",
+    "https://proxysql.com/documentation/main-runtime/multi-layer-configuration"
+  ],
+  "tests": [
+    "Executed three SQL blocks against SQLite tables extracted from ProxySQL v3.0.12 official schema; verified two destinations, CA rows, user settings and preserved synthetic password",
+    "Verified repeated INSERT fails with duplicate key; simulated runtime snapshot only, no LOAD implementation",
+    "Source-reviewed LOAD/SAVE commands and TLS limitations; no inferred VERIFY_IDENTITY equivalence",
+    "Mermaid structural check passed: six nodes and six edges",
+    "Social image visually reviewed: readable, no clipping"
+  ],
+  "limitations": [
+    "No ProxySQL process or Azure database used",
+    "No TLS handshake, certificate rejection, authentication, replica lag or failover test performed",
+    "SQLite fixture does not validate ProxySQL runtime behavior",
+    "Mermaid structurally checked, not rendered"
+  ]
+}

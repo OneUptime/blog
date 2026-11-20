@@ -1,0 +1,30 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-20",
+  "runtimeTestsPerformed": true,
+  "infrastructureDeploymentPerformed": false,
+  "tests": [
+    "Python 3.11.13 local macOS demonstration confirmed removed name, zero hard-link count, readable open descriptor and final descriptor closure",
+    "Published Python matches executed fixture and parses",
+    "Four read-only shell blocks pass Bash syntax; Linux and OpenZFS 2.3 flags/properties source-reviewed",
+    "Mermaid five nodes/four edges structurally checked",
+    "Generated image visually inspected: title readable and unclipped"
+  ],
+  "sources": [
+    "https://man7.org/linux/man-pages/man1/du.1.html",
+    "https://man7.org/linux/man-pages/man1/df.1.html",
+    "https://man7.org/linux/man-pages/man8/findmnt.8.html",
+    "https://man7.org/linux/man-pages/man2/unlink.2.html",
+    "https://man7.org/linux/man-pages/man8/lsof.8.html",
+    "https://docs.python.org/3.11/library/os.html#os.unlink",
+    "https://openzfs.github.io/openzfs-docs/man/v2.3/7/zfsprops.7.html",
+    "https://openzfs.github.io/openzfs-docs/man/v2.3/8/zfs-get.8.html",
+    "https://man7.org/linux/man-pages/man8/tune2fs.8.html"
+  ],
+  "limitations": [
+    "No free-space reclamation measurement, Linux command execution, remote filesystem, OpenZFS or ext filesystem runtime test",
+    "No snapshot, quota, reservation or existing file changes performed",
+    "Local descriptor demonstration is not a Windows or NFS deletion test",
+    "Mermaid not rendered"
+  ]
+}

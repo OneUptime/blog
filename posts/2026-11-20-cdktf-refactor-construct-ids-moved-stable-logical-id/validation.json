@@ -1,0 +1,33 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-20",
+  "runtimeTestsPerformed": true,
+  "cloudInfrastructureDeploymentPerformed": false,
+  "localStateWritePerformed": true,
+  "tests": [
+    "All three article TypeScript variants exactly match executed fixtures; each compiled with tsc and synthesized by CDKTF0.21.0 App.synth via ts-node",
+    "Terraform1.11.4 with Random3.6.3 applied initial local random_pet.legacy fixture",
+    "Unmapped rename plan JSON asserted delete/create; stable override plan asserted no-op; moved plan asserted no-op with previous_address random_pet.legacy",
+    "Applied only mapped saved plan; pet output ID remained identical; unmapped destructive plan not applied",
+    "Shell syntax and six-node six-edge Mermaid structure passed",
+    "Generated1280x720 social image visually inspected, readable and unclipped"
+  ],
+  "limitations": [
+    "Local Random provider fixture only; no cloud resources or remote backends",
+    "Synthesis invoked configured app through ts-node, not repeated CLI wrapper calls",
+    "Lab initial apply used auto-approve; article retains interactive confirmation",
+    "No cross-state migration, indexed-instance moves, provider-version changes or manual state-mv executed",
+    "Mermaid not browser-rendered; Node24.1.0, TS5.8.3, ts-node10.9.2, constructs10.8.1"
+  ],
+  "sources": [
+    "https://developer.hashicorp.com/terraform/cdktf",
+    "https://developer.hashicorp.com/terraform/cli/state/resource-addressing",
+    "https://github.com/hashicorp/terraform-provider-random/blob/v3.6.3/docs/resources/pet.md",
+    "https://github.com/hashicorp/terraform-cdk/blob/v0.21.0/packages/cdktf/lib/terraform-element.ts",
+    "https://github.com/hashicorp/terraform-cdk/blob/v0.21.0/packages/cdktf/lib/terraform-resource.ts",
+    "https://developer.hashicorp.com/terraform/language/block/moved",
+    "https://developer.hashicorp.com/terraform/cli/commands/show",
+    "https://developer.hashicorp.com/terraform/language/modules/develop/refactoring",
+    "https://developer.hashicorp.com/terraform/cli/commands/state/mv"
+  ]
+}

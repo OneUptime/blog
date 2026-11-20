@@ -1,0 +1,27 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-20",
+  "runtimeTestsPerformed": false,
+  "localCodeTestsPerformed": true,
+  "tests": [
+    "Reviewed official Windows Server2025 DC locator, SRV discovery, Netlogon file, DCDiag registration and Test-NetConnection documentation; RFC2782 fields checked",
+    "Actual local BIND9.10.6 nslookup queried loopback SRV fixtures for domain-wide and site-specific names; expected type33, target, priority0, weight100 and port389 confirmed",
+    "Six-node five-edge Mermaid chain checked structurally",
+    "Generated 1280x720 image visually inspected; complete title readable"
+  ],
+  "limitations": [
+    "No Active Directory domain, Windows or PowerShell runtime available; DCDiag and Test-NetConnection source-reviewed only",
+    "Synthetic DNS fixture is not a test of Netlogon registration, DNS replication, DC locator selection, authentication or domain joining",
+    "No live DNS changes or controller restarts performed",
+    "Mermaid not browser-rendered"
+  ],
+  "sources": [
+    "https://learn.microsoft.com/en-us/windows-server/identity/ad-ds/manage/dc-locator",
+    "https://learn.microsoft.com/en-us/troubleshoot/windows-server/networking/verify-srv-dns-records-have-been-created",
+    "https://www.rfc-editor.org/rfc/rfc2782.html",
+    "https://learn.microsoft.com/en-us/openspecs/windows_protocols/ms-adts/7fcdce70-5205-44d6-9c3a-260e616a2f04",
+    "https://learn.microsoft.com/en-us/windows-server/administration/windows-commands/dcdiag",
+    "https://learn.microsoft.com/en-us/windows-server/identity/ad-ds/manage/troubleshoot/verify-dns-functionality-to-support-directory-replication",
+    "https://learn.microsoft.com/en-us/powershell/module/nettcpip/test-netconnection?view=windowsserver2025-ps"
+  ]
+}

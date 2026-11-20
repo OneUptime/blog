@@ -1,0 +1,27 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-20",
+  "runtimeTestsPerformed": false,
+  "infrastructureDeploymentPerformed": false,
+  "sources": [
+    "https://learn.microsoft.com/en-us/azure/mysql/flexible-server/concepts-monitor-mysql-reference",
+    "https://learn.microsoft.com/en-us/azure/mysql/flexible-server/concepts-read-replicas",
+    "https://dev.mysql.com/doc/refman/8.0/en/show-replica-status.html",
+    "https://dev.mysql.com/doc/refman/8.0/en/performance-schema-replication-applier-status-by-worker-table.html",
+    "https://dev.mysql.com/doc/refman/8.0/en/information-schema-innodb-trx-table.html",
+    "https://learn.microsoft.com/en-us/azure/mysql/how-to-troubleshoot-replication-latency"
+  ],
+  "tests": [
+    "Three SQL statements parsed with sqlglot 28.0.0 MySQL dialect: Show, Select, Select",
+    "Mermaid structural check: six declared nodes and five edges with resolved endpoints",
+    "Reviewed Azure storage-based replication receiver-field caveat and service metric names",
+    "Checked MySQL 8.0 transaction and worker columns, permissions, and status limitations",
+    "Social image visually reviewed; readable without clipping"
+  ],
+  "limitations": [
+    "No live database statements or Azure metrics queried",
+    "No scaling, workload throttling, replication change or benchmark performed",
+    "Mermaid structurally checked, not rendered",
+    "Syntax and documentation checks do not prove production permissions, field exposure or root cause"
+  ]
+}

@@ -1,0 +1,29 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-20",
+  "runtimeTestsPerformed": true,
+  "infrastructureDeploymentPerformed": false,
+  "tests": [
+    "Exact article Python collector executed against three CDKTF0.21.0 resource-free synthesized/initialized stacks with Terraform1.11.4",
+    "Observed plan exit codes0,1,2 in sequence; third stack still planned after failure; collector exit1 and complete Markdown/JSON/logs produced",
+    "Supplying required input produced codes0,2,2 and collector exit0, preserving changes-versus-errors distinction",
+    "Article script exactly matches tested helper; Python compile, Bash syntax and six-node six-edge Mermaid structural checks passed",
+    "Generated1280x720 social image visually reviewed: readable full title, no clipping"
+  ],
+  "limitations": [
+    "No apply, cloud providers, remote backends, CI artifact service or stack dependency orchestration tested",
+    "Local Python3.9.6/macOS arm64; docs reference Python3.13 APIs available in tested version",
+    "Collector assumes approved pre-initialized directories and shared authorized environment; per-stack credential switching not implemented",
+    "Process termination can prevent final report; no total runtime timeout or recovery tested",
+    "Mermaid not browser-rendered"
+  ],
+  "sources": [
+    "https://developer.hashicorp.com/terraform/cdktf",
+    "https://github.com/hashicorp/terraform-cdk/blob/v0.21.0/packages/cdktf-cli/src/bin/cmds/diff.ts",
+    "https://developer.hashicorp.com/terraform/cli/commands/plan",
+    "https://github.com/hashicorp/terraform-cdk/blob/v0.21.0/packages/cdktf/lib/manifest.ts",
+    "https://docs.python.org/3.13/library/subprocess.html",
+    "https://developer.hashicorp.com/terraform/cli/config/environment-variables#tf_in_automation",
+    "https://developer.hashicorp.com/terraform/internals/json-format"
+  ]
+}

@@ -1,0 +1,29 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-20",
+  "runtimeTestsPerformed": true,
+  "infrastructureDeploymentPerformed": false,
+  "tests": [
+    "Python3.11.13 driver2.4.10.post1 import and metadata inspection passed",
+    "pip check passed",
+    "Restore --help reproduced AssertionError in 2.4.10.post1; exploratory 2.4.9,2.4.8,2.4.7 also failed",
+    "All Bash blocks passed bash -n",
+    "Mermaid structure checked: six nodes, five edges",
+    "Social image visually reviewed: readable and unclipped"
+  ],
+  "limitations": [
+    "No server executable launched",
+    "No database connection or archive restore",
+    "No compatible replacement driver certified",
+    "Mermaid not rendered"
+  ],
+  "sources": [
+    "https://github.com/rethinkdb/rethinkdb/blob/v2.4.4/src/clustering/administration/main/command_line.cc",
+    "https://docs.python.org/3.11/library/venv.html",
+    "https://pip.pypa.io/en/stable/user_guide/",
+    "https://rethinkdb.com/docs/install-drivers/python/",
+    "https://pypi.org/project/rethinkdb/2.4.10.post1/",
+    "https://github.com/rethinkdb/rethinkdb-python/blob/v2.4.10.post1/rethinkdb/utils_common.py",
+    "https://rethinkdb.com/docs/backup/"
+  ]
+}

@@ -1,0 +1,30 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-20",
+  "runtimeTestsPerformed": true,
+  "infrastructureDeploymentPerformed": false,
+  "sources": [
+    "https://www.rfc-editor.org/rfc/rfc6901",
+    "https://kubernetes.io/docs/concepts/overview/working-with-objects/labels/#syntax-and-character-set",
+    "https://kubernetes.io/docs/concepts/overview/working-with-objects/annotations/#syntax-and-character-set",
+    "https://docs.python.org/3.11/library/json.html",
+    "https://github.com/stefankoegl/python-json-patch/blob/v1.33/jsonpatch.py",
+    "https://www.rfc-editor.org/rfc/rfc6902",
+    "https://kubernetes.io/docs/reference/kubectl/generated/kubectl_patch/",
+    "https://github.com/kubernetes/apimachinery/blob/v0.35.0/pkg/util/validation/validation.go"
+  ],
+  "tests": [
+    "Executed all three published Python3.11 snippets with jsonpatch1.33",
+    "Thirteen generic token round trips resolved original map keys; five nonstring inputs rejected",
+    "Two missing/null annotation parent cases failed as expected; empty, existing-owned and sibling maps patched correctly",
+    "Mutated ConfigMap passed Kubernetes v1.35.0 OpenAPI shape check; dry-run command passed bash -n",
+    "All four table keys checked with actual apimachineryv0.35.0 IsQualifiedName; tilde-containing keys rejected",
+    "Social image generated and visually reviewed"
+  ],
+  "limitations": [
+    "No kubectl command submitted to a cluster or admission webhook invoked",
+    "Local patch behavior does not prove live authorization, resource-version concurrency or Kubernetes semantic validation",
+    "Example intentionally overwrites the owned annotation when present; default-only behavior requires a separate presence check",
+    "Generic pointer fixtures include keys intentionally invalid for Kubernetes metadata"
+  ]
+}

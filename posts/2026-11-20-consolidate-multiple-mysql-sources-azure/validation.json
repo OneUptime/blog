@@ -1,0 +1,26 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-20",
+  "runtimeTestsPerformed": false,
+  "infrastructureDeploymentPerformed": false,
+  "sources": [
+    "https://dev.mysql.com/doc/refman/8.0/en/replication-multi-source.html",
+    "https://learn.microsoft.com/en-us/azure/mysql/flexible-server/how-to-data-in-replication",
+    "https://learn.microsoft.com/en-us/azure/mysql/flexible-server/concepts-data-in-replication",
+    "https://dev.mysql.com/doc/refman/8.0/en/create-table.html",
+    "https://dev.mysql.com/doc/refman/8.0/en/union.html"
+  ],
+  "tests": [
+    "Two SQL examples parsed with sqlglot 28.0.0 MySQL dialect as Create and Union",
+    "Mermaid structural check: seven declared nodes, six edges, all endpoints resolved",
+    "Azure procedure signatures reviewed: no documented named-channel parameter; no blanket unsupported claim",
+    "Source identity, replay, deletes, per-source cutover and permissions reviewed",
+    "Generated social image visually inspected; readable without clipping"
+  ],
+  "limitations": [
+    "No SQL execution, Azure connection or migration performed",
+    "No CDC connector or multi-source service capability tested",
+    "Mermaid structure checked, not rendered",
+    "Parsing cannot establish data correctness or production permissions"
+  ]
+}

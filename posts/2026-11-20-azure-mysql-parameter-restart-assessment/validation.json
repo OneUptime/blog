@@ -1,0 +1,31 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-20",
+  "runtimeTestsPerformed": true,
+  "infrastructureDeploymentPerformed": false,
+  "sources": [
+    "https://learn.microsoft.com/en-us/azure/mysql/flexible-server/concepts-server-parameters",
+    "https://dev.mysql.com/doc/refman/8.0/en/using-system-variables.html",
+    "https://learn.microsoft.com/en-us/cli/azure/mysql/flexible-server/parameter?view=azure-cli-latest",
+    "https://github.com/Azure/azure-cli/blob/azure-cli-2.80.0/src/azure-cli/azure/cli/command_modules/mysql/commands.py",
+    "https://learn.microsoft.com/en-us/rest/api/mysql/configurations/get?view=rest-mysql-2024-12-30",
+    "https://learn.microsoft.com/en-us/azure/mysql/flexible-server/how-to-configure-server-parameters-portal",
+    "https://learn.microsoft.com/en-us/azure/mysql/flexible-server/how-to-restart-server-portal",
+    "https://github.com/Azure/azure-cli/blob/azure-cli-2.80.0/src/azure-cli/azure/cli/command_modules/mysql/custom.py"
+  ],
+  "tests": [
+    "Three Bash snippets passed bash -n",
+    "JMESPath 1.0.1 synthetic tests preserved string-valued dynamic/pending flags, represented missing metadata as null, and handled empty lists",
+    "MySQL runtime inspection parsed as SELECT with sqlglot 28.0.0",
+    "Reviewed CLI 2.80.0 actual MySQL module show/list registration and standard restart implementation; no forced failover implied",
+    "Reviewed saved/global/session distinction and controlled traffic before resuming writers",
+    "Mermaid six declared nodes/five edges structurally checked",
+    "Social image visually reviewed: readable without clipping"
+  ],
+  "limitations": [
+    "No Azure CLI operation, parameter update or restart executed",
+    "No database query, connection pool refresh or application recovery test performed",
+    "Synthetic projection tests do not confirm live server metadata",
+    "Mermaid not rendered"
+  ]
+}

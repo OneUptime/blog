@@ -1,0 +1,29 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-20",
+  "runtimeTestsPerformed": true,
+  "infrastructureDeploymentPerformed": false,
+  "tests": [
+    "Official rclone v1.72.0 macOS arm64 archive verified against published SHA-256 checksum; version executed",
+    "Complete published lab executed locally with Python 3.11.13: dry run preserved originals, copy retained deleted-source file, replacement history preserved original bytes",
+    "Separate disposable fixture with --max-delete 0 rejected destination deletion and returned failure",
+    "Published Bash matches executed lab and passes syntax checking",
+    "Six-node/five-edge Mermaid structurally checked; generated image visually inspected and readable"
+  ],
+  "sources": [
+    "https://rclone.org/commands/rclone_sync/",
+    "https://rclone.org/commands/rclone_copy/",
+    "https://github.com/rclone/rclone/releases/tag/v1.72.0",
+    "https://raw.githubusercontent.com/rclone/rclone/v1.72.0/docs/content/docs.md",
+    "https://rclone.org/docs/#max-delete-int",
+    "https://docs.syncthing.net/users/versioning.html",
+    "https://docs.syncthing.net/users/faq.html#is-syncthing-my-ideal-backup-application"
+  ],
+  "limitations": [
+    "No ransomware or malware executed; changed content is harmless test text",
+    "No remote backend, cloud retention, account compromise or Syncthing runtime test",
+    "Backup directory remains under sync authority and is not presented as immutable protection",
+    "Release checksum verified; cryptographic release signature not verified",
+    "Mermaid not rendered"
+  ]
+}

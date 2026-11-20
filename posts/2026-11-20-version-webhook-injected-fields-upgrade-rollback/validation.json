@@ -1,0 +1,28 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-20",
+  "runtimeTestsPerformed": true,
+  "infrastructureDeploymentPerformed": false,
+  "sources": [
+    "https://kubernetes.io/docs/concepts/overview/working-with-objects/annotations/",
+    "https://kubernetes.io/docs/reference/access-authn-authz/extensible-admission-controllers/",
+    "https://kubernetes.io/docs/concepts/workloads/pods/#pod-update-and-replacement",
+    "https://www.rfc-editor.org/rfc/rfc6902.html#section-4.6",
+    "https://pypi.org/project/jsonpatch/1.33/"
+  ],
+  "tests": [
+    "Both exact Python snippets executed with Python3.11 and jsonpatch1.33",
+    "Four current/target combinations passed with reordered containers and sibling preservation",
+    "Nine unsupported/conflicting states rejected",
+    "Four stale-patch cases failed JSON Patch tests without changing original fixture",
+    "Eight-node seven-edge Mermaid checked structurally only",
+    "Generated social image visually reviewed"
+  ],
+  "limitations": [
+    "No webhook server, AdmissionReview wiring or Kubernetes API executed",
+    "Fixture is deliberately not a complete deployable Pod",
+    "PLATFORM_TRACE_MODE and schema values are fictional application-owned examples",
+    "No live workload replacement, application behavior or data rollback tested",
+    "Mermaid not visually rendered"
+  ]
+}

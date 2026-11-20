@@ -1,0 +1,31 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-20",
+  "runtimeTestsPerformed": true,
+  "infrastructureDeploymentPerformed": false,
+  "tests": [
+    "CDKTF0.21.0 get generated Marker binding from article local module and config; CLI added projectId only",
+    "Both complete article TypeScript applications compiled and synthesized through CDKTF CLI; empty construct emits no resources/module despite generated bindings",
+    "Instantiated Marker emits module.used with packaged local source asset; no root resource block",
+    "Terraform1.11.4 init and validate-json passed; plan proposes module.used.terraform_data.marker, one create; no apply",
+    "All source snippets matched lab; Bash syntax, JSON and seven-node six-edge Mermaid structure passed",
+    "Generated1280x720 social image visually reviewed: full title legible, no clipping"
+  ],
+  "limitations": [
+    "Local built-in terraform_data fixture only; no cloud infrastructure or apply",
+    "Direct TypeScript execution initially failed for missing cdktfRelativeModules context; documented CLI synthesis path passed",
+    "No registry module, remote backend, multi-module nesting or conditional-zero-resource live test",
+    "Mermaid not browser-rendered; Node24.1.0, TS5.8.3, ts-node10.9.2, constructs10.8.1"
+  ],
+  "sources": [
+    "https://developer.hashicorp.com/terraform/cdktf",
+    "https://developer.hashicorp.com/terraform/cdktf/concepts/constructs",
+    "https://developer.hashicorp.com/terraform/language/resources/terraform-data",
+    "https://developer.hashicorp.com/terraform/cdktf/concepts/modules",
+    "https://developer.hashicorp.com/terraform/cdktf/cli-reference/commands#get",
+    "https://developer.hashicorp.com/terraform/language/block/module",
+    "https://developer.hashicorp.com/terraform/cli/commands/init",
+    "https://github.com/hashicorp/terraform-cdk/blob/v0.21.0/packages/cdktf/lib/terraform-module-asset.ts",
+    "https://github.com/hashicorp/terraform-cdk/blob/v0.21.0/packages/cdktf/lib/terraform-module.ts"
+  ]
+}

@@ -1,0 +1,31 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-20",
+  "runtimeTestsPerformed": true,
+  "infrastructureDeploymentPerformed": false,
+  "tests": [
+    "Terraform1.11.4 force-unlock help and plan-lock-timeout help checked against official docs and tagged source",
+    "Ordinary force-unlock against isolated local state rejected with documented local-state message; state SHA256 unchanged",
+    "Plan with input=false and lock-timeout=2m succeeded in isolated resource-free local fixture; state hash unchanged",
+    "Bash syntax passed; seven-node six-edge Mermaid decision graph structurally checked",
+    "Generated1280x720 social image visually reviewed: full title readable and unclipped"
+  ],
+  "limitations": [
+    "No remote lock acquired, abandoned, or removed; remote recovery commands source-reviewed only",
+    "No CI cancellation or live writer termination tested; these are prerequisites operators must verify",
+    "No S3/DynamoDB/hosted backend or permission behavior executed",
+    "Mermaid not browser-rendered; Terraform1.11.4/macOS arm64"
+  ],
+  "sources": [
+    "https://developer.hashicorp.com/terraform/cdktf",
+    "https://developer.hashicorp.com/terraform/language/state/locking",
+    "https://developer.hashicorp.com/terraform/cli/commands/force-unlock",
+    "https://github.com/hashicorp/terraform/blob/v1.11.4/internal/states/statemgr/locker.go",
+    "https://developer.hashicorp.com/terraform/cli/commands/workspace/show",
+    "https://developer.hashicorp.com/terraform/language/backend/s3",
+    "https://developer.hashicorp.com/terraform/cli/commands/init",
+    "https://github.com/hashicorp/terraform/blob/v1.11.4/internal/command/unlock.go",
+    "https://developer.hashicorp.com/terraform/cli/commands/plan",
+    "https://developer.hashicorp.com/terraform/cli/commands/state/pull"
+  ]
+}

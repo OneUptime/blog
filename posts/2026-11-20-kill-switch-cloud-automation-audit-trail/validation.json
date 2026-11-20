@@ -1,0 +1,29 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-20",
+  "runtimeTestsPerformed": true,
+  "infrastructureDeploymentPerformed": false,
+  "tests": [
+    "Ten local gate scenarios passed with Python 3.11.13/Boto3 1.40.76 and botocore Stubber",
+    "Enabled same epoch, disabled/missing/wrong-type controls, stale epoch, two read errors and three invalid epochs checked",
+    "Exact strongly consistent GetItem request verified",
+    "Published Python matches tested file",
+    "Mermaid eight nodes/eight edges structurally checked",
+    "Generated image visually reviewed and unclipped"
+  ],
+  "sources": [
+    "https://docs.aws.amazon.com/amazondynamodb/latest/APIReference/API_GetItem.html",
+    "https://docs.aws.amazon.com/lambda/latest/dg/configuration-concurrency.html",
+    "https://docs.aws.amazon.com/step-functions/latest/apireference/API_StopExecution.html",
+    "https://docs.aws.amazon.com/step-functions/latest/dg/connect-to-resource.html",
+    "https://docs.aws.amazon.com/IAM/latest/UserGuide/id_roles_use_revoke-sessions.html",
+    "https://docs.aws.amazon.com/IAM/latest/UserGuide/troubleshoot.html#troubleshoot_general_eventual-consistency"
+  ],
+  "limitations": [
+    "No AWS requests or live containment actions",
+    "No active worker interruption, IAM propagation, queue pause or provider cancellation test",
+    "No durable control update/audit export/restart implementation exercised",
+    "Cooperative gate is not atomic with a later cloud mutation",
+    "Mermaid not rendered"
+  ]
+}

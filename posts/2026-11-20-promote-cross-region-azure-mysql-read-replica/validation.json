@@ -1,0 +1,27 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-20",
+  "runtimeTestsPerformed": true,
+  "infrastructureDeploymentPerformed": false,
+  "sources": [
+    "https://learn.microsoft.com/en-us/azure/reliability/reliability-database-mysql",
+    "https://learn.microsoft.com/en-us/azure/mysql/flexible-server/concepts-read-replicas",
+    "https://learn.microsoft.com/en-us/azure/mysql/flexible-server/how-to-read-replicas-portal",
+    "https://learn.microsoft.com/en-us/cli/azure/mysql/flexible-server/replica?view=azure-cli-latest",
+    "https://github.com/Azure/azure-cli/blob/azure-cli-2.80.0/src/azure-cli/azure/cli/command_modules/mysql/custom.py"
+  ],
+  "tests": [
+    "Two Bash blocks passed bash -n",
+    "JMESPath 1.0.1 synthetic fixture verified identity/role/FQDN projection and null role on missing data",
+    "Reviewed actual MySQL CLI 2.80.0 command registration with confirmation and custom implementation updating replication_role to None",
+    "Reviewed irreversible promotion, asynchronous data-loss risk, application rerouting and post-promotion HA/failback guidance",
+    "Mermaid structural check: eight declared nodes, six resolved edges including labeled dotted replication edge",
+    "Social image visually reviewed; readable without clipping"
+  ],
+  "limitations": [
+    "No Azure CLI command, promotion, SQL write or live connectivity check executed",
+    "Synthetic projection tests do not verify live Azure response values",
+    "No fencing or application cutover was performed",
+    "Mermaid structure checked, not rendered"
+  ]
+}

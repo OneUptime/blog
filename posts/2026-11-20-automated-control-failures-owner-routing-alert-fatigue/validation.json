@@ -1,0 +1,23 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-20",
+  "runtimeTestsPerformed": true,
+  "infrastructureDeploymentPerformed": false,
+  "sources": [
+    "https://prometheus.io/docs/practices/alerting/",
+    "https://raw.githubusercontent.com/prometheus/alertmanager/v0.28.1/docs/configuration.md",
+    "https://raw.githubusercontent.com/prometheus/alertmanager/v0.28.1/README.md"
+  ],
+  "tests": [
+    "Official amtool 0.28.1 darwin-arm64 archive SHA-256 matched official release checksum",
+    "amtool check-config passed for exact embedded YAML",
+    "Four routing cases passed: platform warning, platform critical, missing owner, unmapped owner",
+    "Bash syntax passed; Mermaid seven nodes/six edges structurally checked, not rendered",
+    "Social image generated and visually inspected without clipping"
+  ],
+  "limitations": [
+    "No Alertmanager server started; no notifications sent",
+    "Webhook URLs are placeholders; authentication, gateway idempotency, ticket creation, exception lifecycle and end-to-end delivery not tested",
+    "Checksum verified, no release signature verification"
+  ]
+}

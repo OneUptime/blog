@@ -1,0 +1,28 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-20",
+  "validationScope": "Official documentation and tagged Java review, exact snippet compilation, local SDK response parsing and image checks",
+  "runtimeTestsPerformed": false,
+  "localCodeTestsPerformed": true,
+  "javaClientVersion": "10.5.0",
+  "exampleServerVersion": "8.2.0.1",
+  "tests": [
+    "Exact helper compiled with javac 17.0.16 against official Maven artifact",
+    "SDK IndexTask.parseStatusResponse correctly classified synthetic load_pct=100 and load_pct=92 responses; helper rejects null task",
+    "Shell loop passed bash -n; sindex-list/stat options source-checked for Database 8.2",
+    "Mermaid references checked structurally; social image 1280x720 visually reviewed"
+  ],
+  "limitations": [
+    "No index created, server queried, live wait task, timeout or membership change exercised",
+    "Synthetic parsing does not prove all-node readiness or index correctness",
+    "Mermaid not browser-rendered"
+  ],
+  "sources": [
+    "https://aerospike.com/docs/develop/learn/queries/secondary-index/",
+    "https://aerospike.com/docs/database/reference/info/",
+    "https://aerospike.com/docs/database/manage/namespace/secondary-index/",
+    "https://github.com/aerospike/aerospike-client-java/blob/10.5.0/client/src/com/aerospike/client/task/Task.java",
+    "https://github.com/aerospike/aerospike-client-java/blob/10.5.0/client/src/com/aerospike/client/task/IndexTask.java",
+    "https://repo.maven.apache.org/maven2/com/aerospike/aerospike-client-jdk8/10.5.0/aerospike-client-jdk8-10.5.0.jar"
+  ]
+}

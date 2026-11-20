@@ -1,0 +1,29 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-20",
+  "runtimeTestsPerformed": false,
+  "infrastructureDeploymentPerformed": false,
+  "tests": [
+    "Four shell snippets passed bash syntax checks",
+    "FRR command forms reviewed against frr-10.2.1 bgp_evpn_vty.c and zebra_vty.c, including per-VNI route and MAC/ARP displays",
+    "Remote MAC installation readiness checks reviewed in tagged zebra_evpn_mac.c",
+    "Mermaid six nodes/five edges structurally checked",
+    "Social image generated and visually inspected without clipping"
+  ],
+  "sources": [
+    "https://www.rfc-editor.org/rfc/rfc7432.html",
+    "https://raw.githubusercontent.com/FRRouting/frr/frr-10.2.1/bgpd/bgp_evpn_vty.c",
+    "https://docs.frrouting.org/en/stable-10.2/bgp.html",
+    "https://raw.githubusercontent.com/FRRouting/frr/frr-10.2.1/zebra/zebra_vty.c",
+    "https://docs.frrouting.org/en/stable-10.2/evpn.html",
+    "https://raw.githubusercontent.com/iproute2/iproute2/v6.12.0/man/man8/bridge.8",
+    "https://raw.githubusercontent.com/FRRouting/frr/frr-10.2.1/zebra/zebra_evpn_mac.c",
+    "https://man7.org/linux/man-pages/man8/ip-neighbour.8.html"
+  ],
+  "limitations": [
+    "No FRR daemon or CLI parser execution; syntax and source review only",
+    "No Linux bridge, VXLAN, route-import, neighbor or forwarding test",
+    "Simple one-device-per-VNI single-homed Layer2 scope; no hardware or multihoming validation",
+    "Mermaid structurally checked, not rendered"
+  ]
+}

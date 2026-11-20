@@ -1,0 +1,28 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-20",
+  "runtimeTestsPerformed": true,
+  "infrastructureDeploymentPerformed": false,
+  "sources": [
+    "https://docs.cloud.google.com/sql/docs/postgres/iam-authentication",
+    "https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/UsingWithRDS.IAMDBAuth.html",
+    "https://docs.cloud.google.com/iam/docs/best-practices-for-managing-service-account-keys",
+    "https://docs.cloud.google.com/docs/authentication/application-default-credentials",
+    "https://docs.cloud.google.com/sql/docs/postgres/add-manage-iam-users",
+    "https://github.com/GoogleCloudPlatform/cloud-sql-proxy/blob/v2.28.0/README.md",
+    "https://docs.cloud.google.com/sql/docs/postgres/iam-logins",
+    "https://www.postgresql.org/docs/17/runtime-config-client.html"
+  ],
+  "tests": [
+    "Proxy 2.28.0 version/help execution from connection-path lab reused; automatic IAM and listener flags verified",
+    "Bash syntax passed",
+    "Mermaid structurally checked: six nodes and five edges; not rendered",
+    "Official token lifetimes, identity registration, credential discovery and PostgreSQL timeout semantics reviewed",
+    "Social image visually reviewed: readable title, no clipping"
+  ],
+  "limitations": [
+    "No live authentication, token renewal, database-session retirement or access denial exercised",
+    "No service-account key or login token generated",
+    "Binary download not independently checksum/signature verified"
+  ]
+}

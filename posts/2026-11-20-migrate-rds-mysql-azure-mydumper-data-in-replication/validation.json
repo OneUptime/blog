@@ -1,0 +1,37 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-20",
+  "runtimeTestsPerformed": false,
+  "infrastructureDeploymentPerformed": false,
+  "sources": [
+    "https://learn.microsoft.com/en-us/azure/mysql/flexible-server/how-to-migrate-rds-mysql-data-in-replication",
+    "https://learn.microsoft.com/en-us/azure/mysql/flexible-server/concepts-data-in-replication",
+    "https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/USER_LogAccess.MySQL.BinaryFormat.html",
+    "https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/mysql-stored-proc-configuring.html",
+    "https://github.com/mydumper/mydumper/releases/tag/v1.0.19-1",
+    "https://mydumper.github.io/mydumper/docs/html/requirements.html",
+    "https://github.com/mydumper/mydumper/blob/v1.0.19-1/src/mydumper/mydumper_start_dump.c",
+    "https://github.com/mydumper/mydumper/blob/v1.0.19-1/src/mydumper/mydumper_working_thread.c",
+    "https://github.com/mydumper/mydumper/blob/v1.0.19-1/src/myloader/myloader.c",
+    "https://github.com/mydumper/mydumper/blob/v1.0.19-1/src/myloader/myloader_arguments.c",
+    "https://mydumper.github.io/mydumper/docs/html/myloader_usage.html",
+    "https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/UsingWithRDS.SSL.html",
+    "https://learn.microsoft.com/en-us/azure/mysql/flexible-server/how-to-data-in-replication",
+    "https://dev.mysql.com/doc/refman/8.0/en/show-replica-status.html"
+  ],
+  "tests": [
+    "Two Bash blocks passed bash -n; every long tool flag matched an option declaration in official MyDumper 1.0.19-1 tagged source",
+    "INI parsed with Python configparser and worker settings checked",
+    "Tagged RDS LOCK_ALL handling, current metadata labels, and enable-binlog callback/session behavior manually reviewed",
+    "Stored procedure signatures source-reviewed against AWS and Azure documentation; SHOW REPLICA STATUS parsed by sqlglot 28.0.0",
+    "Mermaid structural check: six nodes, six edges",
+    "Social image visually inspected: readable title without clipping"
+  ],
+  "limitations": [
+    "No MyDumper or MyLoader binary execution, database dump, load, or replication performed",
+    "sqlglot treats CALL statements as generic Command nodes; it did not validate those procedure calls",
+    "Source inspection does not establish managed-service permissions, locking duration, replication TLS policy, or data consistency",
+    "Downloaded tagged source archive used for inspection; no independent signature verification performed",
+    "Mermaid structurally checked, not rendered"
+  ]
+}

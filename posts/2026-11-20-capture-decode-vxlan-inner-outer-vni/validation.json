@@ -1,0 +1,26 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-20",
+  "runtimeTestsPerformed": true,
+  "infrastructureDeploymentPerformed": false,
+  "tests": [
+    "Constructed two checksum-valid synthetic IPv4/VXLAN frames with VNI100/200; decoded with tcpdump 4.99.1 Apple161",
+    "Verified outer/inner MAC and IP identities, UDP ports, VNI and ICMP identifier/sequence in decoded output",
+    "Outer endpoint filter matched both frames, naive inner-host filter matched neither, arithmetic VNI filter matched only100",
+    "Four shell snippets passed syntax checks; Mermaid five nodes/four edges structurally checked",
+    "Social image generated and visually inspected without clipping"
+  ],
+  "sources": [
+    "https://www.rfc-editor.org/rfc/rfc7348.html",
+    "https://docs.kernel.org/networking/vxlan.html",
+    "https://raw.githubusercontent.com/the-tcpdump-group/tcpdump/tcpdump-4.99.5/tcpdump.1.in",
+    "https://raw.githubusercontent.com/the-tcpdump-group/libpcap/libpcap-1.10.5/pcap-filter.manmisc.in",
+    "https://raw.githubusercontent.com/the-tcpdump-group/tcpdump/tcpdump-4.99.5/print-vxlan.c"
+  ],
+  "limitations": [
+    "Synthetic saved-packet decoding only; no live network capture or Linux device test",
+    "tcpdump documentation pinned4.99.5 and libpcap1.10.5; local decoder4.99.1/libpcap1.10.1",
+    "Filter fixture covers unfragmented untagged IPv4 with standard VXLAN; no IPv6, VLAN or fragment tests",
+    "Mermaid structurally checked, not rendered"
+  ]
+}

@@ -1,0 +1,32 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-20",
+  "runtimeTestsPerformed": true,
+  "infrastructureDeploymentPerformed": false,
+  "tests": [
+    "Boto3 1.40.76 request contract checked using botocore Stubber",
+    "Credential forwarding including token and expiration checked",
+    "Wrong account and wrong role rejected; AccessDenied propagated",
+    "Published Python matches tested AST",
+    "Three JSON policies parse and cross-reference expected roles",
+    "Mermaid eight nodes/seven edges structurally checked",
+    "Social image visually reviewed, readable and unclipped"
+  ],
+  "sources": [
+    "https://docs.aws.amazon.com/STS/latest/APIReference/API_AssumeRole.html",
+    "https://docs.aws.amazon.com/IAM/latest/UserGuide/id_credentials_temp_control-access_monitor.html",
+    "https://docs.aws.amazon.com/service-authorization/latest/reference/list_amazonec2.html",
+    "https://docs.aws.amazon.com/IAM/latest/UserGuide/reference_policies_evaluation-logic.html",
+    "https://docs.aws.amazon.com/IAM/latest/UserGuide/id_roles_common-scenarios_third-party.html",
+    "https://pypi.org/project/boto3/1.40.76/",
+    "https://boto3.amazonaws.com/v1/documentation/api/latest/reference/services/sts/client/assume_role.html",
+    "https://docs.aws.amazon.com/cli/latest/userguide/cli-configure-role.html",
+    "https://docs.aws.amazon.com/awscloudtrail/latest/userguide/cloudtrail-event-reference-user-identity.html"
+  ],
+  "limitations": [
+    "No live STS call, IAM policy evaluation, EC2 request or CloudTrail event",
+    "No credential renewal or role-chain execution",
+    "Static policy checks do not substitute for IAM Access Analyzer or isolated account tests",
+    "Mermaid not rendered"
+  ]
+}

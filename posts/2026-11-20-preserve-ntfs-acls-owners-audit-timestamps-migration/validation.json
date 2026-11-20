@@ -1,0 +1,29 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-20",
+  "runtimeTestsPerformed": true,
+  "infrastructureDeploymentPerformed": false,
+  "tests": [
+    "Three published PowerShell examples parse in PowerShell 7.4.6 and match extracted checked files",
+    "Eleven local Compare-Object fixture cases passed: identical JSON records, reordered rows, each of seven changed fields, missing and extra records",
+    "Reviewed Microsoft ACL, SACL privilege, Get-Acl, Robocopy, icacls, file-time and audit-policy documentation",
+    "Generated social image visually reviewed: title readable and unclipped"
+  ],
+  "sources": [
+    "https://learn.microsoft.com/en-us/windows/win32/secauthz/access-control-lists",
+    "https://learn.microsoft.com/en-us/windows/win32/secauthz/privileges",
+    "https://learn.microsoft.com/en-us/windows/win32/secauthz/sacl-access-right",
+    "https://learn.microsoft.com/en-us/windows-server/administration/windows-commands/robocopy",
+    "https://learn.microsoft.com/en-us/powershell/module/microsoft.powershell.security/get-acl?view=powershell-7.4",
+    "https://learn.microsoft.com/en-us/windows/win32/sysinfo/file-times",
+    "https://learn.microsoft.com/en-us/powershell/module/microsoft.powershell.utility/compare-object?view=powershell-7.4",
+    "https://learn.microsoft.com/en-us/windows-server/administration/windows-commands/icacls",
+    "https://learn.microsoft.com/en-us/previous-versions/windows/it-pro/windows-10/security/threat-protection/auditing/audit-file-system"
+  ],
+  "limitations": [
+    "Runtime testing used synthetic metadata records on macOS, not actual Windows security descriptors",
+    "No Robocopy transfer, Get-Acl execution, NTFS preservation, privilege enablement or audit event delivery tested",
+    "Evidence example covers selected trusted paths only; no full tree or content validation",
+    "SDDL differences require review and do not automatically prove differing effective access"
+  ]
+}

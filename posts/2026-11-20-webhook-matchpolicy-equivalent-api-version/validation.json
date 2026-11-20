@@ -1,0 +1,30 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-20",
+  "runtimeTestsPerformed": true,
+  "infrastructureDeploymentPerformed": false,
+  "sources": [
+    "https://github.com/kubernetes/kubernetes/blob/v1.35.0/pkg/registry/autoscaling/rest/storage_autoscaling.go",
+    "https://kubernetes.io/docs/reference/access-authn-authz/extensible-admission-controllers/#matching-requests-matchpolicy",
+    "https://github.com/kubernetes/kubernetes/blob/v1.35.0/staging/src/k8s.io/apiserver/pkg/admission/plugin/webhook/generic/webhook.go",
+    "https://github.com/kubernetes/kubernetes/blob/v1.35.0/staging/src/k8s.io/api/admission/v1/types.go",
+    "https://github.com/kubernetes/kubernetes/blob/v1.35.0/staging/src/k8s.io/api/autoscaling/v2/types.go",
+    "https://www.rfc-editor.org/rfc/rfc6902",
+    "https://kubernetes.io/docs/concepts/workloads/autoscaling/horizontal-pod-autoscale/",
+    "https://kubernetes.io/docs/tasks/extend-kubernetes/custom-resources/custom-resource-definition-versioning/",
+    "https://raw.githubusercontent.com/kubernetes/kubernetes/v1.35.0/api/openapi-spec/swagger.json"
+  ],
+  "tests": [
+    "Python 3.11 planner executed with jsonpatch 1.33 for 36 combinations of minimum, original-request version metadata and CREATE/UPDATE operation; repeat no-op and input preservation passed",
+    "Eleven incorrect delivered kind/resource/object versions, operation/subresource and invalid replica bounds rejected",
+    "Applied patches preserved metrics, behavior and scaleTargetRef",
+    "YAML fragment and illustrative JSON excerpt parsed; synthetic complete webhook entry and HPA fixture passed official v1.35.0 OpenAPI shape validation with jsonschema 4.25.1",
+    "Metadata formatting checked; social image generated and visually reviewed with unclipped title"
+  ],
+  "limitations": [
+    "No Kubernetes API server, equivalent-resource dispatch, v1-to-v2 conversion, HPA controller or capacity changes executed",
+    "Original-version metadata in fixtures is illustrative; it does not exercise actual API conversion or lossless round trips",
+    "Planner assumes an outer scoped AdmissionReview handler and is not complete HPA schema validation",
+    "No Mermaid diagram needed; version-field table and explicit request excerpt provide the mapping"
+  ]
+}

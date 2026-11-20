@@ -1,0 +1,37 @@
+# Validation summary
+
+## Checks performed
+
+Reviewed official Windows Server2025 Resolve-DnsName, PowerShell7.5 Get-Content/custom objects/errors/CSV, BIND9.18.33 options and exit-status documentation
+
+Exact Bash collector passed bash -n and execution with deterministic nslookup command double
+
+Verified CRLF, blank-line skip, final unterminated line, query stderr/nonzero status retained, later queries continue, existing output directory refused without changing files
+
+PowerShell braces and source-reviewed parameter choices checked; no execution claimed
+
+Generated 1280x720 social image visually inspected; title complete and readable
+
+## Limitations
+
+No Windows/PowerShell runtime available; object filtering and CSV output source-reviewed only
+
+Shell test used a command double rather than external DNS; tests establish collection behavior, not DNS semantics
+
+No production inventory or network traffic audit performed
+
+GNU Bash online documentation unavailable to web fetch; shell implementation behavior checked locally
+
+## Sources reviewed
+
+- https://learn.microsoft.com/en-us/powershell/module/microsoft.powershell.management/get-content?view=powershell-7.5
+- https://learn.microsoft.com/en-us/powershell/module/microsoft.powershell.core/about/about_pscustomobject?view=powershell-7.5
+- https://learn.microsoft.com/en-us/powershell/module/dnsclient/resolve-dnsname?view=windowsserver2025-ps
+- https://learn.microsoft.com/en-us/powershell/module/microsoft.powershell.core/about/about_try_catch_finally?view=powershell-7.5
+- https://learn.microsoft.com/en-us/powershell/module/microsoft.powershell.core/about/about_commonparameters?view=powershell-7.5
+- https://learn.microsoft.com/en-us/powershell/module/microsoft.powershell.utility/export-csv?view=powershell-7.5
+- https://bind9.readthedocs.io/en/v9.18.33/manpages.html#nslookup-name-server-lookup-utility
+
+## Repository checks
+
+The repository validator passed for this post in an isolated fixture with its catalog entry, author list, tag allowlist, and social image. Shell examples, if present, passed bash syntax checking. The full existing catalog was not revalidated.

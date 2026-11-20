@@ -1,0 +1,33 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-20",
+  "runtimeTestsPerformed": true,
+  "infrastructureDeploymentPerformed": false,
+  "versions": {
+    "python": "3.11.13",
+    "rethinkdbPythonDriver": "2.4.10.post1"
+  },
+  "checks": [
+    "All Python blocks parsed; probe module matches tested file",
+    "Result classifier accepted confirmed insert and rejected error, zero-insert and replacement-only responses",
+    "Actual driver constructed configuration update, hard-durability insert and majority-read queries",
+    "Official acknowledgment/durability/read-mode guarantees and reconfigure behavior reviewed",
+    "Mermaid three-participant two-message structure checked",
+    "Social image visually reviewed; readable and unclipped"
+  ],
+  "limitations": [
+    "No live database, configuration change, write or read executed",
+    "No replication lag, persistence, failure or acknowledged-write loss reproduction",
+    "Probe is not a durable test journal and does not implement uncertain-write reconciliation",
+    "No Mermaid browser rendering"
+  ],
+  "sources": [
+    "https://rethinkdb.com/docs/consistency/",
+    "https://rethinkdb.com/api/python/config/",
+    "https://rethinkdb.com/api/python/run/",
+    "https://rethinkdb.com/api/python/table/",
+    "https://rethinkdb.com/docs/sharding-and-replication/",
+    "https://rethinkdb.com/api/python/reconfigure/",
+    "https://rethinkdb.com/api/python/insert/"
+  ]
+}

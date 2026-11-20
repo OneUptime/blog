@@ -1,0 +1,25 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-20",
+  "validationScope": "Official source review, shell and curl checks, local HTTPS fixture, image review",
+  "runtimeTestsPerformed": false,
+  "localFixtureTestsPerformed": true,
+  "oneuptimeSourceCommit": "0de2d9ceac0a2404f5df7ad1f9ab1e22c56bea7e",
+  "tests": [
+    "Both shell snippets passed bash -n; all flags present in curl 8.7.1 help",
+    "Local loopback HTTPS fixture with temporary self-signed certificate and substituted port: --resolve retained hostname validation, correct hostname returned HTTP 200 and 127.0.0.1; wrong hostname failed with exit 60",
+    "Mermaid references and subgraph delimiters checked structurally",
+    "1280x720 generated social image visually inspected; title complete and readable"
+  ],
+  "limitations": [
+    "No OneUptime runtime, Kubernetes outage, real DNS, login, status publishing or disaster recovery tested",
+    "Local fixture used loopback, ephemeral port and temporary certificate; it does not validate an organizational CA or real proxy route",
+    "Mermaid not browser-rendered"
+  ],
+  "sources": [
+    "https://oneuptime.com/docs/en/self-hosted/architecture",
+    "https://kubernetes.io/docs/concepts/services-networking/dns-pod-service/",
+    "https://oneuptime.com/docs/en/status-pages/branding-and-domains#ssl-certificates",
+    "https://curl.se/docs/manpage.html"
+  ]
+}

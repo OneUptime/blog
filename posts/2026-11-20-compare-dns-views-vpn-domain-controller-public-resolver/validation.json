@@ -1,0 +1,27 @@
+{
+  "status": "validated",
+  "reviewedOn": "2026-11-20",
+  "runtimeTestsPerformed": false,
+  "localCodeTestsPerformed": false,
+  "tests": [
+    "Shell examples passed bash -n. Parsed all three direct-query examples and verified identical absolute name, A type and debug flags, changing only resolver address.",
+    "Reviewed Windows Server 2025 policy, scope, interface, route and resolver commands against official Microsoft references. Checked BIND 9.18.33 first-matching-view behavior.",
+    "Reviewed expected-answer and evidence tables for intentional split DNS, source-address translation, forwarding and separate application-path checks.",
+    "Checked metadata and 1280x720 image dimensions; visually inspected readable title and branding."
+  ],
+  "limitations": [
+    "No Windows or PowerShell runtime, VPN, domain controller, public resolver, BIND view deployment or network capture tested. Command comparison was static, not a live query.",
+    "A direct resolver address does not establish the originating interface or the server-selected view; the article explicitly requires route and server-side evidence."
+  ],
+  "sources": [
+    "https://learn.microsoft.com/en-us/windows-server/networking/dns/deploy/split-brain-DNS-deployment",
+    "https://learn.microsoft.com/en-us/powershell/module/dnsclient/get-dnsclientserveraddress?view=windowsserver2025-ps",
+    "https://learn.microsoft.com/en-us/powershell/module/dnsclient/get-dnsclientnrptpolicy?view=windowsserver2025-ps",
+    "https://learn.microsoft.com/en-us/powershell/module/nettcpip/find-netroute?view=windowsserver2025-ps",
+    "https://learn.microsoft.com/en-us/windows-server/administration/windows-commands/nslookup",
+    "https://learn.microsoft.com/en-us/powershell/module/dnsserver/get-dnsserverqueryresolutionpolicy?view=windowsserver2025-ps",
+    "https://learn.microsoft.com/en-us/powershell/module/dnsserver/get-dnsserverzonescope?view=windowsserver2025-ps",
+    "https://bind9.readthedocs.io/en/v9.18.33/reference.html#view-block-grammar",
+    "https://learn.microsoft.com/en-us/windows/client-management/mdm/vpnv2-csp"
+  ]
+}

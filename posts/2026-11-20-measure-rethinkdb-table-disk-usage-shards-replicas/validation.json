@@ -1,0 +1,32 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-20",
+  "runtimeTestsPerformed": true,
+  "infrastructureDeploymentPerformed": false,
+  "versions": {
+    "python": "3.11.13",
+    "rethinkdbPythonDriver": "2.4.10.post1",
+    "serverSource": "2.4.4"
+  },
+  "checks": [
+    "Published module parsed and matches tested file",
+    "Sample tests passed unique-server aggregation, observed extra holders, 270-byte component total, partial coverage, error/invalid fields, valid zeros and empty coverage",
+    "Pinned driver constructed table/server statistics lookup",
+    "Server 2.4.4 source checked for unique server enumeration and serializer space calculations",
+    "Mermaid seven-node seven-edge structure checked",
+    "Social image visually reviewed; readable without clipping"
+  ],
+  "limitations": [
+    "No live statistics, filesystems, table load, replica expansion or storage benchmark",
+    "Report coverage is relative to observed topology and is not an atomic snapshot",
+    "No per-shard byte attribution or discovery of abandoned/disconnected files",
+    "No browser Mermaid rendering"
+  ],
+  "sources": [
+    "https://rethinkdb.com/docs/system-stats/",
+    "https://github.com/rethinkdb/rethinkdb/blob/v2.4.4/src/clustering/administration/stats/request.cc",
+    "https://github.com/rethinkdb/rethinkdb/blob/v2.4.4/src/clustering/administration/stats/stats_backend.cc",
+    "https://rethinkdb.com/docs/system-tables/",
+    "https://rethinkdb.com/docs/system-jobs/"
+  ]
+}

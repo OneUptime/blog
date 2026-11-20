@@ -1,0 +1,28 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-20",
+  "runtimeTestsPerformed": true,
+  "infrastructureDeploymentPerformed": false,
+  "sources": [
+    "https://docs.aws.amazon.com/IAM/latest/UserGuide/best-practices.html",
+    "https://docs.aws.amazon.com/IAM/latest/UserGuide/id_roles_common-scenarios_third-party.html",
+    "https://docs.aws.amazon.com/config/latest/developerguide/security_iam_id-based-policy-examples.html",
+    "https://docs.aws.amazon.com/service-authorization/latest/reference/list_config.html",
+    "https://docs.aws.amazon.com/cli/latest/reference/configservice/get-compliance-details-by-config-rule.html",
+    "https://docs.aws.amazon.com/IAM/latest/UserGuide/access_policies_testing-policies.html",
+    "https://docs.aws.amazon.com/IAM/latest/UserGuide/id-credentials-access-keys-update.html",
+    "https://docs.aws.amazon.com/awscloudtrail/latest/userguide/cloudtrail-user-guide.html"
+  ],
+  "tests": [
+    "Both policy JSON documents parsed; exact read action, resource and external-ID condition checked",
+    "AWS CLI 2.38.1 Config rule-results output skeleton generated without credentials or AWS request",
+    "Bash syntax checked",
+    "Mermaid structurally checked: six nodes, five edges; not rendered",
+    "Social image generated and visually checked without clipping"
+  ],
+  "limitations": [
+    "No IAM policy simulator, Access Analyzer, STS role assumption or live authorization test run",
+    "Policies intentionally scoped to one pre-inventoried Config rule; not a complete vendor integration",
+    "No credential rotation, collection completeness, audit log retention or mutation-denial test performed"
+  ]
+}

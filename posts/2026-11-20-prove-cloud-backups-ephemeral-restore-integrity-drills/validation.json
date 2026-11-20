@@ -1,0 +1,28 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-20",
+  "runtimeTestsPerformed": true,
+  "infrastructureDeploymentPerformed": false,
+  "tests": [
+    "Python 3.11.13: nine temporary fixture cases passed (valid plus empty manifest, mismatch, missing file, traversal, absolute path, symlink, bad digest, empty path component)",
+    "Published Python matches tested code",
+    "AWS CLI 2.38.1 output-skeleton input validation passed for describe-restore-job and put-restore-validation-result without API requests",
+    "Bash syntax and event pattern JSON parsed; Mermaid seven nodes/six edges structurally checked",
+    "Generated social image visually reviewed: title readable and unclipped"
+  ],
+  "sources": [
+    "https://docs.aws.amazon.com/aws-backup/latest/devguide/restore-testing-inferred-metadata.html",
+    "https://docs.aws.amazon.com/aws-backup/latest/devguide/restore-testing.html",
+    "https://docs.aws.amazon.com/aws-backup/latest/devguide/restore-testing-validation.html",
+    "https://docs.aws.amazon.com/cli/latest/reference/backup/describe-restore-job.html",
+    "https://docs.python.org/3.11/library/hashlib.html",
+    "https://docs.aws.amazon.com/aws-backup/latest/APIReference/API_PutRestoreValidationResult.html",
+    "https://docs.aws.amazon.com/cli/latest/reference/backup/put-restore-validation-result.html"
+  ],
+  "limitations": [
+    "No cloud backup, restore, mount, database recovery, validation reporting or cleanup executed",
+    "Fixture checker validates only manifest-listed regular files in a frozen read-only tree; not a hostile concurrent filesystem defense",
+    "No application consistency, live RPO/RTO or cloud permission testing",
+    "Mermaid not rendered"
+  ]
+}

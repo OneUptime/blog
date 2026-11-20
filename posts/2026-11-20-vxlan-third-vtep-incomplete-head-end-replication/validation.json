@@ -1,0 +1,27 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-20",
+  "runtimeTestsPerformed": true,
+  "infrastructureDeploymentPerformed": false,
+  "tests": [
+    "Python 3.11.13 checker passed eight synthetic cases: complete/missing/unexpected/duplicate peers, unrelated entries, multicast, malformed top-level and empty listing",
+    "Published Python matches executed checker; three shell snippets pass syntax checks",
+    "Linux 6.12 fallback/remote-list forwarding and iproute2 6.12.0 FDB JSON/append semantics source-reviewed",
+    "Mermaid three nodes/six directed edges structurally checked",
+    "Social image generated and visually inspected: readable without clipping"
+  ],
+  "sources": [
+    "https://www.rfc-editor.org/rfc/rfc7348.html",
+    "https://raw.githubusercontent.com/torvalds/linux/v6.12/drivers/net/vxlan/vxlan_core.c",
+    "https://raw.githubusercontent.com/torvalds/linux/v6.12/net/bridge/br_forward.c",
+    "https://raw.githubusercontent.com/iproute2/iproute2/v6.12.0/bridge/fdb.c",
+    "https://docs.python.org/3.11/library/ipaddress.html",
+    "https://raw.githubusercontent.com/iproute2/iproute2/v6.12.0/man/man8/bridge.8"
+  ],
+  "limitations": [
+    "No Linux VXLAN device, live FDB collection or mutation, controller or connectivity test",
+    "Checker compares addresses only and excludes entry state, VNI/port overrides, routing and packet delivery",
+    "Scoped to manually managed single-VNI IPv4 static unicast flood lists",
+    "Mermaid structurally checked, not rendered"
+  ]
+}

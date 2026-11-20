@@ -1,0 +1,28 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-20",
+  "runtimeTestsPerformed": false,
+  "infrastructureDeploymentPerformed": false,
+  "tests": [
+    "NX-OS10.4(x) anycast gateway configuration and read-only SVI/route/NVE commands source-reviewed",
+    "Linux route/neighbor shell block passed bash syntax checks",
+    "Colon and dotted sample gateway MAC representations checked for equality",
+    "Mermaid six nodes/five edges structurally checked",
+    "Social image generated and visually inspected without clipping"
+  ],
+  "sources": [
+    "https://www.rfc-editor.org/rfc/rfc9135.html",
+    "https://man7.org/linux/man-pages/man8/ip-route.8.html",
+    "https://man7.org/linux/man-pages/man8/ip-neighbour.8.html",
+    "https://www.cisco.com/c/en/us/td/docs/dcn/nx-os/nexus9000/104x/configuration/vxlan/cisco-nexus-9000-series-nx-os-vxlan-configuration-guide-release-104x/m_configuring_vxlan_bgp_evpn.html",
+    "https://www.cisco.com/c/en/us/td/docs/dcn/nx-os/nexus9000/104x/configuration/interfaces/cisco-nexus-9000-series-nx-os-interfaces-configuration-guide-release-104x/m_configuring_layer_3_interfaces_9x.html",
+    "https://www.cisco.com/c/en/us/td/docs/dcn/nx-os/nexus9000/104x/configuration/interfaces/cisco-nexus-9000-series-nx-os-interfaces-configuration-guide-release-104x/m_configuring_layer_2_interfaces_9x.html",
+    "https://www.cisco.com/c/en/us/td/docs/dcn/nx-os/nexus9000/104x/command-reference/show/b_n9k_show_commands_104x/m_i_showcmds.html"
+  ],
+  "limitations": [
+    "No NX-OS parser, switch, gateway or host mobility execution",
+    "No Linux route/neighbor commands executed against a live topology",
+    "Partial configuration is explanatory context, not a complete deployment",
+    "Scope excludes gateway migration/coexistence and multi-site variants; Mermaid not rendered"
+  ]
+}

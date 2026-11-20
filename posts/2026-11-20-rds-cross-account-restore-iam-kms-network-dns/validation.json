@@ -1,0 +1,30 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-20",
+  "runtimeTestsPerformed": true,
+  "infrastructureDeploymentPerformed": false,
+  "sources": [
+    "https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/USER_ShareSnapshot.html",
+    "https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/share-encrypted-snapshot.html",
+    "https://docs.aws.amazon.com/kms/latest/developerguide/key-policy-modifying-external-accounts.html",
+    "https://docs.aws.amazon.com/cli/latest/reference/rds/copy-db-snapshot.html",
+    "https://docs.aws.amazon.com/cli/latest/reference/rds/describe-db-snapshots.html",
+    "https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/USER_CopySnapshot.html",
+    "https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/USER_VPC.WorkingWithRDSInstanceinaVPC.html",
+    "https://docs.aws.amazon.com/cli/latest/reference/rds/restore-db-instance-from-db-snapshot.html",
+    "https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/USER_RestoreFromSnapshot.html",
+    "https://www.postgresql.org/docs/17/libpq-ssl.html"
+  ],
+  "tests": [
+    "AWS CLI 2.38.1 generated copy and restore output skeletons with credentials/config disabled and no API requests",
+    "Both Bash blocks passed syntax checking",
+    "Mermaid structurally checked: nine nodes and eight edges; not rendered",
+    "Official RDS sharing/copy/restore, KMS cross-account permissions, VPC and PostgreSQL TLS documentation reviewed",
+    "Generated social image visually reviewed without clipping"
+  ],
+  "limitations": [
+    "No snapshot sharing, copying, KMS policy changes, restore or application recovery performed",
+    "Skeleton validation checks command shape, not account access, resource existence, regional class availability or engine compatibility",
+    "Examples cover same-Region PostgreSQL DB instance recovery, not Aurora, vault-based workflows or cross-Region recovery"
+  ]
+}

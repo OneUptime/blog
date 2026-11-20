@@ -1,0 +1,30 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-20",
+  "runtimeTestsPerformed": false,
+  "infrastructureDeploymentPerformed": false,
+  "sources": [
+    "https://learn.microsoft.com/en-us/azure/mysql/migrate/concepts-migrate-mydumper-myloader",
+    "https://learn.microsoft.com/en-us/azure/mysql/flexible-server/concepts-monitor-mysql-reference",
+    "https://github.com/mydumper/mydumper/releases/tag/v1.0.19-1",
+    "https://github.com/mydumper/mydumper/blob/v1.0.19-1/src/myloader/myloader_arguments.c",
+    "https://github.com/mydumper/mydumper/blob/v1.0.19-1/src/myloader/myloader.c",
+    "https://mydumper.github.io/mydumper/docs/html/myloader_usage.html",
+    "https://dev.mysql.com/doc/refman/8.0/en/information-schema-statistics-table.html",
+    "https://learn.microsoft.com/en-us/azure/mysql/flexible-server/concepts-storage-iops",
+    "https://learn.microsoft.com/en-us/azure/mysql/flexible-server/concepts-service-tiers-storage"
+  ],
+  "tests": [
+    "Bash import block passed bash -n; every long flag matched declarations in official MyLoader 1.0.19-1 tagged source",
+    "INI parsed with Python configparser",
+    "Index inspection SELECT parsed with sqlglot 28.0.0 MySQL dialect",
+    "Index timing modes, worker caps and enable-binlog behavior reviewed in tagged source",
+    "Azure compute restart, storage growth-only rule, and IOPS ceilings source-reviewed",
+    "Social image visually inspected: readable title without clipping"
+  ],
+  "limitations": [
+    "MyLoader binary not executed and no import benchmark performed",
+    "No Azure capacity change, SQL query, or live database connection performed",
+    "Source and syntax checks do not prove throughput, permissions, schema completeness, or data consistency"
+  ]
+}

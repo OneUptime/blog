@@ -1,0 +1,33 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-20",
+  "runtimeTestsPerformed": false,
+  "infrastructureDeploymentPerformed": false,
+  "sources": [
+    "https://kubernetes.io/docs/reference/access-authn-authz/manifest-admission-control/",
+    "https://github.com/kubernetes/apiserver/blob/v0.37.0/pkg/admission/plugin/webhook/manifest/loader/loader.go",
+    "https://github.com/kubernetes/apiserver/blob/v0.37.0/pkg/admission/plugin/webhook/config/apis/webhookadmission/v1/types.go",
+    "https://github.com/kubernetes/apiserver/blob/v0.37.0/pkg/admission/plugin/webhook/config/kubeconfig.go",
+    "https://github.com/kubernetes/apiserver/blob/v0.37.0/pkg/admission/plugin/manifest/validation.go",
+    "https://kubernetes.io/docs/reference/kubernetes-api/admissionregistration/mutating-webhook-configuration-v1/",
+    "https://github.com/kubernetes/apiserver/blob/v0.37.0/pkg/admission/plugin/manifest/loader.go",
+    "https://github.com/kubernetes/apiserver/blob/v0.37.0/pkg/admission/plugin/webhook/manifest/source/source.go",
+    "https://github.com/kubernetes/apiserver/blob/v0.37.0/pkg/admission/plugin/manifest/metrics/metrics.go",
+    "https://raw.githubusercontent.com/kubernetes/kubernetes/v1.37.0/api/openapi-spec/swagger.json"
+  ],
+  "tests": [
+    "Parsed both YAML examples; admission configuration fields checked against tagged v0.37.0 configuration types and register.go",
+    "Webhook registration passed v1.37.0 OpenAPI shape check after replacing explicit CA placeholder with existing local test certificate encoding",
+    "Checked required static configuration name suffix and URL-only client configuration",
+    "Reviewed initial load, runtime reload, extension filtering and metrics against tagged source",
+    "Mermaid structurally checked: five nodes, four edges; no render",
+    "Social image generated and visually reviewed"
+  ],
+  "limitations": [
+    "No Kubernetes API server or manifest loader binary executed",
+    "AdmissionConfiguration is not covered by API swagger; its fields received source review and explicit structural checks only",
+    "OpenAPI shape validation is not strict Kubernetes semantic validation",
+    "No endpoint call, TLS handshake, startup failure or runtime reload rehearsed",
+    "CA placeholder must be replaced and endpoint/protocol/authentication implemented before use"
+  ]
+}

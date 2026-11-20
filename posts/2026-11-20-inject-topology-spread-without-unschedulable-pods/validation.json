@@ -1,0 +1,29 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-20",
+  "runtimeTestsPerformed": true,
+  "infrastructureDeploymentPerformed": false,
+  "sources": [
+    "https://kubernetes.io/docs/concepts/scheduling-eviction/topology-spread-constraints/",
+    "https://github.com/kubernetes/api/blob/v0.35.0/core/v1/types.go",
+    "https://github.com/kubernetes/kubernetes/blob/v1.35.0/pkg/scheduler/framework/plugins/podtopologyspread/filtering.go",
+    "https://kubernetes.io/docs/concepts/scheduling-eviction/assign-pod-node/",
+    "https://kubernetes.io/docs/concepts/scheduling-eviction/taint-and-toleration/",
+    "https://kubernetes.io/docs/reference/kubectl/generated/kubectl_describe/"
+  ],
+  "tests": [
+    "Exact Python3.11 helper executed with jsonpatch1.33 for absent/null/empty/existing-soft/existing-hard cases",
+    "Four invalid input cases rejected; input, unrelated fields and idempotence verified",
+    "Resulting Pods and wrapped template fragment passed Kubernetesv1.35.0 OpenAPI",
+    "Two minDomains arithmetic examples checked against reviewed v1.35 filtering source",
+    "Both shell blocks passed bash -n; six-node six-edge Mermaid checked structurally",
+    "Generated social image visually reviewed"
+  ],
+  "limitations": [
+    "No Kubernetes scheduler, API server or actual placement test executed",
+    "minDomains arithmetic isolates one filter condition and is not a scheduler simulation",
+    "Helper assumes trusted eligibility policy and a valid workload label convention",
+    "Node capacity, affinity, taints, volume constraints and custom scheduler profiles not tested",
+    "Mermaid not visually rendered"
+  ]
+}

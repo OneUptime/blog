@@ -1,0 +1,30 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-20",
+  "runtimeTestsPerformed": false,
+  "infrastructureDeploymentPerformed": false,
+  "tests": [
+    "Linux 6.12 VXLAN all-zero fallback/default remote behavior and iproute2 6.12.0 FDB command parser reviewed",
+    "Six published shell snippets pass bash syntax checks",
+    "Both tcpdump expressions compiled using an empty synthetic Ethernet pcap on macOS; no traffic captured",
+    "Mermaid seven nodes/six edges structurally checked",
+    "Social image generated and visually inspected: readable without clipping"
+  ],
+  "sources": [
+    "https://docs.kernel.org/6.12/networking/vxlan.html",
+    "https://man7.org/linux/man-pages/man8/ip-link.8.html",
+    "https://raw.githubusercontent.com/iproute2/iproute2/v6.12.0/man/man8/bridge.8",
+    "https://docs.kernel.org/networking/bridge.html",
+    "https://man7.org/linux/man-pages/man8/ip-address.8.html",
+    "https://man7.org/linux/man-pages/man8/ip-route.8.html",
+    "https://raw.githubusercontent.com/torvalds/linux/v6.12/drivers/net/vxlan/vxlan_core.c",
+    "https://raw.githubusercontent.com/iproute2/iproute2/v6.12.0/bridge/fdb.c",
+    "https://raw.githubusercontent.com/the-tcpdump-group/tcpdump/tcpdump-4.99.5/tcpdump.1.in"
+  ],
+  "limitations": [
+    "No Linux bridge, VXLAN, namespace, FDB mutation or workload connectivity test performed",
+    "macOS filter compilation verifies expression syntax only, not Linux capture visibility or offloads",
+    "Static unicast staging repair is not appropriate for controller-managed EVPN without its owner workflow",
+    "Mermaid structurally checked, not rendered"
+  ]
+}

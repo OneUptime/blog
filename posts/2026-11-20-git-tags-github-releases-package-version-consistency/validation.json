@@ -1,0 +1,34 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-20",
+  "runtimeTestsPerformed": true,
+  "infrastructureDeploymentPerformed": false,
+  "tests": [
+    "Node.js 24.1.0, npm 11.10.0 and Git 2.54.0 local disposable package fixture",
+    "Annotated matching tag passed; wrong version, untracked file, modified tracked file and wrong source commit rejected",
+    "npm pack --ignore-scripts --json executed; archive name/version/file list checked; SHA-512 integrity independently recomputed",
+    "Published JavaScript matches tested helper and passes node --check; three Bash blocks and JSON fixture parse",
+    "Mermaid six nodes/six edges structurally checked",
+    "Generated social image visually inspected: readable without clipping"
+  ],
+  "sources": [
+    "https://docs.npmjs.com/cli/v11/configuring-npm/package-json/",
+    "https://docs.github.com/en/repositories/releasing-projects-on-github/about-releases",
+    "https://git-scm.com/docs/git-rev-parse",
+    "https://nodejs.org/download/release/v24.1.0/docs/api/child_process.html",
+    "https://git-scm.com/docs/git-status",
+    "https://raw.githubusercontent.com/npm/cli/v11.10.0/docs/lib/content/commands/npm-pack.md",
+    "https://raw.githubusercontent.com/npm/cli/v11.10.0/lib/commands/pack.js",
+    "https://docs.npmjs.com/cli/v11/commands/npm-dist-tag/",
+    "https://docs.npmjs.com/cli/v11/commands/npm-view/",
+    "https://raw.githubusercontent.com/npm/cli/v11.10.0/docs/lib/content/commands/npm-publish.md",
+    "https://docs.github.com/en/code-security/concepts/supply-chain-security/immutable-releases",
+    "https://docs.github.com/en/code-security/how-tos/secure-your-supply-chain/establish-provenance-and-integrity/prevent-release-changes"
+  ],
+  "limitations": [
+    "No npm publication, live registry metadata request or GitHub Release creation",
+    "No signing, provenance verification, platform binaries or clean-consumer installation tested",
+    "Guard is single-package consistency check and does not detect ignored files or verify tag signatures",
+    "Mermaid structurally checked, not rendered"
+  ]
+}

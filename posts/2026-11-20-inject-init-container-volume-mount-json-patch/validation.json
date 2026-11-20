@@ -1,0 +1,30 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-20",
+  "runtimeTestsPerformed": true,
+  "infrastructureDeploymentPerformed": false,
+  "sources": [
+    "https://kubernetes.io/docs/concepts/workloads/pods/init-containers/",
+    "https://kubernetes.io/docs/concepts/workloads/pods/sidecar-containers/",
+    "https://kubernetes.io/docs/concepts/storage/volumes/#emptydir",
+    "https://kubernetes.io/docs/concepts/security/pod-security-standards/",
+    "https://www.rfc-editor.org/rfc/rfc6902",
+    "https://kubernetes.io/docs/reference/access-authn-authz/extensible-admission-controllers/#response",
+    "https://github.com/kubernetes/api/blob/v0.35.0/core/v1/types.go",
+    "https://github.com/stefankoegl/python-json-patch/blob/v1.33/jsonpatch.py"
+  ],
+  "tests": [
+    "Executed article Python snippet with Python 3.11 and jsonpatch 1.33 against both JSON fixtures",
+    "Result passed Kubernetes v1.35.0 Pod OpenAPI shape check; shared volume names and read-only mount verified",
+    "Wrong application name rejected; original dictionary preserved; replacement hazard and append behavior including missing-parent failure checked",
+    "Decoded helper command passed sh -n; printf portion executed locally with expected standard newline output",
+    "Mermaid checked structurally for five nodes and four edges, not rendered",
+    "Social image generated and visually reviewed"
+  ],
+  "limitations": [
+    "No cluster admission or Pod startup performed; helper and application images are explicit placeholders",
+    "Fixed fixture patch is deliberately not a general injection planner and must not be blindly reused with existing arrays",
+    "General conflict detection, default-aware reinvocation and partial repair are explained requirements, not an implemented or tested production planner",
+    "Local shell check does not verify helper image contents or filesystem permissions"
+  ]
+}

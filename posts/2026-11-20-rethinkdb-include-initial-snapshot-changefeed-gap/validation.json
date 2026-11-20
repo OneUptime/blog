@@ -1,0 +1,31 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-20",
+  "runtimeTestsPerformed": true,
+  "infrastructureDeploymentPerformed": false,
+  "versions": {
+    "python": "3.11.13",
+    "rethinkdbPythonDriver": "2.4.10.post1"
+  },
+  "checks": [
+    "Python module compiled and published code matches tested file",
+    "Synthetic notification tests passed for interleaved updates/deletions, readiness, empty table, incomplete initialization, overflow and unsupported type",
+    "Mock subscription wrapper cleanup and availability callbacks passed",
+    "Query constructed with actual pinned driver",
+    "Mermaid three-participant four-message structure checked",
+    "Social image visually inspected, readable without clipping"
+  ],
+  "limitations": [
+    "No live RethinkDB server or concurrent writes tested",
+    "No network cleanup, service cancellation, throughput or durability tests",
+    "Mermaid structural validation only"
+  ],
+  "sources": [
+    "https://rethinkdb.com/docs/changefeeds/python/",
+    "https://rethinkdb.com/api/python/changes/",
+    "https://github.com/rethinkdb/rethinkdb-python",
+    "https://rethinkdb.com/api/python/connect/",
+    "https://rethinkdb.com/api/python/close-cursor/",
+    "https://rethinkdb.com/docs/consistency/"
+  ]
+}

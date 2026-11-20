@@ -1,0 +1,33 @@
+{
+  "status": "validated",
+  "date": "2026-11-20",
+  "runtimeTestsPerformed": false,
+  "localCodeTestsPerformed": true,
+  "versions": {
+    "Java client": "10.5.0 jdk8 artifact",
+    "javac": "17.0.16",
+    "server scope": "Enterprise 8.2, documentation only"
+  },
+  "tests": [
+    "Java helper compiled against pinned artifact",
+    "Executed assertions for durable-delete flag, maxRetries 0, inherited generation constraint and timeout, shared-policy isolation",
+    "Bash syntax passed",
+    "Seven Mermaid nodes and six edges checked structurally",
+    "1280x720 social image generated and visually inspected"
+  ],
+  "limitations": [
+    "No database deletes, tombstone creation, cold starts, truncations, or restores executed",
+    "Mermaid checked structurally, not browser-rendered",
+    "Future policy change does not retroactively establish durability of previous deletions"
+  ],
+  "sources": [
+    "https://aerospike.com/docs/database/manage/database/cold-start/",
+    "https://aerospike.com/docs/database/learn/architecture/durable-deletes/",
+    "https://aerospike.com/docs/database/reference/info/",
+    "https://aerospike.com/docs/develop/client/java/usage/atomic/delete/",
+    "https://github.com/aerospike/aerospike-client-java/blob/10.5.0/client/src/com/aerospike/client/policy/WritePolicy.java",
+    "https://aerospike.com/docs/database/reference/info/#truncate",
+    "https://aerospike.com/docs/database/manage/namespace/retention/",
+    "https://aerospike.com/docs/database/reference/config/"
+  ]
+}

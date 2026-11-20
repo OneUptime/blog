@@ -1,0 +1,32 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-20",
+  "runtimeTestsPerformed": true,
+  "infrastructureDeploymentPerformed": false,
+  "versions": {
+    "python": "3.11.13",
+    "rethinkdbPythonDriver": "2.4.10.post1"
+  },
+  "checks": [
+    "Published module compiled and matches tested module",
+    "Mock tests passed: idle timeout/stop, stop before dispatch, callback failure, query failure, cursor-close failure, already-stopped worker",
+    "Cleanup ordering and connection closure after cursor-close error verified",
+    "Installed driver next/close implementation inspected",
+    "Mermaid six-node five-edge structure checked",
+    "Social image visually reviewed; readable and unclipped"
+  ],
+  "limitations": [
+    "No live server, sockets, Unix signal delivery or threaded shutdown test",
+    "No measured end-to-end shutdown deadline or leak detection against a server",
+    "Mermaid not browser-rendered"
+  ],
+  "sources": [
+    "https://rethinkdb.com/api/python/close-cursor/",
+    "https://rethinkdb.com/api/python/close/",
+    "https://rethinkdb.com/api/python/next/",
+    "https://docs.python.org/3.11/library/threading.html#event-objects",
+    "https://rethinkdb.com/api/python/connect/",
+    "https://docs.python.org/3.11/library/signal.html",
+    "https://docs.python.org/3.11/library/threading.html"
+  ]
+}

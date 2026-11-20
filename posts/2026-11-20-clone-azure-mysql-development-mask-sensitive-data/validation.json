@@ -1,0 +1,34 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-20",
+  "runtimeTestsPerformed": true,
+  "infrastructureDeploymentPerformed": false,
+  "sources": [
+    "https://learn.microsoft.com/en-us/azure/mysql/flexible-server/concepts-backup-restore",
+    "https://learn.microsoft.com/en-us/azure/mysql/flexible-server/how-to-restore-server-portal",
+    "https://dev.mysql.com/doc/refman/8.0/en/events-configuration.html",
+    "https://dev.mysql.com/doc/refman/8.0/en/create-table-foreign-keys.html",
+    "https://dev.mysql.com/doc/refman/8.0/en/insert-select.html",
+    "https://dev.mysql.com/doc/refman/8.0/en/string-functions.html",
+    "https://www.iana.org/assignments/special-use-domain-names",
+    "https://dev.mysql.com/doc/refman/8.0/en/mysqldump.html",
+    "https://dev.mysql.com/doc/refman/8.0/en/reloading-sql-format-dumps.html"
+  ],
+  "tests": [
+    "All eight SQL statements parsed with sqlglot 28.0.0 MySQL dialect",
+    "Bash export snippet passed bash -n",
+    "Exact INSERT SELECT projections and orphan SELECT executed against synthetic SQLite attached schemas with a local CONCAT function",
+    "Synthetic tests covered duplicate source emails, large positive ID, unique aliases, omitted names/emails, retained relationships, orphan/duplicate rejection and unchanged source data",
+    "Reviewed MySQL 8.0.46 mysqldump source and official option documentation",
+    "Mermaid seven nodes/six edges structurally checked",
+    "Social image visually inspected without clipping"
+  ],
+  "limitations": [
+    "No Azure restore, MySQL server execution, mysqldump, transfer or import performed",
+    "SQLite fixture tests projection logic only; target tables adapted for SQLite, not MySQL engine/collation/transaction equivalence",
+    "Synthetic data only; no personal or production data accessed",
+    "Minimal fixture is not a complete application clone or anonymization guarantee",
+    "Network isolation and sensitive-field inventory require environment-specific review",
+    "Mermaid not rendered"
+  ]
+}

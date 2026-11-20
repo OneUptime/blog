@@ -1,0 +1,53 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-20",
+  "validationScope": "Pinned official source and npm package review; exact TypeScript compilation and browser bundle",
+  "runtimeTestsPerformed": false,
+  "oneuptimeSourceCommit": "0de2d9ceac0a2404f5df7ad1f9ab1e22c56bea7e",
+  "opentelemetrySourceCommit": "ee0bd33cac8bb245a3d83fc2b8ba0b07534b8efd",
+  "packages": {
+    "name": "internal-rum-example",
+    "private": true,
+    "dependencies": {
+      "@opentelemetry/api": "1.10.0",
+      "@opentelemetry/sdk-trace": "3.1.1",
+      "@opentelemetry/resources": "3.1.1",
+      "@opentelemetry/core": "3.1.1",
+      "@opentelemetry/exporter-trace-otlp-http": "0.301.2",
+      "@opentelemetry/instrumentation": "0.301.2",
+      "@opentelemetry/instrumentation-fetch": "0.301.2",
+      "@opentelemetry/instrumentation-document-load": "0.70.1",
+      "@opentelemetry/context-zone": "3.1.1"
+    },
+    "devDependencies": {
+      "esbuild": "0.28.2",
+      "typescript": "5.9.3"
+    }
+  },
+  "tests": [
+    "Installed final pinned OpenTelemetry dependency set without peer dependency overrides",
+    "Combined exact initialization and acceptance-marker snippets passed TypeScript 5.9.3 strict noEmit checking with DOM types",
+    "esbuild 0.28.2 created browser ESM bundle; metafile contains no remaining external imports",
+    "Tested propagation regex accepts intended origin and rejects hostname suffix lookalike",
+    "All bash examples pass bash -n",
+    "Mermaid flowchart node and edge references checked structurally",
+    "1280x720 social image visually inspected; complete title readable"
+  ],
+  "limitations": [
+    "No live browser or OneUptime ingestion test",
+    "CORS, CSP, Browser key rejection, internal CA trust, resource classification and export failure behavior not exercised",
+    "Compilation and bundling do not prove runtime compatibility with a specific application framework",
+    "Mermaid not browser-rendered"
+  ],
+  "sources": [
+    "https://oneuptime.com/docs/en/rum/browser-setup",
+    "https://github.com/OneUptime/oneuptime/blob/0de2d9ceac0a2404f5df7ad1f9ab1e22c56bea7e/packages/App/FeatureSet/Docs/Content/en/rum/browser-setup.md",
+    "https://opentelemetry.io/docs/languages/js/getting-started/browser/",
+    "https://github.com/open-telemetry/opentelemetry-js/tree/ee0bd33cac8bb245a3d83fc2b8ba0b07534b8efd/packages/sdk-trace",
+    "https://github.com/open-telemetry/opentelemetry-js/blob/ee0bd33cac8bb245a3d83fc2b8ba0b07534b8efd/packages/opentelemetry-context-zone/README.md",
+    "https://developer.mozilla.org/en-US/docs/Web/HTTP/Guides/CORS",
+    "https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/Content-Security-Policy/connect-src",
+    "https://oneuptime.com/docs/en/rum/troubleshooting",
+    "https://oneuptime.com/docs/en/rum/web-vitals"
+  ]
+}

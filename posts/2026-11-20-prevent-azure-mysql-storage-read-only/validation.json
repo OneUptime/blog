@@ -1,0 +1,25 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-20",
+  "runtimeTestsPerformed": true,
+  "infrastructureDeploymentPerformed": false,
+  "sources": [
+    "https://learn.microsoft.com/en-us/azure/mysql/flexible-server/concepts-service-tiers-storage",
+    "https://learn.microsoft.com/en-us/azure/mysql/flexible-server/concepts-monitor-mysql-reference",
+    "https://learn.microsoft.com/en-us/azure/mysql/flexible-server/how-to-alert-on-metric",
+    "https://learn.microsoft.com/en-us/azure/mysql/flexible-server/concepts-storage-iops",
+    "https://dev.mysql.com/doc/refman/8.0/en/optimize-table.html"
+  ],
+  "tests": [
+    "Executed complete capacity example with Python 3.11.13: 94 GiB free, 8 hours to reserve, 946 GiB used threshold",
+    "Verified rejection of zero growth, usage exceeding capacity and response budget exceeding capacity",
+    "Reviewed documented read-only thresholds, mandatory autogrow configurations, growth-only storage and IOPS ceilings",
+    "Reviewed metric names and units and portal alert workflow",
+    "Social image visually reviewed; readable title without clipping"
+  ],
+  "limitations": [
+    "No Azure configuration, alert or notification test performed",
+    "Illustrative linear growth estimate is not a forecast guarantee",
+    "No live exhaustion, database recovery or table reclamation executed"
+  ]
+}

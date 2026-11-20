@@ -1,0 +1,27 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-20",
+  "runtimeTestsPerformed": true,
+  "infrastructureDeploymentPerformed": false,
+  "tests": [
+    "15 local scenarios passed with Python 3.11.13/Boto3 1.40.76 and botocore Stubber",
+    "Exact-fit and shortfall arithmetic, five invalid capacities, three invalid observation times checked",
+    "Quota response accepted or rejected for expected identity/scope/error; permission failure propagated",
+    "Published Python matches tested source",
+    "Mermaid eight nodes/seven edges structurally checked",
+    "Generated social image visually inspected and unclipped"
+  ],
+  "sources": [
+    "https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/ec2-on-demand-instances.html#ec2-on-demand-instances-limits",
+    "https://docs.aws.amazon.com/servicequotas/latest/userguide/intro.html",
+    "https://docs.aws.amazon.com/servicequotas/2019-06-24/apireference/API_GetServiceQuota.html",
+    "https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/troubleshooting-launch.html",
+    "https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/ec2-resource-limits.html"
+  ],
+  "limitations": [
+    "No AWS calls or current quota/usage measurements",
+    "No usage adapter, quota increase, coordinated admission or provisioning exercised",
+    "Stub responses use an explicitly fictional quota code",
+    "Mermaid not rendered"
+  ]
+}

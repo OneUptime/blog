@@ -1,0 +1,35 @@
+# Validation summary
+
+## Review
+
+Reviewed the operation-to-snapshot mapping, converted request routing, nil-object patch rejection, update restrictions and finalizer lifecycle using official Kubernetes v1.35.0 source and documentation. The examples preserve request snapshots and isolate comparison from response construction.
+
+## Checks
+
+- Both Python helpers extracted and executed under Python 3.11
+- Six valid operation/absent-or-null combinations passed; returned copies can be changed without changing original requests
+- Eleven invalid request shapes, missing snapshots, unexpected resource/kind/subresource and unsupported operation cases rejected
+- Five changed-data comparisons checked added, removed, changed, empty-string and unchanged values without modifying input
+- Eight malformed data-map inputs rejected
+- Metadata and existing tags checked; social image generated and visually inspected with full title visible
+
+## Limitations
+
+- No Kubernetes API server, admission response wrapper, actual updates or deletions tested
+- Helpers cover ordinary core v1 ConfigMaps only; comparison covers data only, not binaryData or other fields
+- Local fixtures do not represent a full AdmissionReview or full Kubernetes schema validation
+- DELETE no-patch behavior and finalizer restrictions source-reviewed, not exercised live
+- Operation table used instead of a diagram because the snapshot mapping is the key comparison
+
+## Sources
+
+- https://github.com/kubernetes/kubernetes/blob/v1.35.0/staging/src/k8s.io/api/admission/v1/types.go
+- https://github.com/kubernetes/kubernetes/blob/v1.35.0/staging/src/k8s.io/apiserver/pkg/admission/plugin/webhook/request/admissionreview.go
+- https://kubernetes.io/docs/concepts/configuration/configmap/
+- https://kubernetes.io/docs/concepts/workloads/pods/#pod-update-and-replacement
+- https://github.com/kubernetes/kubernetes/blob/v1.35.0/staging/src/k8s.io/apiserver/pkg/admission/plugin/webhook/mutating/dispatcher.go
+- https://kubernetes.io/docs/concepts/overview/working-with-objects/finalizers/
+
+## Repository checks
+
+The repository validator passed for this post in an isolated fixture with its catalog entry, author list, tag allowlist, and social image. Shell examples, if present, passed bash syntax checking. The full existing catalog was not revalidated.

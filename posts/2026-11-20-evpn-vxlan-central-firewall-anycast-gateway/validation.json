@@ -1,0 +1,25 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-20",
+  "runtimeTestsPerformed": true,
+  "infrastructureDeploymentPerformed": false,
+  "sources": [
+    "https://www.rfc-editor.org/rfc/rfc9135.html",
+    "https://www.cisco.com/c/en/us/td/docs/dcn/nx-os/nexus9000/101x/configuration/vxlan/cisco-nexus-9000-series-nx-os-vxlan-configuration-guide-release-101x/m_configuring_layer_4-layer_7_network_services_integration.html",
+    "https://www.rfc-editor.org/rfc/rfc9135.html#section-4.2",
+    "https://www.cisco.com/c/en/us/td/docs/dcn/nx-os/nexus9000/104x/configuration/vxlan/cisco-nexus-9000-series-nx-os-vxlan-configuration-guide-release-104x/m_configuring_external_vrf_connectivity_and_route_leaking_93x.html",
+    "https://raw.githubusercontent.com/iproute2/iproute2/v6.12.0/man/man8/ip-route.8.in",
+    "https://docs.fortinet.com/document/fortigate/7.4.4/administration-guide/139692/routing-concepts"
+  ],
+  "tests": [
+    "Python 3.11.13 longest-prefix model executed and asserted direct /24 path",
+    "Linux shell block passed bash syntax checking; command forms reviewed against iproute2 6.12.0 source manual",
+    "Mermaid structurally checked: seven nodes and six edges, not rendered",
+    "Repository social image generated and visually reviewed: no clipping"
+  ],
+  "limitations": [
+    "No EVPN, firewall, Linux VRF routing or appliance parser executed",
+    "No failover, packet forwarding, policy enforcement or session-state test",
+    "Fortinet official routing page search excerpt reviewed; full-page retrieval returned 403"
+  ]
+}

@@ -1,0 +1,28 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-20",
+  "runtimeTestsPerformed": true,
+  "infrastructureDeploymentPerformed": false,
+  "tests": [
+    "Fourteen Python3.11 policy cases passed",
+    "Published model matches tested AST",
+    "AWS CLI2.38.1 local input skeleton includes IncludeManagedResources and pagination fields",
+    "Bash syntax passed",
+    "Mermaid eight nodes/eight edges structurally checked",
+    "Social image visually reviewed, readable and unclipped"
+  ],
+  "sources": [
+    "https://docs.aws.amazon.com/resourcegroupstagging/latest/APIReference/API_GetResources.html",
+    "https://docs.aws.amazon.com/cli/latest/reference/ec2/describe-volumes.html",
+    "https://docs.aws.amazon.com/config/latest/developerguide/required-tags.html",
+    "https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/Using_Tags.html",
+    "https://docs.aws.amazon.com/AWSEC2/latest/APIReference/API_DeleteVolume.html",
+    "https://docs.aws.amazon.com/ebs/latest/userguide/ebs-deleting-volume.html"
+  ],
+  "limitations": [
+    "No AWS inventory requests or credentials used",
+    "No notification, quarantine enforcement, durable case store, leases, approval service, snapshot or deletion executed",
+    "Local model is not a complete automation deployment",
+    "Mermaid not rendered"
+  ]
+}

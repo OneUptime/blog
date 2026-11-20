@@ -1,0 +1,29 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-20",
+  "runtimeTestsPerformed": false,
+  "infrastructureDeploymentPerformed": false,
+  "sources": [
+    "https://www.postgresql.org/docs/17/view-pg-available-extensions.html",
+    "https://www.postgresql.org/docs/17/sql-createextension.html",
+    "https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/PostgreSQL.Concepts.General.FeatureSupport.Extensions.html",
+    "https://www.postgresql.org/docs/17/functions-uuid.html",
+    "https://www.postgresql.org/docs/17/sql-createfunction.html",
+    "https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/PostgreSQL_trusted_language_extension.html",
+    "https://www.postgresql.org/docs/17/sql-notify.html",
+    "https://www.postgresql.org/docs/17/bgworker.html",
+    "https://www.postgresql.org/docs/17/backup.html"
+  ],
+  "tests": [
+    "Both SQL statements parsed with pglast 7.24 / PostgreSQL parser 17.7",
+    "PostgreSQL 17 extension installation, built-in UUID generation, function privileges, notifications and server worker model source-reviewed",
+    "RDS supported-extension restrictions and Trusted Language Extensions documentation reviewed",
+    "Mermaid structurally checked: six nodes and five edges; not rendered",
+    "Generated social image visually reviewed without clipping"
+  ],
+  "limitations": [
+    "No live database queries, extension installation, custom function, worker or self-hosted database deployed",
+    "Outbox diagram describes a design requiring implementation, leasing, retries and idempotency; no exactly-once claim",
+    "Provider-specific availability and application equivalence require deployment-specific tests"
+  ]
+}

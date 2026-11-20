@@ -1,0 +1,28 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-20",
+  "runtimeTestsPerformed": true,
+  "infrastructureDeploymentPerformed": false,
+  "tests": [
+    "Official restic 0.18.1 binary exercised snapshots, check --read-data and explicit snapshot:subfolder restore against retained synthetic local repository",
+    "1000 restored file paths and SHA-256 hashes matched independently retained fixture manifest",
+    "Published shell syntax checked; command forms match exercised operations with explicit placeholder substitutions",
+    "Official joint ransomware guide, OpenZFS 2.3 snapshot model, S3 Object Lock modes/version semantics and restic docs reviewed",
+    "Mermaid seven unique nodes/six edges structurally checked",
+    "Generated social image visually inspected: readable, unclipped title"
+  ],
+  "sources": [
+    "https://openzfs.github.io/openzfs-docs/man/v2.3/7/zfsconcepts.7.html",
+    "https://www.ic3.gov/CSA/2023/231019.pdf",
+    "https://docs.aws.amazon.com/AmazonS3/latest/userguide/object-lock.html",
+    "https://restic.readthedocs.io/en/v0.18.1/045_working_with_repos.html",
+    "https://restic.readthedocs.io/en/v0.18.1/050_restore.html",
+    "https://restic.readthedocs.io/en/v0.18.1/060_forget.html"
+  ],
+  "limitations": [
+    "No malware, ransomware, remote object storage, immutability enforcement, identity isolation or production application recovery tested",
+    "Local fixture uses accessible local password/repository and does not demonstrate independent administration",
+    "Protected storage compatibility with a backup product requires separate supported design",
+    "Mermaid not rendered"
+  ]
+}

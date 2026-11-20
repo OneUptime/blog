@@ -1,0 +1,42 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-20",
+  "runtimeTestsPerformed": true,
+  "windowsRuntimeTestsPerformed": false,
+  "infrastructureDeploymentPerformed": false,
+  "versions": {
+    "cdktfCLI": "0.21.0",
+    "macOSNodeTest": "24.1.0",
+    "cmdShim": "8.0.0",
+    "PowerShellDocumentation": "7.5",
+    "npmDocumentation": "11"
+  },
+  "checks": [
+    "Installed CLI package bin entry verified",
+    "npm exec with existing pinned package returned 0.21.0 on macOS; offline flag used in test",
+    "cmd-shim8 generated .cmd/.ps1 wrappers in isolated folder; inspected Node and bundle target",
+    "PowerShell commands source-reviewed against Microsoft and npm documentation",
+    "Mermaid six-node five-edge structure checked",
+    "Social image visually reviewed: readable and unclipped"
+  ],
+  "limitations": [
+    "No Windows or PowerShell execution, PowerShell syntax parser, PATH mutation, execution-policy change, global installation or editor environment test",
+    "Wrapper files generated on macOS were inspected only, not executed",
+    "No browser Mermaid rendering"
+  ],
+  "sources": [
+    "https://developer.hashicorp.com/terraform/cdktf",
+    "https://learn.microsoft.com/en-us/powershell/module/microsoft.powershell.core/get-command?view=powershell-7.5",
+    "https://learn.microsoft.com/en-us/windows-server/administration/windows-commands/where",
+    "https://learn.microsoft.com/en-us/powershell/module/microsoft.powershell.core/about/about_command_precedence?view=powershell-7.5",
+    "https://nodejs.org/docs/latest-v24.x/api/process.html#processexecpath",
+    "https://docs.npmjs.com/cli/v11/commands/npm-prefix/",
+    "https://docs.npmjs.com/cli/v11/commands/npm-ls/",
+    "https://docs.npmjs.com/cli/v11/configuring-npm/folders/",
+    "https://github.com/hashicorp/terraform-cdk/blob/v0.21.0/packages/cdktf-cli/package.json",
+    "https://github.com/npm/cmd-shim",
+    "https://learn.microsoft.com/en-us/powershell/module/microsoft.powershell.core/about/about_environment_variables?view=powershell-7.5",
+    "https://learn.microsoft.com/en-us/powershell/module/microsoft.powershell.core/about/about_execution_policies?view=powershell-7.5",
+    "https://docs.npmjs.com/cli/v11/commands/npm-exec/"
+  ]
+}

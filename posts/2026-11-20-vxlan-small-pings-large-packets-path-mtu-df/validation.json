@@ -1,0 +1,27 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-20",
+  "runtimeTestsPerformed": true,
+  "infrastructureDeploymentPerformed": false,
+  "tests": [
+    "Synthetic VXLAN frames checked for inner/outer lengths and independently selected DF bits; tcpdump 4.99.1 decoded both frames",
+    "Capture filter compiled against saved synthetic pcap",
+    "Four shell blocks syntax checked; byte table arithmetic verified",
+    "Mermaid six nodes/five edges structurally checked",
+    "Social image generated and visually inspected; readable without clipping"
+  ],
+  "sources": [
+    "https://raw.githubusercontent.com/iputils/iputils/20240905/doc/ping.xml",
+    "https://www.rfc-editor.org/rfc/rfc7348.html",
+    "https://man7.org/linux/man-pages/man8/ip-route.8.html",
+    "https://man7.org/linux/man-pages/man8/ip-link.8.html",
+    "https://raw.githubusercontent.com/the-tcpdump-group/tcpdump/tcpdump-4.99.5/tcpdump.1.in",
+    "https://www.rfc-editor.org/rfc/rfc1191.html"
+  ],
+  "limitations": [
+    "No live Linux ping, PMTU discovery, fragmentation or network topology test",
+    "Synthetic packets establish encoding, not real path reachability or offload behavior",
+    "Local tcpdump 4.99.1; documentation reference pinned to 4.99.5",
+    "Mermaid structurally checked, not rendered"
+  ]
+}

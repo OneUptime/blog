@@ -1,0 +1,31 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-20",
+  "runtimeTestsPerformed": true,
+  "infrastructureDeploymentPerformed": false,
+  "versions": {
+    "node": "24.1.0",
+    "rethinkdbdash": "2.3.31",
+    "sourceCommit": "7421553ea98a0874a54980505966383e75d2973f"
+  },
+  "checks": [
+    "Node syntax and published/tested code equality passed",
+    "Isolated factory tests verified independent budgets and enabled TLS verification",
+    "Installed pool manager methods tested with simulated server pools for allocation, available rotation and no-healthy rejection",
+    "Installed idle-return method tested with simulated timers/connections: excess closes, buffer remains",
+    "Mermaid six-node six-edge structure checked",
+    "Generated image visually reviewed; readable without clipping"
+  ],
+  "limitations": [
+    "No database, TLS handshake, authentication, actual network failover or load benchmark",
+    "Constructor configuration tested with injected factory; internal methods tested without constructing live pools",
+    "No live drain or leak test; no Mermaid browser rendering"
+  ],
+  "sources": [
+    "https://github.com/neumino/rethinkdbdash/blob/7421553ea98a0874a54980505966383e75d2973f/lib/connection.js",
+    "https://github.com/neumino/rethinkdbdash",
+    "https://rethinkdb.com/docs/security/",
+    "https://github.com/neumino/rethinkdbdash/blob/7421553ea98a0874a54980505966383e75d2973f/lib/pool_master.js",
+    "https://github.com/neumino/rethinkdbdash/blob/7421553ea98a0874a54980505966383e75d2973f/lib/pool.js"
+  ]
+}

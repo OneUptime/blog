@@ -1,0 +1,30 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-20",
+  "runtimeTestsPerformed": true,
+  "infrastructureDeploymentPerformed": false,
+  "sources": [
+    "https://pkg.go.dev/encoding/json@go1.25.0#Unmarshal",
+    "https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/#pod-level-resource-specification",
+    "https://github.com/kubernetes/api/blob/v0.28.4/core/v1/types.go",
+    "https://github.com/kubernetes-sigs/controller-runtime/blob/v0.23.0/pkg/webhook/admission/response.go",
+    "https://kubernetes.io/docs/reference/access-authn-authz/extensible-admission-controllers/#response",
+    "https://www.rfc-editor.org/rfc/rfc6901.html#section-3",
+    "https://kubernetes.io/docs/reference/using-api/api-concepts/#field-validation"
+  ],
+  "tests": [
+    "Exact published helper compiled and tested with Go1.25.0",
+    "Reproduced spec.resources loss with actual k8s.io/api v0.28.4 Pod round trip",
+    "Applied helper patches with evanphx/json-patch/v5 v5.9.11: six preservation/idempotence cases passed",
+    "Seven malformed input cases rejected",
+    "Published Pod fixture passed Kubernetesv1.35.0 OpenAPI",
+    "Five-node five-edge Mermaid checked structurally",
+    "Social image generated and visually reviewed"
+  ],
+  "limitations": [
+    "No webhook server, API request or cluster deployment executed",
+    "AdmissionReview response wiring is described but not implemented or executed",
+    "Synthetic future field is a local preservation probe, not a supported Pod property",
+    "Mermaid not rendered visually"
+  ]
+}

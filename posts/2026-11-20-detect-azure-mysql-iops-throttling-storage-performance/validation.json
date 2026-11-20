@@ -1,0 +1,30 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-20",
+  "runtimeTestsPerformed": true,
+  "infrastructureDeploymentPerformed": false,
+  "sources": [
+    "https://learn.microsoft.com/en-us/azure/mysql/flexible-server/concepts-storage-iops",
+    "https://learn.microsoft.com/en-us/azure/mysql/flexible-server/concepts-service-tiers-storage",
+    "https://learn.microsoft.com/en-us/cli/azure/mysql/flexible-server?view=azure-cli-latest",
+    "https://learn.microsoft.com/en-us/azure/mysql/flexible-server/concepts-monitor-mysql-reference",
+    "https://learn.microsoft.com/en-us/cli/azure/monitor/metrics?view=azure-cli-latest",
+    "https://dev.mysql.com/doc/refman/8.0/en/innodb-disk-io.html",
+    "https://dev.mysql.com/doc/refman/8.0/en/explain.html",
+    "https://github.com/Azure/azure-cli/blob/azure-cli-2.80.0/src/azure-cli/azure/cli/command_modules/mysql/_params.py"
+  ],
+  "tests": [
+    "Three Bash snippets passed bash -n",
+    "Python helper compiled and executed against synthetic Azure Monitor-shaped JSON",
+    "Helper fixtures verified 60000 operations/minute to 1000 average IOPS, zero preservation, null/missing observations, wrong/absent metrics and empty time series",
+    "Reviewed Azure CLI 2.80.0 metric arguments and MySQL auto-scale-iops enum in official tagged source",
+    "Official MySQL metrics checked for supported aggregations, one-minute count units and diagnostic-settings export limitation",
+    "Generated social image visually reviewed without clipping"
+  ],
+  "limitations": [
+    "No Azure metric request, IOPS update, workload replay, resize or performance measurement performed",
+    "Synthetic JSON tests establish helper behavior, not actual Azure responses",
+    "Rate helper is scoped to complete one-minute total-count buckets; different intervals require a different divisor",
+    "No claim that autoscale removes compute-size limits or that high utilization alone proves throttling"
+  ]
+}

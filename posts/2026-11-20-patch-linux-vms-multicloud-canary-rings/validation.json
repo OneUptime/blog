@@ -1,0 +1,31 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-20",
+  "runtimeTestsPerformed": true,
+  "infrastructureDeploymentPerformed": false,
+  "tests": [
+    "AWS CLI 2.38.1 offline output-skeleton checks passed for describe-document and get-document",
+    "SendCommand output skeleton contains invalid generated CommandId/TimeoutSeconds; input-skeleton parser checks and botocore parameter validation passed for Scan and Install",
+    "Numeric document-version extraction executed against fixture and returned expected value",
+    "All shell blocks parsed; Mermaid nine nodes/nine edges structurally checked",
+    "Generated social image visually reviewed for readable unclipped title"
+  ],
+  "sources": [
+    "https://learn.microsoft.com/en-us/azure/update-manager/overview",
+    "https://docs.aws.amazon.com/cli/latest/reference/ssm/describe-document.html",
+    "https://docs.aws.amazon.com/cli/latest/reference/ssm/get-document.html",
+    "https://docs.aws.amazon.com/systems-manager/latest/userguide/patch-manager-aws-runpatchbaseline.html",
+    "https://docs.aws.amazon.com/cli/latest/reference/ssm/send-command.html",
+    "https://learn.microsoft.com/en-us/azure/update-manager/deploy-updates",
+    "https://learn.microsoft.com/en-us/azure/update-manager/scheduled-patching",
+    "https://docs.cloud.google.com/compute/vm-manager/docs/patch/create-patch-job",
+    "https://docs.aws.amazon.com/systems-manager/latest/userguide/patch-manager-aws-runpatchbaseline.html#patch-manager-aws-runpatchbaseline-parameters",
+    "https://learn.microsoft.com/en-us/azure/update-manager/scheduled-patching"
+  ],
+  "limitations": [
+    "No live agent, patch scan/install, reboot, rollback, application or cloud rollout testing",
+    "Document version 1 used only in offline shape fixtures; article resolves and reviews actual numeric version instead",
+    "Azure and GCP settings reviewed from official documentation, not executed",
+    "Mermaid not rendered"
+  ]
+}

@@ -1,0 +1,28 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-20",
+  "validationScope": "Official documentation and pinned Admin controller review, shell syntax and image checks",
+  "runtimeTestsPerformed": false,
+  "adminVersion": "5.2.0",
+  "exampleDatabaseVersion": "8.2.0.1",
+  "tests": [
+    "Shell commands passed bash -n",
+    "Parsed official 5.2.0 show_controller.py with Python AST and confirmed statistics service/namespace, jobs queries and latencies controllers",
+    "Reviewed batch queue/buffer metric meanings, counter interpretation, and read hot-key caveat against official docs",
+    "Mermaid node references checked structurally; social image 1280x720 visually inspected"
+  ],
+  "limitations": [
+    "No asadm runtime, server connection, metrics collection, batch/query workload or benchmark executed",
+    "Controller inspection is not CLI parser execution or server-version compatibility testing",
+    "No end-to-end timeout or partial-result behavior tested",
+    "Mermaid not browser-rendered"
+  ],
+  "sources": [
+    "https://github.com/aerospike/aerospike-admin/blob/5.2.0/lib/live_cluster/show_controller.py",
+    "https://aerospike.com/docs/database/tools/asadm/live-mode/",
+    "https://aerospike.com/docs/develop/connection-tuning-guide/",
+    "https://aerospike.com/docs/database/manage/cluster/batches/",
+    "https://aerospike.com/docs/database/observe/key-metrics/",
+    "https://aerospike.com/docs/database/advanced/troubleshoot/hot-keys/"
+  ]
+}

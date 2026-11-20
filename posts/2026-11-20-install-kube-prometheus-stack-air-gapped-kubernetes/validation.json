@@ -1,0 +1,33 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-20",
+  "validationScope": "Official source review, exact local Helm render, static checks, social image review",
+  "runtimeTestsPerformed": false,
+  "chartVersion": "93.6.0",
+  "operatorVersion": "v0.95.2",
+  "chartSha256": "4a87c1548d9b6a56558ed0c028f266e6b70312b5d62f277f33ce78342a05a783",
+  "tests": [
+    "Helm 3.12.3 rendered complete pinned chart with article YAML: 136 documents",
+    "Ruby Psych parsed all rendered YAML documents",
+    "All 11 image references including Operator reloader argument use internal registry",
+    "Prometheus and Alertmanager custom resources include monitoring-pull secret",
+    "Article YAML matches locally rendered values file exactly",
+    "All bash blocks pass bash -n",
+    "Mermaid flowchart node definitions and edge references checked structurally",
+    "1280x720 social image visually inspected: complete readable title without clipping"
+  ],
+  "limitations": [
+    "No image downloads or Skopeo transfers performed",
+    "No live Kubernetes installation, API validation, registry authentication, architecture verification, persistence or notification tests",
+    "Mermaid diagram not browser-rendered",
+    "Grafana configuration not exercised by a running Grafana process"
+  ],
+  "sources": [
+    "https://github.com/prometheus-community/helm-charts/releases/tag/kube-prometheus-stack-93.6.0",
+    "https://prometheus-operator.dev/docs/api-reference/api/",
+    "https://kubernetes.io/docs/tasks/configure-pod-container/pull-image-private-registry/",
+    "https://grafana.com/docs/grafana/latest/setup-grafana/configure-grafana/",
+    "https://helm.sh/docs/helm/helm_template/",
+    "https://github.com/containers/skopeo/blob/main/docs/skopeo-copy.1.md"
+  ]
+}

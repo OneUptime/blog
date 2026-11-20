@@ -1,0 +1,27 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-20",
+  "runtimeTestsPerformed": true,
+  "infrastructureDeploymentPerformed": false,
+  "tests": [
+    "Python 3.11.13 synthetic local matching-tree manifest comparison passed, including empty directory, symlink and newline filename",
+    "Same-size changed content, missing and extra paths produced different/missing/extra records and failure status",
+    "Duplicate path rejected; unsupported FIFO rejected without reading it",
+    "Both published Python blocks match executed scripts and parse; two shell blocks pass syntax checks",
+    "Official Python SHA-256/traversal, S3 checksum/ETag and rclone check semantics reviewed",
+    "Generated social image visually inspected: readable title without clipping"
+  ],
+  "sources": [
+    "https://docs.python.org/3.11/library/hashlib.html",
+    "https://docs.python.org/3.11/library/os.html",
+    "https://docs.aws.amazon.com/AmazonS3/latest/userguide/checking-object-integrity-upload.html",
+    "https://rclone.org/commands/rclone_check/"
+  ],
+  "limitations": [
+    "No multi-terabyte, remote filesystem, cloud checksum or application cutover runtime test",
+    "Comparator retains manifests in memory and is explicitly scoped to bounded pilots or partitions",
+    "Manifest excludes ACLs, xattrs, hard-link identity, sparse allocation and root metadata",
+    "Before/after status check is not a snapshot or complete concurrent-mutation detector",
+    "Exception ledger table used; no diagram needed"
+  ]
+}

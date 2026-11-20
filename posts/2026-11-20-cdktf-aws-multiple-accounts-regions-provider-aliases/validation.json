@@ -1,0 +1,29 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-20",
+  "runtimeTestsPerformed": true,
+  "infrastructureDeploymentPerformed": false,
+  "tests": [
+    "Installed exact @cdktf/provider-aws21.22.1; npm metadata confirms Terraform AWS6.25.0 and compatible peers",
+    "Article main.ts matched lab, TypeScript5.8.3 tsc-noEmit passed, CDKTF0.21.0 synth passed",
+    "Executed article Node inspection command; asserted both provider aliases and all four resource/data references, Terraform required provider6.25.0",
+    "Read tagged binding schema and AWS provider documentation for assumeRole array, allowedAccountIds, and caller identity",
+    "Bash syntax passed; seven-node six-edge Mermaid structure checked;1280x720 social image visually reviewed, full title fits"
+  ],
+  "limitations": [
+    "No AWS credentials, AssumeRole call, plan, apply, or resource creation tested",
+    "Terraform AWS plugin not installed or terraform validate run; validation is TypeScript compilation, synthesis and JSON routing assertions",
+    "No child module mapping executed; module guidance source-reviewed",
+    "Mermaid not browser-rendered; Node24.1.0/macOS arm64, constructs10.8.1, ts-node10.9.2"
+  ],
+  "sources": [
+    "https://developer.hashicorp.com/terraform/cdktf",
+    "https://developer.hashicorp.com/terraform/language/block/provider",
+    "https://registry.npmjs.org/@cdktf/provider-aws/21.22.1",
+    "https://docs.aws.amazon.com/IAM/latest/UserGuide/id_roles_use_permissions-to-switch.html",
+    "https://github.com/cdktf/cdktf-provider-aws/blob/v21.22.1/src/provider/index.ts",
+    "https://github.com/hashicorp/terraform-provider-aws/blob/v6.25.0/website/docs/index.html.markdown",
+    "https://github.com/hashicorp/terraform-provider-aws/blob/v6.25.0/website/docs/d/caller_identity.html.markdown",
+    "https://developer.hashicorp.com/terraform/language/modules/develop/providers"
+  ]
+}

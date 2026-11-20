@@ -1,0 +1,36 @@
+{
+  "status": "validated",
+  "date": "2026-11-20",
+  "runtimeTestsPerformed": false,
+  "localCodeTestsPerformed": false,
+  "versions": {
+    "server scope": "Enterprise 8.2",
+    "asadm source": "5.2.0"
+  },
+  "tests": [
+    "All Bash snippets passed syntax checks",
+    "Tagged manage controller parsed: explicit node selection for quiesce/undo and principal recluster dispatch checked",
+    "Mermaid seven nodes and six edges checked structurally",
+    "Reviewed roster preservation, pending changes, handoff proxy counters, startup status and stay-quiesced exception",
+    "Social image generated and visually inspected at 1280x720"
+  ],
+  "limitations": [
+    "No cluster connection, administrative state change, service restart, index checkpoint, or ASMT execution",
+    "Interactive commands source-checked, not executed against asadm",
+    "Mermaid structurally checked, not browser-rendered",
+    "Procedure assumes daemon-only restart with healthy replicas and RF at least two"
+  ],
+  "sources": [
+    "https://aerospike.com/docs/database/manage/cluster/consistency/",
+    "https://aerospike.com/docs/database/tools/asadm/live-mode/",
+    "https://aerospike.com/docs/database/manage/cluster/delay-migrations/",
+    "https://aerospike.com/docs/database/tools/asmt/",
+    "https://aerospike.com/docs/database/reference/config/#index-checkpoint-path",
+    "https://aerospike.com/docs/database/manage/cluster/quiesce-node/",
+    "https://aerospike.com/docs/database/manage/cluster/consistency/#upgrading-aerospike-asd-restart-only-no-host-reboot",
+    "https://aerospike.com/docs/database/reference/info/",
+    "https://aerospike.com/docs/database/reference/metrics/",
+    "https://aerospike.com/docs/database/reference/config/#stay-quiesced",
+    "https://github.com/aerospike/aerospike-admin/blob/5.2.0/lib/live_cluster/manage_controller.py"
+  ]
+}

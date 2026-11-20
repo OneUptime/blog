@@ -1,0 +1,28 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-20",
+  "validationScope": "Pinned Java source and official documentation review, exact snippet compilation and local policy assertions, image review",
+  "runtimeTestsPerformed": false,
+  "localCodeTestsPerformed": true,
+  "javaClientArtifact": "com.aerospike:aerospike-client-jdk8:10.5.0",
+  "artifactSha256": "6acd3483985a7dd257433e3e87193745ddd32c48cfaf232a0b9b62457442181d",
+  "tests": [
+    "Exact Java factory compiled using javac 17.0.16 against official Maven Central artifact",
+    "Executed assertions for all configured fields, disabled write retries, read-touch setting, and isolation between returned policy instances",
+    "Reviewed deadline, retry sleep eligibility and uncertain-write behavior against 10.5.0 Policy, SyncCommand and AerospikeException sources",
+    "Mermaid references checked structurally; 1280x720 social image visually reviewed"
+  ],
+  "limitations": [
+    "No live Aerospike connection, read/write, deadline measurement, retry execution, node failure or migration test",
+    "Policy numbers are illustrative and not benchmark recommendations",
+    "Mermaid not browser-rendered"
+  ],
+  "sources": [
+    "https://github.com/aerospike/aerospike-client-java/blob/10.5.0/client/src/com/aerospike/client/policy/Policy.java",
+    "https://aerospike.com/docs/develop/connection-tuning-guide/",
+    "https://github.com/aerospike/aerospike-client-java/blob/10.5.0/client/src/com/aerospike/client/command/SyncCommand.java",
+    "https://aerospike.com/docs/develop/client/java/policies/",
+    "https://github.com/aerospike/aerospike-client-java/blob/10.5.0/client/src/com/aerospike/client/AerospikeException.java",
+    "https://repo.maven.apache.org/maven2/com/aerospike/aerospike-client-jdk8/10.5.0/aerospike-client-jdk8-10.5.0.jar"
+  ]
+}

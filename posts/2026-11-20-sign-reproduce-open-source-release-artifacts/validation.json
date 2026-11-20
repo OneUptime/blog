@@ -1,0 +1,30 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-20",
+  "runtimeTestsPerformed": true,
+  "infrastructureDeploymentPerformed": false,
+  "tests": [
+    "Python 3.11.13 deterministic ZIP packaging: same bytes from separate directories with different source mtimes and permissions",
+    "OpenSSL 4.1.0 throwaway RSA 3072 signing and verification passed; modified archive failed verification",
+    "Existing output, output inside source and symlink input rejected",
+    "DER public-key SHA-256 output matched independent Python hashing",
+    "Five shell snippets pass syntax; published Python matches tested script; Mermaid seven nodes/eight edges structurally checked",
+    "Generated social image visually inspected: readable without clipping"
+  ],
+  "sources": [
+    "https://reproducible-builds.org/docs/definition/",
+    "https://reproducible-builds.org/docs/archives/",
+    "https://docs.python.org/3.11/library/zipfile.html",
+    "https://reproducible-builds.org/docs/source-date-epoch/",
+    "https://docs.openssl.org/4.1/man1/openssl-genpkey/",
+    "https://docs.openssl.org/4.1/man1/openssl-pkey/",
+    "https://docs.openssl.org/4.1/man1/openssl-dgst/"
+  ],
+  "limitations": [
+    "Local source packaging fixture only, not native binary or dependency graph reproduction",
+    "No independent third-party builder or production signing system tested",
+    "Throwaway unencrypted lab key explicitly separated from production key custody",
+    "No release publication, key distribution or rotation performed",
+    "Mermaid structurally checked, not rendered"
+  ]
+}

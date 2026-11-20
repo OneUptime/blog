@@ -1,0 +1,29 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-20",
+  "runtimeTestsPerformed": false,
+  "infrastructureDeploymentPerformed": false,
+  "tests": [
+    "Four PowerShell snippets parsed with PowerShell 7.4.6; published code equals parsed files",
+    "Source review against Microsoft documentation for Robocopy, SMB inspection, DNS and supported name migration",
+    "Preview mode enabled by default; copy example contains no purge, mirror or move options",
+    "Mermaid eight nodes/seven edges structurally checked",
+    "Generated social image visually reviewed: readable title without clipping"
+  ],
+  "sources": [
+    "https://learn.microsoft.com/en-us/windows-server/administration/windows-commands/robocopy",
+    "https://learn.microsoft.com/en-us/powershell/module/smbshare/get-smbshareaccess?view=windowsserver2025-ps",
+    "https://learn.microsoft.com/en-us/powershell/module/smbshare/get-smbopenfile?view=windowsserver2025-ps",
+    "https://learn.microsoft.com/en-us/troubleshoot/windows-server/networking/dns-cname-alias-cannot-access-smb-file-server-share",
+    "https://learn.microsoft.com/en-us/windows-server/storage/storage-migration-service/cutover",
+    "https://learn.microsoft.com/en-us/powershell/module/dnsclient/resolve-dnsname?view=windowsserver2025-ps",
+    "https://learn.microsoft.com/en-us/powershell/module/smbshare/get-smbconnection?view=windowsserver2025-ps"
+  ],
+  "limitations": [
+    "No Windows Server 2022 host, SMB connection, Robocopy execution, permission transfer or DNS/identity cutover tested",
+    "PowerShell parser check is not Windows module parameter binding or runtime validation",
+    "Copy does not reconcile deletions or transfer share configuration; explicit separate steps required",
+    "No zero-downtime guarantee; controlled write freeze and post-write rollback reconciliation required",
+    "Mermaid not rendered"
+  ]
+}

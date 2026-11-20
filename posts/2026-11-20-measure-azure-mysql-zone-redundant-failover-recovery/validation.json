@@ -1,0 +1,26 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-20",
+  "runtimeTestsPerformed": true,
+  "infrastructureDeploymentPerformed": false,
+  "sources": [
+    "https://learn.microsoft.com/en-us/azure/mysql/flexible-server/concepts-high-availability",
+    "https://learn.microsoft.com/en-us/azure/reliability/reliability-database-mysql",
+    "https://learn.microsoft.com/en-us/azure/mysql/flexible-server/how-to-configure-high-availability",
+    "https://docs.python.org/3.11/library/csv.html"
+  ],
+  "tests": [
+    "Executed complete CSV analyzer with Python 3.11.13 using six synthetic cases",
+    "Verified transient success then sustained recovery at 36 seconds, sample-gap reset, no observed failure, out-of-order rejection, nonfinite-time rejection and later-failure reset",
+    "Mermaid structural check: seven declared nodes and six resolved edges",
+    "Reviewed official forced-failover procedure, client disconnects, hostname guidance and DNS/load-balancer architecture caveat",
+    "Social image visually reviewed; readable without clipping"
+  ],
+  "limitations": [
+    "No Azure failover, application load, database write or live connection recovery tested",
+    "Synthetic timing outputs are not measurements of Azure recovery",
+    "Analyzer assumes supplied health flags correctly include business success and latency budget",
+    "Sampling cannot prove uninterrupted availability between observations",
+    "Mermaid not rendered"
+  ]
+}

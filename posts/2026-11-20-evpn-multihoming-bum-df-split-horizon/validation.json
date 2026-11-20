@@ -1,0 +1,25 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-20",
+  "runtimeTestsPerformed": false,
+  "infrastructureDeploymentPerformed": false,
+  "tests": [
+    "Two shell blocks passed bash syntax checks",
+    "Cumulus Linux5.10 NVUE segment/service/BGP views checked against official documentation",
+    "RFC7432/8365/8584 reviewed for DF responsibility, service discovery and VXLAN split horizon",
+    "Mermaid four nodes/three solid and one dotted edge structurally checked",
+    "Generated social image visually inspected without clipping"
+  ],
+  "sources": [
+    "https://www.rfc-editor.org/rfc/rfc8584.html",
+    "https://www.rfc-editor.org/rfc/rfc8365.html#section-8.3.1",
+    "https://www.rfc-editor.org/rfc/rfc7432.html",
+    "https://docs.nvidia.com/networking-ethernet-software/cumulus-linux-510/Network-Virtualization/Ethernet-Virtual-Private-Network-EVPN/EVPN-Multihoming/"
+  ],
+  "limitations": [
+    "No NVUE execution, switch state, DF election or hardware filter test",
+    "No live BUM replication, reflection, LACP bypass or failover measurement",
+    "Scope is supported all-active server attachment with ingress replication; platform preference rule is not universal",
+    "Mermaid structurally checked, not rendered"
+  ]
+}

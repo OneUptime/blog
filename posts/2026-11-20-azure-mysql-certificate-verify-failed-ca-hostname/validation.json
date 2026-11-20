@@ -1,0 +1,30 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-20",
+  "runtimeTestsPerformed": true,
+  "infrastructureDeploymentPerformed": false,
+  "sources": [
+    "https://docs.python.org/3.11/library/ssl.html",
+    "https://learn.microsoft.com/en-us/azure/mysql/security/security-tls",
+    "https://learn.microsoft.com/en-us/azure/mysql/security/security-tls-how-to-connect",
+    "https://docs.openssl.org/3.5/man1/openssl-storeutl/",
+    "https://dev.mysql.com/doc/refman/8.4/en/connection-options.html",
+    "https://dev.mysql.com/doc/refman/8.4/en/using-encrypted-connections.html",
+    "https://dev.mysql.com/doc/connector-python/en/connector-python-connectargs.html",
+    "https://cacerts.digicert.com/DigiCertGlobalRootG2.crt",
+    "https://www.microsoft.com/pkiops/certs/Microsoft%20RSA%20Root%20Certificate%20Authority%202017.crt"
+  ],
+  "tests": [
+    "Official Azure-linked root certificate downloads converted from DER to PEM; OpenSSL 4.1.0 storeutl inspected both expected subjects and dates",
+    "Article Python check executed using Python 3.11.13: two CA certificates loaded, hostname checking true, CERT_REQUIRED",
+    "Malformed HTML input rejected by actual Python TLS loader",
+    "Three Bash blocks passed syntax checks; MySQL 8.4 CLI flags source-reviewed",
+    "Connector/Python 9.5.0 verification arguments cross-checked with official documentation",
+    "Social image visually inspected: readable title, no clipping"
+  ],
+  "limitations": [
+    "No live Azure MySQL TLS handshake or database login performed",
+    "MySQL CLI not installed or executed",
+    "Local CA loading does not prove the application uses that file or the remote certificate chains to it"
+  ]
+}

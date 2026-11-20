@@ -12,17 +12,25 @@ Research: [OneUptime air-gapped deployment](https://oneuptime.com/enterprise/air
 
 1. Air-Gapped Observability: How to Monitor Logs, Metrics, and Traces Without Internet Access
 
+    Completed: [Article](posts/2026-11-20-air-gapped-observability-logs-metrics-traces/README.md) (20 November 2026).
+
     Scope: An end-to-end architecture with local collection, storage, querying, and alert evaluation.
 
 2. How to Choose Monitoring Tools for an Air-Gapped Environment
+
+    Completed: [Article](posts/2026-11-20-choose-monitoring-tools-air-gapped-environment/README.md) (20 November 2026).
 
     Scope: Compare offline installation, licensing, local storage, notification delivery, and ongoing maintenance requirements.
 
 3. Self-Hosted vs. Air-Gapped Monitoring: What Is the Difference?
 
+    Completed: [Article](posts/2026-11-20-self-hosted-vs-air-gapped-monitoring/README.md) (20 November 2026).
+
     Scope: Explain why self-hosting alone does not remove dependencies on public registries, identity providers, certificate services, and notification APIs.
 
 4. How to Test That Your Monitoring Stack Works Without Internet Access
+
+    Completed: [Article](posts/2026-11-20-test-monitoring-stack-without-internet/README.md) (20 November 2026).
 
     Scope: Test cold starts, sign-in, telemetry ingestion, synthetic checks, and alert delivery with internet egress blocked; detect hidden runtime downloads.
 
@@ -32,21 +40,31 @@ Research: [Air-gapped installation](https://oneuptime.com/docs/en/installation/a
 
 5. How to Install OneUptime in Air-Gapped Kubernetes with an Offline Installation Bundle
 
+    Completed: [Article](posts/2026-11-20-install-oneuptime-air-gapped-kubernetes-offline-bundle/README.md) (20 November 2026).
+
     Scope: Prepare the release bundle on a connected machine, verify the transfer, import images into a private registry, and install the bundled chart.
 
 6. How to Upgrade OneUptime in an Air-Gapped Kubernetes Cluster
+
+    Completed: [Article](posts/2026-11-20-upgrade-oneuptime-air-gapped-kubernetes/README.md) (20 November 2026).
 
     Scope: Stage the target release and rollback artifacts before the maintenance window, account for changed image dependencies, and rehearse without registry access to the internet.
 
 7. How to Configure OneUptime HTTPS with an Internal Certificate Authority
 
+    Completed: [Article](posts/2026-11-20-oneuptime-https-internal-certificate-authority/README.md) (20 November 2026).
+
     Scope: Distribute CA trust and renew certificates without internet access; explain the documented OTLP/HTTP route when OneUptime's built-in gRPC ingress cannot obtain a public certificate.
 
 8. How to Restore Air-Gapped Monitoring from an Offline Bundle When the Private Registry Is Down
 
+    Completed: [Article](posts/2026-11-20-restore-air-gapped-monitoring-private-registry-down/README.md) (20 November 2026).
+
     Scope: Bootstrap a replacement registry and monitoring deployment from retained images, charts, configuration, and database backups; test recovery on nodes without cached images.
 
 9. How to Configure Air-Gapped Monitoring with an Internal SAML or OIDC Identity Provider
+
+    Completed: [Article](posts/2026-11-20-air-gapped-monitoring-internal-identity-provider/README.md) (20 November 2026).
 
     Scope: Keep login, metadata discovery, signing keys, and certificate trust inside the network; test access during an identity-provider outage.
 
@@ -56,21 +74,31 @@ Research: [OpenTelemetry Collector Helm chart](https://opentelemetry.io/docs/pla
 
 10. How to Install OpenTelemetry Collector in an Air-Gapped Kubernetes Cluster
 
+    Completed: [Article](posts/2026-11-20-install-opentelemetry-collector-air-gapped-kubernetes/README.md) (20 November 2026).
+
     Scope: Package the chart and the required Collector distribution, configure a local telemetry destination, and verify collection without public image pulls.
 
 11. How to Mirror OpenTelemetry Auto-Instrumentation Images for Offline Kubernetes
+
+    Completed: [Article](posts/2026-11-20-mirror-opentelemetry-auto-instrumentation-images-offline/README.md) (20 November 2026).
 
     Scope: Cover the language-specific images injected into application pods, which are separate from the Operator and Collector images.
 
 12. How to Configure OpenTelemetry Operator Webhook Certificates with an Internal CA
 
+    Completed: [Article](posts/2026-11-20-opentelemetry-operator-webhook-certificates-internal-ca/README.md) (20 November 2026).
+
     Scope: Configure the supported user-supplied serving certificates and admission webhook CA bundle, including renewal and trust rotation inside an isolated cluster.
 
 13. How to Monitor Air-Gapped OpenShift Clusters with Restricted Security Policies
 
+    Completed: [Article](posts/2026-11-20-monitor-air-gapped-openshift-restricted-security-policies/README.md) (20 November 2026).
+
     Scope: Combine offline image deployment with the OneUptime agent's restricted OpenShift configuration; identify which logs and metrics remain available without privileged collectors.
 
 14. How to Install kube-prometheus-stack in an Air-Gapped Kubernetes Cluster
+
+    Completed: [Article](posts/2026-11-20-install-kube-prometheus-stack-air-gapped-kubernetes/README.md) (20 November 2026).
 
     Scope: Mirror chart dependencies, admission jobs, exporters, and Operator-managed images; keep Prometheus, Grafana, and Alertmanager functional locally.
 
@@ -80,21 +108,31 @@ Research: [Offline Grafana plugin installation](https://grafana.com/docs/grafana
 
 15. How to Install Grafana Plugins in an Air-Gapped Environment
 
+    Completed: [Article](posts/2026-11-20-install-grafana-plugins-air-gapped-environment/README.md) (20 November 2026).
+
     Scope: Transfer versioned plugin archives, install them locally, and validate signatures and compatibility without relying on the online plugin catalog.
 
 16. How to Stop Grafana from Making Internet Requests in an Air-Gapped Network
+
+    Completed: [Article](posts/2026-11-20-stop-grafana-internet-requests-air-gapped-network/README.md) (20 November 2026).
 
     Scope: Audit update checks, usage reporting, plugin downloads, signature-key retrieval, and dashboard resources; verify behavior during startup and normal use.
 
 17. How to Run Synthetic Browser Monitoring in an Air-Gapped Network
 
+    Completed: [Article](posts/2026-11-20-synthetic-browser-monitoring-air-gapped-network/README.md) (20 November 2026).
+
     Scope: Stage browser runtimes and test assets, use internal authentication, and identify application scripts or fonts that still load from public CDNs.
 
 18. How to Set Up Real User Monitoring for Internal Applications Without Cloud Services
 
+    Completed: [Article](posts/2026-11-20-real-user-monitoring-internal-applications-without-cloud/README.md) (20 November 2026).
+
     Scope: Bundle browser instrumentation locally and route telemetry to a self-hosted endpoint, including internal TLS trust and browser-origin restrictions.
 
 19. How to Fix Missing Images and Fonts in Self-Hosted Session Replay
+
+    Completed: [Article](posts/2026-11-20-fix-missing-images-fonts-self-hosted-session-replay/README.md) (20 November 2026).
 
     Scope: Reproduce playback in an air-gapped viewer's browser and make the original asset URLs available internally; do not assume the recording embeds every external resource.
 
@@ -104,21 +142,31 @@ Research: [OneUptime air-gapped alerting](https://oneuptime.com/enterprise/air-g
 
 20. Air-Gapped Alerting: How to Deliver Incident Notifications Without Cloud Services
 
+    Completed: [Article](posts/2026-11-20-air-gapped-alerting-incident-notifications-without-cloud/README.md) (20 November 2026).
+
     Scope: Design and test local delivery and acknowledgment paths using internal email, chat, or paging infrastructure; identify channels that still need external connectivity.
 
 21. How to Manage Air-Gapped Incidents with OneUptime and Mattermost
+
+    Completed: [Article](posts/2026-11-20-manage-air-gapped-incidents-oneuptime-mattermost/README.md) (20 November 2026).
 
     Scope: Connect both self-hosted services, verify internal callback routes, and test incident notifications and acknowledgments without cloud chat services.
 
 22. How to Connect an Internal Pager System to Self-Hosted OneUptime
 
+    Completed: [Article](posts/2026-11-20-connect-internal-pager-system-self-hosted-oneuptime/README.md) (20 November 2026).
+
     Scope: Use signed custom-channel requests, retries, and acknowledgment callbacks; document the required Enterprise entitlement and the pager system's own delivery dependencies.
 
 23. How to Keep an Internal Status Page Available During a Kubernetes Outage
 
+    Completed: [Article](posts/2026-11-20-keep-internal-status-page-available-kubernetes-outage/README.md) (20 November 2026).
+
     Scope: Place the OneUptime deployment and its DNS, identity, and storage dependencies outside the monitored cluster's failure domain; rehearse internal access during an outage.
 
 24. How to Connect OneUptime to Ollama for Air-Gapped Incident Investigations
+
+    Completed: [Article](posts/2026-11-20-connect-oneuptime-ollama-air-gapped-incident-investigations/README.md) (20 November 2026).
 
     Scope: Stage model artifacts before disconnecting, configure the internal inference endpoint, and validate tool calling and read-only incident investigation without hosted AI APIs.
 
@@ -126,298 +174,818 @@ Research: [OneUptime air-gapped alerting](https://oneuptime.com/enterprise/air-g
 ## Aerospike
 
 1. Aerospike `INVALID_NODE_ERROR` in Docker or Testcontainers: Fix Advertised Addresses and Mapped Ports
+
+    Completed: [Article](posts/2026-11-20-fix-aerospike-invalid-node-error-docker-testcontainers/README.md) (20 November 2026).
 2. Aerospike Nodes Will Not Form a Cluster: Debug Mesh Seeds, Heartbeat Addresses, Cluster Names, and Firewalls
+
+    Completed: [Article](posts/2026-11-20-debug-aerospike-cluster-mesh-heartbeat-firewalls/README.md) (20 November 2026).
 3. Intermittent Aerospike Timeouts During Node Failure or Migration: Tune `socketTimeout`, `totalTimeout`, Retries, and Backoff
+
+    Completed: [Article](posts/2026-11-20-tune-aerospike-timeouts-node-failure-migration/README.md) (20 November 2026).
 4. `AEROSPIKE_ERR_TIMEOUT` on Batch or Query Operations: Find the Client, Queue, Storage, or Hot-Key Bottleneck
+
+    Completed: [Article](posts/2026-11-20-diagnose-aerospike-batch-query-timeout-bottlenecks/README.md) (20 November 2026).
 5. Aerospike Batch Reads Return `failedNodes`: Retry Only Unresolved Keys Without Duplicating Side Effects
+
+    Completed: [Article](posts/2026-11-20-retry-aerospike-batch-reads-failed-nodes-unresolved-keys/README.md) (20 November 2026).
 6. `AEROSPIKE_ERR_INDEX_NOT_READABLE`: Wait for Every Node’s Secondary Index to Reach `RW`
+
+    Completed: [Article](posts/2026-11-20-fix-aerospike-index-not-readable-wait-all-nodes/README.md) (20 November 2026).
 10. How to Resume a Large Aerospike Query with `PartitionFilter` Without Starting Over After a Failure
+
+    Completed: [Article](posts/2026-11-20-resume-aerospike-query-partitionfilter-after-failure/README.md) (20 November 2026).
 11. Aerospike TTL Values `-2`, `-1`, and `0`: Preserve, Never Expire, or Inherit the Namespace Default?
+
+    Completed: [Article](posts/2026-11-20-aerospike-ttl-preserve-never-expire-namespace-default/README.md) (20 November 2026).
 12. Expired Aerospike Records Still Appear in Counts: Understand Logical Expiry, NSUP, and Cleanup Lag
+
+    Completed: [Article](posts/2026-11-20-aerospike-expired-record-counts-nsup-cleanup-lag/README.md) (20 November 2026).
 13. Deleted Aerospike Records Reappear After a Cold Start: Use Durable Deletes, Tombstones, or Truncation
+
+    Completed: [Article](posts/2026-11-20-aerospike-deleted-records-reappear-cold-start/README.md) (20 November 2026).
 14. Aerospike Tombstones Keep Growing: Check Tomb-Raider Age, Migrations, and Defragmentation Progress
+
+    Completed: [Article](posts/2026-11-20-aerospike-tombstones-growing-tomb-raider-migrations/README.md) (20 November 2026).
 15. Aerospike Entered Stop-Writes: Identify the Exact Memory, Index, Disk, or Clock-Skew Threshold
+
+    Completed: [Article](posts/2026-11-20-aerospike-stop-writes-memory-index-disk-clock-skew/README.md) (20 November 2026).
 16. Disk Free Space Keeps Falling After Deletes: Tune Aerospike Defragmentation Without Causing Write Amplification
+
+    Completed: [Article](posts/2026-11-20-aerospike-defragmentation-free-space-write-amplification/README.md) (20 November 2026).
 17. How to Perform an Aerospike Rolling Restart with Quiesce, Roster Handoff, and Partition Checks
+
+    Completed: [Article](posts/2026-11-20-aerospike-rolling-restart-quiesce-roster-partition-checks/README.md) (20 November 2026).
 18. Dead Partitions After Replacing a Disk in Strong Consistency Mode: When—and When Not—to `revive`
+
+    Completed: [Article](posts/2026-11-20-aerospike-dead-partitions-disk-replacement-revive/README.md) (20 November 2026).
 19. Aerospike `SESSION` vs. `LINEARIZE` Reads: Choose the Consistency and Availability Trade-Off Deliberately
+
+    Completed: [Article](posts/2026-11-20-aerospike-session-linearize-read-consistency/README.md) (20 November 2026).
 20. How to Capacity-Plan an Aerospike Cluster for Index Memory, SSD, Replication, and One-Node Failure
+
+    Completed: [Article](posts/2026-11-20-capacity-plan-aerospike-memory-ssd-node-failure/README.md) (20 November 2026).
 
 ## nslookup
 
 1. nslookup Times Out Twice and Then Succeeds: Identify the Dead Resolver in a Multi-Server DNS List
+
+    Completed: [Article](posts/2026-11-20-nslookup-timeouts-dead-resolver-multiple-dns-servers/README.md) (20 November 2026).
 2. nslookup Works but Browsers and ping Fail: Trace the Windows Resolver, DNS Cache, DoH, and NRPT
+
+    Completed: [Article](posts/2026-11-20-nslookup-works-browser-ping-fail-windows-dns/README.md) (20 November 2026).
 3. Fixing “Default Server: Unknown” in nslookup Without Mistaking It for a Query Failure
+
+    Completed: [Article](posts/2026-11-20-nslookup-default-server-unknown-reverse-dns/README.md) (20 November 2026).
 4. A New DNS Record Still Returns NXDOMAIN: Use nslookup to Track Negative Caching and SOA TTL
+
+    Completed: [Article](posts/2026-11-20-new-dns-record-nxdomain-negative-cache-soa-ttl/README.md) (20 November 2026).
 5. Which DNS View Answered? Compare nslookup Results from a VPN Adapter, Domain Controller, and Public Resolver
+
+    Completed: [Article](posts/2026-11-20-compare-dns-views-vpn-domain-controller-public-resolver/README.md) (20 November 2026).
 6. Stop DNS Suffixes from Corrupting nslookup Tests: Short Names, FQDNs, and the Trailing Dot
+
+    Completed: [Article](posts/2026-11-20-nslookup-dns-suffixes-fqdn-trailing-dot/README.md) (20 November 2026).
 7. How to Query Every Authoritative Name Server with nslookup and Find Zone Replication Drift
+
+    Completed: [Article](posts/2026-11-20-nslookup-authoritative-servers-zone-replication-drift/README.md) (20 November 2026).
 8. Non-Authoritative Answer in nslookup: When It Is Normal and When Stale Cache Is the Real Problem
+
+    Completed: [Article](posts/2026-11-20-nslookup-non-authoritative-answer-stale-cache/README.md) (20 November 2026).
 9. How to Validate Forward-Confirmed Reverse DNS with nslookup Before Sending Mail
+
+    Completed: [Article](posts/2026-11-20-validate-forward-confirmed-reverse-dns-nslookup-mail/README.md) (20 November 2026).
 10. How to Query MX, TXT, SRV, CAA, and SOA Records with nslookup on Windows and Linux
+
+    Completed: [Article](posts/2026-11-20-query-mx-txt-srv-caa-soa-nslookup-windows-linux/README.md) (20 November 2026).
 11. NXDOMAIN, SERVFAIL, REFUSED, or Timeout? Decode nslookup Failures Before Changing DNS
+
+    Completed: [Article](posts/2026-11-20-decode-nslookup-nxdomain-servfail-refused-timeout/README.md) (20 November 2026).
 12. Why nslookup Can Query a DNS Server by IP but Not by Name: Bootstrap Resolution and Glue Records
+
+    Completed: [Article](posts/2026-11-20-nslookup-server-ip-name-bootstrap-glue-records/README.md) (20 November 2026).
 13. One Hostname, Different IPs: Use nslookup Debug Output to Separate Round-Robin DNS from Stale Cache
+
+    Completed: [Article](posts/2026-11-20-nslookup-round-robin-dns-stale-cache/README.md) (20 November 2026).
 14. How to Test Active Directory SRV Records with nslookup and Find Broken Domain Controller Registration
+
+    Completed: [Article](posts/2026-11-20-nslookup-active-directory-srv-domain-controller-registration/README.md) (20 November 2026).
 15. Why nslookup Uses the Wrong DNS Server: Interface Metrics, VPN Adapters, and Per-Link Resolver Rules
+
+    Completed: [Article](posts/2026-11-20-nslookup-wrong-dns-server-vpn-interface-routing/README.md) (20 November 2026).
 16. How to Trace a CNAME Chain with nslookup Without Confusing Aliases, Canonical Names, and Final A Records
+
+    Completed: [Article](posts/2026-11-20-trace-cname-chain-nslookup-alias-final-address/README.md) (20 November 2026).
 17. How to Spot Broken DNS Delegation with nslookup by Comparing Parent NS, Child NS, and Glue Records
+
+    Completed: [Article](posts/2026-11-20-nslookup-broken-delegation-parent-child-glue/README.md) (20 November 2026).
 18. Bulk nslookup Without Fragile Text Parsing: Reliable DNS Checks in PowerShell and Shell Pipelines
+
+    Completed: [Article](posts/2026-11-20-bulk-dns-checks-powershell-shell-without-text-parsing/README.md) (20 November 2026).
 19. Why nslookup Resolves an IP but Reverse Lookup Fails: PTR Ownership, Delegation, and Missing Records
+
+    Completed: [Article](posts/2026-11-20-nslookup-reverse-lookup-fails-ptr-ownership-delegation/README.md) (20 November 2026).
 20. How to Use nslookup Interactive Debug Mode to Inspect TTLs, Authority, and Additional Records
+
+    Completed: [Article](posts/2026-11-20-nslookup-interactive-debug-ttl-authority-additional/README.md) (20 November 2026).
 
 ## CDKTF
 
 1. CDKTF Init Says “Unable to Request Pre-Built Provider Information”: Recover with Local Provider Bindings
+
+    Completed: [Article](posts/2026-11-20-cdktf-init-prebuilt-provider-information-local-bindings/README.md) (20 November 2026).
 2. CDKTF Version Skew: Align the CLI, Core Library, Constructs, jsii, Terraform, and Provider Packages
+
+    Completed: [Article](posts/2026-11-20-cdktf-version-skew-cli-core-constructs-jsii-provider/README.md) (20 November 2026).
 3. Why `TF_VAR_*` Is Still a Token During `cdktf synth`—and Where Runtime Variables Actually Resolve
+
+    Completed: [Article](posts/2026-11-20-cdktf-tf-var-token-synth-runtime-variables/README.md) (20 November 2026).
 4. Multiple AWS Accounts or Regions in One CDKTF Stack: Alias Providers Without Configuration Collisions
+
+    Completed: [Article](posts/2026-11-20-cdktf-aws-multiple-accounts-regions-provider-aliases/README.md) (20 November 2026).
 5. CDKTF Cross-Stack Reference Says “Unable to Find Remote State”: Check Apply Order, Workspaces, and Backend Access
+
+    Completed: [Article](posts/2026-11-20-cdktf-cross-stack-remote-state-apply-order-workspace/README.md) (20 November 2026).
 6. Recovering a CDKTF State Lock After a Canceled Deploy with `terraform force-unlock`
+
+    Completed: [Article](posts/2026-11-20-cdktf-state-lock-canceled-deploy-force-unlock/README.md) (20 November 2026).
 7. CDKTF Import Without Address Drift: Match Generated Logical IDs Before Touching Existing Resources
+
+    Completed: [Article](posts/2026-11-20-cdktf-import-generated-logical-ids-resource-address/README.md) (20 November 2026).
 8. Refactoring CDKTF Construct IDs Without Recreating Infrastructure: Moved Blocks and Stable Logical IDs
+
+    Completed: [Article](posts/2026-11-20-cdktf-refactor-construct-ids-moved-stable-logical-id/README.md) (20 November 2026).
 9. Treat `cdktf.out` as a Build Artifact: Reuse Reviewed Synth Output Safely in CI
+
+    Completed: [Article](posts/2026-11-20-cdktf-out-reviewed-build-artifact-ci/README.md) (20 November 2026).
 10. How to Diff Every CDKTF Stack and Produce One CI Summary
+
+    Completed: [Article](posts/2026-11-20-diff-every-cdktf-stack-one-ci-summary/README.md) (20 November 2026).
 11. Why a CDKTF “Module” Deploys No Resources: Constructs vs Generated Terraform Module Bindings
+
+    Completed: [Article](posts/2026-11-20-cdktf-module-no-resources-constructs-generated-bindings/README.md) (20 November 2026).
 12. Loading Helm Values from Local YAML in CDKTF Without Breaking Multiline Strings or Leaking Secrets
+
+    Completed: [Article](posts/2026-11-20-cdktf-helm-local-yaml-values-multiline-secrets/README.md) (20 November 2026).
 13. CDKTF Provider Bindings Are Missing a Resource: Regenerate Locally and Pin the Schema Version
+
+    Completed: [Article](posts/2026-11-20-cdktf-missing-provider-resource-regenerate-schema/README.md) (20 November 2026).
 14. CDKTF Destroy Says “Nothing to Destroy”: Find the Wrong Stack ID, State Key, or Backend
+
+    Completed: [Article](posts/2026-11-20-cdktf-nothing-to-destroy-wrong-stack-state-backend/README.md) (20 November 2026).
 15. Why a CDKTF Stack Cannot Create Its Own Remote-State Bucket—and How to Bootstrap It Safely
+
+    Completed: [Article](posts/2026-11-20-cdktf-bootstrap-remote-state-bucket-safely/README.md) (20 November 2026).
 16. Runtime Conditionals in CDKTF: Generate `count` or `for_each` Instead of Branching on Tokens
+
+    Completed: [Article](posts/2026-11-20-cdktf-runtime-conditionals-count-for-each-tokens/README.md) (20 November 2026).
 17. Migrating CDKTF S3 State Locking from DynamoDB to `use_lockfile` Without Backend Errors
+
+    Completed: [Article](posts/2026-11-20-cdktf-s3-locking-dynamodb-use-lockfile-migration/README.md) (20 November 2026).
 18. CDKTF Python Synth Cannot Import Installed Packages: Fix the Pipenv App Command and Runtime
+
+    Completed: [Article](posts/2026-11-20-cdktf-python-synth-pipenv-app-runtime/README.md) (20 November 2026).
 19. Passing Aliased Assume-Role Providers into External Terraform Modules from CDKTF
+
+    Completed: [Article](posts/2026-11-20-cdktf-aliased-assume-role-providers-external-modules/README.md) (20 November 2026).
 20. CDKTF CLI Installs but Will Not Run on Windows: Align Node.js, npm, PATH, and Execution Policy
+
+    Completed: [Article](posts/2026-11-20-cdktf-cli-windows-node-npm-path-execution-policy/README.md) (20 November 2026).
 
 ## RethinkDB
 
 1. RethinkDB Changefeed Aborted as Unavailable: Reconnect with Backoff and Reconcile Missed Updates
+
+    Completed: [Article](posts/2026-11-20-rethinkdb-changefeed-unavailable-reconnect-reconcile/README.md) (20 November 2026).
 2. Race-Free RethinkDB Subscriptions: Use `include_initial` to Bridge the Snapshot-to-Changefeed Gap
+
+    Completed: [Article](posts/2026-11-20-rethinkdb-include-initial-snapshot-changefeed-gap/README.md) (20 November 2026).
 3. How to Stop a RethinkDB Changefeed Cleanly and Prevent Cursor and Connection Leaks
+
+    Completed: [Article](posts/2026-11-20-stop-rethinkdb-changefeed-cursor-connection-leaks/README.md) (20 November 2026).
 4. RethinkDB Connection Pools in Production: Isolate Changefeeds, Rotate Failed Nodes, and Close Idle Connections
+
+    Completed: [Article](posts/2026-11-20-rethinkdb-connection-pools-isolate-feeds-failed-nodes/README.md) (20 November 2026).
 7. Keyset Pagination in RethinkDB: Replace Slow `skip` with Indexed `between` Boundaries
+
+    Completed: [Article](posts/2026-11-20-rethinkdb-keyset-pagination-indexed-between/README.md) (20 November 2026).
 8. Primary Replica Not Available After Table Creation: Wait for RethinkDB Readiness Before Writing
+
+    Completed: [Article](posts/2026-11-20-rethinkdb-table-creation-wait-write-readiness/README.md) (20 November 2026).
 9. Why a Two-Node RethinkDB Cluster Cannot Fail Over Writes—and the Three-Replica Fix
+
+    Completed: [Article](posts/2026-11-20-rethinkdb-two-node-failover-three-voting-replicas/README.md) (20 November 2026).
 10. Multi-Datacenter RethinkDB Without Split Brain: Place Primaries with Server Tags and Preserve a Majority
+
+    Completed: [Article](posts/2026-11-20-rethinkdb-multi-datacenter-tags-voting-majority/README.md) (20 November 2026).
 11. RethinkDB `write_acks` Explained Through Failure: When `single` Can Lose an Acknowledged Write
+
+    Completed: [Article](posts/2026-11-20-rethinkdb-write-acks-single-acknowledged-write-loss/README.md) (20 November 2026).
 12. How to Fail Over RethinkDB Client Connections When the Seed Node Dies
+
+    Completed: [Article](posts/2026-11-20-rethinkdb-client-connection-failover-seed-node/README.md) (20 November 2026).
 13. Diagnosing Unavailable RethinkDB Shards with `table_status`, `table_config`, `jobs`, and `stats`
+
+    Completed: [Article](posts/2026-11-20-diagnose-unavailable-rethinkdb-shards-system-tables/README.md) (20 November 2026).
 14. How to Measure RethinkDB Table Disk Usage Across Every Shard and Replica
+
+    Completed: [Article](posts/2026-11-20-measure-rethinkdb-table-disk-usage-shards-replicas/README.md) (20 November 2026).
 15. RethinkDB Restore Says the Python Driver Is Missing: Repair PATH, Package, and Version Mismatches
+
+    Completed: [Article](posts/2026-11-20-rethinkdb-restore-python-driver-path-package-mismatch/README.md) (20 November 2026).
 16. How to Rebuild RethinkDB Secondary Indexes After an Upgrade and Wait Until They Are Ready
+
+    Completed: [Article](posts/2026-11-20-rebuild-rethinkdb-secondary-indexes-upgrade-readiness/README.md) (20 November 2026).
 17. Running RethinkDB on Kubernetes: Give Every Pod a Stable Identity and Its Own Persistent Volume
+
+    Completed: [Article](posts/2026-11-20-rethinkdb-kubernetes-stable-identity-persistent-volumes/README.md) (20 November 2026).
 20. Zero-Downtime Migration from RethinkDB: Snapshot, Changefeed Catch-Up, Dual Reads, and Cutover Checks
+
+    Completed: [Article](posts/2026-11-20-migrate-rethinkdb-snapshot-changefeed-cutover-checks/README.md) (20 November 2026).
 
 ## Cloud Automation
 
 1. Untagged Cloud Resources: Automate Owner Notification, Quarantine, and Grace-Period Deletion
+
+    Completed: [Article](posts/2026-11-20-untagged-cloud-resources-owner-notification-quarantine-grace-period/README.md) (20 November 2026).
 2. How to Shut Down Idle Dev Environments Safely with Opt-Out Tags, Dependency Checks, and Startup Verification
+
+    Completed: [Article](posts/2026-11-20-shut-down-idle-dev-environments-dependencies-startup-checks/README.md) (20 November 2026).
 3. Cross-Account AWS Automation with STS: Trust Policies, Role Chains, Session Names, and CloudTrail Attribution
+
+    Completed: [Article](posts/2026-11-20-cross-account-aws-sts-trust-role-chains-cloudtrail/README.md) (20 November 2026).
 4. Migrating Azure Automation Runbooks from Run As Accounts to Managed Identities Without Overgranting RBAC
+
+    Completed: [Article](posts/2026-11-20-azure-automation-run-as-managed-identity-rbac-migration/README.md) (20 November 2026).
 5. Azure Runbook Works in the Test Pane but Fails on Schedule: Context, Identity, and Module-Version Checks
+
+    Completed: [Article](posts/2026-11-20-azure-runbook-test-pane-scheduled-failure-context-modules/README.md) (20 November 2026).
 6. Event-Driven Cloud Remediation Without Loops: Idempotency Keys, Dedupe Stores, and Suppression Windows
+
+    Completed: [Article](posts/2026-11-20-event-driven-cloud-remediation-idempotency-dedupe-loops/README.md) (20 November 2026).
 7. Cloud API Eventual Consistency: Use Waiters and Read-After-Write Verification Instead of Fixed Sleeps
+
+    Completed: [Article](posts/2026-11-20-cloud-api-eventual-consistency-waiters-read-after-write/README.md) (20 November 2026).
 8. How to Delete Cloud Environments in Dependency Order Without Leaving Disks, IPs, or Snapshots Behind
+
+    Completed: [Article](posts/2026-11-20-delete-cloud-environments-dependency-order-orphan-resources/README.md) (20 November 2026).
 9. Cleaning Up Abandoned Preview Environments with TTL Labels, Owner Extensions, and Orphan Sweeps
+
+    Completed: [Article](posts/2026-11-20-cleanup-preview-environments-ttl-owner-extensions-orphan-sweeps/README.md) (20 November 2026).
 10. Automating AWS Account Vending: Control Tower, Identity Center Assignments, Budgets, and Baseline Guardrails
+
+    Completed: [Article](posts/2026-11-20-automate-aws-account-vending-control-tower-identity-budgets/README.md) (20 November 2026).
 11. How to Separate Foundational and Disposable Cloud Resources into Independent Automation Lifecycles
+
+    Completed: [Article](posts/2026-11-20-separate-foundational-disposable-cloud-resource-lifecycles/README.md) (20 November 2026).
 12. Durable Cloud Automation for Long-Running APIs: Polling, Callbacks, Checkpoints, and Resume Tokens
+
+    Completed: [Article](posts/2026-11-20-durable-cloud-automation-polling-callbacks-checkpoints/README.md) (20 November 2026).
 13. Rolling Back Partial Cloud Workflows with Compensating Actions When No Transaction Exists
+
+    Completed: [Article](posts/2026-11-20-compensate-partial-cloud-workflows-without-transactions/README.md) (20 November 2026).
 14. How to Trace One Automation Run Across Queues, Functions, and Cloud APIs with Correlation IDs
+
+    Completed: [Article](posts/2026-11-20-trace-automation-run-queues-functions-cloud-apis/README.md) (20 November 2026).
 15. Testing Cloud Automation Safely: Contract Mocks, Sandbox Accounts, and Canary-Scoped Production Runs
+
+    Completed: [Article](posts/2026-11-20-test-cloud-automation-mocks-sandbox-canary/README.md) (20 November 2026).
 16. How to Stop Overlapping Scheduled Cloud Jobs with Per-Resource Leases and Fencing Tokens
+
+    Completed: [Article](posts/2026-11-20-stop-overlapping-cloud-jobs-leases-fencing-tokens/README.md) (20 November 2026).
 17. Adopting Existing Cloud Resources into Automation Without Recreating or Renaming Them
+
+    Completed: [Article](posts/2026-11-20-adopt-existing-cloud-resources-without-recreation/README.md) (20 November 2026).
 18. Cloud Quota Preflight Checks: Fail Before Provisioning Leaves a Half-Built Environment
+
+    Completed: [Article](posts/2026-11-20-cloud-quota-preflight-before-provisioning/README.md) (20 November 2026).
 19. The Cloud Control Plane Says “Succeeded” but the Resource Is Not Ready: Verify Data-Plane Health Before Continuing
+
+    Completed: [Article](posts/2026-11-20-cloud-control-plane-success-data-plane-readiness/README.md) (20 November 2026).
 20. Building a Kill Switch for Runaway Cloud Automation Without Losing the Audit Trail
+
+    Completed: [Article](posts/2026-11-20-kill-switch-cloud-automation-audit-trail/README.md) (20 November 2026).
 21. How to Authenticate GitHub Actions to AWS, Azure, and GCP with OIDC Instead of Long-Lived Cloud Keys
+
+    Completed: [Article](posts/2026-11-20-github-actions-oidc-aws-azure-gcp/README.md) (20 November 2026).
 22. GitHub OIDC Cloud Login Fails: Debug Audience, Subject, Branch, Environment, and Reusable-Workflow Claims
+
+    Completed: [Article](posts/2026-11-20-debug-github-oidc-cloud-login-claims/README.md) (20 November 2026).
 23. How to Derive Least-Privilege Cloud IAM for Automation from Audit Logs Before Removing Administrator Access
+
+    Completed: [Article](posts/2026-11-20-derive-cloud-iam-automation-audit-logs/README.md) (20 November 2026).
 24. Terraform State Lock Is Stuck in CI: Prove the Writer Is Gone Before Running `force-unlock`
+
+    Completed: [Article](posts/2026-11-20-terraform-state-lock-ci-prove-writer-gone/README.md) (20 November 2026).
 25. How to Queue Terraform Applies per State File Without Serializing Every Cloud Environment
+
+    Completed: [Article](posts/2026-11-20-queue-terraform-applies-per-state/README.md) (20 November 2026).
 26. How to Detect Cloud Drift on a Schedule Without Automatically Applying Destructive Changes
+
+    Completed: [Article](posts/2026-11-20-detect-cloud-drift-schedule-without-auto-apply/README.md) (20 November 2026).
 27. How to Import Existing Cloud Resources in CI with Terraform Import Blocks and a No-Change Gate
+
+    Completed: [Article](posts/2026-11-20-terraform-import-blocks-ci-no-change-gate/README.md) (20 November 2026).
 28. How to Bootstrap the Remote State Backend and CI Identity Without a Terraform Chicken-and-Egg Loop
+
+    Completed: [Article](posts/2026-11-20-bootstrap-terraform-state-backend-ci-identity/README.md) (20 November 2026).
 29. How to Refactor Terraform State in CI with `moved` Blocks and Auditable One-Time Migrations
+
+    Completed: [Article](posts/2026-11-20-refactor-terraform-state-ci-moved-blocks/README.md) (20 November 2026).
 30. EventBridge Rule Is Enabled but Lambda Never Runs: Debug Target ARNs, Resource Policies, and `FailedInvocations`
+
+    Completed: [Article](posts/2026-11-20-eventbridge-enabled-rule-lambda-not-running/README.md) (20 November 2026).
 31. EventBridge Delivered the Event but Lambda Failed: Configure Async Destinations and DLQs at the Correct Boundary
+
+    Completed: [Article](posts/2026-11-20-eventbridge-lambda-async-destinations-dlq-boundaries/README.md) (20 November 2026).
 32. How to Replay a Cloud Automation DLQ Without Repeating Side Effects That Already Succeeded
+
+    Completed: [Article](posts/2026-11-20-replay-cloud-automation-dlq-without-duplicate-effects/README.md) (20 November 2026).
 33. How to Secure Azure Automation Webhooks: Rotate Tokenized URLs, Validate Payloads, and Keep Secrets Out of Job Logs
+
+    Completed: [Article](posts/2026-11-20-secure-azure-automation-webhooks-rotation-validation/README.md) (20 November 2026).
 34. How to Promote Azure Automation Runbooks from Git Without Deploying an Unpublished or Stale Draft
+
+    Completed: [Article](posts/2026-11-20-promote-azure-automation-runbooks-git-published-content/README.md) (20 November 2026).
 35. How to Rotate a Cloud Application Secret with Dual Versions and Zero Authentication Downtime
+
+    Completed: [Article](posts/2026-11-20-rotate-cloud-application-secret-overlapping-versions/README.md) (20 November 2026).
 36. How to Automate Daily, Weekly, and Monthly Snapshot Retention Across Azure Subscriptions with Tags
+
+    Completed: [Article](posts/2026-11-20-azure-snapshot-retention-daily-weekly-monthly-tags/README.md) (20 November 2026).
 37. How to Prove Automated Cloud Backups Are Restorable with Ephemeral Restore Drills and Integrity Checks
+
+    Completed: [Article](posts/2026-11-20-prove-cloud-backups-ephemeral-restore-integrity-drills/README.md) (20 November 2026).
 38. How to Patch Linux VMs Across AWS, Azure, and GCP in Canary Rings with Reboot and Rollback Gates
+
+    Completed: [Article](posts/2026-11-20-patch-linux-vms-multicloud-canary-rings/README.md) (20 November 2026).
 39. Cloud APIs Return 429 or `ThrottlingException`: Coordinate Queues, `Retry-After`, Concurrency, and Full-Jitter Backoff
+
+    Completed: [Article](posts/2026-11-20-cloud-api-throttling-queues-retry-after-jitter/README.md) (20 November 2026).
 40. How to Schedule Cloud Automation Across Time Zones Without DST Double-Runs or Missed Maintenance Windows
+
+    Completed: [Article](posts/2026-11-20-schedule-cloud-automation-timezones-dst-windows/README.md) (20 November 2026).
 
 ## File Storage
 
 1. Zero-Downtime SMB File-Share Migration: Pre-Seed, Delta Sync, Freeze Writes, and Cut Over DNS
+
+    Completed: [Article](posts/2026-11-20-smb-file-share-migration-preseed-delta-dns-cutover/README.md) (20 November 2026).
 2. Preserving NTFS ACLs, Owners, Audit Rules, and Timestamps During a File-Share Migration
+
+    Completed: [Article](posts/2026-11-20-preserve-ntfs-acls-owners-audit-timestamps-migration/README.md) (20 November 2026).
 3. Moving File Shares Between Active Directory Domains: SIDHistory, ACL Translation, and Share Permissions
+
+    Completed: [Article](posts/2026-11-20-move-file-shares-ad-domains-sidhistory-acl-translation/README.md) (20 November 2026).
 4. How to Back Up Millions of Small Files Without Letting Per-File API Calls Dominate the Run
+
+    Completed: [Article](posts/2026-11-20-back-up-millions-small-files-reduce-api-overhead/README.md) (20 November 2026).
 5. NFS Clients Read Stale Data After Another Writer Updates a File: Attribute Caches, `fsync`, and Reopen Semantics
+
+    Completed: [Article](posts/2026-11-20-nfs-stale-data-attribute-cache-fsync-reopen/README.md) (20 November 2026).
 6. Can Multiple Hosts Safely Write the Same Shared File? Advisory Locks, Atomic Rename, and Application Coordination
+
+    Completed: [Article](posts/2026-11-20-multiple-hosts-shared-file-locks-atomic-rename/README.md) (20 November 2026).
 7. Kubernetes NFS Volume Says “Permission Denied”: Align UID/GID, `fsGroup`, `root_squash`, and Export Rules
+
+    Completed: [Article](posts/2026-11-20-kubernetes-nfs-permission-denied-uid-fsgroup-root-squash/README.md) (20 November 2026).
 8. SMB or NFS for a Mixed Windows and Linux Fleet? Compare Identity, Locking, Case, and Failover Semantics
+
+    Completed: [Article](posts/2026-11-20-choose-smb-nfs-mixed-windows-linux-fleet/README.md) (20 November 2026).
 9. Why `df`, `ls`, and Application Threads Hang When NFS Fails: Choosing `hard`, `soft`, `timeo`, and `retrans`
+
+    Completed: [Article](posts/2026-11-20-nfs-hangs-hard-soft-timeo-retrans/README.md) (20 November 2026).
 10. Large Sequential I/O Is Fast but Directory Listings Crawl: Benchmark File-Storage Metadata Separately
+
+    Completed: [Article](posts/2026-11-20-benchmark-file-storage-metadata-separately/README.md) (20 November 2026).
 11. Deleted Files but Capacity Did Not Return: Find Open Handles, Snapshots, and Metadata Reservations
+
+    Completed: [Article](posts/2026-11-20-deleted-files-capacity-open-handles-snapshots/README.md) (20 November 2026).
 12. Why a File-Storage Snapshot Is Not a Ransomware-Safe Backup: Isolation, Immutability, and Restore Drills
+
+    Completed: [Article](posts/2026-11-20-file-storage-snapshot-ransomware-safe-backup/README.md) (20 November 2026).
 13. How to Measure File-Share Restore Time When Metadata, Not Terabytes, Controls the RTO
+
+    Completed: [Article](posts/2026-11-20-measure-file-share-restore-time-metadata-rto/README.md) (20 November 2026).
 14. How to Stop Sync Software from Propagating Accidental Deletions or Ransomware into Every File Copy
+
+    Completed: [Article](posts/2026-11-20-stop-sync-propagating-deletions-ransomware/README.md) (20 November 2026).
 15. Preserving Sparse Files, Hard Links, Symlinks, and Extended Attributes Across Storage Migrations
+
+    Completed: [Article](posts/2026-11-20-preserve-sparse-files-links-extended-attributes-migration/README.md) (20 November 2026).
 16. Audit Long Paths, Illegal Characters, Reserved Names, and Case Collisions Before a Cloud File Migration
+
+    Completed: [Article](posts/2026-11-20-audit-file-paths-names-case-cloud-migration/README.md) (20 November 2026).
 17. How to Validate a Multi-Terabyte File-Share Migration with Manifests, Checksums, and Exception Reconciliation
+
+    Completed: [Article](posts/2026-11-20-validate-file-share-migration-manifests-checksums/README.md) (20 November 2026).
 18. Resumable Cloud File Transfers: Replace Browser Uploads with Chunking, Retries, and End-to-End Checksums
+
+    Completed: [Article](posts/2026-11-20-resumable-cloud-file-transfers-chunks-retries-checksums/README.md) (20 November 2026).
 19. Active-Active File Storage Across Regions: Why Locks and Cache Coherence Complicate Failover
+
+    Completed: [Article](posts/2026-11-20-active-active-file-storage-regions-locks-cache-coherence/README.md) (20 November 2026).
 20. SMB Authentication Works by IP but Fails by Hostname: Debug DNS, SPNs, Kerberos, and NTLM Fallback
+
+    Completed: [Article](posts/2026-11-20-smb-ip-works-hostname-fails-dns-spn-kerberos/README.md) (20 November 2026).
 
 ## Open Source
 
 1. Before Making a Private Repository Public: Purge Secrets, Rotate Credentials, and Verify Git History
+
+    Completed: [Article](posts/2026-11-20-private-repository-public-secrets-history-review/README.md) (20 November 2026).
 16. Sign and Reproduce Open Source Releases So Users Can Verify What They Download
+
+    Completed: [Article](posts/2026-11-20-sign-reproduce-open-source-release-artifacts/README.md) (20 November 2026).
 17. Git Tags, GitHub Releases, and Package Registries: Establish One Source of Truth for Open Source Versions
+
+    Completed: [Article](posts/2026-11-20-git-tags-github-releases-package-version-consistency/README.md) (20 November 2026).
 
 ## VXLAN
 
 1. VXLAN Tunnel Is Up but Bridged Workloads Cannot Reach Each Other: Check Bridge Addressing and Flood Entries
+
+    Completed: [Article](posts/2026-11-20-vxlan-up-bridged-workloads-unreachable-addressing-flood/README.md) (20 November 2026).
 2. ARP Requests Enter the VXLAN but Never Reach the VM: Trace the Linux Bridge, FDB, and Neighbor State
+
+    Completed: [Article](posts/2026-11-20-vxlan-arp-request-missing-vm-bridge-fdb-neighbor/README.md) (20 November 2026).
 3. Why One Remote VTEP Works but the Third Does Not: Repair an Incomplete Head-End Replication List
+
+    Completed: [Article](posts/2026-11-20-vxlan-third-vtep-incomplete-head-end-replication/README.md) (20 November 2026).
 4. Small Pings Work but Large Packets Disappear over VXLAN: Prove the Path MTU with Don’t-Fragment Tests
+
+    Completed: [Article](posts/2026-11-20-vxlan-small-pings-large-packets-path-mtu-df/README.md) (20 November 2026).
 5. Preserve a 1500-Byte Tenant MTU over VXLAN: Provision the Extra 50 Bytes Across the Underlay
+
+    Completed: [Article](posts/2026-11-20-preserve-1500-tenant-mtu-vxlan-underlay/README.md) (20 November 2026).
 6. Capture and Decode a VXLAN Packet: Correlate Inner MACs, Outer VTEPs, VNI, and UDP Port
+
+    Completed: [Article](posts/2026-11-20-capture-decode-vxlan-inner-outer-vni/README.md) (20 November 2026).
 7. No NVE Peers Even Though VTEP Loopbacks Ping: Check the EVPN Address Family, Update Source, and Route Targets
+
+    Completed: [Article](posts/2026-11-20-no-nve-peers-vtep-ping-evpn/README.md) (20 November 2026).
 8. An EVPN Type 2 Route Exists but the Host Is Unreachable: Follow MAC/IP State from BGP to the FDB
+
+    Completed: [Article](posts/2026-11-20-evpn-type2-host-unreachable-bgp-fdb/README.md) (20 November 2026).
 9. An EVPN Type 5 Route Is Advertised but Not Installed: Debug Route-Target Import and VRF-to-L3VNI Mapping
+
+    Completed: [Article](posts/2026-11-20-evpn-type5-not-installed-vrf-l3vni/README.md) (20 November 2026).
 10. Diagnose a VLAN-to-VNI Mismatch Without Chasing the VXLAN Underlay
+
+    Completed: [Article](posts/2026-11-20-diagnose-vlan-vni-mismatch-vxlan/README.md) (20 November 2026).
 11. Anycast Gateway Works on One Leaf Only: Verify the Shared MAC, SVI State, and Symmetric IRB
+
+    Completed: [Article](posts/2026-11-20-anycast-gateway-one-leaf-shared-mac-svi/README.md) (20 November 2026).
 12. ARP Suppression Silences Reachable Hosts: Validate EVPN MAC/IP Bindings Before Enabling It
+
+    Completed: [Article](posts/2026-11-20-arp-suppression-evpn-mac-ip-bindings/README.md) (20 November 2026).
 13. DHCP and PXE Break After ARP Suppression: Trace BUM Traffic Across a Pure L2VNI
+
+    Completed: [Article](posts/2026-11-20-dhcp-pxe-arp-suppression-pure-l2vni/README.md) (20 November 2026).
 14. Duplicate MAC Moves in EVPN VXLAN: Distinguish Host Mobility from Loops and Miswired Multihoming
+
+    Completed: [Article](posts/2026-11-20-evpn-duplicate-mac-mobility-loops-multihoming/README.md) (20 November 2026).
 15. EVPN Multihoming Drops BUM Traffic: Check the ESI, Designated Forwarder Election, and Split Horizon
+
+    Completed: [Article](posts/2026-11-20-evpn-multihoming-bum-df-split-horizon/README.md) (20 November 2026).
 16. Choose Multicast Flooding, Ingress Replication, or EVPN for VXLAN BUM Traffic at Your Scale
+
+    Completed: [Article](posts/2026-11-20-vxlan-bum-multicast-ingress-replication-evpn-scale/README.md) (20 November 2026).
 17. Route Through a Central Firewall in EVPN VXLAN Without Fighting the Distributed Anycast Gateway
+
+    Completed: [Article](posts/2026-11-20-evpn-vxlan-central-firewall-anycast-gateway/README.md) (20 November 2026).
 18. Stretch VXLAN Between Data Centers Without Stretching the Failure Domain: Bound BUM, MTU, and Convergence Risk
+
+    Completed: [Article](posts/2026-11-20-stretch-vxlan-data-centers-bound-failure-domain/README.md) (20 November 2026).
 19. Should You Run VXLAN Across the Public Internet? Account for Encryption, Fragmentation, and Carrier MTU
+
+    Completed: [Article](posts/2026-11-20-vxlan-public-internet-encryption-carrier-mtu/README.md) (20 November 2026).
 20. VXLAN Packets Reach UDP 4789 but Are Dropped: Check VNI Membership, Local VTEP IP, and Firewall State
+
+    Completed: [Article](posts/2026-11-20-vxlan-udp-4789-arrives-dropped-vni-local-vtep/README.md) (20 November 2026).
 
 ## Compliance Automation
 
 6. Detect Broken Compliance Connectors Before They Create an Audit-Period Evidence Gap
+
+    Completed: [Article](posts/2026-11-20-detect-broken-compliance-connectors-evidence-gaps/README.md) (20 November 2026).
 7. Run Compliance Connectors with Least Privilege: Read-Only Scopes, Credential Rotation, and Collection Logs
+
+    Completed: [Article](posts/2026-11-20-compliance-connectors-least-privilege-rotation-logs/README.md) (20 November 2026).
 8. When an Automated Control Fails: Route Exceptions to Owners Without Creating Alert Fatigue
+
+    Completed: [Article](posts/2026-11-20-automated-control-failures-owner-routing-alert-fatigue/README.md) (20 November 2026).
 12. Make Audit Evidence Tamper-Evident with Hashes, Immutable Storage, Trusted Time, and Chain of Custody
+
+    Completed: [Article](posts/2026-11-20-audit-evidence-hashes-immutable-storage-chain-custody/README.md) (20 November 2026).
 13. Reconcile Deployment Logs with Approved Changes and Flag Orphaned Production Releases
+
+    Completed: [Article](posts/2026-11-20-reconcile-deployment-logs-approved-changes/README.md) (20 November 2026).
 16. Translate “Log Everything” into a Risk-Based Evidence Plan: Events, Retention, Cost, and Sensitive Data
+
+    Completed: [Article](posts/2026-11-20-risk-based-evidence-logging-plan-retention-sensitive-data/README.md) (20 November 2026).
 17. Quarantine Noncompliant Resources Without Letting Automated Remediation Cause an Outage
+
+    Completed: [Article](posts/2026-11-20-quarantine-noncompliant-resources-safe-remediation/README.md) (20 November 2026).
 
 ## Cloud Databases
 
 1. Managed Database Failover Finished but Applications Still Fail: Fix DNS TTLs, Stale Pools, and Retry Storms
+
+    Completed: [Article](posts/2026-11-20-rds-failover-finished-application-dns-pools-retries/README.md) (20 November 2026).
 2. Run a Cloud Database Failover Drill That Tests Application Recovery, Not Just Endpoint Switchover
+
+    Completed: [Article](posts/2026-11-20-cloud-database-failover-drill-application-recovery/README.md) (20 November 2026).
 3. Drain and Rebuild Database Connection Pools Cleanly After a Managed Failover
+
+    Completed: [Article](posts/2026-11-20-drain-rebuild-database-pools-managed-failover/README.md) (20 November 2026).
 4. A Read Replica Is Healthy but Queries Are Stale: Gate Read-After-Write Traffic on Replay Position
+
+    Completed: [Article](posts/2026-11-20-read-replica-stale-gate-reads-replay-position/README.md) (20 November 2026).
 5. Why the Cloud Read Replica Is Slower Than the Primary: Compare Cache Warmth, Instance Class, and Recovery Work
+
+    Completed: [Article](posts/2026-11-20-cloud-read-replica-slower-primary-cache-recovery/README.md) (20 November 2026).
 6. Managed Backups Passed but Cross-Account Restore Failed: Design IAM, KMS, Network, and DNS for Real DR
+
+    Completed: [Article](posts/2026-11-20-rds-cross-account-restore-iam-kms-network-dns/README.md) (20 November 2026).
 7. Keep Cloud Database Backups from Saturating Production I/O: Choose Windows, Export Methods, and Replica Offload
+
+    Completed: [Article](posts/2026-11-20-cloud-database-backup-io-windows-export-replica/README.md) (20 November 2026).
 9. Find Orphaned Manual Snapshots After Cloud Database Blue/Green Deployments and Restores
+
+    Completed: [Article](posts/2026-11-20-find-orphaned-rds-snapshots-blue-green-restores/README.md) (20 November 2026).
 10. Managed Database Maintenance Restarted Your Primary: Keep Connection Storms from Extending the Outage
+
+    Completed: [Article](posts/2026-11-20-database-maintenance-restart-connection-storms/README.md) (20 November 2026).
 11. CDC Says “Caught Up” but Rows Are Missing: Validate Counts, Checksums, Large Objects, and Schema Changes
+
+    Completed: [Article](posts/2026-11-20-cdc-caught-up-missing-rows-validate-data-schema/README.md) (20 November 2026).
 12. Move a Managed PostgreSQL Database When Neither Provider Grants Superuser or Filesystem Access
+
+    Completed: [Article](posts/2026-11-20-move-managed-postgresql-without-superuser-filesystem/README.md) (20 November 2026).
 13. Upgrade Cloud PostgreSQL Extensions Safely: Inventory Compatibility Before `ALTER EXTENSION UPDATE`
+
+    Completed: [Article](posts/2026-11-20-upgrade-cloud-postgresql-extensions-compatibility/README.md) (20 November 2026).
 14. Managed PostgreSQL Rejects the Extension You Need: Choose SQL-Only Alternatives, Sidecars, or Self-Hosting
+
+    Completed: [Article](posts/2026-11-20-managed-postgresql-unsupported-extension-alternatives/README.md) (20 November 2026).
 15. Private IP, Auth Proxy, or Public TLS? Choose the Right Cloud Database Connection Path
+
+    Completed: [Article](posts/2026-11-20-cloud-database-private-ip-auth-proxy-public-tls/README.md) (20 November 2026).
 16. Cloud Database IAM Authentication Works but SQL Authorization Fails: Map Identities to Roles
+
+    Completed: [Article](posts/2026-11-20-cloud-database-iam-login-sql-role-permissions/README.md) (20 November 2026).
 17. Replace Shared Cloud Database Passwords with One-Hour, Identity-Bound Sessions
+
+    Completed: [Article](posts/2026-11-20-replace-shared-database-passwords-identity-tokens/README.md) (20 November 2026).
 18. Rotate Cloud Database Credentials Without Breaking Long-Lived Connection Pools
+
+    Completed: [Article](posts/2026-11-20-rotate-database-credentials-long-lived-pools/README.md) (20 November 2026).
 19. Rotate RDS and Cloud SQL CA Certificates Without a Connection Outage
+
+    Completed: [Article](posts/2026-11-20-rotate-rds-cloud-sql-ca-certificates/README.md) (20 November 2026).
 20. Keep Terraform from Deleting a Production Cloud Database: Provider Protection, `prevent_destroy`, and Final Snapshots
+
+    Completed: [Article](posts/2026-11-20-terraform-database-deletion-protection-final-snapshots/README.md) (20 November 2026).
 
 ## Azure MySQL
 
 1. Troubleshooting Azure MySQL Flexible Server Error 10060: Firewall Rules, DNS, and Outbound Port 3306
+
+    Completed: [Article](posts/2026-11-20-azure-mysql-error-10060-firewall-dns-port-3306/README.md) (20 November 2026).
 2. Why Azure App Service Cannot Reach a Private Azure MySQL Endpoint: VNet Integration, DNS Linking, and Routing
+
+    Completed: [Article](posts/2026-11-20-app-service-private-mysql-vnet-dns-routing/README.md) (20 November 2026).
 3. Connecting an On-Premises MySQL Client to a VNet-Integrated Azure MySQL Server Through VPN or ExpressRoute
+
+    Completed: [Article](posts/2026-11-20-on-premises-azure-mysql-vpn-expressroute/README.md) (20 November 2026).
 4. Passwordless Azure MySQL Connections: Managed Identity, Microsoft Entra Tokens, and Database User Mapping
+
+    Completed: [Article](posts/2026-11-20-passwordless-azure-mysql-managed-identity-user-mapping/README.md) (20 November 2026).
 5. Fixing Azure MySQL `CERTIFICATE_VERIFY_FAILED` Without Disabling TLS: CA Chains, Hostnames, and Client Modes
+
+    Completed: [Article](posts/2026-11-20-azure-mysql-certificate-verify-failed-ca-hostname/README.md) (20 November 2026).
 6. Diagnosing Unexplained CPU Spikes in Azure MySQL with Query Performance Insight and Slow Logs
+
+    Completed: [Article](posts/2026-11-20-azure-mysql-cpu-spikes-query-insight-slow-logs/README.md) (20 November 2026).
 7. Fixing Intermittent Azure MySQL Timeouts: Connection Limits, Idle Sessions, and Pool Sizing
+
+    Completed: [Article](posts/2026-11-20-azure-mysql-timeouts-connection-limits-pool-sizing/README.md) (20 November 2026).
 8. Point-in-Time Restoring Azure MySQL to a New Server and Cutting Over Without Overwriting the Source
+
+    Completed: [Article](posts/2026-11-20-azure-mysql-point-in-time-restore-new-server-cutover/README.md) (20 November 2026).
 9. Recovering a Deleted Azure MySQL Flexible Server Within the Five-Day Backup Window
+
+    Completed: [Article](posts/2026-11-20-recover-deleted-azure-mysql-flexible-server/README.md) (20 November 2026).
 10. Testing Azure MySQL Disaster Recovery with Geo-Restore, DNS Cutover, and RTO Evidence
+
+    Completed: [Article](posts/2026-11-20-test-azure-mysql-geo-restore-dns-cutover-rto/README.md) (20 November 2026).
 11. Migrating Amazon RDS for MySQL to Azure with MyDumper, MyLoader, and Data-In Replication
+
+    Completed: [Article](posts/2026-11-20-migrate-rds-mysql-azure-mydumper-data-in-replication/README.md) (20 November 2026).
 12. Speeding Up Large Azure MySQL Imports: Parallel Loaders, Temporary Compute, and IOPS Tuning
+
+    Completed: [Article](posts/2026-11-20-speed-up-large-azure-mysql-imports/README.md) (20 November 2026).
 13. Consolidating Multiple MySQL Sources into One Azure Flexible Server: Data-In Replication Limits and Staging Patterns
+
+    Completed: [Article](posts/2026-11-20-consolidate-multiple-mysql-sources-azure/README.md) (20 November 2026).
 14. Scheduling Azure MySQL Maintenance and Alerting on Planned Maintenance Events
+
+    Completed: [Article](posts/2026-11-20-schedule-azure-mysql-maintenance-alerts/README.md) (20 November 2026).
 15. Troubleshooting Azure MySQL Read-Replica Lag: Binlogs, Long Transactions, and Replica Sizing
+
+    Completed: [Article](posts/2026-11-20-troubleshoot-azure-mysql-read-replica-lag/README.md) (20 November 2026).
 16. Preventing Azure MySQL from Going Read-Only: Storage Autogrow, Capacity Alerts, and IOPS Headroom
+
+    Completed: [Article](posts/2026-11-20-prevent-azure-mysql-storage-read-only/README.md) (20 November 2026).
 17. Sending Azure MySQL Audit Logs to Log Analytics Without Drowning in Events
+
+    Completed: [Article](posts/2026-11-20-azure-mysql-audit-logs-log-analytics/README.md) (20 November 2026).
 18. Building an Azure Monitor Alert Pack for MySQL CPU, Connections, Storage, and Replication Lag
+
+    Completed: [Article](posts/2026-11-20-azure-mysql-monitor-alert-pack/README.md) (20 November 2026).
 19. Debugging Azure MySQL Bicep Deployments That Fail with SKU, Zone, or Regional Capacity Errors
+
+    Completed: [Article](posts/2026-11-20-debug-azure-mysql-bicep-sku-zone-capacity/README.md) (20 November 2026).
 20. Moving Azure MySQL from VNet Integration to Private Link or Public Access: Downtime and DNS Checklist
+
+    Completed: [Article](posts/2026-11-20-move-azure-mysql-vnet-private-link-public-access/README.md) (20 November 2026).
 21. How to Measure Application Recovery During an Azure MySQL Zone-Redundant Forced Failover
+
+    Completed: [Article](posts/2026-11-20-measure-azure-mysql-zone-redundant-failover-recovery/README.md) (20 November 2026).
 22. How to Promote a Cross-Region Azure MySQL Read Replica During an Outage
+
+    Completed: [Article](posts/2026-11-20-promote-cross-region-azure-mysql-read-replica/README.md) (20 November 2026).
 23. How to Route Read-Only Traffic Across Azure MySQL Replicas with ProxySQL
+
+    Completed: [Article](posts/2026-11-20-route-azure-mysql-read-replicas-proxysql/README.md) (20 November 2026).
 24. How to Preflight Azure MySQL 8.0 Compatibility with Upgrade Checker and Replica Error Logs
+
+    Completed: [Article](posts/2026-11-20-preflight-azure-mysql-80-upgrade-compatibility/README.md) (20 November 2026).
 25. How to Import an Existing Azure MySQL Flexible Server, VNet, and Private DNS Links into Terraform State
+
+    Completed: [Article](posts/2026-11-20-import-azure-mysql-network-dns-terraform-state/README.md) (20 November 2026).
 26. How to Verify Which Azure MySQL Parameter Changes Require a Restart and Coordinate It Safely
+
+    Completed: [Article](posts/2026-11-20-azure-mysql-parameter-restart-assessment/README.md) (20 November 2026).
 27. How to Import MySQL Routines, Triggers, and Events into Azure Without `DEFINER` or `SUPER` Errors
+
+    Completed: [Article](posts/2026-11-20-import-azure-mysql-routines-triggers-events-definer/README.md) (20 November 2026).
 28. How to Retain Azure MySQL Backups Beyond 35 Days with `mydumper` and Blob Storage
+
+    Completed: [Article](posts/2026-11-20-retain-azure-mysql-backups-mydumper-blob-storage/README.md) (20 November 2026).
 29. How to Recover One Azure MySQL Database or Table from a Full-Server Point-in-Time Restore
+
+    Completed: [Article](posts/2026-11-20-recover-azure-mysql-table-full-server-pitr/README.md) (20 November 2026).
 31. How to Run Azure MySQL Schema Migrations from Azure Pipelines with `AzureMysqlDeployment@2`
+
+    Completed: [Article](posts/2026-11-20-azure-mysql-schema-migrations-pipelines-task/README.md) (20 November 2026).
 32. How to Enable Customer-Managed Key Encryption for Azure MySQL and Rotate the Key Safely
+
+    Completed: [Article](posts/2026-11-20-azure-mysql-customer-managed-key-rotation/README.md) (20 November 2026).
 33. How to Clone an Azure MySQL Production Database for Development and Mask Sensitive Data
+
+    Completed: [Article](posts/2026-11-20-clone-azure-mysql-development-mask-sensitive-data/README.md) (20 November 2026).
 34. How to Schedule Azure MySQL Stop and Start for Dev/Test Without Missing the 30-Day Automatic Restart
+
+    Completed: [Article](posts/2026-11-20-schedule-azure-mysql-stop-start-automatic-restart/README.md) (20 November 2026).
 35. How to Diagnose Azure MySQL Burstable-Tier Slowdowns Caused by Exhausted CPU Credits
+
+    Completed: [Article](posts/2026-11-20-azure-mysql-burstable-exhausted-cpu-credits/README.md) (20 November 2026).
 36. How to Diagnose High Memory Use in Azure MySQL Before Scaling Up
+
+    Completed: [Article](posts/2026-11-20-diagnose-azure-mysql-high-memory-before-scaling/README.md) (20 November 2026).
 37. How to Detect Azure MySQL IOPS Throttling and Tune Storage Performance
+
+    Completed: [Article](posts/2026-11-20-detect-azure-mysql-iops-throttling-storage-performance/README.md) (20 November 2026).
 38. How to Stream Azure MySQL Changes with Debezium Using Data-Out Binlog Replication
+
+    Completed: [Article](posts/2026-11-20-stream-azure-mysql-debezium-data-out-binlog/README.md) (20 November 2026).
 39. How to Scale Azure MySQL Compute and Storage with Connection Retries and Minimal Application Disruption
+
+    Completed: [Article](posts/2026-11-20-scale-azure-mysql-compute-storage-connection-retries/README.md) (20 November 2026).
 40. How to Preserve Azure MySQL Scheduled Events Across Dump-and-Restore Migrations
+
+    Completed: [Article](posts/2026-11-20-preserve-azure-mysql-scheduled-events-dump-restore/README.md) (20 November 2026).
 
 ## Mutating Webhooks
 
 1. Returning a Valid Kubernetes AdmissionReview v1 Response: UID, Base64 JSON Patch, and PatchType
+
+    Completed: [Article](posts/2026-11-20-kubernetes-admissionreview-v1-response-uid-json-patch/README.md) (20 November 2026).
 2. Writing JSON Patch That Survives Missing Labels and Empty Pod Arrays in a Mutating Webhook
+
+    Completed: [Article](posts/2026-11-20-webhook-json-patch-missing-labels-empty-pod-arrays/README.md) (20 November 2026).
 3. Fixing Mutating Webhook TLS Errors: Service DNS SANs, `caBundle`, and Certificate Rotation
+
+    Completed: [Article](posts/2026-11-20-fix-mutating-webhook-tls-service-dns-ca-bundle-rotation/README.md) (20 November 2026).
 4. Why cert-manager `caBundle` Injection Stalls for a Mutating Webhook: Annotations, RBAC, and Rotation Checks
+
+    Completed: [Article](posts/2026-11-20-cert-manager-webhook-ca-bundle-injection-stalls/README.md) (20 November 2026).
 5. Why Your Mutating Webhook Is Never Called: Checking Rules, Operations, API Versions, Subresources, and Selectors
+
+    Completed: [Article](posts/2026-11-20-mutating-webhook-never-called-rules-selectors/README.md) (20 November 2026).
 6. Debugging `failed calling webhook`: Service Endpoints, NetworkPolicy, Control-Plane Routing, and Timeouts
+
+    Completed: [Article](posts/2026-11-20-debug-failed-calling-webhook-endpoints-routing-timeouts/README.md) (20 November 2026).
 7. Scoping Mutating Webhooks with `namespaceSelector` and `objectSelector` Without Breaking System Namespaces
+
+    Completed: [Article](posts/2026-11-20-scope-mutating-webhooks-protect-system-namespaces/README.md) (20 November 2026).
 8. Using CEL `matchConditions` to Skip Irrelevant Mutating Webhook Calls Before They Hit Your Service
+
+    Completed: [Article](posts/2026-11-20-cel-matchconditions-skip-irrelevant-webhook-calls/README.md) (20 November 2026).
 9. Making Mutating Webhooks Idempotent Under `reinvocationPolicy: IfNeeded`
+
+    Completed: [Article](posts/2026-11-20-idempotent-mutating-webhooks-reinvocation-ifneeded/README.md) (20 November 2026).
 10. Designing Multiple Mutating Webhooks When Invocation Order and Reinvocation Can Change
+
+    Completed: [Article](posts/2026-11-20-design-mutating-webhooks-changing-invocation-order/README.md) (20 November 2026).
 11. Handling UPDATE and DELETE Admission Requests Correctly with `oldObject` and `object`
+
+    Completed: [Article](posts/2026-11-20-handle-update-delete-admission-oldobject-object/README.md) (20 November 2026).
 12. Supporting `kubectl --dry-run=server` with Accurate Mutating Webhook `sideEffects`
+
+    Completed: [Article](posts/2026-11-20-mutating-webhook-server-dry-run-sideeffects/README.md) (20 November 2026).
 13. Using `matchPolicy: Equivalent` Without Mutating the Wrong API Version
+
+    Completed: [Article](posts/2026-11-20-webhook-matchpolicy-equivalent-api-version/README.md) (20 November 2026).
 14. Safely Switching a Mutating Webhook from `failurePolicy: Ignore` to `Fail`: Canary Scope, Readiness Checks, and Rollback
+
+    Completed: [Article](posts/2026-11-20-switch-webhook-failurepolicy-ignore-to-fail/README.md) (20 November 2026).
 15. Keeping Mutating Webhooks Fast and Available: Replicas, PodDisruptionBudgets, and `timeoutSeconds`
+
+    Completed: [Article](posts/2026-11-20-keep-mutating-webhooks-fast-available/README.md) (20 November 2026).
 16. Observing Mutating Webhooks with API Server Metrics, Audit Annotations, and Patch Logs
+
+    Completed: [Article](posts/2026-11-20-observe-mutating-webhooks-metrics-audit-patches/README.md) (20 November 2026).
 17. Canarying a Mutating Webhook with Opt-In Namespaces Before Cluster-Wide Enforcement
+
+    Completed: [Article](posts/2026-11-20-canary-mutating-webhook-opt-in-namespaces/README.md) (20 November 2026).
 18. Applying Mutations to Existing Kubernetes Resources with a Reconciliation Job Instead of a Webhook
+
+    Completed: [Article](posts/2026-11-20-reconcile-existing-kubernetes-resources-with-job/README.md) (20 November 2026).
 19. Injecting an Init Container, Volume, and Volume Mount Atomically with JSON Patch
+
+    Completed: [Article](posts/2026-11-20-inject-init-container-volume-mount-json-patch/README.md) (20 November 2026).
 20. Replacing Simple Mutating Webhooks with Kubernetes 1.36 MutatingAdmissionPolicy: ApplyConfiguration vs. JSONPatch
+
+    Completed: [Article](posts/2026-11-20-kubernetes-mutatingadmissionpolicy-applyconfiguration-jsonpatch/README.md) (20 November 2026).
 21. How to Prevent a Mutating Webhook from Blocking Its Own Pods During Node Failure
+
+    Completed: [Article](posts/2026-11-20-prevent-mutating-webhook-blocking-own-pods/README.md) (20 November 2026).
 22. How to Deploy a Webhook Server and `MutatingWebhookConfiguration` in Safe Helm or GitOps Order
+
+    Completed: [Article](posts/2026-11-20-deploy-webhook-safe-helm-gitops-order/README.md) (20 November 2026).
 23. How to Load Mutating Webhook Configuration from Static Manifests for Bootstrap-Time Enforcement in Kubernetes 1.37
+
+    Completed: [Article](posts/2026-11-20-kubernetes-static-mutating-webhook-manifests-bootstrap/README.md) (20 November 2026).
 24. How to Skip Static Mirror Pods and Other Kubernetes Objects Whose Real State Cannot Be Mutated
+
+    Completed: [Article](posts/2026-11-20-skip-static-mirror-pods-mutating-webhooks/README.md) (20 November 2026).
 25. How to Decide Whether a Kubernetes Finalizer Belongs in a Controller or a Mutating Webhook
+
+    Completed: [Article](posts/2026-11-20-kubernetes-finalizer-controller-or-mutating-webhook/README.md) (20 November 2026).
 26. How to Escape Slashes and Tildes in JSON Patch Paths for Kubernetes Labels and Annotations
+
+    Completed: [Article](posts/2026-11-20-escape-json-patch-paths-labels-annotations/README.md) (20 November 2026).
 27. How to Stop Mutating Webhook Fields from Sticking Across `kubectl apply` Updates
+
+    Completed: [Article](posts/2026-11-20-stop-mutating-webhook-fields-sticking-kubectl-apply/README.md) (20 November 2026).
 28. How to Choose Between Mutating Workload Templates and the Pods They Create
+
+    Completed: [Article](posts/2026-11-20-choose-workload-template-or-pod-mutation/README.md) (20 November 2026).
 29. How to Mutate CronJob Templates, Jobs, and Generated Pods Without Applying the Same Change Twice
+
+    Completed: [Article](posts/2026-11-20-mutate-cronjob-job-pod-without-duplicate-injection/README.md) (20 November 2026).
 30. How to Design a Replacement Workflow When a Mutating Webhook Cannot Change `metadata.namespace`
+
+    Completed: [Article](posts/2026-11-20-replace-workload-when-webhook-cannot-change-namespace/README.md) (20 November 2026).
 31. How to Preserve New Pod Fields When an Older Mutating Webhook Uses Stale Go Types
+
+    Completed: [Article](posts/2026-11-20-preserve-new-pod-fields-stale-webhook-go-types/README.md) (20 November 2026).
 32. How to Prevent Mixed Webhook Replicas from Returning Different Patches During a Rolling Upgrade
+
+    Completed: [Article](posts/2026-11-20-prevent-mixed-webhook-patches-rolling-upgrade/README.md) (20 November 2026).
 33. How to Version Injected Fields So a Mutating Webhook Can Upgrade or Roll Back Its Own Changes
+
+    Completed: [Article](posts/2026-11-20-version-webhook-injected-fields-upgrade-rollback/README.md) (20 November 2026).
 34. How to Resolve Image Tags to Digests Without Making the Container Registry an API Server Dependency
+
+    Completed: [Article](posts/2026-11-20-resolve-image-digests-without-admission-registry-dependency/README.md) (20 November 2026).
 35. How to Rewrite Container Images to a Private Registry Without Breaking Digests or Pull Credentials
+
+    Completed: [Article](posts/2026-11-20-rewrite-images-private-registry-digests-pull-credentials/README.md) (20 November 2026).
 36. How to Inject Pod Resource Defaults Without Conflicting with LimitRange, VPA, or User Intent
+
+    Completed: [Article](posts/2026-11-20-pod-resource-defaults-limitrange-vpa-user-intent/README.md) (20 November 2026).
 37. How to Add `imagePullSecrets` in a Mutating Webhook Without Duplicating ServiceAccount Credentials
+
+    Completed: [Article](posts/2026-11-20-add-imagepullsecrets-webhook-without-duplicates/README.md) (20 November 2026).
 38. How to Inject Pod Topology Spread Constraints with a Mutating Webhook Without Making Pods Unschedulable
+
+    Completed: [Article](posts/2026-11-20-inject-topology-spread-without-unschedulable-pods/README.md) (20 November 2026).
 39. How to Set `automountServiceAccountToken` in a Mutating Webhook Without Breaking API-Dependent Workloads
+
+    Completed: [Article](posts/2026-11-20-default-serviceaccount-token-mount-api-dependent-workloads/README.md) (20 November 2026).
 40. How to Default Pod Security Context Fields with a Mutating Webhook Without Weakening Existing Settings
 
 ## TeamCity

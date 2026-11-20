@@ -1,0 +1,31 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-20",
+  "runtimeTestsPerformed": false,
+  "infrastructureDeploymentPerformed": false,
+  "tests": [
+    "Five PowerShell snippets parsed successfully using PowerShell 7.4.6 on macOS; no Windows commands executed",
+    "Official Windows Server 2025 command references checked for DNS, TCP, SMB, klist, setspn and netdom syntax",
+    "Reviewed IP-based Kerberos exception, HOST service-class mappings, alias guidance and authentication evidence",
+    "Mermaid six-node/six-edge trust flow checked structurally",
+    "Generated social image visually inspected: readable without clipping"
+  ],
+  "sources": [
+    "https://learn.microsoft.com/en-us/windows-server/security/kerberos/configuring-kerberos-over-ip",
+    "https://learn.microsoft.com/en-us/troubleshoot/windows-server/networking/negotiate-session-setup-tree-connect-fails",
+    "https://learn.microsoft.com/en-us/powershell/module/smbshare/get-smbconnection?view=windowsserver2025-ps",
+    "https://learn.microsoft.com/en-us/powershell/module/dnsclient/resolve-dnsname?view=windowsserver2025-ps",
+    "https://learn.microsoft.com/en-us/powershell/module/nettcpip/test-netconnection?view=windowsserver2025-ps",
+    "https://learn.microsoft.com/en-us/windows-server/administration/windows-commands/klist",
+    "https://learn.microsoft.com/en-us/windows-server/administration/windows-commands/setspn",
+    "https://learn.microsoft.com/en-us/troubleshoot/windows-server/networking/dns-cname-alias-cannot-access-smb-file-server-share",
+    "https://learn.microsoft.com/en-us/windows-server/administration/windows-commands/netdom-computername",
+    "https://learn.microsoft.com/en-us/troubleshoot/windows-server/windows-security/kerberos-authentication-log-analysis-test-scenario"
+  ],
+  "limitations": [
+    "No Windows domain, DNS, SMB, Kerberos ticket or SPN runtime tests",
+    "Parser checks do not validate installed Windows modules, permissions or service behavior",
+    "Illustrative hostnames and IP addresses must be replaced; no identity changes automated",
+    "Mermaid structurally checked, not rendered"
+  ]
+}

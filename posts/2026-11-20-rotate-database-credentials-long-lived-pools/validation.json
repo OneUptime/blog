@@ -1,0 +1,27 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-20",
+  "runtimeTestsPerformed": false,
+  "infrastructureDeploymentPerformed": false,
+  "sources": [
+    "https://docs.aws.amazon.com/secretsmanager/latest/userguide/rotation-strategy.html",
+    "https://docs.aws.amazon.com/secretsmanager/latest/userguide/rotate-secrets_lambda-functions.html",
+    "https://docs.aws.amazon.com/secretsmanager/latest/userguide/retrieving-secrets_cache-java.html",
+    "https://github.com/brettwooldridge/HikariCP/blob/HikariCP-6.3.0/src/main/java/com/zaxxer/hikari/HikariConfig.java",
+    "https://github.com/brettwooldridge/HikariCP/blob/HikariCP-6.3.0/src/main/java/com/zaxxer/hikari/HikariPoolMXBean.java",
+    "https://github.com/brettwooldridge/HikariCP/blob/HikariCP-6.3.0/src/main/java/com/zaxxer/hikari/pool/PoolBase.java",
+    "https://github.com/brettwooldridge/HikariCP/blob/HikariCP-6.3.0/README.md"
+  ],
+  "tests": [
+    "Complete Java helper compiled using Java 17.0.16 against HikariCP 6.3.0",
+    "Tagged source reviewed for atomic credentials, connection creation and soft eviction behavior",
+    "Official Secrets Manager rotation stages, strategies and caching behavior reviewed",
+    "Mermaid structurally checked: eight nodes and seven edges; not rendered",
+    "Generated social image visually inspected: readable title without clipping"
+  ],
+  "limitations": [
+    "No live database, secret retrieval, rotation, connection eviction or transaction draining performed",
+    "Helper requires caller-managed serialization, secret validation, cohort rollout and fresh-login verification",
+    "Compile success does not establish custom data source compatibility or global credential cutover"
+  ]
+}

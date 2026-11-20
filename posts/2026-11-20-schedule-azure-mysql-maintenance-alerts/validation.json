@@ -1,0 +1,25 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-20",
+  "runtimeTestsPerformed": true,
+  "infrastructureDeploymentPerformed": false,
+  "sources": [
+    "https://learn.microsoft.com/en-us/azure/mysql/flexible-server/concepts-maintenance",
+    "https://learn.microsoft.com/en-us/azure/mysql/flexible-server/how-to-maintenance-portal",
+    "https://docs.python.org/3.11/library/zoneinfo.html",
+    "https://learn.microsoft.com/en-us/azure/service-health/alerts-activity-log-service-notifications-portal",
+    "https://learn.microsoft.com/en-us/azure/azure-monitor/alerts/action-groups"
+  ],
+  "tests": [
+    "Executed complete Python snippet with Python 3.11.13; verified London winter 02:00+00:00 and summer 03:00+01:00 output",
+    "Mermaid structural check: six declared nodes, five edges with resolved endpoints",
+    "Reviewed official policy, custom UTC window, current-event rescheduling, Global action-group requirement and notification testing documentation",
+    "Social image visually reviewed; readable title without clipping"
+  ],
+  "limitations": [
+    "No Azure maintenance setting, Service Health alert or action-group test executed",
+    "Python test checks illustrative calendar conversion, not Azure scheduling",
+    "Mermaid structurally checked, not rendered",
+    "Regional rollout and actual application recovery require environment-specific verification"
+  ]
+}

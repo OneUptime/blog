@@ -1,0 +1,30 @@
+{
+  "status": "validated",
+  "date": "2026-11-20",
+  "runtimeTestsPerformed": false,
+  "localCodeTestsPerformed": true,
+  "versions": {
+    "server scope": "8.2 device-backed storage"
+  },
+  "tests": [
+    "All Bash blocks passed syntax checks",
+    "Exact rational arithmetic checked for 2x, 4x, and 10x simplified amplification examples and block consolidation",
+    "Source review verified sleep units and 7.1+ segment pacing, runtime namespace selector, cache eligibility and metric types",
+    "Staging mutation has explicit target, baseline assumption, verification and rollback",
+    "1280x720 social image generated and visually inspected"
+  ],
+  "limitations": [
+    "No real asinfo requests, server changes, device benchmark, or workload execution",
+    "Amplification arithmetic is a simplified model, not measured hardware amplification",
+    "The pacing values are illustrative staging settings, not production recommendations"
+  ],
+  "sources": [
+    "https://aerospike.com/docs/database/manage/namespace/storage/defrag/",
+    "https://aerospike.com/docs/database/reference/metrics/",
+    "https://aerospike.com/docs/database/reference/info/",
+    "https://aerospike.com/docs/database/reference/config/",
+    "https://aerospike.com/docs/database/reference/faq/ops-disk-defrag/",
+    "https://aerospike.com/docs/database/reference/logs/",
+    "https://aerospike.com/docs/database/manage/planning/capacity/"
+  ]
+}

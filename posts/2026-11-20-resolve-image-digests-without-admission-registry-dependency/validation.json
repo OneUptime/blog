@@ -1,0 +1,30 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-20",
+  "runtimeTestsPerformed": true,
+  "infrastructureDeploymentPerformed": false,
+  "sources": [
+    "https://kubernetes.io/docs/concepts/containers/images/",
+    "https://kubernetes.io/docs/concepts/cluster-administration/admission-webhooks-good-practices/",
+    "https://github.com/google/go-containerregistry/blob/v0.20.3/cmd/crane/doc/crane_digest.md",
+    "https://github.com/google/go-containerregistry/blob/v0.20.3/cmd/crane/doc/crane_manifest.md",
+    "https://github.com/google/go-containerregistry/blob/v0.20.3/pkg/authn/README.md",
+    "https://github.com/opencontainers/image-spec/blob/v1.1.1/image-index.md",
+    "https://kubernetes.io/docs/reference/access-authn-authz/extensible-admission-controllers/#failure-policy"
+  ],
+  "tests": [
+    "Executed go-containerregistryv0.20.3 digest command constructor with --full-ref against a temporary Go httptest TLS registry",
+    "Verified tag movement, stable retained digest, index digest and explicit linux/amd64 child selection",
+    "Executed manifest command constructor by index digest and verified two platform descriptors",
+    "Both shell blocks passed bash -n",
+    "Seven-node seven-edge Mermaid checked structurally only",
+    "Social image generated and visually inspected"
+  ],
+  "limitations": [
+    "Local registry used explicit anonymous auth and a transport trusting only the test server; production auth and CA provisioning not exercised",
+    "Initial harness inherited a missing local credential helper; isolated harness auth corrected before successful rerun",
+    "Standalone crane executable and complete shell sequence were not executed; pinned command implementation was exercised",
+    "No admission server, API request, cache design, node pull or outage rehearsal deployed",
+    "Mermaid not rendered visually"
+  ]
+}

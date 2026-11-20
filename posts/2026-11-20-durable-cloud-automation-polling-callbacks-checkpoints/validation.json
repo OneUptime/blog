@@ -1,0 +1,30 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-20",
+  "runtimeTestsPerformed": true,
+  "infrastructureDeploymentPerformed": false,
+  "tests": [
+    "ASL JSON parsed; transition, token path, result preservation, verifier input and positive timeout structure checked",
+    "Python callback helper tested with Boto3 1.40.76/botocore Stubber: success, expired token, invalid token and KMS denial",
+    "Published JSON and Python exactly match checked files",
+    "Mermaid eight nodes/eight edges structurally checked",
+    "Generated image visually inspected and unclipped"
+  ],
+  "sources": [
+    "https://docs.aws.amazon.com/step-functions/latest/dg/connect-to-resource.html",
+    "https://docs.aws.amazon.com/step-functions/latest/dg/choosing-workflow-type.html",
+    "https://docs.aws.amazon.com/step-functions/latest/dg/connect-sqs.html",
+    "https://docs.aws.amazon.com/step-functions/latest/dg/state-task.html",
+    "https://docs.aws.amazon.com/step-functions/latest/dg/connect-lambda.html",
+    "https://docs.aws.amazon.com/step-functions/latest/apireference/API_SendTaskSuccess.html",
+    "https://docs.aws.amazon.com/AWSSimpleQueueService/latest/SQSDeveloperGuide/standard-queues-at-least-once-delivery.html",
+    "https://docs.aws.amazon.com/AWSSimpleQueueService/latest/SQSDeveloperGuide/sqs-visibility-timeout.html",
+    "https://docs.aws.amazon.com/step-functions/latest/dg/state-wait.html"
+  ],
+  "limitations": [
+    "No AWS calls, deployed state machine, queue worker or Lambda verifier",
+    "ASL not validated by the Step Functions service",
+    "No real callback, durable storage, lost response recovery or provider cancellation tested",
+    "Mermaid not rendered"
+  ]
+}

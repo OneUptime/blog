@@ -1,0 +1,35 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-20",
+  "runtimeTestsPerformed": true,
+  "infrastructureDeploymentPerformed": false,
+  "versions": {
+    "javascriptDriver": "2.4.2",
+    "serverSource": "2.4.4",
+    "node": "24.1.0"
+  },
+  "checks": [
+    "JavaScript syntax check passed; published code matches tested module",
+    "Mock feed tests passed for rebuild, missed deletion, live update, stale marking, cleanup, bounded jitter retries, permanent error exit",
+    "Installed driver query construction checked",
+    "Mermaid six-node six-edge structure checked",
+    "Social image visually reviewed; text readable and unclipped"
+  ],
+  "limitations": [
+    "No live RethinkDB server, failover, network interruption, delivery-order or performance test",
+    "Mock cursor tests verify application logic only",
+    "No browser Mermaid rendering; no service shutdown integration test"
+  ],
+  "sources": [
+    "https://github.com/rethinkdb/rethinkdb/blob/v2.4.4/src/rdb_protocol/changefeed.cc",
+    "https://rethinkdb.com/api/javascript/reconnect/",
+    "https://rethinkdb.com/api/javascript/changes/",
+    "https://rethinkdb.com/docs/changefeeds/javascript/",
+    "https://rethinkdb.com/api/javascript/connect/",
+    "https://rethinkdb.com/docs/error-types/",
+    "https://rethinkdb.com/api/javascript/next/",
+    "https://rethinkdb.com/api/javascript/close-cursor/",
+    "https://rethinkdb.com/api/javascript/close/",
+    "https://rethinkdb.com/api/javascript/event_emitter"
+  ]
+}

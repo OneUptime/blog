@@ -1,0 +1,12 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-20",
+  "validationScope": "Official source review; Helm rendering; complete rendered configuration validated using the matching Collector binary; YAML, shell, metadata, Mermaid structure, and image checks. No live cluster tests.",
+  "runtimeTestsPerformed": false,
+  "collectorConfigurationValidationPerformed": true,
+  "collectorVersion": "0.163.2",
+  "collectorValidationPlatform": "darwin/arm64",
+  "chartVersion": "0.180.0",
+  "helmVersion": "3.12.3",
+  "wordCountWhitespace": 1271
+}

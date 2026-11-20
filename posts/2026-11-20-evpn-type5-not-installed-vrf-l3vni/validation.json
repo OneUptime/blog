@@ -1,0 +1,32 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-20",
+  "runtimeTestsPerformed": false,
+  "infrastructureDeploymentPerformed": false,
+  "tests": [
+    "Five shell blocks passed bash syntax checks",
+    "FRR10.2.1 EVPN/BGP/Zebra source reviewed for displayed command forms and VRF/VNI association",
+    "Linux VRF and route-get behavior checked against official kernel/iproute2 documentation",
+    "Mermaid six nodes/five edges structurally checked",
+    "Generated social image visually reviewed without clipping"
+  ],
+  "sources": [
+    "https://www.rfc-editor.org/rfc/rfc9136.html",
+    "https://raw.githubusercontent.com/FRRouting/frr/frr-10.2.1/bgpd/bgp_evpn_vty.c",
+    "https://raw.githubusercontent.com/FRRouting/frr/frr-10.2.1/bgpd/bgp_route.c",
+    "https://www.rfc-editor.org/rfc/rfc7432.html",
+    "https://docs.frrouting.org/en/stable-10.2/bgp.html",
+    "https://raw.githubusercontent.com/FRRouting/frr/frr-10.2.1/zebra/zebra_vty.c",
+    "https://docs.frrouting.org/en/stable-10.2/evpn.html",
+    "https://docs.frrouting.org/en/stable-10.2/zebra.html",
+    "https://docs.kernel.org/networking/vrf.html",
+    "https://man7.org/linux/man-pages/man8/ip-route.8.html",
+    "https://www.rfc-editor.org/rfc/rfc9135.html"
+  ],
+  "limitations": [
+    "No FRR parser, daemon, live route import or kernel installation test",
+    "No VXLAN or application forwarding experiment",
+    "Scope uses Linux VRF devices and FRR interface-less IP-VRF model; not network-namespace backend or all EVPN models",
+    "Mermaid structurally checked, not rendered"
+  ]
+}

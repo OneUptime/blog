@@ -1,0 +1,29 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-20",
+  "runtimeTestsPerformed": true,
+  "infrastructureDeploymentPerformed": false,
+  "sources": [
+    "https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/UsingWithRDS.SSL-certificate-rotation.html",
+    "https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/UsingWithRDS.SSL.html",
+    "https://docs.aws.amazon.com/cli/latest/reference/rds/describe-db-engine-versions.html",
+    "https://docs.cloud.google.com/sql/docs/postgres/manage-ssl-instance",
+    "https://docs.cloud.google.com/sdk/gcloud/reference/sql/ssl/server-ca-certs/list",
+    "https://docs.cloud.google.com/sql/docs/postgres/configure-ssl-instance#enable-server-identity-verification",
+    "https://docs.openssl.org/3.5/man1/openssl-s_client/",
+    "https://www.postgresql.org/docs/17/libpq-ssl.html"
+  ],
+  "tests": [
+    "AWS CLI 2.38.1 describe-db-engine-versions output skeleton generated with no API call",
+    "OpenSSL 4.1.0 local s_client help confirms example flags; command semantics reviewed in official OpenSSL 3.5 documentation",
+    "Three Bash blocks passed syntax checks",
+    "Provider certificate workflows and PostgreSQL 17 server verification reviewed",
+    "Mermaid structurally checked: seven nodes and six edges; not rendered",
+    "Social image visually inspected: title readable without clipping"
+  ],
+  "limitations": [
+    "No live certificate inspection, TLS handshake, client reload, rotation, restart or database query performed",
+    "gcloud command source-reviewed only; no local gcloud execution",
+    "Engine version 17.4 is an illustrative filter; availability and restart behavior were not checked against AWS"
+  ]
+}

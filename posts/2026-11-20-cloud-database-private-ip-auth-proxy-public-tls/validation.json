@@ -1,0 +1,28 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-20",
+  "runtimeTestsPerformed": true,
+  "infrastructureDeploymentPerformed": false,
+  "sources": [
+    "https://docs.cloud.google.com/sql/docs/postgres/connection-options",
+    "https://github.com/GoogleCloudPlatform/cloud-sql-proxy/blob/v2.28.0/README.md",
+    "https://docs.cloud.google.com/sql/docs/postgres/authorize-networks",
+    "https://docs.cloud.google.com/sql/docs/postgres/sql-proxy",
+    "https://docs.cloud.google.com/sql/docs/postgres/connect-auth-proxy",
+    "https://docs.cloud.google.com/sql/docs/postgres/iam-authentication",
+    "https://docs.cloud.google.com/sql/docs/postgres/configure-ssl-instance#enable-server-identity-verification",
+    "https://www.postgresql.org/docs/17/libpq-ssl.html"
+  ],
+  "tests": [
+    "Official Cloud SQL Auth Proxy 2.28.0 Darwin ARM64 binary executed with --version and --help only; private-ip, address and port options verified",
+    "Bash syntax check passed",
+    "Mermaid structurally checked: six defined nodes and five edges; no diagram rendering",
+    "Technical claims reviewed against official documentation",
+    "Social image visually inspected: readable title with no clipping"
+  ],
+  "limitations": [
+    "No live Cloud SQL connections, IAM configuration, firewall or rotation tests performed",
+    "No downloaded-binary checksum or signature verification performed",
+    "No direct PostgreSQL TLS session exercised"
+  ]
+}

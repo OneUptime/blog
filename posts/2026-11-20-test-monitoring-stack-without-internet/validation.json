@@ -1,0 +1,6 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-20",
+  "validationScope": "Official documentation review, shell syntax validation, metadata checks, social-image generation and visual inspection.",
+  "runtimeTestsPerformed": false
+}

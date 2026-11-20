@@ -1,0 +1,27 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-20",
+  "runtimeTestsPerformed": true,
+  "infrastructureDeploymentPerformed": false,
+  "sources": [
+    "https://kubernetes.io/docs/concepts/workloads/pods/#pod-update-and-replacement",
+    "https://github.com/kubernetes-client/python/blob/v35.0.0/examples/in_cluster_config.py",
+    "https://github.com/kubernetes-client/python/blob/v35.0.0/kubernetes/client/api/core_v1_api.py",
+    "https://kubernetes.io/docs/reference/using-api/api-concepts/#dry-run",
+    "https://www.rfc-editor.org/rfc/rfc6902",
+    "https://kubernetes.io/docs/reference/access-authn-authz/rbac/",
+    "https://kubernetes.io/docs/concepts/workloads/controllers/job/"
+  ],
+  "tests": [
+    "Pinned Python SDK 35.0.0 exercised with mocked transport: JSON Patch content type and dryRun query verified",
+    "Two paginated preview/apply runs; six fixture patches applied with jsonpatch 1.33; twelve changed UID/resource-version preconditions rejected",
+    "Four API errors propagated without continuing mutation",
+    "Role and Job shapes checked against Kubernetes v1.35.0 OpenAPI; Python compiled and executed",
+    "Social image generated and visually inspected; full title visible"
+  ],
+  "limitations": [
+    "No live cluster requests, permission checks or Jobs deployed",
+    "Mock transport checks do not establish real admission behavior or API-server concurrency semantics",
+    "Deployment requires an approved worker image, ServiceAccount and RoleBinding; image reference is an explicit placeholder"
+  ]
+}

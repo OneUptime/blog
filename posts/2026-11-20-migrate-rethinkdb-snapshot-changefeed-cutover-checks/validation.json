@@ -1,0 +1,26 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-20",
+  "runtimeTestsPerformed": true,
+  "infrastructureDeploymentPerformed": false,
+  "tests": [
+    "Published model matches tested Python AST",
+    "Applied, duplicate, stale, tombstone, recreation and equal-revision conflict behavior passed",
+    "Six malformed input cases rejected",
+    "Changefeed and atomic update queries constructed with driver2.4.10.post1",
+    "Python blocks parse; Mermaid eight nodes/eight edges structurally checked",
+    "Social image visually reviewed, readable and unclipped"
+  ],
+  "sources": [
+    "https://rethinkdb.com/docs/data-types/",
+    "https://rethinkdb.com/api/python/changes/",
+    "https://rethinkdb.com/docs/changefeeds/python/",
+    "https://rethinkdb.com/docs/consistency/"
+  ],
+  "limitations": [
+    "No live source or target database",
+    "No destination transaction or concurrent adapter tested",
+    "No feed interruption, failover, full reconciliation, writer fence, queue or rollback rehearsal",
+    "No zero-downtime claim; Mermaid not rendered"
+  ]
+}

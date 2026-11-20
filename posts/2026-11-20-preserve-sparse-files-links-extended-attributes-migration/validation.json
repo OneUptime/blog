@@ -1,0 +1,27 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-20",
+  "runtimeTestsPerformed": true,
+  "infrastructureDeploymentPerformed": false,
+  "tests": [
+    "Python 3.11.13 local macOS fixture created hard links, relative symlink and 64 MiB logical sparse file; inspector passed and reported 16 KiB allocated",
+    "Negative fixtures correctly rejected split hard-link identity and altered symlink target text despite matching readable content",
+    "Both published Python blocks match executed files and parse; two rsync shell examples pass Bash syntax",
+    "rsync 3.4.1 archive omissions, hard-link transfer-set limits and sparse options checked against tagged official manual",
+    "Generated social image visually inspected: readable and unclipped title"
+  ],
+  "sources": [
+    "https://man7.org/linux/man-pages/man2/link.2.html",
+    "https://man7.org/linux/man-pages/man2/symlink.2.html",
+    "https://man7.org/linux/man-pages/man7/xattr.7.html",
+    "https://man7.org/linux/man-pages/man2/lseek.2.html",
+    "https://raw.githubusercontent.com/RsyncProject/rsync/v3.4.1/rsync.1.md",
+    "https://docs.python.org/3.11/library/os.html"
+  ],
+  "limitations": [
+    "No rsync 3.4.1 execution, Linux migration, ACL or extended-attribute preservation test",
+    "Python xattr APIs unavailable locally; example explicitly reports skipped xattr branch",
+    "Sparse inspector checks boundary bytes and allocation report, not full payload hashes or exact hole map",
+    "No network filesystem or application cutover test; comparison table used instead of an unnecessary diagram"
+  ]
+}

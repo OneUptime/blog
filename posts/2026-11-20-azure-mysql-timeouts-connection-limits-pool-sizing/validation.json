@@ -1,0 +1,31 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-20",
+  "runtimeTestsPerformed": false,
+  "infrastructureDeploymentPerformed": false,
+  "sources": [
+    "https://dev.mysql.com/doc/refman/8.0/en/too-many-connections.html",
+    "https://learn.microsoft.com/en-us/azure/mysql/flexible-server/how-to-troubleshoot-common-connection-issues",
+    "https://dev.mysql.com/doc/refman/8.0/en/server-status-variables.html",
+    "https://learn.microsoft.com/en-us/azure/mysql/flexible-server/concepts-server-parameters",
+    "https://dev.mysql.com/doc/refman/8.0/en/information-schema-processlist-table.html",
+    "https://dev.mysql.com/doc/refman/8.0/en/information-schema-innodb-trx-table.html",
+    "https://dev.mysql.com/doc/refman/8.0/en/server-system-variables.html",
+    "https://github.com/brettwooldridge/HikariCP/blob/HikariCP-6.3.0/src/main/java/com/zaxxer/hikari/HikariConfig.java",
+    "https://github.com/brettwooldridge/HikariCP/blob/HikariCP-6.3.0/README.md",
+    "https://dev.mysql.com/doc/connector-j/en/connector-j-connp-props-networking.html"
+  ],
+  "tests": [
+    "Three SQL statements parsed with sqlglot 28.0.0 MySQL dialect",
+    "Article Java helper compiled with Java 17.0.16 against HikariCP 6.3.0",
+    "MySQL PROCESS privilege and process-list deprecation reviewed in official documentation",
+    "Mermaid structural check: four nodes, three edges",
+    "Social image visually inspected: readable title without clipping"
+  ],
+  "limitations": [
+    "No live Azure MySQL connection, load test, or idle-expiry test performed",
+    "Java helper compiled but not executed; settings are explicitly illustrative and require measured infrastructure limits",
+    "SQL parsing does not verify database permissions or runtime results",
+    "Mermaid structurally checked, not rendered"
+  ]
+}

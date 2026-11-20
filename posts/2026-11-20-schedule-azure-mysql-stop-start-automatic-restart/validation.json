@@ -1,0 +1,31 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-20",
+  "runtimeTestsPerformed": true,
+  "infrastructureDeploymentPerformed": false,
+  "sources": [
+    "https://learn.microsoft.com/en-us/azure/mysql/flexible-server/concept-servers",
+    "https://learn.microsoft.com/en-us/azure/mysql/flexible-server/how-to-stop-start-server-portal",
+    "https://learn.microsoft.com/en-us/azure/mysql/flexible-server/create-automation-tasks",
+    "https://learn.microsoft.com/en-us/azure/connectors/connectors-native-recurrence",
+    "https://learn.microsoft.com/en-us/azure/logic-apps/concepts-schedule-automated-recurring-tasks-workflows",
+    "https://learn.microsoft.com/en-us/cli/azure/mysql/flexible-server?view=azure-cli-latest",
+    "https://learn.microsoft.com/en-us/azure/logic-apps/view-workflow-status-run-history"
+  ],
+  "tests": [
+    "Recurrence JSON parsed and properties compared with official built-in trigger reference",
+    "Python datetime verified example date is Monday at 07:30 UTC and more than seven days after review date",
+    "JMESPath 1.0.1 inspection projection executed on synthetic populated and missing-field records",
+    "Read-only Bash example passed bash -n",
+    "Azure CLI 2.80.0 show/start/stop registration and 30-day stop warning reviewed",
+    "Mermaid eight nodes/five edges structurally checked",
+    "Generated social image visually inspected without clipping"
+  ],
+  "limitations": [
+    "No Azure task, Logic App or schedule created or executed",
+    "No database stop/start, authentication, readiness test or alert delivery performed",
+    "Trigger example is a fragment, not a complete workflow; portal task connections and actions remain environment-specific",
+    "Date and expression checks do not prove Logic Apps scheduling behavior",
+    "Mermaid not rendered"
+  ]
+}

@@ -1,0 +1,29 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-20",
+  "runtimeTestsPerformed": true,
+  "infrastructureDeploymentPerformed": false,
+  "sources": [
+    "https://kubernetes.io/docs/concepts/overview/working-with-objects/finalizers/",
+    "https://kubernetes.io/docs/concepts/architecture/garbage-collection/",
+    "https://book.kubebuilder.io/reference/using-finalizers.html",
+    "https://github.com/kubernetes-sigs/controller-runtime/blob/v0.23.0/pkg/controller/controllerutil/controllerutil.go",
+    "https://github.com/kubernetes-sigs/controller-runtime/blob/v0.23.0/pkg/client/interfaces.go",
+    "https://kubernetes.io/docs/reference/access-authn-authz/extensible-admission-controllers/#side-effects",
+    "https://kubernetes.io/docs/concepts/architecture/controller/",
+    "https://github.com/kubernetes-sigs/controller-runtime/blob/v0.23.0/pkg/client/fake/client.go"
+  ],
+  "tests": [
+    "Published Go helper compiled with Go1.25.0/controller-runtime0.23.0/Kubernetes libraries0.35.0",
+    "Seven Go tests passed using real controller-runtime fake client and stub external service",
+    "Verified persistence before provisioning, failed protection update prevents Ensure, cleanup error retains finalizer, other finalizer preserved, cleanup repeats after failed update, missing/unowned no-op and Ensure error propagation",
+    "Mermaid structurally checked for five nodes and four edges; no rendering",
+    "Generated social image visually reviewed"
+  ],
+  "limitations": [
+    "Fake client tests do not exercise real API-server concurrency, finalizer deletion semantics or admission",
+    "External service is a recording stub; no provisioning or destructive cleanup occurred",
+    "Snippet is a reconciliation helper, not a running controller with watches, RBAC, leader election or retry configuration",
+    "Asynchronous external deletion requires explicit completion handling; cross-worker races need production ownership coordination"
+  ]
+}

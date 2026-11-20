@@ -1,0 +1,29 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-20",
+  "runtimeTestsPerformed": true,
+  "infrastructureDeploymentPerformed": false,
+  "tests": [
+    "Python 3.11 local macOS fixture: retained unbuffered descriptor reads generation-1 after replacement; reopened path reads generation-2; both assertions passed",
+    "Published Python exactly matches executed file",
+    "Read-only Linux commands source-checked against findmnt and nfsstat manuals; Bash syntax passed",
+    "Mermaid seven nodes/six edges structurally checked",
+    "Generated social image visually reviewed: readable title without clipping"
+  ],
+  "sources": [
+    "https://man7.org/linux/man-pages/man8/findmnt.8.html",
+    "https://man7.org/linux/man-pages/man8/nfsstat.8.html",
+    "https://man7.org/linux/man-pages/man5/nfs.5.html",
+    "https://www.rfc-editor.org/rfc/rfc7530.html#section-10.3",
+    "https://docs.python.org/3.11/library/os.html#os.fsync",
+    "https://man7.org/linux/man-pages/man2/fsync.2.html",
+    "https://man7.org/linux/man-pages/man2/rename.2.html",
+    "https://man7.org/linux/man-pages/man5/nfs.5.html"
+  ],
+  "limitations": [
+    "No NFS mount, Linux runtime, two-client cache test, delegation, locking or server-failure test performed",
+    "Local descriptor demonstration does not establish NFS cache behavior or crash durability",
+    "Sample omits directory synchronization and production metadata/security policy",
+    "Mermaid not rendered"
+  ]
+}

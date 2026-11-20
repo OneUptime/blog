@@ -1,0 +1,28 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-20",
+  "runtimeTestsPerformed": true,
+  "infrastructureDeploymentPerformed": false,
+  "tests": [
+    "Python 3.11.13: nine local fixture cases validated URL-encoded token request, token response checks, invalid GUIDs, empty secret and redirect rejection",
+    "Published Python exactly matches tested script and compiles",
+    "Two Graph v1.0 request bodies parsed as JSON; placeholder requests reviewed against official APIs",
+    "Mermaid seven nodes/six edges structurally checked",
+    "Generated social image visually reviewed: readable and unclipped"
+  ],
+  "sources": [
+    "https://learn.microsoft.com/en-us/azure/key-vault/secrets/about-secrets",
+    "https://learn.microsoft.com/en-us/graph/api/application-addpassword?view=graph-rest-1.0",
+    "https://learn.microsoft.com/en-us/entra/identity-platform/v2-oauth2-client-creds-grant-flow",
+    "https://docs.python.org/3.11/library/getpass.html",
+    "https://docs.python.org/3.11/library/urllib.request.html",
+    "https://learn.microsoft.com/en-us/entra/identity-platform/access-tokens",
+    "https://learn.microsoft.com/en-us/graph/api/application-removepassword?view=graph-rest-1.0"
+  ],
+  "limitations": [
+    "No live authentication, credential creation, storage, rollout or revocation performed",
+    "Local HTTP tests use fake responses; no network calls",
+    "Probe only establishes token acquisition when run against live service; application authorization and full rollout require separate tests",
+    "Mermaid not rendered"
+  ]
+}

@@ -1,0 +1,28 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-20",
+  "runtimeTestsPerformed": true,
+  "infrastructureDeploymentPerformed": false,
+  "sources": [
+    "https://github.com/kubernetes/kubernetes/blob/v1.35.0/plugin/pkg/admission/serviceaccount/admission.go",
+    "https://kubernetes.io/docs/tasks/configure-pod-container/configure-service-account/#add-imagepullsecrets-to-a-service-account",
+    "https://github.com/kubernetes/kubernetes/blob/v1.35.0/pkg/kubeapiserver/options/plugins.go",
+    "https://kubernetes.io/docs/tasks/configure-pod-container/pull-image-private-registry/",
+    "https://kubernetes.io/docs/concepts/security/service-accounts/",
+    "https://kubernetes.io/docs/reference/access-authn-authz/extensible-admission-controllers/#reinvocation-policy",
+    "https://pypi.org/project/jsonpatch/1.33/"
+  ],
+  "tests": [
+    "Both exact Python snippets executed with Python3.11/jsonpatch1.33",
+    "Seven list states passed preservation and idempotence checks; six malformed inputs rejected; empty policy produced no patch",
+    "ServiceAccount YAML passed Kubernetesv1.35.0 OpenAPI",
+    "Reviewed actual v1.35 ServiceAccount length-zero copying branch and default plugin ordering",
+    "Generated social image visually reviewed"
+  ],
+  "limitations": [
+    "No live ServiceAccount admission plugin or API server executed",
+    "Fixture represents an admitted list and does not simulate the complete admission chain",
+    "No Secret contents read, credentials provisioned or node image pull tested",
+    "Handler matching, AdmissionReview wiring and full Secret-name validation are outside helper scope"
+  ]
+}

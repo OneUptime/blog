@@ -1,0 +1,36 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-20",
+  "validationScope": "Pinned package test discovery, source review and static examples",
+  "runtimeTestsPerformed": false,
+  "playwrightVersion": "1.64.1",
+  "tests": [
+    "Installed @playwright/test 1.64.1 in isolated review directory without lifecycle scripts",
+    "Extracted exact JavaScript example and passed node --check",
+    "Playwright test --list found exactly one named test",
+    "Executed Dockerfile CMD locally with --list appended; package and CLI options resolved",
+    "All shell snippets passed bash -n",
+    "Dockerfile CMD parsed as JSON; no image build performed",
+    "Mermaid nodes and edge references checked structurally",
+    "Generated 1280x720 social image visually reviewed; title readable and complete"
+  ],
+  "limitations": [
+    "No browser launched and no real application login exercised",
+    "Docker unavailable for image build/import/run verification; registry image manifest not inspected",
+    "No CA trust, sandbox, architecture, network policy, scheduler or notification delivery tested",
+    "No claim that HTTP event collection covers all browser traffic",
+    "Mermaid not browser-rendered"
+  ],
+  "sources": [
+    "https://playwright.dev/docs/docker",
+    "https://playwright.dev/docs/browsers",
+    "https://playwright.dev/docs/api/class-browsercontext#browser-context-event-request",
+    "https://playwright.dev/docs/api/class-page#page-event-requestfailed",
+    "https://playwright.dev/docs/network#missing-network-events-and-service-workers",
+    "https://docs.docker.com/reference/cli/docker/image/save/",
+    "https://docs.docker.com/reference/cli/docker/image/load/",
+    "https://docs.docker.com/reference/cli/docker/container/run/",
+    "https://playwright.dev/docs/test-cli",
+    "https://playwright.dev/docs/auth"
+  ]
+}

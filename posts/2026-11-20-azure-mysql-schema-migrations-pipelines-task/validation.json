@@ -1,0 +1,32 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-20",
+  "runtimeTestsPerformed": false,
+  "infrastructureDeploymentPerformed": false,
+  "sources": [
+    "https://learn.microsoft.com/en-us/azure/devops/pipelines/tasks/reference/azure-mysql-deployment-v2?view=azure-pipelines",
+    "https://github.com/microsoft/azure-pipelines-tasks/blob/e6922cbeb9bbaf49f4f9b406ce6c539eb545d908/Tasks/AzureMysqlDeploymentV2/operations/MysqlServerOperations.ts",
+    "https://github.com/microsoft/azure-pipelines-tasks/blob/e6922cbeb9bbaf49f4f9b406ce6c539eb545d908/Tasks/AzureMysqlDeploymentV2/task.json",
+    "https://learn.microsoft.com/en-us/azure/devops/pipelines/process/tasks?view=azure-devops",
+    "https://dev.mysql.com/doc/refman/8.0/en/innodb-online-ddl-operations.html",
+    "https://learn.microsoft.com/en-us/azure/devops/pipelines/process/approvals?view=azure-devops",
+    "https://github.com/microsoft/azure-pipelines-tasks/blob/e6922cbeb9bbaf49f4f9b406ce6c539eb545d908/Tasks/AzureMysqlDeploymentV2/sql/MysqlClient.ts",
+    "https://dev.mysql.com/doc/refman/8.0/en/connection-options.html",
+    "https://github.com/microsoft/azure-pipelines-tasks/blob/e6922cbeb9bbaf49f4f9b406ce6c539eb545d908/Tasks/AzureMysqlDeploymentV2/operations/FirewallOperations.ts",
+    "https://dev.mysql.com/doc/refman/8.0/en/implicit-commit.html"
+  ],
+  "tests": [
+    "YAML parsed with PyYAML 6.0.2; task input names and aliases checked against official task 2.283.1 schema",
+    "Both SQL examples parsed as Alter and Select with sqlglot 28.0.0 MySQL dialect",
+    "Reviewed pinned task source for server lookup, TLS arguments, database creation, firewall behavior and exit code propagation",
+    "Mermaid seven nodes/six edges structurally checked",
+    "Social image visually reviewed without clipping"
+  ],
+  "limitations": [
+    "No Azure Pipelines run, Azure API call or MySQL migration executed",
+    "YAML parsing is not Azure Pipelines service validation; exact task availability must be checked in the organization",
+    "SQL syntax parsing does not establish INSTANT support on a particular table",
+    "Secrets, private connectivity, permissions, checks and post-deployment assertion require environment setup",
+    "Mermaid not rendered"
+  ]
+}

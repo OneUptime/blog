@@ -1,0 +1,26 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-20",
+  "runtimeTestsPerformed": true,
+  "infrastructureDeploymentPerformed": false,
+  "sources": [
+    "https://docs.aws.amazon.com/config/latest/developerguide/setup-autoremediation.html",
+    "https://docs.aws.amazon.com/vpc/latest/userguide/security-group-rules.html",
+    "https://docs.aws.amazon.com/cli/latest/reference/ec2/describe-network-interfaces.html",
+    "https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/security-group-connection-tracking.html",
+    "https://docs.aws.amazon.com/systems-manager/latest/userguide/running-automations-scale-controls.html",
+    "https://docs.aws.amazon.com/cli/latest/reference/configservice/describe-remediation-execution-status.html"
+  ],
+  "tests": [
+    "AWS CLI 2.38.1 generated both read-only operation output skeletons with credentials/config disabled; no AWS requests",
+    "Both Bash blocks passed syntax checks",
+    "Mermaid structurally checked: seven nodes and six edges; not rendered",
+    "Exact JMESPath projection tested on synthetic instance-attached and non-instance interfaces",
+    "Generated social image visually reviewed without clipping"
+  ],
+  "limitations": [
+    "No quarantine, security-group modification, resource isolation, service-health or rollback execution performed",
+    "Skeleton generation checks command shape, not authorization, current resources or application dependencies",
+    "No universal quarantine policy or containment guarantee supplied"
+  ]
+}

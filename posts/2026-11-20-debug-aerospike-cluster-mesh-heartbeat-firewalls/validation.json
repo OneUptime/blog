@@ -1,0 +1,28 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-20",
+  "validationScope": "Official network/configuration review, local socket helper tests, syntax/structure and image checks",
+  "runtimeTestsPerformed": false,
+  "localFixtureTestsPerformed": true,
+  "exampleServerVersion": "8.2.0.1",
+  "tests": [
+    "Extracted exact Python example; py_compile passed and reachable function passed local accepting/non-listening socket checks with Python 3.15.0",
+    "Python 3.13 API compatibility reviewed in official socket docs",
+    "Shell commands passed bash -n; configuration braces and three seed entries checked",
+    "Reviewed mandatory cluster-name and heartbeat address inheritance version boundary in official docs",
+    "Mermaid nodes/edges checked structurally; social image 1280x720 visually reviewed"
+  ],
+  "limitations": [
+    "No Aerospike binary or cluster; no server parser, membership, firewall, TLS, migration or restart tests",
+    "Local TCP fixture tests helper behavior, not Aerospike protocol or network health",
+    "Python 3.13 not executed; local binary was 3.15.0",
+    "Mermaid not browser-rendered"
+  ],
+  "sources": [
+    "https://aerospike.com/docs/database/manage/network/",
+    "https://aerospike.com/docs/database/reference/info/",
+    "https://aerospike.com/docs/database/reference/config/#cluster-name",
+    "https://aerospike.com/docs/database/manage/network/heartbeat/",
+    "https://docs.python.org/3.13/library/socket.html#socket.create_connection"
+  ]
+}

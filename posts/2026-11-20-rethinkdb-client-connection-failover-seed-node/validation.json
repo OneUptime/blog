@@ -1,0 +1,31 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-20",
+  "runtimeTestsPerformed": true,
+  "infrastructureDeploymentPerformed": false,
+  "versions": {
+    "python": "3.11.13",
+    "rethinkdbPythonDriver": "2.4.10.post1"
+  },
+  "checks": [
+    "Python snippets parsed; selector matches tested module",
+    "Injected connection tests passed next-endpoint timeout recovery, bounded exhaustion, authentication/unknown driver error exits, option propagation and invalid inputs",
+    "Installed driver error hierarchy and connection/reconnect implementation reviewed",
+    "Mermaid six-node five-edge structure checked",
+    "Generated image visually reviewed; readable without clipping"
+  ],
+  "limitations": [
+    "No real connection, DNS, TLS, proxy, node failure or database operation",
+    "Error text classifier is specific to inspected driver version",
+    "No write replay, changefeed reconstruction or lifecycle cancellation implemented",
+    "No Mermaid browser rendering"
+  ],
+  "sources": [
+    "https://rethinkdb.com/api/python/connect/",
+    "https://rethinkdb.com/docs/sharding-and-replication/",
+    "https://rethinkdb.com/docs/failover/",
+    "https://rethinkdb.com/api/python/close/",
+    "https://rethinkdb.com/api/python/reconnect/",
+    "https://rethinkdb.com/docs/consistency/"
+  ]
+}

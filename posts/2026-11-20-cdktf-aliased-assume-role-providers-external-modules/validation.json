@@ -1,0 +1,41 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-20",
+  "runtimeTestsPerformed": true,
+  "infrastructureDeploymentPerformed": false,
+  "versions": {
+    "cdktf": "0.21.0",
+    "terraform": "1.11.4",
+    "typescript": "5.8.3",
+    "constructs": "10.8.1",
+    "ts-node": "10.9.2",
+    "awsBinding": "21.22.1",
+    "awsProvider": "6.25.0"
+  },
+  "checks": [
+    "Local module declaration/get and CDKTF CLI synthesis passed",
+    "Complete TypeScript compiled",
+    "Synthesized mapping exactly aws->aws.primary and aws.replica->aws.recovery",
+    "Two parent provider configurations and AWS6.25.0 requirement checked",
+    "Terraform init backend=false installed module and provider",
+    "Terraform validate valid=true",
+    "JSON, shell syntax and Mermaid six-node four-edge structure checked",
+    "Social image visually inspected: title readable and not clipped"
+  ],
+  "limitations": [
+    "No AWS credentials, AssumeRole, caller identity API, cloud plan or apply tested",
+    "No third-party module or remote Git/registry source executed",
+    "No browser Mermaid rendering"
+  ],
+  "sources": [
+    "https://developer.hashicorp.com/terraform/cdktf",
+    "https://developer.hashicorp.com/terraform/language/modules/develop/providers",
+    "https://github.com/hashicorp/terraform-provider-aws/blob/v6.25.0/website/docs/d/caller_identity.html.markdown",
+    "https://github.com/hashicorp/terraform-provider-aws/blob/v6.25.0/website/docs/index.html.markdown",
+    "https://docs.aws.amazon.com/IAM/latest/UserGuide/id_roles_use_permissions-to-switch.html",
+    "https://github.com/hashicorp/terraform-cdk/blob/v0.21.0/packages/cdktf/lib/terraform-module.ts",
+    "https://developer.hashicorp.com/terraform/cdktf/concepts/modules",
+    "https://developer.hashicorp.com/terraform/cli/commands/validate",
+    "https://developer.hashicorp.com/terraform/language/modules/syntax"
+  ]
+}

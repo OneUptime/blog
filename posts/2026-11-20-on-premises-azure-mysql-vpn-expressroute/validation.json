@@ -1,0 +1,31 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-20",
+  "runtimeTestsPerformed": false,
+  "infrastructureDeploymentPerformed": false,
+  "sources": [
+    "https://learn.microsoft.com/en-us/azure/mysql/flexible-server/concepts-networking-vnet",
+    "https://learn.microsoft.com/en-us/azure/vpn-gateway/vpn-gateway-about-vpn-gateway-settings",
+    "https://learn.microsoft.com/en-us/azure/expressroute/expressroute-routing",
+    "https://learn.microsoft.com/en-us/azure/vpn-gateway/vpn-gateway-peering-gateway-transit",
+    "https://learn.microsoft.com/en-us/azure/virtual-network/virtual-networks-udr-overview",
+    "https://learn.microsoft.com/en-us/azure/dns/private-resolver-endpoints-rulesets",
+    "https://learn.microsoft.com/en-us/azure/virtual-network/virtual-networks-name-resolution-for-vms-and-role-instances",
+    "https://learn.microsoft.com/en-us/azure/dns/private-resolver-hybrid-dns",
+    "https://learn.microsoft.com/en-us/powershell/module/dnsclient/resolve-dnsname?view=windowsserver2025-ps",
+    "https://learn.microsoft.com/en-us/powershell/module/nettcpip/find-netroute?view=windowsserver2025-ps",
+    "https://learn.microsoft.com/en-us/powershell/module/nettcpip/test-netconnection?view=windowsserver2025-ps",
+    "https://learn.microsoft.com/en-us/azure/mysql/security/security-tls-how-to-connect"
+  ],
+  "tests": [
+    "Two PowerShell blocks parsed with PowerShell 7.4.6 without executing networking commands",
+    "Official MySQL VNet integration, hybrid resolver, gateway transit, VPN/ExpressRoute routes and Windows diagnostic command documentation reviewed",
+    "Mermaid structurally checked: seven nodes and six edges; not rendered",
+    "Generated social image visually inspected: readable, unclipped title"
+  ],
+  "limitations": [
+    "No live VPN or ExpressRoute connectivity, private DNS lookup, route lookup, TCP test or MySQL login performed",
+    "Example private addresses are placeholders and require deployment-specific replacement",
+    "Direct resolver comparison requires policy-authorized access; it is not a DNS settings change"
+  ]
+}

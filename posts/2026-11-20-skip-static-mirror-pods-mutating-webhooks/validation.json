@@ -1,0 +1,29 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-20",
+  "runtimeTestsPerformed": true,
+  "infrastructureDeploymentPerformed": false,
+  "sources": [
+    "https://kubernetes.io/docs/tasks/configure-pod-container/static-pod/",
+    "https://github.com/kubernetes/kubernetes/blob/v1.35.0/pkg/kubelet/pod/mirror_client.go",
+    "https://kubernetes.io/docs/concepts/cluster-administration/admission-webhooks-good-practices/#dont-change-immutable-objects",
+    "https://kubernetes.io/docs/reference/access-authn-authz/extensible-admission-controllers/#matching-requests-matchconditions",
+    "https://github.com/kubernetes/kubernetes/blob/v1.35.0/plugin/pkg/admission/noderestriction/admission.go",
+    "https://kubernetes.io/docs/reference/kubectl/generated/kubectl_get/",
+    "https://kubernetes.io/docs/concepts/workloads/pods/#pod-update-and-replacement",
+    "https://kubernetes.io/docs/concepts/configuration/configmap/#immutable-configmaps"
+  ],
+  "tests": [
+    "CEL expression compiled and evaluated with cel-go0.26.0 using six null/annotation fixtures",
+    "Published Python3.11 inventory script executed against five Pod fixtures and an empty inventory, with exact output checks",
+    "Registration fragment checked inside complete synthetic webhook against v1.35.0 OpenAPI",
+    "Shell syntax and four-node/three-edge Mermaid structure checked; no diagram render",
+    "Social image generated and visually reviewed"
+  ],
+  "limitations": [
+    "CEL uses dynamic fixture objects, not API-server typed bindings or full matching dispatch",
+    "No real static Pod, kubelet or mirror creation exercised",
+    "No handler guard implementation or security-enforcement behavior tested",
+    "Inventory reflects saved API representations only; it cannot prove absence of node-local static workloads"
+  ]
+}

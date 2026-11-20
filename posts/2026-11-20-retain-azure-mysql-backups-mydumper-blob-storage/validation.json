@@ -1,0 +1,36 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-20",
+  "runtimeTestsPerformed": true,
+  "infrastructureDeploymentPerformed": false,
+  "sources": [
+    "https://learn.microsoft.com/en-us/azure/mysql/flexible-server/concepts-backup-restore",
+    "https://learn.microsoft.com/en-us/azure/backup/backup-azure-mysql-flexible-server-about",
+    "https://mydumper.github.io/mydumper/docs/html/requirements.html",
+    "https://mydumper.github.io/mydumper/docs/html/locks.html",
+    "https://github.com/mydumper/mydumper/blob/v1.0.19-1/src/connection.c",
+    "https://github.com/mydumper/mydumper/blob/v1.0.19-1/src/mydumper/mydumper_arguments.c",
+    "https://perldoc.perl.org/shasum",
+    "https://learn.microsoft.com/en-us/azure/storage/blobs/storage-quickstart-blobs-cli",
+    "https://learn.microsoft.com/en-us/cli/azure/storage/blob?view=azure-cli-latest",
+    "https://learn.microsoft.com/en-us/azure/storage/blobs/lifecycle-management-overview",
+    "https://learn.microsoft.com/en-us/azure/storage/blobs/immutable-storage-overview",
+    "https://learn.microsoft.com/en-us/azure/storage/blobs/archive-rehydrate-overview"
+  ],
+  "tests": [
+    "Four Bash blocks passed bash -n",
+    "Executed exact archive/checksum block on synthetic dump files including a filename with spaces; valid archive passed verification",
+    "Copied synthetic package locally to simulate downloaded bytes; corruption and missing archive each produced nonzero checksum-check exit status",
+    "Verified MyDumper 1.0.19-1 TLS and dump flags against tagged official source; reviewed consistency lock prerequisites",
+    "Reviewed Azure backup retention, paused LTR preview notice, Blob authorization, upload/download, lifecycle, immutability and archive retrieval docs",
+    "Mermaid seven nodes/six edges structurally checked",
+    "Social image visually reviewed: readable without clipping"
+  ],
+  "limitations": [
+    "No MyDumper or MyLoader binary executed; no database snapshot or restore produced",
+    "No Azure upload, download, retention policy or immutability change performed",
+    "Local file copy is not a Blob transfer test; checksum tests do not prove database consistency",
+    "No actual backup artifact or production credentials included",
+    "Mermaid not rendered"
+  ]
+}

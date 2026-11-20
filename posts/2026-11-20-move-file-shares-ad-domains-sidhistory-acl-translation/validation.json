@@ -1,0 +1,29 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-20",
+  "runtimeTestsPerformed": false,
+  "infrastructureDeploymentPerformed": false,
+  "tests": [
+    "Three read-only PowerShell snippets parsed with PowerShell 7.4.6 and match published examples",
+    "Reviewed official AD object, group scope, trust, ADMT support, ACL and SMB share documentation",
+    "Mermaid eight nodes/eight edges structurally checked",
+    "Generated social image visually reviewed: readable title without clipping"
+  ],
+  "sources": [
+    "https://learn.microsoft.com/en-us/windows/win32/ad/naming-properties",
+    "https://learn.microsoft.com/en-us/powershell/module/activedirectory/get-adgroup?view=windowsserver2025-ps",
+    "https://learn.microsoft.com/en-us/powershell/module/activedirectory/get-aduser?view=windowsserver2022-ps",
+    "https://learn.microsoft.com/en-us/windows-server/identity/ad-ds/manage/understand-security-groups",
+    "https://learn.microsoft.com/en-us/windows-server/administration/windows-commands/netdom-trust",
+    "https://learn.microsoft.com/en-us/troubleshoot/windows-server/active-directory/support-policy-and-known-issues-for-admt",
+    "https://learn.microsoft.com/dotnet/api/system.security.accesscontrol.commonobjectsecurity.getaccessrules",
+    "https://learn.microsoft.com/en-us/windows-server/administration/windows-commands/icacls",
+    "https://learn.microsoft.com/en-us/powershell/module/smbshare/get-smbshareaccess?view=windowsserver2022-ps"
+  ],
+  "limitations": [
+    "No live AD domains, trust traversal, SIDHistory, ACL translation, group membership or SMB access tests",
+    "PowerShell syntax checks do not establish Windows module parameter binding or runtime success",
+    "No migration-tool execution; modern ADMT support limitations explicitly documented",
+    "Mermaid not rendered"
+  ]
+}

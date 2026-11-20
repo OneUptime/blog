@@ -1,0 +1,27 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-20",
+  "runtimeTestsPerformed": true,
+  "infrastructureDeploymentPerformed": false,
+  "tests": [
+    "Pinned Boto3 1.40.76 InstanceRunning waiter acceptors inspected",
+    "Nine cases passed with actual SDK waiter and botocore Stubber",
+    "Pending/not-found retries, terminal failure, unauthorized error and attempt exhaustion checked",
+    "Four explicit postcondition mismatches rejected",
+    "Published Python exactly matches tested file and parses",
+    "Mermaid seven nodes/eight edges structurally checked",
+    "Image visually inspected, readable and unclipped"
+  ],
+  "sources": [
+    "https://docs.aws.amazon.com/ec2/latest/devguide/eventual-consistency.html",
+    "https://boto3.amazonaws.com/v1/documentation/api/latest/reference/services/ec2/waiter/InstanceRunning.html",
+    "https://docs.aws.amazon.com/AWSEC2/latest/APIReference/API_DescribeInstances.html",
+    "https://docs.aws.amazon.com/ec2/latest/devguide/ec2-api-idempotency.html"
+  ],
+  "limitations": [
+    "No live AWS requests or provisioning",
+    "Polling delay set to zero in tests only",
+    "No real network timing, SDK retry latency, durable checkpoint, idempotent creation recovery or application probe tested",
+    "Mermaid not rendered"
+  ]
+}

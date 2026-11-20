@@ -1,0 +1,35 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-20",
+  "runtimeTestsPerformed": false,
+  "infrastructureDeploymentPerformed": false,
+  "sources": [
+    "https://learn.microsoft.com/en-us/azure/mysql/concepts-version-policy",
+    "https://learn.microsoft.com/en-us/azure/mysql/flexible-server/how-to-upgrade-faq",
+    "https://dev.mysql.com/doc/refman/8.0/en/sql-mode.html",
+    "https://dev.mysql.com/doc/relnotes/mysql-shell/26.10/en/news-26-10-0.html",
+    "https://dev.mysql.com/doc/mysql-shell/26.10/en/mysql-shell-utilities-upgrade.html",
+    "https://dev.mysql.com/doc/mysql-shell/26.10/en/mysql-shell-encrypted-connections.html",
+    "https://github.com/mysql/mysql-shell/blob/26.10.0/modules/util/upgrade_check.cc",
+    "https://github.com/mysql/mysql-shell/blob/26.10.0/modules/util/upgrade_checker/upgrade_check_formatter.cc",
+    "https://learn.microsoft.com/en-us/azure/mysql/flexible-server/how-to-upgrade",
+    "https://dev.mysql.com/doc/refman/8.0/en/replication-upgrade.html",
+    "https://learn.microsoft.com/en-us/azure/mysql/flexible-server/concepts-error-logs",
+    "https://dev.mysql.com/doc/refman/8.0/en/performance-schema-replication-applier-status-by-worker-table.html",
+    "https://learn.microsoft.com/en-us/azure/mysql/flexible-server/concepts-read-replicas"
+  ],
+  "tests": [
+    "JavaScript example passed Node 24.1 syntax checking; no util call executed",
+    "Two SQL statements parsed as SELECT with sqlglot 28.0.0 MySQL dialect",
+    "Reviewed MySQL Shell 26.10.0 target options, PROCESS/SELECT privilege validation and JSON formatter statuses in tagged source",
+    "Reviewed managed configuration-file limitation, Azure built-in warning exceptions and replica/error-log caveats",
+    "Mermaid structural check: seven nodes and seven resolved edges",
+    "Social image visually reviewed: no clipping"
+  ],
+  "limitations": [
+    "No MySQL Shell binary or server used; Node syntax is not Shell API validation",
+    "No Azure validation, upgrade, replica operation, log download or application workload run",
+    "Target patch remains an explicit placeholder requiring environment-specific replacement",
+    "Mermaid not rendered"
+  ]
+}

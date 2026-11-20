@@ -1,0 +1,29 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-20",
+  "validationScope": "Official tagged Java API review, exact snippet compilation, synthetic cursor serialization and image checks",
+  "runtimeTestsPerformed": false,
+  "localCodeTestsPerformed": true,
+  "javaClientVersion": "10.5.0",
+  "tests": [
+    "Exact ResumableSetRead compiled with javac 17.0.16 against official jdk8 10.5.0 artifact",
+    "Trusted synthetic PartitionFilter round-trip retained range, partition IDs, digest, bval and retry flag; restored cursor remained incomplete",
+    "Verified listener callback precedes tracker.setLast and iterator cursor warning in tagged implementation",
+    "Mermaid references checked structurally; generated social image 1280x720 visually reviewed"
+  ],
+  "limitations": [
+    "No Aerospike connection, query page, live failure, sink commit, process crash or restart recovery executed",
+    "Serialization test uses synthetic state and same client version; no cross-version compatibility claim",
+    "No exactly-once or snapshot guarantee tested",
+    "Mermaid not browser-rendered"
+  ],
+  "sources": [
+    "https://github.com/aerospike/aerospike-client-java/blob/10.5.0/client/src/com/aerospike/client/query/PartitionFilter.java",
+    "https://github.com/aerospike/aerospike-client-java/blob/10.5.0/client/src/com/aerospike/client/AerospikeClient.java",
+    "https://aerospike.com/docs/develop/tutorials/queries/query-streams-java/",
+    "https://github.com/aerospike/aerospike-client-java/blob/10.5.0/client/src/com/aerospike/client/query/QueryListenerCommand.java",
+    "https://github.com/aerospike/aerospike-client-java/blob/10.5.0/client/src/com/aerospike/client/query/PartitionStatus.java",
+    "https://aerospike.com/docs/develop/tutorials/queries/query-splits-java/",
+    "https://repo.maven.apache.org/maven2/com/aerospike/aerospike-client-jdk8/10.5.0/aerospike-client-jdk8-10.5.0.jar"
+  ]
+}

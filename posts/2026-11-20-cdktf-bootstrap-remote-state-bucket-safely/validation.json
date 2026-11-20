@@ -1,0 +1,43 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-20",
+  "runtimeTestsPerformed": true,
+  "infrastructureDeploymentPerformed": false,
+  "versions": {
+    "cdktf": "0.21.0",
+    "typescript": "5.8.3",
+    "constructs": "10.8.1",
+    "ts-node": "10.9.2",
+    "awsBinding": "21.22.1",
+    "awsProviderSchema": "6.25.0",
+    "targetTerraform": "1.11.4"
+  },
+  "checks": [
+    "Both complete TypeScript examples compiled and synthesized",
+    "Bootstrap uses only local backend and emits four AWS resource types",
+    "Bucket prevent_destroy true and force_destroy false verified",
+    "Versioning Enabled and AWS provider requirement 6.25.0 verified",
+    "Application backend contains literal bucket/key and encrypt/use_lockfile true",
+    "Shell syntax and Mermaid six-node five-edge structure checked",
+    "CDKTF CLI bootstrap synthesis passed",
+    "Social image visually inspected: readable title, no clipping"
+  ],
+  "limitations": [
+    "No AWS credentials, provider plan, deployment, backend initialization or state migration performed",
+    "IAM policy and real bucket availability require environment-specific review",
+    "No browser Mermaid rendering"
+  ],
+  "sources": [
+    "https://developer.hashicorp.com/terraform/cdktf",
+    "https://developer.hashicorp.com/terraform/language/backend",
+    "https://github.com/hashicorp/terraform-provider-aws/blob/v6.25.0/website/docs/r/s3_bucket.html.markdown",
+    "https://developer.hashicorp.com/terraform/language/meta-arguments/lifecycle",
+    "https://github.com/hashicorp/terraform-provider-aws/blob/v6.25.0/website/docs/r/s3_bucket_versioning.html.markdown",
+    "https://github.com/hashicorp/terraform-provider-aws/blob/v6.25.0/website/docs/r/s3_bucket_public_access_block.html.markdown",
+    "https://github.com/hashicorp/terraform-provider-aws/blob/v6.25.0/website/docs/r/s3_bucket_server_side_encryption_configuration.html.markdown",
+    "https://developer.hashicorp.com/terraform/cdktf/cli-reference/commands",
+    "https://github.com/hashicorp/terraform-cdk/blob/v0.21.0/packages/cdktf/lib/backends/s3-backend.ts",
+    "https://developer.hashicorp.com/terraform/language/backend/s3",
+    "https://developer.hashicorp.com/terraform/cli/commands/init"
+  ]
+}

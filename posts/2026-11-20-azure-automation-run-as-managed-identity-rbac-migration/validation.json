@@ -1,0 +1,32 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-20",
+  "runtimeTestsPerformed": false,
+  "infrastructureDeploymentPerformed": false,
+  "tests": [
+    "Downloaded official Az.Accounts5.3.0 and Az.Resources8.1.0 packages; verified manifests and dependency metadata",
+    "Inspected packaged command help for identity/context/resource-group/role-assignment parameters and SubscriptionId alias",
+    "PowerShell delimiter and continuation-whitespace checks only",
+    "Mermaid seven nodes/six edges structurally checked",
+    "Social image visually reviewed, readable and unclipped"
+  ],
+  "sources": [
+    "https://learn.microsoft.com/en-us/azure/automation/migrate-run-as-accounts-managed-identity",
+    "https://learn.microsoft.com/en-us/azure/role-based-access-control/built-in-roles/general#reader",
+    "https://learn.microsoft.com/en-us/azure/automation/enable-managed-identity-for-automation",
+    "https://learn.microsoft.com/en-us/azure/automation/automation-hrw-run-runbooks",
+    "https://learn.microsoft.com/en-us/powershell/module/az.resources/new-azroleassignment",
+    "https://www.powershellgallery.com/packages/Az.Accounts/5.3.0",
+    "https://www.powershellgallery.com/packages/Az.Resources/8.1.0",
+    "https://learn.microsoft.com/en-us/azure/automation/runtime-environment-overview",
+    "https://learn.microsoft.com/en-us/azure/automation/learn/powershell-runbook-managed-identity",
+    "https://learn.microsoft.com/en-us/powershell/module/az.resources/get-azresourcegroup",
+    "https://learn.microsoft.com/en-us/powershell/module/az.accounts/set-azcontext"
+  ],
+  "limitations": [
+    "PowerShell unavailable; no PowerShell parser or runtime validation",
+    "No Azure identity enablement, login, module load, RBAC assignment or evaluation",
+    "No scheduled, published, or Hybrid Worker acceptance test",
+    "Mermaid not rendered"
+  ]
+}

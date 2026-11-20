@@ -1,0 +1,7 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-20",
+  "validationScope": "Official source review, local Helm rendering, YAML parsing, shell syntax and OpenSSL option checks, structural Mermaid/NGINX checks, metadata and social-image inspection.",
+  "runtimeTestsPerformed": false,
+  "chartVersionReviewed": "17.0.0"
+}

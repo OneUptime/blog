@@ -1,0 +1,27 @@
+{
+  "status": "validated",
+  "date": "2026-11-20",
+  "runtimeTestsPerformed": false,
+  "localCodeTestsPerformed": false,
+  "tests": [
+    "Bash syntax passed",
+    "Mermaid flowchart direction, node definitions, and all four edge references checked structurally",
+    "Source review corrected NSUP metric seconds versus log milliseconds distinction",
+    "Social image generated, dimensions checked, visually inspected"
+  ],
+  "limitations": [
+    "No Aerospike server, exporter, or asinfo requests executed",
+    "Mermaid structurally checked; no browser render",
+    "No measured expiry or reclamation timing"
+  ],
+  "sources": [
+    "https://support.aerospike.com/hc/en-us/articles/49939338965915-Is-TTL-checked-on-a-read",
+    "https://aerospike.com/docs/database/manage/namespace/retention/",
+    "https://aerospike.com/docs/database/reference/metrics/",
+    "https://aerospike.com/docs/database/reference/info/",
+    "https://aerospike.com/docs/database/reference/config/",
+    "https://aerospike.com/docs/database/reference/logs/",
+    "https://github.com/aerospike/aerospike-client-java/blob/10.5.0/client/src/com/aerospike/client/policy/Policy.java",
+    "https://support.aerospike.com/hc/en-us/articles/56255268033051-Why-doesn-t-system-memory-usage-go-down-after-records-expire-or-are-deleted"
+  ]
+}

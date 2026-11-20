@@ -1,0 +1,27 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-20",
+  "runtimeTestsPerformed": true,
+  "infrastructureDeploymentPerformed": false,
+  "tests": [
+    "Eight local scenarios using Boto3 1.40.76 and botocore Stubber: release, absent item, replacement reservation, permission error, four invalid versions",
+    "Exact conditional DeleteItem and strongly consistent GetItem request shapes checked",
+    "Published Python equals tested file",
+    "Mermaid eight nodes/eight edges structurally checked",
+    "Generated social image visually reviewed and unclipped"
+  ],
+  "sources": [
+    "https://learn.microsoft.com/en-us/azure/architecture/patterns/compensating-transaction",
+    "https://docs.aws.amazon.com/prescriptive-guidance/latest/cloud-design-patterns/saga-orchestration.html",
+    "https://docs.aws.amazon.com/amazondynamodb/latest/APIReference/API_DeleteItem.html",
+    "https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/Expressions.ConditionExpressions.html",
+    "https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/HowItWorks.ReadConsistency.html",
+    "https://docs.aws.amazon.com/step-functions/latest/dg/concepts-error-handling.html"
+  ],
+  "limitations": [
+    "No DynamoDB requests or cloud teardown",
+    "Stubber verifies SDK calls and response handling, not server-side condition evaluation or concurrency",
+    "No durable coordinator or crash recovery exercised",
+    "Mermaid not rendered"
+  ]
+}

@@ -1,0 +1,29 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-20",
+  "runtimeTestsPerformed": true,
+  "infrastructureDeploymentPerformed": false,
+  "tests": [
+    "Official restic 0.18.1 darwin/arm64 archive SHA256 matches release SHA256SUMS; binary version confirmed",
+    "Executed published Bash/Python 3.11 fixture: 1000 distinct deterministic 4096-byte files, local repository initialization, two backups, check --read-data and explicit-snapshot subtree restore",
+    "All restored paths and SHA256 hashes match independent manifest; second backup reported 1000 unmodified files; repository data directory had three pack files after both runs",
+    "Published Bash exactly matches executed script and passes bash -n",
+    "Generated social image visually reviewed: readable title without clipping"
+  ],
+  "sources": [
+    "https://restic.readthedocs.io/en/v0.18.1/100_references.html",
+    "https://github.com/restic/restic/releases/tag/v0.18.1",
+    "https://restic.readthedocs.io/en/v0.18.1/020_installation.html",
+    "https://restic.readthedocs.io/en/v0.18.1/075_scripting.html",
+    "https://restic.readthedocs.io/en/v0.18.1/050_restore.html",
+    "https://restic.readthedocs.io/en/v0.18.1/047_tuning_backup_parameters.html",
+    "https://restic.readthedocs.io/en/v0.18.1/040_backup.html",
+    "https://restic.readthedocs.io/en/v0.18.1/045_working_with_repos.html"
+  ],
+  "limitations": [
+    "Local macOS fixture only; no million-file run, cloud API measurement, network share, concurrency benchmark or live application consistency test",
+    "Pack count is not a remote API request count; snapshot/index metadata also consumes operations",
+    "Archive checksum verified, detached GPG signature not verified",
+    "Fixture restore checks file set and contents, not production metadata fidelity or disaster-recovery credentials"
+  ]
+}

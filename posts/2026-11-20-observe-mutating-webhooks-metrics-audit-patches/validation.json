@@ -1,0 +1,31 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-20",
+  "runtimeTestsPerformed": true,
+  "infrastructureDeploymentPerformed": false,
+  "sources": [
+    "https://github.com/kubernetes/kubernetes/blob/v1.35.0/staging/src/k8s.io/apiserver/pkg/admission/metrics/metrics.go",
+    "https://prometheus.io/docs/prometheus/latest/querying/functions/",
+    "https://github.com/kubernetes/kubernetes/blob/v1.35.0/staging/src/k8s.io/apiserver/pkg/admission/plugin/webhook/mutating/dispatcher.go",
+    "https://kubernetes.io/docs/reference/access-authn-authz/extensible-admission-controllers/#monitoring-admission-webhooks",
+    "https://kubernetes.io/docs/tasks/debug/debug-cluster/audit/",
+    "https://github.com/kubernetes/kubernetes/blob/v1.35.0/staging/src/k8s.io/api/admission/v1/types.go",
+    "https://raw.githubusercontent.com/prometheus/prometheus/v0.305.0/go.mod",
+    "https://raw.githubusercontent.com/prometheus/prometheus/v3.5.0/promql/parser/parse.go"
+  ],
+  "tests": [
+    "Three article PromQL expressions parsed and type-checked using actual Prometheus Go module v0.305.0 parser with Go 1.25.0",
+    "Metric names, label sets, mutating type=admit and rejection/fail-open behavior checked against Kubernetes v1.35.0 metrics and dispatcher source",
+    "Python 3.11 audit helper executed with synthetic JSON-lines fixtures: multiple rounds, ResponseComplete stage filtering, absent annotations and unrelated patch annotations",
+    "Output contained selected fields only and omitted request body/patch fixture marker; malformed outer JSON and malformed encoded mutation annotation each failed visibly",
+    "Metadata formatting checked; social image generated and visually reviewed with full title visible"
+  ],
+  "limitations": [
+    "PromQL parsing does not evaluate live or synthetic time series; no Prometheus query engine calculation tested",
+    "No API server scrape, audit policy modification, real audit export, webhook request or staging failure performed",
+    "Audit helper expects JSON-lines events with valid JSON-encoded mutation annotations and selects ResponseComplete only",
+    "No automatic join assumed between auditID and AdmissionRequest UID; privacy review of original audit files still required",
+    "Queries assume one cluster; multi-cluster selectors must be adapted to actual monitoring labels",
+    "No diagram needed; query sequence and selected audit fields show the investigation workflow"
+  ]
+}

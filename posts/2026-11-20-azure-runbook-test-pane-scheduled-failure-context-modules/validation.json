@@ -1,0 +1,32 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-20",
+  "runtimeTestsPerformed": true,
+  "infrastructureDeploymentPerformed": false,
+  "tests": [
+    "Official PowerShell7.4.6 macOS arm64 release checksum verified and runtime executed",
+    "Real imports of Az.Accounts5.3.0 and Az.Resources8.1.0 passed",
+    "Published script exactly matches tested file; native PowerShell parser passed",
+    "Mocked Azure success path generated staged JSON records",
+    "Wrong tenant rejected before any resource read",
+    "Mermaid seven nodes/six edges structurally checked",
+    "Image visually reviewed, readable and unclipped"
+  ],
+  "sources": [
+    "https://learn.microsoft.com/en-us/azure/automation/shared-resources/schedules",
+    "https://learn.microsoft.com/en-us/azure/automation/manage-runbooks",
+    "https://learn.microsoft.com/en-us/azure/automation/automation-hrw-run-runbooks",
+    "https://learn.microsoft.com/en-us/azure/automation/automation-runbook-output-and-messages",
+    "https://learn.microsoft.com/en-us/azure/automation/context-switching",
+    "https://learn.microsoft.com/en-us/powershell/module/microsoft.powershell.core/get-module",
+    "https://www.powershellgallery.com/packages/Az.Accounts/5.3.0",
+    "https://www.powershellgallery.com/packages/Az.Resources/8.1.0",
+    "https://learn.microsoft.com/en-us/azure/automation/runtime-environment-overview"
+  ],
+  "limitations": [
+    "Azure commands replaced by local functions during behavior tests",
+    "No cloud authentication, scheduled job, RBAC evaluation, Hybrid Worker, or network test",
+    "No concurrent real Automation jobs tested",
+    "Mermaid not rendered"
+  ]
+}

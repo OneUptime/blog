@@ -1,0 +1,26 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-20",
+  "runtimeTestsPerformed": false,
+  "infrastructureDeploymentPerformed": false,
+  "tests": [
+    "Three shell blocks passed bash syntax checks",
+    "IPv4/IPv6 encapsulation budgets, outer Ethernet/FCS table and ICMP sizes checked arithmetically",
+    "Mermaid six nodes/five edges structurally checked",
+    "Source review of iproute2 6.12.0 MTU syntax and iputils 20240905 ping flags",
+    "Generated social image visually inspected; no clipped text"
+  ],
+  "sources": [
+    "https://www.rfc-editor.org/rfc/rfc7348.html",
+    "https://www.rfc-editor.org/rfc/rfc8200.html",
+    "https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/network_mtu.html",
+    "https://raw.githubusercontent.com/iproute2/iproute2/v6.12.0/man/man8/ip-link.8.in",
+    "https://raw.githubusercontent.com/iputils/iputils/20240905/doc/ping.xml"
+  ],
+  "limitations": [
+    "No live Linux link change, packet transmission or switch configuration",
+    "Vendor frame-limit semantics require platform documentation and actual path verification",
+    "No persistence, failover or application traffic test",
+    "Mermaid structurally checked, not rendered"
+  ]
+}

@@ -1,0 +1,38 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-20",
+  "runtimeTestsPerformed": true,
+  "infrastructureDeploymentPerformed": false,
+  "versions": {
+    "cdktf": "0.21.0",
+    "targetTerraform": "1.11.4",
+    "typescript": "5.8.3",
+    "constructs": "10.8.1",
+    "ts-node": "10.9.2"
+  },
+  "checks": [
+    "Complete intermediate TypeScript example compiled and synthesized",
+    "Synthesized backend includes DynamoDB table and use_lockfile=true with exact Terraform constraint",
+    "Source review of Terraform 1.11.4 S3 Lock implementation confirms both-lock acquisition and cleanup on second-lock failure",
+    "Shell syntax and Mermaid five-node four-edge structure checked",
+    "Final configuration compiled and synthesized: only dynamodb_table removed, remaining backend fields identical",
+    "CDKTF CLI synth passed",
+    "Social image visually reviewed: readable and unclipped"
+  ],
+  "limitations": [
+    "No AWS backend initialization, permissions, concurrent lock contention, lock cleanup or migration tested",
+    "Operational commands and contention protocol are source-reviewed instructions only",
+    "No browser Mermaid rendering"
+  ],
+  "sources": [
+    "https://developer.hashicorp.com/terraform/cdktf",
+    "https://github.com/hashicorp/terraform/releases/tag/v1.10.0",
+    "https://github.com/hashicorp/terraform/blob/v1.11.4/internal/backend/remote-state/s3/client.go",
+    "https://github.com/hashicorp/terraform/blob/v1.11.4/internal/backend/remote-state/s3/backend.go",
+    "https://github.com/hashicorp/terraform-cdk/blob/v0.21.0/packages/cdktf/lib/backends/s3-backend.ts",
+    "https://developer.hashicorp.com/terraform/language/backend/s3",
+    "https://developer.hashicorp.com/terraform/cli/commands/init",
+    "https://developer.hashicorp.com/terraform/language/state/locking",
+    "https://developer.hashicorp.com/terraform/cli/commands/force-unlock"
+  ]
+}

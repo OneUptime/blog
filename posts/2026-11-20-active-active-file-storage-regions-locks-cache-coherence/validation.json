@@ -1,0 +1,28 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-20",
+  "runtimeTestsPerformed": true,
+  "infrastructureDeploymentPerformed": false,
+  "tests": [
+    "AWS CLI 2.38.1 local generated output skeleton validates read-only command inputs and projection without API calls",
+    "JMESPath synthetic multiple configurations, present/missing timestamps and empty list checks passed",
+    "Published Bash snippet passed syntax checking; Mermaid six nodes/six edges structurally checked",
+    "Official DFSR, Ceph Reef snapshot mirroring, NFSv4.1, EFS replication/failback and fencing sources reviewed",
+    "Social image generated and visually inspected: readable without clipping"
+  ],
+  "sources": [
+    "https://learn.microsoft.com/en-us/windows-server/storage/dfs-replication/dfsr-faq",
+    "https://docs.ceph.com/en/reef/cephfs/cephfs-mirroring/",
+    "https://www.rfc-editor.org/rfc/rfc8881.html#section-10",
+    "https://docs.aws.amazon.com/efs/latest/ug/monitoring-replication-status.html",
+    "https://docs.aws.amazon.com/cli/latest/reference/efs/describe-replication-configurations.html",
+    "https://docs.aws.amazon.com/efs/latest/ug/efs-replication.html",
+    "https://clusterlabs.org/projects/pacemaker/doc/2.1/Clusters_from_Scratch/html/fencing.html",
+    "https://docs.aws.amazon.com/efs/latest/ug/replication-fail-over.html"
+  ],
+  "limitations": [
+    "No live AWS, DFSR, Ceph, NFS or regional failover runtime test",
+    "Synthetic response checks do not prove replication, fencing, application recovery or partition behavior",
+    "Mermaid structurally reviewed, not rendered"
+  ]
+}

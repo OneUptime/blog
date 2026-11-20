@@ -1,0 +1,25 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-20",
+  "runtimeTestsPerformed": true,
+  "infrastructureDeploymentPerformed": false,
+  "tests": [
+    "Four unittest cases passed with Python 3.11.13, Boto3 1.40.76 and botocore Stubber",
+    "Exact StopInstances DryRun request verified; allowed, denied, throttled and unexpected success responses covered",
+    "Both published Python blocks match executed files",
+    "Mermaid eight nodes/seven edges structurally checked",
+    "Generated social image visually reviewed and unclipped"
+  ],
+  "sources": [
+    "https://botocore.amazonaws.com/v1/documentation/api/latest/reference/stubber.html",
+    "https://docs.aws.amazon.com/AWSEC2/latest/APIReference/API_StopInstances.html",
+    "https://docs.aws.amazon.com/IAM/latest/UserGuide/reference_policies_evaluation-logic.html",
+    "https://docs.aws.amazon.com/organizations/latest/userguide/orgs_manage_policies_scps.html"
+  ],
+  "limitations": [
+    "No live permission checks, sandbox actions or production canary",
+    "Stubber does not evaluate IAM policies or service state",
+    "No stop/start, application recovery, cloud cleanup or target enforcement tested",
+    "Mermaid not rendered"
+  ]
+}

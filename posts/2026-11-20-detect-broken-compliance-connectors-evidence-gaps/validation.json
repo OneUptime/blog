@@ -1,0 +1,26 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-20",
+  "runtimeTestsPerformed": true,
+  "infrastructureDeploymentPerformed": false,
+  "sources": [
+    "https://docs.aws.amazon.com/audit-manager/latest/userguide/audit-manager-availability-change.html",
+    "https://docs.aws.amazon.com/audit-manager/latest/userguide/control-data-sources.html",
+    "https://docs.aws.amazon.com/cli/latest/reference/configservice/describe-configuration-recorder-status.html",
+    "https://docs.aws.amazon.com/audit-manager/latest/userguide/evidence-collection-issues.html",
+    "https://prometheus.io/docs/practices/alerting/"
+  ],
+  "tests": [
+    "Python 3.11.13 classifier: eight deterministic cases passed",
+    "AWS CLI 2.38.1 recorder-status output skeleton generated with credentials/config disabled; no service request",
+    "Bash syntax checked",
+    "Mermaid structurally checked: six nodes, six edges; not rendered",
+    "Social image generated and visually checked without clipping"
+  ],
+  "limitations": [
+    "No real connector, source coverage, checkpoint durability, AWS permission or audit-evidence acceptance tested",
+    "Example health contract is custom and not a vendor schema",
+    "Freshness thresholds are illustrative operational choices; no compliance guarantee",
+    "AWS Audit Manager examples limited to existing eligible deployments after 2026 availability change"
+  ]
+}

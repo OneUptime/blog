@@ -1,0 +1,27 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-20",
+  "runtimeTestsPerformed": true,
+  "infrastructureDeploymentPerformed": false,
+  "tests": [
+    "Python 3.11.13 decision function passed 14 local scenarios",
+    "Published Python exactly matches tested file",
+    "Namespace YAML parsed with PyYAML 6.0.2; string metadata and label values checked",
+    "Mermaid eight nodes/eight edges structurally checked",
+    "Generated social image visually reviewed and unclipped"
+  ],
+  "sources": [
+    "https://kubernetes.io/docs/concepts/overview/working-with-objects/labels/",
+    "https://kubernetes.io/docs/concepts/overview/working-with-objects/annotations/",
+    "https://kubernetes.io/docs/concepts/workloads/controllers/ttlafterfinished/",
+    "https://kubernetes.io/docs/reference/using-api/api-concepts/#updates-to-existing-resources",
+    "https://kubernetes.io/docs/concepts/storage/persistent-volumes/#reclaiming",
+    "https://kubernetes.io/docs/concepts/overview/working-with-objects/finalizers/"
+  ],
+  "limitations": [
+    "No Kubernetes API calls or cloud cleanup",
+    "No notification delivery, authenticated extension service, backing-store concurrency transaction or worker recovery exercised",
+    "Manifest not server-validated",
+    "Mermaid not rendered"
+  ]
+}

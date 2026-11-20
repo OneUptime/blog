@@ -1,0 +1,29 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-20",
+  "runtimeTestsPerformed": true,
+  "infrastructureDeploymentPerformed": false,
+  "tests": [
+    "Official AzCopy 10.30.1 darwin arm64 asset matched published SHA-256; version and copy/jobs help executed",
+    "Python 3.11.13 streaming SHA-256: equal files match, same-size mutation differs, missing file fails",
+    "Published Python equals tested script; seven shell blocks pass bash syntax check",
+    "Mermaid flow structurally checked: six unique nodes and six edges",
+    "Social image generated and visually inspected: readable without clipping"
+  ],
+  "sources": [
+    "https://github.com/Azure/azure-storage-azcopy/releases/tag/v10.30.1",
+    "https://learn.microsoft.com/en-us/rest/api/storageservices/put-block-list",
+    "https://learn.microsoft.com/en-us/azure/storage/common/storage-use-azcopy-configure",
+    "https://learn.microsoft.com/en-us/azure/storage/common/storage-use-azcopy-authorize-user-identity",
+    "https://docs.python.org/3.11/library/hashlib.html",
+    "https://raw.githubusercontent.com/Azure/azure-storage-azcopy/v10.30.1/cmd/copy.go",
+    "https://raw.githubusercontent.com/Azure/azure-storage-azcopy/v10.30.1/cmd/jobsResume.go",
+    "https://learn.microsoft.com/en-us/troubleshoot/azure/azure-storage/blobs/connectivity/storage-use-azcopy-troubleshoot"
+  ],
+  "limitations": [
+    "No Azure authentication, upload, cancellation, resume or download performed",
+    "Command behavior source-verified; exact-byte resume not promised",
+    "MD5 property check is not an authenticity guarantee; protected source SHA-256 required",
+    "Mermaid syntax reviewed structurally, not rendered"
+  ]
+}

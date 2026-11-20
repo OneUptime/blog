@@ -1,0 +1,31 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-20",
+  "runtimeTestsPerformed": false,
+  "infrastructureDeploymentPerformed": false,
+  "tests": [
+    "AWS CLI 2.38.1 parsed three command forms using input skeletons without API requests",
+    "Boto3 1.40.76 bundled botocore input models validated three operation parameter sets",
+    "Two JSON documents parsed and rule source restriction checked",
+    "All shell blocks passed bash syntax checking",
+    "Mermaid seven nodes/seven edges checked structurally",
+    "Generated social image visually reviewed: readable, unclipped title"
+  ],
+  "sources": [
+    "https://docs.aws.amazon.com/eventbridge/latest/userguide/eb-rule-dlq.html",
+    "https://docs.aws.amazon.com/lambda/latest/dg/invocation-async.html",
+    "https://docs.aws.amazon.com/lambda/latest/dg/invocation-async-retain-records.html",
+    "https://docs.aws.amazon.com/cli/latest/reference/lambda/get-function-event-invoke-config.html",
+    "https://docs.aws.amazon.com/cli/latest/reference/events/put-targets.html",
+    "https://docs.aws.amazon.com/cli/latest/reference/lambda/update-function-event-invoke-config.html",
+    "https://docs.aws.amazon.com/lambda/latest/dg/invocation-async-configuring.html",
+    "https://docs.aws.amazon.com/lambda/latest/dg/invocation-async-error-handling.html",
+    "https://docs.aws.amazon.com/lambda/latest/dg/monitoring-metrics-types.html"
+  ],
+  "limitations": [
+    "No AWS calls, IAM evaluation, queue provisioning, event delivery or handler execution",
+    "Staging fault scenarios are proposed acceptance tests and were not run",
+    "Input models validate shape, not effective permissions or asynchronous runtime behavior",
+    "Mermaid not rendered"
+  ]
+}

@@ -1,0 +1,39 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-20",
+  "validationScope": "Official documentation and tagged API review, shell syntax and config structure checks, image review",
+  "runtimeTestsPerformed": false,
+  "serverVersion": "8.2.0.1",
+  "serverImageIndexDigest": "sha256:d41c2d32c9bf4934fa0f0aff4dcbec1579b91016f0c5eda1b44a84e2b9c3030c",
+  "testcontainersGoVersion": "0.45.0",
+  "aerospikeGoClientVersion": "8.9.0",
+  "tests": [
+    "Official Docker Hub metadata confirms server tag and amd64/arm64 images",
+    "Bash syntax passed for all shell snippets; advertised and mapped ports agree",
+    "Config braces balanced; directives checked against official Aerospike network and namespace references",
+    "Go helper signatures checked against Testcontainers v0.45.0 and Moby API v1.56.1 Port.Port method; module requires Go 1.26",
+    "Sequence participants and arrows checked structurally",
+    "1280x720 social image visually inspected; title complete and readable",
+    "Go-specific metadata matches catalog; isolated combined repository validation passed for 52 completed articles"
+  ],
+  "limitations": [
+    "Docker and Go unavailable; no server startup, info query, network mapping, Go compilation or client read/write executed",
+    "Config structural review is not Aerospike parser validation",
+    "No multi-node or remote-Docker rehearsal",
+    "Mermaid not browser-rendered"
+  ],
+  "sources": [
+    "https://github.com/aerospike/aerospike-client-go/blob/v8.9.0/types/result_code.go",
+    "https://aerospike.com/docs/database/manage/network/",
+    "https://docs.docker.com/reference/cli/docker/container/port/",
+    "https://aerospike.com/docs/database/reference/info/",
+    "https://hub.docker.com/r/aerospike/aerospike-server/tags",
+    "https://aerospike.com/docs/database/manage/namespace/",
+    "https://aerospike.com/docs/database/install/docker/",
+    "https://github.com/aerospike/aerospike-client-go/blob/v8.9.0/client_policy.go",
+    "https://github.com/testcontainers/testcontainers-go/blob/v0.45.0/container.go",
+    "https://github.com/testcontainers/testcontainers-go/blob/v0.45.0/modules/aerospike/aerospike.go",
+    "https://github.com/moby/moby/blob/api/v1.56.1/api/types/network/port.go",
+    "https://hub.docker.com/v2/repositories/aerospike/aerospike-server/tags/8.2.0.1"
+  ]
+}

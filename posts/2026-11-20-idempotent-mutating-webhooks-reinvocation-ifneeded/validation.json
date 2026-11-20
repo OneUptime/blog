@@ -1,0 +1,29 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-20",
+  "runtimeTestsPerformed": true,
+  "infrastructureDeploymentPerformed": false,
+  "sources": [
+    "https://kubernetes.io/docs/reference/access-authn-authz/extensible-admission-controllers/#reinvocation-policy",
+    "https://github.com/kubernetes/kubernetes/blob/v1.35.0/staging/src/k8s.io/api/admissionregistration/v1/types.go",
+    "https://github.com/kubernetes/kubernetes/blob/v1.35.0/staging/src/k8s.io/api/core/v1/types.go",
+    "https://www.rfc-editor.org/rfc/rfc6902",
+    "https://github.com/stefankoegl/python-json-patch/blob/v1.33/jsonpatch.py",
+    "https://github.com/kubernetes/kubernetes/blob/v1.35.0/staging/src/k8s.io/apiserver/pkg/admission/plugin/webhook/mutating/dispatcher.go",
+    "https://kubernetes.io/docs/concepts/cluster-administration/admission-webhooks-good-practices/#mutating-webhook-ordering-and-idempotence"
+  ],
+  "tests": [
+    "Executed both article Python snippets with Python 3.11 and jsonpatch 1.33; immediate repeat generated no patch and a newly appended container alone received configuration",
+    "25 combinations of absent/null/empty/unrelated/already-configured environment arrays across two containers passed actual JSON Patch application and repeat checks",
+    "Reversed container ordering remained stable; input objects, unrelated metadata, init containers and unrelated environment values preserved",
+    "Five conflicting or malformed env cases and six invalid Pod shapes rejected; conflict in second container left original object unchanged",
+    "YAML fragment parsed; Mermaid structure checked with five nodes and four edges, no rendered diagram test",
+    "Social image generated and visually reviewed; title fits without clipping"
+  ],
+  "limitations": [
+    "No Kubernetes server, admission round scheduling, deployment or container execution tested",
+    "Mutation builder is deliberately limited to regular containers of routed opt-in core v1 Pod CREATE requests; not a complete AdmissionReview server or Pod validator",
+    "Illustrative environment variable requires an application that understands it; fixture images are nondeployable",
+    "Combined production webhook convergence and final validating policy require separate cluster tests"
+  ]
+}

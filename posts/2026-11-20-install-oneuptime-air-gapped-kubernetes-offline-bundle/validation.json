@@ -1,0 +1,8 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-20",
+  "validationScope": "Official documentation and pinned script review; published chart inspection; local Helm 3 rendering; shell syntax, metadata, and social-image checks.",
+  "runtimeTestsPerformed": false,
+  "chartVersionReviewed": "17.0.0",
+  "scriptCommitReviewed": "0de2d9ceac0a2404f5df7ad1f9ab1e22c56bea7e"
+}

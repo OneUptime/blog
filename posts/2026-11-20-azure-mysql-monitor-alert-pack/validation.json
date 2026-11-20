@@ -1,0 +1,30 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-20",
+  "runtimeTestsPerformed": false,
+  "infrastructureDeploymentPerformed": false,
+  "sources": [
+    "https://learn.microsoft.com/en-us/azure/mysql/flexible-server/concepts-monitor-mysql-reference",
+    "https://learn.microsoft.com/en-us/azure/mysql/flexible-server/concepts-read-replicas",
+    "https://learn.microsoft.com/en-us/azure/azure-monitor/alerts/alerts-types",
+    "https://learn.microsoft.com/en-us/azure/templates/microsoft.insights/2018-03-01/metricalerts",
+    "https://learn.microsoft.com/en-us/azure/azure-monitor/alerts/alerts-overview",
+    "https://github.com/Azure/bicep/releases/tag/v0.49.2",
+    "https://learn.microsoft.com/en-us/azure/azure-resource-manager/bicep/bicep-cli",
+    "https://learn.microsoft.com/en-us/azure/azure-monitor/alerts/action-groups"
+  ],
+  "tests": [
+    "Complete Bicep template compiled successfully with official CLI 0.49.2 without diagnostics",
+    "Downloaded CLI SHA-256 matched digest published in official GitHub release asset metadata",
+    "Compiled JSON inspected: pinned API, one condition per loop-created rule, single server scope, three base metrics and conditional lag, enabled false default, metric validation retained",
+    "Build command passed bash -n",
+    "Reviewed aggregation semantics, AND conditions, stateful resolution and action-group testing docs",
+    "Social image visually reviewed; readable without clipping"
+  ],
+  "limitations": [
+    "No Azure template validation, deployment, metric lookup or live alert evaluation performed",
+    "Compilation and JSON assertions do not evaluate real resource IDs, RBAC or service metric availability",
+    "No notification delivery or threshold crossing tested",
+    "Asset digest verified; no independent signature verification performed"
+  ]
+}

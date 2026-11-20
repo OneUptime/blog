@@ -1,0 +1,28 @@
+# Validation summary
+
+## Checks
+
+- All shell examples passed bash -n.
+- Executed exact reverse-name generation snippet with Python 3.15.0 and a local nslookup function stub; independently constructed the reversed IPv6 hexadecimal name and verified PTR type, absolute reverse name and resolver arguments.
+- Checked IPv4 reverse name, equivalence of compressed/expanded IPv6 examples, and positive/mismatching forward address-set membership examples with ipaddress.
+- Reviewed Gmail sender requirements, AWS reverse-DNS ownership process, RFC 5321 MX role, Windows Server 2025 nslookup options, BIND 9.18.33 reverse mapping, Oracle reverse namespaces and Python 3.13 API documentation.
+- Checked metadata and 1280x720 social image; visually reviewed readable title and branding.
+
+## Limitations
+
+- No external DNS or mail-delivery test, Windows runtime, cloud account operation, actual NAT/relay verification or provider acceptance check. No email sent.
+- Local tests establish address calculation and query construction only. Passing forward-confirmed reverse DNS does not certify recipient acceptance or other mail-authentication requirements.
+
+## Sources
+
+- https://support.google.com/mail/answer/81126?hl=en
+- https://bind9.readthedocs.io/en/v9.18.33/chapter3.html
+- https://learn.microsoft.com/en-us/windows-server/administration/windows-commands/nslookup
+- https://docs.oracle.com/en/operating-systems/oracle-linux/10/bind/bind-ResourceRecordsforReverseNameResolution.html
+- https://docs.python.org/3.13/library/ipaddress.html
+- https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/Using_Elastic_Addressing_Reverse_DNS.html
+- https://www.rfc-editor.org/rfc/rfc5321.html#section-5
+
+## Repository checks
+
+The repository validator passed for this post in an isolated fixture with its catalog entry, author list, tag allowlist, and social image. Shell examples, if present, passed bash syntax checking. The full existing catalog was not revalidated.

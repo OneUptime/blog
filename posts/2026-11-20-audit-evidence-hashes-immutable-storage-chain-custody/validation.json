@@ -1,0 +1,27 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-20",
+  "runtimeTestsPerformed": true,
+  "infrastructureDeploymentPerformed": false,
+  "sources": [
+    "https://docs.openssl.org/4.1/man1/openssl-genpkey/",
+    "https://docs.openssl.org/4.1/man1/openssl-pkey/",
+    "https://docs.openssl.org/4.1/man1/openssl-dgst/",
+    "https://www.rfc-editor.org/rfc/rfc3161.html",
+    "https://docs.openssl.org/4.1/man1/openssl-ts/",
+    "https://docs.aws.amazon.com/AmazonS3/latest/userguide/object-lock.html"
+  ],
+  "tests": [
+    "OpenSSL 4.1.0 disposable RSA3072 key generation, manifest signing and verification passed",
+    "Python 3.11.13 digest check passed; altered artifact correctly failed while manifest signature remained valid",
+    "Altered manifest signature verification failed; original fixture restored",
+    "RFC3161 timestamp request created locally; not submitted",
+    "Bash syntax checked; Mermaid six nodes/five edges structurally checked, not rendered",
+    "Generated social image visually reviewed without clipping"
+  ],
+  "limitations": [
+    "No production signing service, TSA response validation, trusted clock or independent key distribution tested",
+    "No S3 upload, Object Lock retention, permissions, version retrieval or encryption-key lifecycle tested",
+    "Lab key is disposable and unencrypted; example does not establish audit acceptance or source accuracy"
+  ]
+}

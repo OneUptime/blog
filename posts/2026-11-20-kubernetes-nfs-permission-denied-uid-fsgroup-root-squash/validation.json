@@ -1,0 +1,35 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-20",
+  "runtimeTestsPerformed": false,
+  "infrastructureDeploymentPerformed": false,
+  "tests": [
+    "PV, PVC and Pod parsed with PyYAML 6.0.2 and validated with jsonschema 4.25.1 against official Kubernetes v1.34.0 OpenAPI definitions",
+    "Explicit PV/PVC/Pod binding, retained storage, supplemental group and image-version assertions passed",
+    "Published manifest matches checked file; embedded shell and standalone commands pass Bash syntax checks",
+    "Tagged built-in NFS SetUpAt reviewed: mounts without recursive ownership mutation; CSI mount-group distinction checked in versioned docs",
+    "Mermaid six nodes/five edges structurally checked",
+    "Generated social image visually reviewed: title readable and unclipped"
+  ],
+  "sources": [
+    "https://man7.org/linux/man-pages/man5/exports.5.html",
+    "https://man7.org/linux/man-pages/man1/stat.1.html",
+    "https://man7.org/linux/man-pages/man8/exportfs.8.html",
+    "https://github.com/kubernetes/kubernetes/blob/v1.34.0/pkg/volume/nfs/nfs.go",
+    "https://v1-34.docs.kubernetes.io/docs/tasks/configure-pod-container/security-context/",
+    "https://github.com/docker-library/official-images/blob/master/library/busybox",
+    "https://v1-34.docs.kubernetes.io/docs/concepts/storage/persistent-volumes/",
+    "https://busybox.net/downloads/BusyBox.html",
+    "https://kubernetes.io/docs/reference/kubectl/generated/kubectl_apply/",
+    "https://kubernetes.io/docs/reference/kubectl/generated/kubectl_describe/",
+    "https://kubernetes.io/docs/reference/kubectl/generated/kubectl_logs/",
+    "https://raw.githubusercontent.com/kubernetes/kubernetes/v1.34.0/api/openapi-spec/swagger.json"
+  ],
+  "limitations": [
+    "No Kubernetes API validation, admission, cluster apply, image execution, server export configuration or NFS permission test",
+    "OpenAPI schema checks do not prove scheduling, binding, authorization or volume mount success",
+    "Reference is built-in static NFS with sec=sys; CSI and Kerberos identity handling require separate review",
+    "BusyBox version tag verified in official image manifest; image digest not resolved or runtime pulled",
+    "Mermaid not rendered"
+  ]
+}

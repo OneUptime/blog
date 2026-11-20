@@ -1,0 +1,29 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-20",
+  "runtimeTestsPerformed": true,
+  "infrastructureDeploymentPerformed": false,
+  "sources": [
+    "https://kubernetes.io/docs/tasks/manage-kubernetes-objects/declarative-config/",
+    "https://kubernetes.io/docs/reference/kubectl/generated/kubectl_get/",
+    "https://kubernetes.io/docs/reference/kubectl/generated/kubectl_apply/kubectl_apply_view-last-applied/",
+    "https://github.com/kubernetes/apimachinery/blob/v0.35.0/pkg/util/strategicpatch/patch.go",
+    "https://github.com/kubernetes/kubectl/blob/v0.35.0/pkg/cmd/apply/patcher.go",
+    "https://kubernetes.io/docs/reference/access-authn-authz/extensible-admission-controllers/#matching-requests-rules",
+    "https://kubernetes.io/docs/reference/using-api/server-side-apply/",
+    "https://kubernetes.io/docs/concepts/workloads/pods/#pod-update-and-replacement",
+    "https://kubernetes.io/docs/reference/using-api/api-concepts/#dry-run"
+  ],
+  "tests": [
+    "Exact published Go example compiled and executed with Go1.25.0 and Kubernetes libraries0.35.0; changed data and retained generated annotation observed",
+    "Four actual strategic merge subtests passed: never-declared retention/empty patch, previously-declared key removal with map retained, explicit-null key removal, whole-map omission removing siblings",
+    "Two read-only kubectl commands passed bash syntax check and official flag review",
+    "Social image generated and visually reviewed"
+  ],
+  "limitations": [
+    "No kubectl apply, webhook or API-server request executed",
+    "Local library exercise omits kubectl bookkeeping, API discovery/defaulting and admission",
+    "Server-side apply ownership behavior source-reviewed only, not tested",
+    "Initial fixture assumption about sibling preservation after whole-map omission failed; article and explicit separate regression case now document observed behavior"
+  ]
+}

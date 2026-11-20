@@ -1,0 +1,39 @@
+# Validation summary
+
+## Review
+
+Reviewed the different roles of replica placement, rollout settings, voluntary-disruption budgets, readiness and request timeouts. The article explicitly excludes guarantees about node failures, actual scheduling and latency.
+
+## Checks
+
+- Three YAML blocks parsed with PyYAML 6.0.2 and checked using jsonschema 4.25.1 against official Kubernetes v1.35.0 OpenAPI shapes: complete PDB plus synthetic Deployment and webhook fixtures
+- Deployment, topology-spread and PDB labels compared for consistency; replica count, minimum availability, rollout values and timeout range asserted
+- Generic OpenAPI-v2 validation initially rejected valid integer IntOrString values; narrowly adapted format int-or-string to integer-or-string using official apimachinery v0.35.0 definition
+- Adapter negative checks rejected boolean, object, array and noninteger number values
+- Read-only kubectl block passed bash -n; options source-reviewed
+- Social image generated and visually inspected; complete title visible
+
+## Limitations
+
+- No Kubernetes schema admission, scheduler, PDB controller, eviction, rollout, readiness endpoint or load test executed
+- OpenAPI IntOrString adaptation checks shape, not percentage semantics or all Kubernetes custom validation
+- Deployment fragment requires merging with an existing working container/TLS/readiness configuration; synthetic fixture image is nondeployable
+- Replica and timeout choices are illustrative and require measured capacity and latency
+- No Mermaid diagram needed; configuration and prose separate the protection mechanisms
+
+## Sources
+
+- https://kubernetes.io/docs/concepts/cluster-administration/admission-webhooks-good-practices/
+- https://kubernetes.io/docs/concepts/scheduling-eviction/topology-spread-constraints/
+- https://kubernetes.io/docs/concepts/workloads/controllers/deployment/
+- https://kubernetes.io/docs/tasks/run-application/configure-pdb/
+- https://kubernetes.io/docs/concepts/workloads/pods/disruptions/
+- https://kubernetes.io/docs/tasks/configure-pod-container/configure-liveness-readiness-startup-probes/
+- https://kubernetes.io/docs/reference/access-authn-authz/extensible-admission-controllers/#timeouts
+- https://kubernetes.io/docs/reference/kubectl/generated/kubectl_get/
+- https://raw.githubusercontent.com/kubernetes/kubernetes/v1.35.0/api/openapi-spec/swagger.json
+- https://raw.githubusercontent.com/kubernetes/apimachinery/v0.35.0/pkg/util/intstr/intstr.go
+
+## Repository checks
+
+The repository validator passed for this post in an isolated fixture with its catalog entry, author list, tag allowlist, and social image. Shell examples, if present, passed bash syntax checking. The full existing catalog was not revalidated.

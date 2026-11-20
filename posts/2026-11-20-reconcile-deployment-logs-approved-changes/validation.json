@@ -1,0 +1,25 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-20",
+  "runtimeTestsPerformed": true,
+  "infrastructureDeploymentPerformed": false,
+  "sources": [
+    "https://docs.github.com/en/rest/deployments/deployments",
+    "https://docs.github.com/en/rest/deployments/statuses",
+    "https://docs.docker.com/dhi/explore/security-concepts/digests/",
+    "https://docs.github.com/en/actions/reference/workflows-and-actions/deployments-and-environments",
+    "https://docs.github.com/en/actions/how-tos/deploy/configure-and-manage-deployments/review-deployments",
+    "https://docs.github.com/en/rest/using-the-rest-api/using-pagination-in-the-rest-api"
+  ],
+  "tests": [
+    "Python 3.11.13 reconciliation example and ten cases passed: exact, three identity mismatches, missing, early, expiry boundary, approval boundary, rejected, timezone-free",
+    "Mermaid structurally checked: seven nodes, six edges, not rendered",
+    "Official GitHub deployment, status retention, review, environment and pagination docs reviewed; Docker digest documentation reviewed",
+    "Social image generated and visually inspected without clipping"
+  ],
+  "limitations": [
+    "No GitHub API, deployment controller, approval export, live production state or change-management integration tested",
+    "Custom normalized schema and synthetic digests; upstream history and identity validation assumed",
+    "Example does not prove approver authority, single-use authorization or actual deployed artifact"
+  ]
+}

@@ -1,0 +1,35 @@
+{
+  "status": "validated",
+  "date": "2026-11-20",
+  "runtimeTestsPerformed": false,
+  "localCodeTestsPerformed": false,
+  "versions": {
+    "server documentation scope": "Enterprise 8.2",
+    "asadm source": "5.2.0"
+  },
+  "tests": [
+    "Both Bash blocks passed syntax checks",
+    "Parsed tagged asadm controller and delegated namespace formatter with Python AST; checked filter and threshold names",
+    "Reviewed runtime clock threshold units and AP NSUP exception",
+    "Reviewed memory used versus allocated and container version caveat",
+    "Social image generated and visually inspected at 1280x720"
+  ],
+  "limitations": [
+    "No asadm process connected to a server; no Aerospike requests executed",
+    "No stop-writes condition or recovery induced",
+    "Numerical storage example is illustrative"
+  ],
+  "sources": [
+    "https://aerospike.com/docs/database/reference/config/",
+    "https://aerospike.com/docs/database/tools/asadm/live-mode/#stop-writes",
+    "https://github.com/aerospike/aerospike-admin/blob/5.2.0/lib/live_cluster/show_controller.py",
+    "https://aerospike.com/docs/database/reference/info/",
+    "https://aerospike.com/docs/database/observe/key-metrics/",
+    "https://support.aerospike.com/hc/en-us/articles/56255268033051-Why-doesn-t-system-memory-usage-go-down-after-records-expire-or-are-deleted",
+    "https://aerospike.com/docs/database/reference/config/#stop-writes-sys-memory-pct",
+    "https://aerospike.com/docs/database/reference/metrics/",
+    "https://aerospike.com/docs/database/manage/namespace/consistency/",
+    "https://aerospike.com/docs/database/reference/config/#stop-writes-avail-pct",
+    "https://github.com/aerospike/aerospike-admin/blob/5.2.0/lib/utils/common.py"
+  ]
+}

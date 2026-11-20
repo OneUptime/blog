@@ -1,0 +1,26 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-20",
+  "runtimeTestsPerformed": true,
+  "infrastructureDeploymentPerformed": false,
+  "tests": [
+    "Python 3.11.13 probe exercised against a local HTTPS server with temporary localhost certificate",
+    "12 cases passed: valid, redirect, old release, stale nonce, false readiness, database flag failure, string readiness, malformed JSON, oversized body, untrusted CA, hostname mismatch, HTTP scheme",
+    "TLS rejection cases asserted SSLCertVerificationError; redirect asserted HTTP 302 error",
+    "Published Python equals tested source",
+    "Mermaid eight nodes/eight edges structurally checked",
+    "Generated social image visually inspected and unclipped"
+  ],
+  "sources": [
+    "https://docs.aws.amazon.com/whitepapers/latest/aws-fault-isolation-boundaries/control-planes-and-data-planes.html",
+    "https://kubernetes.io/docs/concepts/workloads/pods/probes/",
+    "https://docs.python.org/3.11/library/ssl.html",
+    "https://docs.python.org/3.11/library/urllib.request.html"
+  ],
+  "limitations": [
+    "Local loopback HTTPS fixture only; no cloud or application deployment",
+    "Database flag simulated; no dependency query, synthetic write, authentication or load test",
+    "No total wall-clock deadline or slow-stream resilience test",
+    "Mermaid not rendered"
+  ]
+}

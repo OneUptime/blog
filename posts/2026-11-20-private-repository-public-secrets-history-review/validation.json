@@ -1,0 +1,28 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-20",
+  "runtimeTestsPerformed": true,
+  "infrastructureDeploymentPerformed": false,
+  "tests": [
+    "git-filter-repo v2.47.0 official tagged script executed in fresh disposable clone with Git 2.54.0 Apple Git-157 and Python 3.11.13",
+    "Synthetic marker detected in reachable history despite deletion from HEAD; renamed paths removed across branch and tag history; documentation retained",
+    "Known-pattern checker found no remaining marker after rewrite and rejected blank pattern file",
+    "Three Bash snippets pass syntax checks; published Python matches executed checker; Mermaid six nodes/five edges checked structurally",
+    "Generated image visually inspected: title readable without clipping"
+  ],
+  "sources": [
+    "https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/removing-sensitive-data-from-a-repository",
+    "https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/managing-repository-settings/setting-repository-visibility",
+    "https://docs.github.com/en/code-security/concepts/secret-security/secret-scanning",
+    "https://github.com/newren/git-filter-repo/blob/v2.47.0/Documentation/git-filter-repo.txt",
+    "https://git-scm.com/docs/git-rev-list",
+    "https://git-scm.com/docs/git-grep",
+    "https://git-scm.com/docs/gitignore"
+  ],
+  "limitations": [
+    "No real credentials, production repository history, GitHub API, remote force push or visibility change used",
+    "Targeted checker only covers literal patterns in reachable commit file contents; excludes messages, encoded values, LFS payloads, hosted assets and other clones",
+    "No production scanner, credential revocation or hosted cleanup exercise",
+    "Mermaid structure checked, not rendered"
+  ]
+}

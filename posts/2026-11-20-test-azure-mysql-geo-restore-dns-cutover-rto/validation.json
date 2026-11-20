@@ -1,0 +1,29 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-20",
+  "runtimeTestsPerformed": true,
+  "infrastructureDeploymentPerformed": false,
+  "sources": [
+    "https://learn.microsoft.com/en-us/azure/mysql/flexible-server/concepts-business-continuity",
+    "https://learn.microsoft.com/en-us/azure/mysql/flexible-server/concepts-backup-restore",
+    "https://learn.microsoft.com/en-us/azure/mysql/flexible-server/concepts-networking-vnet",
+    "https://learn.microsoft.com/en-us/azure/mysql/flexible-server/how-to-restore-server-portal",
+    "https://learn.microsoft.com/en-us/powershell/module/dnsclient/resolve-dnsname?view=windowsserver2025-ps",
+    "https://learn.microsoft.com/en-us/powershell/module/nettcpip/test-netconnection?view=windowsserver2025-ps",
+    "https://dev.mysql.com/doc/refman/8.4/en/connection-options.html",
+    "https://docs.python.org/3.11/library/datetime.html"
+  ],
+  "tests": [
+    "Python 3.11.13 executed the illustrated duration calculation and returned 47.5 minutes",
+    "PowerShell 7.4.6 parser accepted the DNS and TCP inspection block without executing Windows cmdlets",
+    "Portal restore choices, backup replication delay, non-HA restore behavior, VNet prerequisites, and MySQL hostname verification reviewed against official documentation",
+    "Mermaid structural check: six nodes, five edges",
+    "Social image visually inspected: readable title without clipping"
+  ],
+  "limitations": [
+    "No Azure geo-restore or simulated regional failure performed",
+    "No DNS, TCP, TLS, SQL, or application traffic tests executed",
+    "Illustrative duration is arithmetic only, not observed Azure recovery performance",
+    "Mermaid structurally checked, not rendered"
+  ]
+}

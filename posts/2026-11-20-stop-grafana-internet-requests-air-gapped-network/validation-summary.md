@@ -1,0 +1,32 @@
+# Validation summary
+
+Reviewed 20 November 2026 against Grafana 13.3.1 source and official Grafana, Chrome and Python documentation.
+
+## Checks performed
+
+- Parsed INI snippet and confirmed all 10 keys in the correct sections of Grafana v13.3.1 defaults
+- Executed exact Python snippet against synthetic HAR with approved and unapproved hosts, mixed-case hostname, trailing dot, WebSocket and data URL
+- Verified counts, hostname normalization, exclusion of data URL and absence of query parameter in printed output
+- Mermaid flowchart definitions and references checked structurally
+- 1280x720 generated social image visually inspected with readable full title
+
+## Limitations
+
+- No live Grafana process, browser capture or network enforcement test
+- HAR fixture is synthetic and does not establish Grafana network behavior
+- INI parser check does not prove effective runtime settings or environment precedence
+- Mermaid not browser-rendered
+
+## Official sources
+
+- https://github.com/grafana/grafana/blob/v13.3.1/conf/defaults.ini
+- https://grafana.com/docs/grafana/latest/setup-grafana/configure-grafana/#public_key_retrieval_disabled
+- https://grafana.com/docs/grafana/latest/visualizations/panels-visualizations/visualizations/geomap/
+- https://developer.chrome.com/docs/devtools/network/
+- https://developer.chrome.com/docs/devtools/network/reference/#save-as-har
+- https://docs.python.org/3/library/urllib.parse.html
+- https://grafana.com/docs/grafana/latest/setup-grafana/configure-security/
+
+## Repository checks
+
+The repository validator passed for this post in an isolated fixture with its catalog entry, author list, tag allowlist, and social image. Shell examples, if present, passed bash syntax checking. The full existing catalog was not revalidated.

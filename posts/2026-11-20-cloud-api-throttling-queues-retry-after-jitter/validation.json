@@ -1,0 +1,28 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-20",
+  "runtimeTestsPerformed": true,
+  "infrastructureDeploymentPerformed": false,
+  "tests": [
+    "Python 3.11.13: eighteen local delay, header and budget validation cases passed with no sleeps or requests",
+    "Published Python exactly matches tested helper; deterministic example prints 120.5 and None",
+    "Mermaid eight nodes/eight edges structurally checked",
+    "Generated social image visually reviewed: title readable and unclipped"
+  ],
+  "sources": [
+    "https://docs.aws.amazon.com/sdkref/latest/guide/feature-retry-behavior.html",
+    "https://learn.microsoft.com/en-us/azure/azure-resource-manager/management/request-limits-and-throttling",
+    "https://www.rfc-editor.org/rfc/rfc9110.html#name-retry-after",
+    "https://learn.microsoft.com/en-us/azure/azure-resource-manager/management/request-limits-and-throttling#error-code",
+    "https://aws.amazon.com/blogs/architecture/exponential-backoff-and-jitter/",
+    "https://docs.python.org/3.11/library/email.utils.html",
+    "https://docs.aws.amazon.com/sdkref/latest/guide/feature-retry-behavior.html",
+    "https://aws.amazon.com/builders-library/timeouts-retries-and-backoff-with-jitter/"
+  ],
+  "limitations": [
+    "No live API throttling, SDK retries, distributed limiter, queue rescheduling or restart test",
+    "Helper only computes delays; caller must classify safe retries, enforce deadlines/timeouts and persist attempt counts",
+    "SDK 2026 opt-in documentation is explicitly distinguished from older client behavior",
+    "Mermaid not rendered"
+  ]
+}

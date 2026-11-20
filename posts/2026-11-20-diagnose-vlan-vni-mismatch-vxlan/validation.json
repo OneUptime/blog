@@ -1,0 +1,28 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-20",
+  "runtimeTestsPerformed": false,
+  "infrastructureDeploymentPerformed": false,
+  "tests": [
+    "Four shell blocks passed bash syntax checks",
+    "iproute2 6.12.0 bridge/PVID/untagged/FDB syntax and Linux bridge behavior source-reviewed",
+    "Cumulus Linux5.10 nv show bridge vlan-vni-map checked against official troubleshooting documentation",
+    "Mermaid five nodes/four edges structurally checked",
+    "Generated social image visually inspected without clipping"
+  ],
+  "sources": [
+    "https://www.rfc-editor.org/rfc/rfc8365.html",
+    "https://docs.kernel.org/networking/bridge.html",
+    "https://raw.githubusercontent.com/FRRouting/frr/frr-10.2.1/doc/user/evpn.rst",
+    "https://docs.nvidia.com/networking-ethernet-software/cumulus-linux-510/Network-Virtualization/Ethernet-Virtual-Private-Network-EVPN/Troubleshooting-EVPN/",
+    "https://raw.githubusercontent.com/iproute2/iproute2/v6.12.0/man/man8/bridge.8",
+    "https://www.rfc-editor.org/rfc/rfc7348.html",
+    "https://docs.kernel.org/networking/vxlan.html"
+  ],
+  "limitations": [
+    "No Linux bridge or NVUE execution and no live packet capture",
+    "Per-VNI VLAN-aware bridge example; multi-VNI metadata devices require their separate mapping view",
+    "No platform-specific hardware or tenant-isolation test",
+    "Mermaid structurally checked, not rendered"
+  ]
+}

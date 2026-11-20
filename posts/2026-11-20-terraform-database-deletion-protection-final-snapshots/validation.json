@@ -1,0 +1,27 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-20",
+  "runtimeTestsPerformed": true,
+  "infrastructureDeploymentPerformed": false,
+  "sources": [
+    "https://developer.hashicorp.com/terraform/language/meta-arguments/lifecycle",
+    "https://github.com/hashicorp/terraform-provider-aws/blob/v6.25.0/website/docs/r/db_instance.html.markdown",
+    "https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/USER_DeleteInstance.html",
+    "https://github.com/hashicorp/terraform-provider-google/blob/v7.10.0/website/docs/r/sql_database_instance.html.markdown",
+    "https://docs.cloud.google.com/sql/docs/postgres/deletion-protection",
+    "https://developer.hashicorp.com/terraform/cli/commands/validate",
+    "https://developer.hashicorp.com/terraform/language/modules/develop/refactoring"
+  ],
+  "tests": [
+    "Terraform 1.11.4 initialized isolated local fixture with AWS provider 6.25.0 and Google provider 7.10.0, backend disabled",
+    "Protection fragments incorporated into complete representative resource definitions; terraform validate passed with zero errors/warnings using an isolated empty CLI configuration",
+    "Terraform fixture formatting corrected and validation rerun",
+    "Shell syntax passed",
+    "Generated social image visually inspected: readable, unclipped title"
+  ],
+  "limitations": [
+    "No terraform plan against cloud state, apply, destroy, live deletion rejection, snapshot creation or restoration performed",
+    "Schema validation does not verify cloud availability, snapshot-name uniqueness or actual protection state",
+    "Initial validation warned about unrelated user CLI provider override; final isolated validation had no warnings"
+  ]
+}

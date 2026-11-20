@@ -1,0 +1,28 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-20",
+  "runtimeTestsPerformed": true,
+  "infrastructureDeploymentPerformed": false,
+  "sources": [
+    "https://kubernetes.io/docs/reference/access-authn-authz/extensible-admission-controllers/#service-reference",
+    "https://github.com/helm/helm/blob/v3.17.3/pkg/action/install.go",
+    "https://github.com/helm/helm/blob/v3.17.3/pkg/releaseutil/kind_sorter.go",
+    "https://github.com/helm/helm/blob/v3.17.3/cmd/helm/install.go",
+    "https://github.com/helm/helm/blob/v3.17.3/cmd/helm/upgrade.go",
+    "https://github.com/argoproj/argo-cd/blob/v3.2.0/docs/user-guide/helm.md",
+    "https://github.com/argoproj/argo-cd/blob/v3.2.0/docs/user-guide/sync-waves.md"
+  ],
+  "tests": [
+    "Helm3.17.3 rendered extracted template in minimal chart: disabled produced no registration, enabled with empty bundle failed, enabled with supplied synthetic bundle rendered",
+    "Rendered registration passed Kubernetes v1.35.0 OpenAPI shape check; namespace exclusion and bundle value preserved",
+    "Argo CD annotation parsed as string; both Helm command blocks passed bash -n",
+    "Mermaid structure checked for five nodes and four edges, not rendered",
+    "Social image generated and visually inspected"
+  ],
+  "limitations": [
+    "Minimal test chart contains only registration template, not the backend infrastructure assumed by the article",
+    "Synthetic CA string tested template flow, not certificate validity or TLS",
+    "No Helm install/upgrade or Argo CD sync ran against a cluster; no version-combination compatibility claim",
+    "No real readiness, admission invocation, hook Job or pruning behavior tested"
+  ]
+}

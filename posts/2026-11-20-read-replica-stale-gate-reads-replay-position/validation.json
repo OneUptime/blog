@@ -1,0 +1,27 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-20",
+  "runtimeTestsPerformed": false,
+  "infrastructureDeploymentPerformed": false,
+  "sources": [
+    "https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/USER_PostgreSQL.Replication.ReadReplicas.html",
+    "https://www.postgresql.org/docs/17/warm-standby.html#STREAMING-REPLICATION",
+    "https://www.postgresql.org/docs/17/datatype-pg-lsn.html",
+    "https://www.postgresql.org/docs/17/functions-admin.html#FUNCTIONS-ADMIN-BACKUP",
+    "https://www.postgresql.org/docs/17/functions-admin.html#FUNCTIONS-RECOVERY-INFO",
+    "https://www.postgresql.org/docs/17/transaction-iso.html",
+    "https://www.postgresql.org/docs/17/continuous-archiving.html#BACKUP-TIMELINES"
+  ],
+  "tests": [
+    "Both SQL examples parsed with pglast 7.24, PostgreSQL parser 17.7",
+    "Post-commit insertion position, standby replay position and pg_lsn comparisons reviewed against PostgreSQL 17 documentation",
+    "Read Committed versus Repeatable Read snapshots and timeline limitations reviewed against official documentation",
+    "Mermaid structurally checked: eight nodes and eight edges; not rendered",
+    "Generated social image visually reviewed without clipping"
+  ],
+  "limitations": [
+    "No live PostgreSQL replication, promotion, restore, lag injection or query execution performed",
+    "SQL parsing does not verify function permissions or deployment compatibility",
+    "Application topology generation, token handling, backend affinity and request budgets require implementation-specific tests"
+  ]
+}

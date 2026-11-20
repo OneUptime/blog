@@ -1,0 +1,30 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-20",
+  "runtimeTestsPerformed": true,
+  "infrastructureDeploymentPerformed": false,
+  "sources": [
+    "https://kubernetes.io/docs/reference/access-authn-authz/extensible-admission-controllers/#response",
+    "https://github.com/kubernetes/api/blob/v0.35.0/admission/v1/types.go",
+    "https://docs.python.org/3.11/library/json.html",
+    "https://docs.python.org/3.11/library/base64.html",
+    "https://www.rfc-editor.org/rfc/rfc6902.txt",
+    "https://pkg.go.dev/encoding/json#Marshal",
+    "https://github.com/kubernetes/kubernetes/blob/v1.35.0/staging/src/k8s.io/apiserver/pkg/admission/plugin/webhook/request/admissionreview.go",
+    "https://github.com/kubernetes/kubernetes/blob/v1.35.0/staging/src/k8s.io/apiserver/pkg/admission/plugin/webhook/mutating/dispatcher.go"
+  ],
+  "tests": [
+    "All three Python blocks extracted and executed under Python 3.11.13",
+    "Decoded patch applied using jsonpatch 1.33 to existing-member and missing-member fixtures; unrelated fields preserved and missing parent rejected",
+    "Twelve malformed input cases rejected; no-change omission, repeated UID correlation and input immutability checked",
+    "Official Kubernetes v1.35.0 response verifier, dispatcher and v0.35.0 API types reviewed",
+    "Mermaid six nodes/six edges structurally checked",
+    "Generated social image visually inspected; complete title fits without clipping"
+  ],
+  "limitations": [
+    "No webhook HTTPS service, certificate validation, Kubernetes API server or live admission request tested",
+    "Helper validates envelope inputs, not all JSON Patch operations or resource schema",
+    "Local patch engine is Python jsonpatch, not the Kubernetes Go patch implementation",
+    "Mermaid not rendered"
+  ]
+}

@@ -1,0 +1,28 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-20",
+  "runtimeTestsPerformed": true,
+  "infrastructureDeploymentPerformed": false,
+  "tests": [
+    "Python 3.11.13 case probe executed on local macOS filesystem: second exclusive create blocked; first payload preserved; temporary directory cleaned",
+    "Published Python matches executed fixture and parses successfully",
+    "Mermaid six nodes and five edges structurally checked",
+    "Official protocol, identity, case, lock and failover documentation reviewed",
+    "Generated social image visually reviewed: readable title, no clipping"
+  ],
+  "sources": [
+    "https://learn.microsoft.com/en-us/windows-server/storage/nfs/nfs-overview",
+    "https://man7.org/linux/man-pages/man8/mount.cifs.8.html",
+    "https://man7.org/linux/man-pages/man5/nfs.5.html",
+    "https://www.samba.org/samba/docs/current/man-html/smb.conf.5.html",
+    "https://docs.python.org/3.11/library/functions.html#open",
+    "https://docs.python.org/3.11/library/tempfile.html",
+    "https://man7.org/linux/man-pages/man2/flock.2.html",
+    "https://learn.microsoft.com/en-us/windows-server/storage/file-server/smb-feature-descriptions"
+  ],
+  "limitations": [
+    "No SMB/NFS server, Windows client, cross-client locking, authentication, failover or network performance tests",
+    "Local filename result does not establish network share behavior",
+    "Mermaid structurally checked, not rendered"
+  ]
+}

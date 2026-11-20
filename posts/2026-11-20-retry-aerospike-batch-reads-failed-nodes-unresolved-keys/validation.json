@@ -1,0 +1,31 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-20",
+  "validationScope": "Official tagged source review, exact Java snippet compilation and synthetic result tests, image review",
+  "runtimeTestsPerformed": false,
+  "localCodeTestsPerformed": true,
+  "javaClientVersion": "10.5.0",
+  "legacyDiagnosticSourceVersion": "3.3.2",
+  "artifactSha256": "6acd3483985a7dd257433e3e87193745ddd32c48cfaf232a0b9b62457442181d",
+  "tests": [
+    "Compiled exact selector with javac 17.0.16 against official Maven Central jdk8 10.5.0 artifact",
+    "Executed synthetic mixed-result test: selected only timeout/no-response/server-unavailable indices 2,3,4; excluded success/not-found/filter/permission errors",
+    "Verified empty input and no mutation of original result codes",
+    "Reviewed legacy failedNodes counter increment and modern per-record API/results reset semantics in official source",
+    "Mermaid references checked structurally; social image 1280x720 visually inspected"
+  ],
+  "limitations": [
+    "Synthetic BatchRead objects used null keys; no network request or key hashing exercised",
+    "No live partial batch, retry execution, merge implementation, downstream idempotency or consistency test",
+    "Helper selects candidates only; it is not a complete retry engine",
+    "Mermaid not browser-rendered"
+  ],
+  "sources": [
+    "https://github.com/aerospike/aerospike-client-java/blob/3.3.2/client/src/com/aerospike/client/command/SyncCommand.java",
+    "https://github.com/aerospike/aerospike-client-java/blob/10.5.0/client/src/com/aerospike/client/BatchRecord.java",
+    "https://github.com/aerospike/aerospike-client-java/blob/10.5.0/client/src/com/aerospike/client/ResultCode.java",
+    "https://github.com/aerospike/aerospike-client-java/blob/10.5.0/client/src/com/aerospike/client/AerospikeClient.java",
+    "https://aerospike.com/docs/develop/client/java/usage/multi/batch/",
+    "https://repo.maven.apache.org/maven2/com/aerospike/aerospike-client-jdk8/10.5.0/aerospike-client-jdk8-10.5.0.jar"
+  ]
+}

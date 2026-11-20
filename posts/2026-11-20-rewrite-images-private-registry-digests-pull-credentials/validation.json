@@ -1,0 +1,30 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-20",
+  "runtimeTestsPerformed": true,
+  "infrastructureDeploymentPerformed": false,
+  "sources": [
+    "https://kubernetes.io/docs/concepts/containers/images/#image-names",
+    "https://github.com/google/go-containerregistry/blob/v0.20.3/cmd/crane/doc/crane_copy.md",
+    "https://github.com/google/go-containerregistry/blob/v0.20.3/pkg/crane/copy.go",
+    "https://github.com/google/go-containerregistry/blob/v0.20.3/pkg/name/digest.go",
+    "https://kubernetes.io/docs/concepts/containers/images/#specifying-imagepullsecrets-on-a-pod",
+    "https://kubernetes.io/docs/tasks/configure-pod-container/pull-image-private-registry/",
+    "https://github.com/containerd/containerd/blob/v1.7.27/docs/hosts.md"
+  ],
+  "tests": [
+    "Exact Go helper compiled with Go1.25.0 and go-containerregistryv0.20.3",
+    "Four successful mapping/idempotence cases and five rejected reference cases passed",
+    "crane.Copy copied two-platform index between repositories in a temporary TLS registry; destination digest matched and both platform manifests were retrievable",
+    "Pod fragment wrapped in fixture and digest placeholder replaced, then validated against Kubernetesv1.35.0 OpenAPI",
+    "Both shell blocks passed bash -n",
+    "Generated social image visually reviewed"
+  ],
+  "limitations": [
+    "Temporary registry used anonymous auth and trusted httptest transport, not production credentials",
+    "No standalone crane CLI copy, node pull, webhook handler or cluster deployment executed",
+    "Platform manifest retrieval is not a live container execution test",
+    "Image digest placeholders and Secret names need environment-specific replacement",
+    "No claim that image copy includes signatures or related artifacts"
+  ]
+}

@@ -1,0 +1,30 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-20",
+  "runtimeTestsPerformed": true,
+  "infrastructureDeploymentPerformed": false,
+  "tests": [
+    "Python 3.11.13: fourteen local decision, schema and digest fixture cases passed",
+    "Published planner exactly matches tested implementation; published example prints SKIP",
+    "Mermaid eight nodes/seven edges structurally checked",
+    "Generated image visually reviewed: title readable and unclipped"
+  ],
+  "sources": [
+    "https://docs.aws.amazon.com/lambda/latest/dg/invocation-async-retain-records.html",
+    "https://docs.aws.amazon.com/eventbridge/latest/userguide/eb-rule-dlq.html",
+    "https://docs.aws.amazon.com/AWSSimpleQueueService/latest/APIReference/API_StartMessageMoveTask.html",
+    "https://docs.aws.amazon.com/AWSSimpleQueueService/latest/SQSDeveloperGuide/sqs-configure-dead-letter-queue-redrive.html",
+    "https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/Expressions.ConditionExpressions.html",
+    "https://docs.python.org/3.11/library/json.html",
+    "https://docs.python.org/3.11/library/hashlib.html",
+    "https://docs.aws.amazon.com/AWSSimpleQueueService/latest/APIReference/API_ReceiveMessage.html",
+    "https://docs.aws.amazon.com/AWSSimpleQueueService/latest/SQSDeveloperGuide/sqs-visibility-timeout.html",
+    "https://docs.aws.amazon.com/AWSSimpleQueueService/latest/APIReference/API_DeleteMessage.html"
+  ],
+  "limitations": [
+    "No AWS requests or replay operations executed",
+    "No distributed atomic-claim, crash recovery, provider idempotency or queue visibility integration tests",
+    "Evidence dictionary is a reviewed snapshot, not a production transaction or durable ledger",
+    "Mermaid not rendered"
+  ]
+}

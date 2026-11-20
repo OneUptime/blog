@@ -1,0 +1,29 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-20",
+  "validationScope": "Official documentation and pinned implementation review, local JavaScript tests and image review",
+  "runtimeTestsPerformed": false,
+  "localCodeTestsPerformed": true,
+  "oneuptimeSourceCommit": "0de2d9ceac0a2404f5df7ad1f9ab1e22c56bea7e",
+  "tests": [
+    "Exact article verifier and test extracted and executed with Node v24.1.0; all five assertions passed",
+    "node --check passed for verifier",
+    "Verified signature format, retry constants and action handling in pinned official source",
+    "Mermaid node and edge references checked structurally",
+    "Generated 1280x720 social image visually inspected; title complete and readable"
+  ],
+  "limitations": [
+    "No live HTTP handler, OneUptime, Enterprise entitlement, pager gateway, queue, callback or device tested",
+    "Node 22 API compatibility source-reviewed; execution used installed Node 24.1.0",
+    "No network outage, TLS trust, replay storage or end-to-end duplicate delivery rehearsal",
+    "Mermaid not browser-rendered"
+  ],
+  "sources": [
+    "https://oneuptime.com/docs/en/self-hosted/custom-notification-channels",
+    "https://oneuptime.com/docs/en/self-hosted/custom-notification-channels#add-a-channel",
+    "https://github.com/OneUptime/oneuptime/blob/0de2d9ceac0a2404f5df7ad1f9ab1e22c56bea7e/packages/App/FeatureSet/Notification/Utils/SignedWebhookPost.ts",
+    "https://nodejs.org/docs/latest-v22.x/api/crypto.html#cryptotimingsafeequala-b",
+    "https://github.com/OneUptime/oneuptime/blob/0de2d9ceac0a2404f5df7ad1f9ab1e22c56bea7e/packages/Common/Server/Utils/OnCall/CustomChannelActions.ts",
+    "https://oneuptime.com/docs/en/self-hosted/notification-delivery-metrics"
+  ]
+}

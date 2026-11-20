@@ -1,0 +1,37 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-20",
+  "runtimeTestsPerformed": true,
+  "infrastructureDeploymentPerformed": false,
+  "tests": [
+    "Official deprecation notice and tagged0.21.0 CLI/init/provider-add/discovery source reviewed; exact flags confirmed with installed CLI help",
+    "Isolated connected init executed using installed CDKTF CLI0.21.0 with article arguments; random3.6.3 bindings generated in .gen",
+    "Article main.ts exactly matches lab source; npm build/tsc passed; CDKTF synth passed with compiler pins",
+    "Synthesized JSON assertions: hashicorp/random3.6.3 and random_pet length2",
+    "Terraform1.11.4 init -backend=false and validate -json passed on synthesized configuration; no apply/plan/state migration",
+    "Bash syntax, JSON excerpt, six-node five-edge Mermaid structure checked; social1280x720 visually reviewed"
+  ],
+  "limitations": [
+    "Prebuilt metadata endpoint outage was not artificially injected or reproduced; bypass explained from tagged control flow",
+    "Connected generation only, not offline mirror test; existing-project provider-add path source-reviewed only",
+    "Node24.1.0/macOS arm64; Terraform1.11.4; TypeScript5.8.3; ts-node10.9.2; @types/node22.14.0; core0.21.0; constructs10.8.1 as resolved by template lockfile",
+    "Unpinned template initially resolved TypeScript7.0.2 and synth failed loading compiler; final documented pins compiled and synthesized successfully",
+    "Terraform archive SHA256 checked against official HTTPS checksum list; no detached signature validation",
+    "No infrastructure deployment or remote backend used; Mermaid not browser-rendered"
+  ],
+  "sources": [
+    "https://developer.hashicorp.com/terraform/cdktf",
+    "https://github.com/hashicorp/terraform-cdk/blob/v0.21.0/packages/@cdktf/cli-core/src/lib/dependencies/prebuilt-providers.ts",
+    "https://github.com/hashicorp/terraform-cdk/blob/v0.21.0/packages/@cdktf/cli-core/templates/typescript/package.json",
+    "https://github.com/hashicorp/terraform-cdk/blob/v0.21.0/packages/cdktf-cli/src/bin/cmds/init.ts",
+    "https://developer.hashicorp.com/terraform/cdktf/create-and-deploy/project-setup",
+    "https://typestrong.org/ts-node/docs/installation/",
+    "https://developer.hashicorp.com/terraform/cdktf/cli-reference/commands",
+    "https://github.com/hashicorp/terraform-cdk/blob/v0.21.0/packages/cdktf-cli/src/bin/cmds/provider-add.ts",
+    "https://developer.hashicorp.com/terraform/cli/config/config-file#provider-installation",
+    "https://github.com/hashicorp/terraform-cdk/blob/v0.21.0/packages/cdktf-cli/src/bin/cmds/helper/init.ts",
+    "https://github.com/hashicorp/terraform-cdk/blob/v0.21.0/packages/@cdktf/cli-core/src/lib/provider-add.ts",
+    "https://registry.terraform.io/v1/providers/hashicorp/random/3.6.3",
+    "https://registry.npmjs.org/cdktf-cli/0.21.0"
+  ]
+}

@@ -824228,5 +824228,3206 @@
       "Troubleshooting"
     ],
     "post": "2026-11-20-aerospike-invalid-node-error-docker-testcontainers-advertised-addresses-mapped-ports"
+  },
+  {
+    "title": "Air-Gapped Observability: Monitor Logs, Metrics, and Traces Offline",
+    "description": "Design an air-gapped observability stack with local telemetry collection, storage, dashboards, and alert delivery, then verify it without internet access.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Air-Gapped",
+      "Observability",
+      "OpenTelemetry",
+      "Monitoring"
+    ],
+    "post": "2026-11-20-air-gapped-observability-logs-metrics-traces"
+  },
+  {
+    "title": "How to Choose Monitoring Tools for an Air-Gapped Environment",
+    "description": "Compare monitoring tools for isolated networks by offline installation, licensing, local storage, alert delivery, and the work required to maintain them.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Air-Gapped",
+      "Monitoring",
+      "Observability"
+    ],
+    "post": "2026-11-20-choose-monitoring-tools-air-gapped-environment"
+  },
+  {
+    "title": "Self-Hosted vs. Air-Gapped Monitoring: What Is the Difference?",
+    "description": "Learn why self-hosted monitoring can still depend on internet services, and assess registry, login, certificate, and alert dependencies before isolation.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Air-Gapped",
+      "Monitoring",
+      "Observability"
+    ],
+    "post": "2026-11-20-self-hosted-vs-air-gapped-monitoring"
+  },
+  {
+    "title": "How to Test That Your Monitoring Stack Works Without Internet Access",
+    "description": "Run a staged offline acceptance test for monitoring, from empty-cache startup and fresh login to telemetry, browser checks, and acknowledged alerts.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Air-Gapped",
+      "Monitoring",
+      "Observability"
+    ],
+    "post": "2026-11-20-test-monitoring-stack-without-internet"
+  },
+  {
+    "title": "Install OneUptime in Air-Gapped Kubernetes with an Offline Bundle",
+    "description": "Prepare a versioned OneUptime offline bundle, verify its transfer, import images into an internal registry, and install the bundled Helm chart.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Air-Gapped",
+      "Monitoring",
+      "Observability"
+    ],
+    "post": "2026-11-20-install-oneuptime-air-gapped-kubernetes-offline-bundle"
+  },
+  {
+    "title": "How to Upgrade OneUptime in an Air-Gapped Kubernetes Cluster",
+    "description": "Stage OneUptime upgrade and recovery artifacts, rehearse migrations offline, validate Helm changes, and distinguish release rollback from database restoration.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Air-Gapped",
+      "Monitoring",
+      "Observability"
+    ],
+    "post": "2026-11-20-upgrade-oneuptime-air-gapped-kubernetes"
+  },
+  {
+    "title": "How to Configure OneUptime HTTPS with an Internal Certificate Authority",
+    "description": "Configure OneUptime behind an internal TLS proxy, distribute CA trust to browsers and telemetry clients, and renew certificates without disabling verification.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Air-Gapped",
+      "Monitoring",
+      "Observability"
+    ],
+    "post": "2026-11-20-oneuptime-https-internal-certificate-authority"
+  },
+  {
+    "title": "Restore Air-Gapped Monitoring When the Private Registry Is Down",
+    "description": "Recover an offline registry independently, import saved OneUptime images, and restore monitoring safely with separate data backups and clean-node checks.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Air-Gapped",
+      "Monitoring",
+      "Observability"
+    ],
+    "post": "2026-11-20-restore-air-gapped-monitoring-private-registry-down"
+  },
+  {
+    "title": "Configure Air-Gapped Monitoring with an Internal SAML or OIDC Provider",
+    "description": "Connect OneUptime to an internal identity provider, verify offline sign-in dependencies, and plan certificate rotation and emergency administrator access.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Air-Gapped",
+      "Monitoring",
+      "Observability"
+    ],
+    "post": "2026-11-20-air-gapped-monitoring-internal-identity-provider"
+  },
+  {
+    "title": "Install OpenTelemetry Collector in an Air-Gapped Kubernetes Cluster",
+    "description": "Install a pinned OpenTelemetry gateway offline, mirror its image, configure authenticated HTTPS export, and validate the rendered Collector configuration.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Air-Gapped",
+      "Monitoring",
+      "Observability"
+    ],
+    "post": "2026-11-20-install-opentelemetry-collector-air-gapped-kubernetes"
+  },
+  {
+    "title": "Mirror OpenTelemetry Auto-Instrumentation Images for Offline Kubernetes",
+    "description": "Mirror language agents for offline injection, configure exact Instrumentation image overrides, and verify private pulls and Java export trust.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Air-Gapped",
+      "Monitoring",
+      "Observability"
+    ],
+    "post": "2026-11-20-mirror-opentelemetry-auto-instrumentation-images-offline"
+  },
+  {
+    "title": "Configure OpenTelemetry Operator Webhook Certificates with an Internal CA",
+    "description": "Supply internal-CA certificates to the OpenTelemetry Operator, verify admission and conversion trust, and renew certificates without bypassing verification.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Air-Gapped",
+      "Monitoring",
+      "Observability"
+    ],
+    "post": "2026-11-20-opentelemetry-operator-webhook-certificates-internal-ca"
+  },
+  {
+    "title": "Monitor Air-Gapped OpenShift Clusters with Restricted Security Policies",
+    "description": "Deploy the OneUptime agent with restricted OpenShift permissions, mirror its images, and understand the logs and metrics available without host access.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Air-Gapped",
+      "OpenShift",
+      "Monitoring",
+      "Security"
+    ],
+    "post": "2026-11-20-monitor-air-gapped-openshift-restricted-security-policies"
+  },
+  {
+    "title": "How to Install kube-prometheus-stack in an Air-Gapped Kubernetes Cluster",
+    "description": "Prepare an offline kube-prometheus-stack installation with mirrored images, local storage, internal notifications, and checks for Operator-created workloads.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Air-Gapped",
+      "Kubernetes",
+      "Prometheus",
+      "Grafana",
+      "Monitoring"
+    ],
+    "post": "2026-11-20-install-kube-prometheus-stack-air-gapped-kubernetes"
+  },
+  {
+    "title": "How to Install Grafana Plugins in an Air-Gapped Environment",
+    "description": "Install versioned Grafana plugin archives offline, preserve signature verification, inspect compatibility, and test the result without the public catalog.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Air-Gapped",
+      "Grafana",
+      "Monitoring",
+      "Security"
+    ],
+    "post": "2026-11-20-install-grafana-plugins-air-gapped-environment"
+  },
+  {
+    "title": "Stop Grafana Internet Requests in an Air-Gapped Network",
+    "description": "Disable Grafana's optional online features, inspect server and browser traffic, and verify dashboards work with only approved internal destinations.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Air-Gapped",
+      "Grafana",
+      "Monitoring",
+      "Networking"
+    ],
+    "post": "2026-11-20-stop-grafana-internet-requests-air-gapped-network"
+  },
+  {
+    "title": "How to Run Synthetic Browser Monitoring in an Air-Gapped Network",
+    "description": "Package a browser monitor for offline use, test fresh internal sign-in, detect external application assets, and separate runner failures from application failures.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Air-Gapped",
+      "Monitoring",
+      "Playwright",
+      "Kubernetes"
+    ],
+    "post": "2026-11-20-synthetic-browser-monitoring-air-gapped-network"
+  },
+  {
+    "title": "Real User Monitoring for Internal Applications Without Cloud Services",
+    "description": "Bundle browser telemetry locally and send it to self-hosted OneUptime, with Browser keys, internal certificate trust, origin controls, and a practical acceptance test.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Air-Gapped",
+      "OpenTelemetry",
+      "JavaScript",
+      "Monitoring"
+    ],
+    "post": "2026-11-20-real-user-monitoring-internal-applications-without-cloud"
+  },
+  {
+    "title": "How to Fix Missing Images and Fonts in Self-Hosted Session Replay",
+    "description": "Diagnose missing replay assets from the viewer's browser, preserve old static files, and fix scoped TLS, CORS, and delivery issues without exposing private content.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Air-Gapped",
+      "Monitoring",
+      "Troubleshooting",
+      "Networking"
+    ],
+    "post": "2026-11-20-fix-missing-images-fonts-self-hosted-session-replay"
+  },
+  {
+    "title": "Air-Gapped Alerting: Deliver Incident Notifications Without Cloud Services",
+    "description": "Build and rehearse internal incident delivery through email, chat, or paging, with explicit receipt, acknowledgment, escalation, and failure evidence.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Air-Gapped",
+      "Alerting",
+      "Incident Management",
+      "Monitoring"
+    ],
+    "post": "2026-11-20-air-gapped-alerting-incident-notifications-without-cloud"
+  },
+  {
+    "title": "How to Manage Air-Gapped Incidents with OneUptime and Mattermost",
+    "description": "Connect self-hosted OneUptime and Mattermost through internal routes, link responders, and test incident actions with scoped access and verified callbacks.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Air-Gapped",
+      "Mattermost",
+      "Incident Management",
+      "Monitoring"
+    ],
+    "post": "2026-11-20-manage-air-gapped-incidents-oneuptime-mattermost"
+  },
+  {
+    "title": "How to Connect an Internal Pager System to Self-Hosted OneUptime",
+    "description": "Build an internal pager bridge for OneUptime with signed requests, durable delivery, duplicate protection, and responder-controlled acknowledgment callbacks.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Air-Gapped",
+      "Incident Management",
+      "Monitoring"
+    ],
+    "post": "2026-11-20-connect-internal-pager-system-self-hosted-oneuptime"
+  },
+  {
+    "title": "Keep an Internal Status Page Available During a Kubernetes Outage",
+    "description": "Separate your internal status page from the cluster it reports on, identify shared dependencies, and rehearse fresh access and incident updates during an outage.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Air-Gapped",
+      "Kubernetes",
+      "Status Page",
+      "Incident Management"
+    ],
+    "post": "2026-11-20-keep-internal-status-page-available-kubernetes-outage"
+  },
+  {
+    "title": "Connect OneUptime to Ollama for Air-Gapped Incident Investigations",
+    "description": "Stage Ollama and model artifacts offline, connect OneUptime to an internal inference endpoint, and verify tool calling and read-only incident investigations.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Air-Gapped",
+      "Ollama",
+      "AI",
+      "Incident Management"
+    ],
+    "post": "2026-11-20-connect-oneuptime-ollama-air-gapped-incident-investigations"
+  },
+  {
+    "title": "Fix Aerospike INVALID_NODE_ERROR in Go Testcontainers",
+    "description": "Debug Aerospike discovery in Go tests with a Server 8.2 lab, Go client policies, and Testcontainers Go host and mapped-port handling.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Aerospike",
+      "Docker",
+      "Testcontainers",
+      "Go",
+      "Troubleshooting"
+    ],
+    "post": "2026-11-20-fix-aerospike-invalid-node-error-docker-testcontainers"
+  },
+  {
+    "title": "Debug Aerospike Cluster Formation: Mesh, Heartbeats, and Firewalls",
+    "description": "Diagnose Aerospike nodes that stay separate by checking cluster names, mesh seed ports, interface binding, and bidirectional heartbeat and fabric connectivity.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Aerospike",
+      "Networking",
+      "Troubleshooting",
+      "Database"
+    ],
+    "post": "2026-11-20-debug-aerospike-cluster-mesh-heartbeat-firewalls"
+  },
+  {
+    "title": "Tune Aerospike Timeouts During Node Failure and Migration",
+    "description": "Set bounded Aerospike timeout and retry policies, distinguish safe reads from uncertain writes, and measure recovery during node failure and migrations.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Aerospike",
+      "Java",
+      "Performance",
+      "Troubleshooting"
+    ],
+    "post": "2026-11-20-tune-aerospike-timeouts-node-failure-migration"
+  },
+  {
+    "title": "Diagnose Aerospike Batch and Query Timeout Bottlenecks",
+    "description": "Trace Aerospike batch and query timeouts through client consumption, response queues, storage latency, and hot keys before increasing limits or retries.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Aerospike",
+      "Performance",
+      "Troubleshooting",
+      "Database"
+    ],
+    "post": "2026-11-20-diagnose-aerospike-batch-query-timeout-bottlenecks"
+  },
+  {
+    "title": "Retry Unresolved Aerospike Batch Reads After failedNodes Errors",
+    "description": "Interpret failedNodes diagnostics correctly, preserve completed Aerospike batch results, and retry selected unresolved reads without replaying downstream effects.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Aerospike",
+      "Java",
+      "Troubleshooting",
+      "Database"
+    ],
+    "post": "2026-11-20-retry-aerospike-batch-reads-failed-nodes-unresolved-keys"
+  },
+  {
+    "title": "Fix Aerospike Index Not Readable: Check Readiness on Every Node",
+    "description": "Gate Aerospike queries on secondary-index readiness across every intended node, inspect build progress, and avoid premature rollout or repeated index rebuilds.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Aerospike",
+      "Database",
+      "Java",
+      "Troubleshooting"
+    ],
+    "post": "2026-11-20-fix-aerospike-index-not-readable-wait-all-nodes"
+  },
+  {
+    "title": "Resume an Aerospike Query with PartitionFilter After a Failure",
+    "description": "Resume Aerospike query work with a retained partition cursor, use the listener API for recovery, and checkpoint safely around durable downstream processing.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Aerospike",
+      "Java",
+      "Database",
+      "Data Processing"
+    ],
+    "post": "2026-11-20-resume-aerospike-query-partitionfilter-after-failure"
+  },
+  {
+    "title": "Aerospike TTL: Preserve, Never Expire, or Use the Namespace Default",
+    "description": "Understand Aerospike TTL values -2, -1, and 0, choose safe update policies, and verify expiry without accidentally extending record lifetimes.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Aerospike",
+      "Database",
+      "Java",
+      "Troubleshooting"
+    ],
+    "post": "2026-11-20-aerospike-ttl-preserve-never-expire-namespace-default"
+  },
+  {
+    "title": "Why Expired Aerospike Records Still Appear in Counts",
+    "description": "Diagnose Aerospike expiry discrepancies by separating read visibility, NSUP cleanup, replica counts, and delayed storage reclamation.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Aerospike",
+      "Database",
+      "Monitoring",
+      "Troubleshooting"
+    ],
+    "post": "2026-11-20-aerospike-expired-record-counts-nsup-cleanup-lag"
+  },
+  {
+    "title": "Prevent Deleted Aerospike Records from Returning After a Cold Start",
+    "description": "Understand Aerospike record resurrection, use durable delete policies, and choose safe recovery checks for tombstones, truncation, and cold starts.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Aerospike",
+      "Database",
+      "Java",
+      "Troubleshooting"
+    ],
+    "post": "2026-11-20-aerospike-deleted-records-reappear-cold-start"
+  },
+  {
+    "title": "Diagnose Growing Aerospike Tombstones Before Tuning Tomb Raider",
+    "description": "Find what prevents Aerospike tombstone cleanup by checking age, migrations, old storage copies, XDR delivery, and tomb-raider progress.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Aerospike",
+      "Database",
+      "Monitoring",
+      "Troubleshooting"
+    ],
+    "post": "2026-11-20-aerospike-tombstones-growing-tomb-raider-migrations"
+  },
+  {
+    "title": "Find the Exact Cause of Aerospike Stop-Writes",
+    "description": "Diagnose Aerospike stop-writes using live thresholds for memory, indexes, storage, set quotas, and clock skew before choosing a recovery action.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Aerospike",
+      "Database",
+      "Monitoring",
+      "Troubleshooting"
+    ],
+    "post": "2026-11-20-aerospike-stop-writes-memory-index-disk-clock-skew"
+  },
+  {
+    "title": "Tune Aerospike Defragmentation Without Excessive Write Amplification",
+    "description": "Diagnose falling Aerospike free-block capacity after deletes and tune defragmentation eligibility and pacing with measurable safeguards.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Aerospike",
+      "Database",
+      "Performance",
+      "Troubleshooting"
+    ],
+    "post": "2026-11-20-aerospike-defragmentation-free-space-write-amplification"
+  },
+  {
+    "title": "Restart Aerospike Safely with Quiesce and Partition Checks",
+    "description": "Plan an Aerospike rolling restart with explicit handoff checks, stable roster membership, startup verification, and clear stop conditions.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Aerospike",
+      "Database",
+      "High Availability",
+      "DevOps"
+    ],
+    "post": "2026-11-20-aerospike-rolling-restart-quiesce-roster-partition-checks"
+  },
+  {
+    "title": "Aerospike Dead Partitions After Disk Replacement: When to Revive",
+    "description": "Assess Aerospike dead partitions after disk replacement, preserve recovery options, and distinguish a justified revive from accepting unknown data loss.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Aerospike",
+      "Database",
+      "Disaster Recovery",
+      "Troubleshooting"
+    ],
+    "post": "2026-11-20-aerospike-dead-partitions-disk-replacement-revive"
+  },
+  {
+    "title": "Aerospike SESSION vs. LINEARIZE: Choose Your Read Guarantee",
+    "description": "Choose Aerospike SESSION or LINEARIZE reads by understanding client scope, cross-service ordering, availability trade-offs, and explicit Java policies.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Aerospike",
+      "Database",
+      "Java",
+      "Performance"
+    ],
+    "post": "2026-11-20-aerospike-session-linearize-read-consistency"
+  },
+  {
+    "title": "Capacity-Plan Aerospike for Memory, SSDs, and One-Node Failure",
+    "description": "Build an Aerospike capacity estimate that includes replication, tombstones, index overhead, SSD headroom, and the load after losing one node.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Aerospike",
+      "Database",
+      "Performance",
+      "High Availability"
+    ],
+    "post": "2026-11-20-capacity-plan-aerospike-memory-ssd-node-failure"
+  },
+  {
+    "title": "Find the Unresponsive DNS Resolver Behind nslookup Timeouts",
+    "description": "Test each DNS resolver directly to explain nslookup delays, distinguish packet loss from negative answers, and repair the configuration that causes repeated timeouts.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "DNS",
+      "Networking",
+      "Troubleshooting"
+    ],
+    "post": "2026-11-20-nslookup-timeouts-dead-resolver-multiple-dns-servers"
+  },
+  {
+    "title": "Why nslookup Works While Browsers and ping Fail on Windows",
+    "description": "Compare direct DNS queries with Windows resolution, cached records, VPN policies, and browser DNS settings to find why applications still cannot resolve a name.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "DNS",
+      "Networking",
+      "Troubleshooting"
+    ],
+    "post": "2026-11-20-nslookup-works-browser-ping-fail-windows-dns"
+  },
+  {
+    "title": "Fix nslookup's Default Server Unknown Message Without Guesswork",
+    "description": "Separate a missing DNS server reverse name from a failed query, inspect the correct PTR record, and repair the owning reverse zone without changing working resolvers.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "DNS",
+      "Networking",
+      "Troubleshooting"
+    ],
+    "post": "2026-11-20-nslookup-default-server-unknown-reverse-dns"
+  },
+  {
+    "title": "Trace NXDOMAIN After Adding a DNS Record with nslookup",
+    "description": "Compare authoritative DNS answers with cached NXDOMAIN responses, inspect the SOA negative TTL, and distinguish normal expiry from a record published in the wrong zone.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "DNS",
+      "Networking",
+      "Troubleshooting"
+    ],
+    "post": "2026-11-20-new-dns-record-nxdomain-negative-cache-soa-ttl"
+  },
+  {
+    "title": "Compare DNS Views Across VPN, Domain, and Public Resolvers",
+    "description": "Build a controlled nslookup comparison across VPN, domain-controller, and public DNS paths to distinguish intended split DNS from routing, policy, and cache problems.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "DNS",
+      "Networking",
+      "Troubleshooting"
+    ],
+    "post": "2026-11-20-compare-dns-views-vpn-domain-controller-public-resolver"
+  },
+  {
+    "title": "Keep DNS Suffixes Out of nslookup Tests with a Trailing Dot",
+    "description": "See how DNS search suffixes change short and dotted names, inspect the actual question, and use absolute names to make nslookup comparisons reliable.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "DNS",
+      "Networking",
+      "Troubleshooting"
+    ],
+    "post": "2026-11-20-nslookup-dns-suffixes-fqdn-trailing-dot"
+  },
+  {
+    "title": "Find DNS Zone Replication Drift with Authoritative nslookup Queries",
+    "description": "Query each authoritative DNS endpoint directly, compare SOA serials and actual records, and distinguish replication drift from delegation, view, and cache differences.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "DNS",
+      "Networking",
+      "Troubleshooting"
+    ],
+    "post": "2026-11-20-nslookup-authoritative-servers-zone-replication-drift"
+  },
+  {
+    "title": "When nslookup's Non-Authoritative Answer Is Normal",
+    "description": "Understand the non-authoritative answer label, compare recursive and authoritative data, and diagnose old DNS answers without mistaking normal caching for failure.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "DNS",
+      "Networking",
+      "Troubleshooting"
+    ],
+    "post": "2026-11-20-nslookup-non-authoritative-answer-stale-cache"
+  },
+  {
+    "title": "Validate Forward-Confirmed Reverse DNS Before Sending Mail",
+    "description": "Check the actual outbound mail IP, follow its PTR record back through A or AAAA records, and identify reverse-DNS ownership and IPv6 mismatches before a rollout.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "DNS",
+      "Email",
+      "Email Delivery"
+    ],
+    "post": "2026-11-20-validate-forward-confirmed-reverse-dns-nslookup-mail"
+  },
+  {
+    "title": "Query MX, TXT, SRV, CAA, and SOA Records with nslookup",
+    "description": "Use explicit DNS record types on Windows and Linux, read the important fields, and handle CAA tool compatibility without confusing a client error with missing data.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "DNS",
+      "Networking",
+      "Troubleshooting"
+    ],
+    "post": "2026-11-20-query-mx-txt-srv-caa-soa-nslookup-windows-linux"
+  },
+  {
+    "title": "Decode NXDOMAIN, SERVFAIL, REFUSED, and nslookup Timeouts",
+    "description": "Classify nslookup failures by DNS response code and transport behavior, then choose a focused check for missing names, resolver errors, access policy, or packet loss.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "DNS",
+      "Networking",
+      "Troubleshooting"
+    ],
+    "post": "2026-11-20-decode-nslookup-nxdomain-servfail-refused-timeout"
+  },
+  {
+    "title": "Why nslookup Reaches a DNS Server by IP but Not by Name",
+    "description": "Separate DNS server name resolution from server reachability, then check address records and delegation glue without changing working DNS settings.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "DNS",
+      "Networking",
+      "Troubleshooting"
+    ],
+    "post": "2026-11-20-nslookup-server-ip-name-bootstrap-glue-records"
+  },
+  {
+    "title": "Separate DNS Round-Robin Answers from Stale Cache with nslookup",
+    "description": "Compare complete DNS address sets, answer order, and TTLs to distinguish normal rotation from old cached records and deliberate traffic-routing policies.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "DNS",
+      "Networking",
+      "Troubleshooting"
+    ],
+    "post": "2026-11-20-nslookup-round-robin-dns-stale-cache"
+  },
+  {
+    "title": "Find Broken Active Directory SRV Registration with nslookup",
+    "description": "Check domain and site-specific SRV records, resolve domain controller targets, and narrow registration failures without confusing DNS with service health.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Active Directory",
+      "DNS",
+      "Networking",
+      "Troubleshooting"
+    ],
+    "post": "2026-11-20-nslookup-active-directory-srv-domain-controller-registration"
+  },
+  {
+    "title": "Why nslookup Uses an Unexpected DNS Server on a VPN",
+    "description": "Inspect adapter metrics, Windows name-resolution policy, and Linux per-link DNS routing to explain unexpected nslookup servers without guessing at fixes.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "DNS",
+      "Networking",
+      "VPN",
+      "Troubleshooting"
+    ],
+    "post": "2026-11-20-nslookup-wrong-dns-server-vpn-interface-routing"
+  },
+  {
+    "title": "Trace a CNAME Chain with nslookup from Alias to Final Address",
+    "description": "Follow CNAME records one hop at a time, inspect final A and AAAA records, and identify missing targets, loops, and independently cached alias changes.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "DNS",
+      "Networking",
+      "Troubleshooting"
+    ],
+    "post": "2026-11-20-trace-cname-chain-nslookup-alias-final-address"
+  },
+  {
+    "title": "Find Broken DNS Delegation by Comparing Parent, Child, and Glue",
+    "description": "Compare parent referrals, child authoritative NS records, and glue addresses with nslookup to isolate delegation failures and coordinate the right repair.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "DNS",
+      "Networking",
+      "Troubleshooting"
+    ],
+    "post": "2026-11-20-nslookup-broken-delegation-parent-child-glue"
+  },
+  {
+    "title": "Run Bulk DNS Checks Without Parsing nslookup Address Lines",
+    "description": "Build a sequential DNS audit with structured PowerShell results or preserved nslookup transcripts, keeping failures and query context visible.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "DNS",
+      "PowerShell",
+      "Bash",
+      "Troubleshooting"
+    ],
+    "post": "2026-11-20-bulk-dns-checks-powershell-shell-without-text-parsing"
+  },
+  {
+    "title": "Why Forward DNS Works but Reverse nslookup Fails",
+    "description": "Trace failed PTR lookups through reverse-zone ownership, delegation, and cached negatives instead of changing an already working forward DNS record.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "DNS",
+      "Networking",
+      "Troubleshooting"
+    ],
+    "post": "2026-11-20-nslookup-reverse-lookup-fails-ptr-ownership-delegation"
+  },
+  {
+    "title": "Read nslookup Debug Output: TTLs, Authority, and Extra Records",
+    "description": "Use a controlled interactive nslookup session to read response sections, record TTLs, and authority flags without mistaking supporting data for the answer.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "DNS",
+      "Networking",
+      "Troubleshooting"
+    ],
+    "post": "2026-11-20-nslookup-interactive-debug-ttl-authority-additional"
+  },
+  {
+    "title": "Recover CDKTF Init with Locally Generated Provider Bindings",
+    "description": "Bypass CDKTF pre-built provider discovery with version-pinned local bindings, while preserving existing projects and separating metadata failures from downloads.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "CDKTF",
+      "Terraform",
+      "TypeScript",
+      "Troubleshooting"
+    ],
+    "post": "2026-11-20-cdktf-init-prebuilt-provider-information-local-bindings"
+  },
+  {
+    "title": "Fix CDKTF Version Skew Across the CLI, Core, and Providers",
+    "description": "Diagnose CDKTF version mismatches by checking CLI and core alignment, provider compatibility, language tooling, and Terraform lock files.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "CDKTF",
+      "Terraform",
+      "TypeScript",
+      "Troubleshooting"
+    ],
+    "post": "2026-11-20-cdktf-version-skew-cli-core-constructs-jsii-provider"
+  },
+  {
+    "title": "Why TF_VAR Values Stay as Tokens During CDKTF Synth",
+    "description": "Understand when CDKTF tokens resolve, test Terraform input variables without deploying resources, and separate synthesis inputs from plan-time values.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "CDKTF",
+      "Terraform",
+      "TypeScript",
+      "Troubleshooting"
+    ],
+    "post": "2026-11-20-cdktf-tf-var-token-synth-runtime-variables"
+  },
+  {
+    "title": "Use AWS Provider Aliases Across Accounts and Regions in CDKTF",
+    "description": "Configure explicit AWS provider aliases in CDKTF, inspect account and region routing, and avoid implicit defaults when targeting multiple environments.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "CDKTF",
+      "Terraform",
+      "AWS",
+      "Troubleshooting"
+    ],
+    "post": "2026-11-20-cdktf-aws-multiple-accounts-regions-provider-aliases"
+  },
+  {
+    "title": "Fix Missing Remote State in CDKTF Cross-Stack References",
+    "description": "Diagnose CDKTF cross-stack state failures by checking producer apply order, the exact backend and workspace, output names, and reader permissions.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "CDKTF",
+      "Terraform",
+      "Troubleshooting"
+    ],
+    "post": "2026-11-20-cdktf-cross-stack-remote-state-apply-order-workspace"
+  },
+  {
+    "title": "Recover a Stale CDKTF State Lock After a Canceled Deploy",
+    "description": "Identify the exact CDKTF backend and workspace, prove a canceled writer has stopped, and use Terraform force-unlock only for a verified stale lock.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "CDKTF",
+      "Terraform",
+      "Troubleshooting"
+    ],
+    "post": "2026-11-20-cdktf-state-lock-canceled-deploy-force-unlock"
+  },
+  {
+    "title": "Import Existing Resources at the Correct CDKTF Terraform Address",
+    "description": "Find the exact synthesized CDKTF resource address before importing an existing object, verify its provider and state destination, then review the resulting plan.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "CDKTF",
+      "Terraform",
+      "AWS",
+      "Troubleshooting"
+    ],
+    "post": "2026-11-20-cdktf-import-generated-logical-ids-resource-address"
+  },
+  {
+    "title": "Refactor CDKTF Construct IDs Without Recreating Resources",
+    "description": "Compare stable logical IDs with explicit moved blocks, inspect generated Terraform addresses, and test a CDKTF refactor without replacing the managed object.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "CDKTF",
+      "Terraform",
+      "TypeScript",
+      "Troubleshooting"
+    ],
+    "post": "2026-11-20-cdktf-refactor-construct-ids-moved-stable-logical-id"
+  },
+  {
+    "title": "Reuse Reviewed CDKTF Synth Output Safely in CI",
+    "description": "Preserve synthesized CDKTF configuration and assets across CI stages, verify artifact contents, and distinguish configuration approval from saved-plan approval.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "CDKTF",
+      "Terraform",
+      "CI/CD"
+    ],
+    "post": "2026-11-20-cdktf-out-reviewed-build-artifact-ci"
+  },
+  {
+    "title": "Plan Every CDKTF Stack and Produce One CI Summary",
+    "description": "Plan each synthesized CDKTF stack sequentially, preserve per-stack logs, distinguish changes from errors, and publish one complete CI summary.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "CDKTF",
+      "Terraform",
+      "CI/CD",
+      "Python"
+    ],
+    "post": "2026-11-20-diff-every-cdktf-stack-one-ci-summary"
+  },
+  {
+    "title": "Why a CDKTF Module Produces No Resources",
+    "description": "Distinguish plain constructs from generated Terraform module bindings, instantiate the right object, and inspect module blocks before concluding resources are missing.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "CDKTF",
+      "Terraform",
+      "TypeScript",
+      "Troubleshooting"
+    ],
+    "post": "2026-11-20-cdktf-module-no-resources-constructs-generated-bindings"
+  },
+  {
+    "title": "Load Local Helm Values in CDKTF Without Losing Multiline Strings",
+    "description": "Load local Helm YAML as raw text, verify multiline values through synthesis and rendering, and keep secret material out of generated CDKTF configuration.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "CDKTF",
+      "Terraform",
+      "Helm",
+      "TypeScript"
+    ],
+    "post": "2026-11-20-cdktf-helm-local-yaml-values-multiline-secrets"
+  },
+  {
+    "title": "Fix Missing CDKTF Resources by Regenerating Provider Bindings",
+    "description": "Diagnose missing CDKTF resource classes by checking the installed provider schema, generating pinned local bindings, and validating the resulting Terraform configuration.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "CDKTF",
+      "Terraform",
+      "TypeScript"
+    ],
+    "post": "2026-11-20-cdktf-missing-provider-resource-regenerate-schema"
+  },
+  {
+    "title": "Diagnose CDKTF Nothing to Destroy by Checking the Selected State",
+    "description": "Trace an empty CDKTF destruction plan through stack selection, backend configuration, workspace, and state location before attempting cleanup.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "CDKTF",
+      "Terraform",
+      "Infrastructure as Code"
+    ],
+    "post": "2026-11-20-cdktf-nothing-to-destroy-wrong-stack-state-backend"
+  },
+  {
+    "title": "Bootstrap a CDKTF Remote-State Bucket Without a Dependency Cycle",
+    "description": "Create an S3 state bucket from a separate bootstrap stack, retain its management state, and configure application backends only after storage and access are ready.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "CDKTF",
+      "Terraform",
+      "AWS",
+      "Amazon S3"
+    ],
+    "post": "2026-11-20-cdktf-bootstrap-remote-state-bucket-safely"
+  },
+  {
+    "title": "Use Runtime Conditions in CDKTF with Count and For Each",
+    "description": "Replace JavaScript branches on CDKTF tokens with Terraform count and for_each expressions, then verify enabled and disabled plans from the same generated configuration.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "CDKTF",
+      "Terraform",
+      "TypeScript"
+    ],
+    "post": "2026-11-20-cdktf-runtime-conditionals-count-for-each-tokens"
+  },
+  {
+    "title": "Migrate CDKTF S3 State Locking from DynamoDB to Lockfiles",
+    "description": "Move CDKTF-managed S3 backends to native lockfiles with a staged rollout, exact backend overrides, permission checks, and a shared lock throughout the transition.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "CDKTF",
+      "Terraform",
+      "AWS",
+      "Amazon S3"
+    ],
+    "post": "2026-11-20-cdktf-s3-locking-dynamodb-use-lockfile-migration"
+  },
+  {
+    "title": "Fix CDKTF Python Imports by Aligning Pipenv and the App Command",
+    "description": "Diagnose Python imports during CDKTF synthesis by comparing interpreter paths, correcting the Pipenv app command, and checking package locations and the Node runtime.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "CDKTF",
+      "Terraform",
+      "Python"
+    ],
+    "post": "2026-11-20-cdktf-python-synth-pipenv-app-runtime"
+  },
+  {
+    "title": "Pass Assumed-Role AWS Providers into Terraform Modules from CDKTF",
+    "description": "Map CDKTF AWS provider aliases to a Terraform module's expected provider names, verify generated mappings, and separate role authentication from module wiring.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "CDKTF",
+      "Terraform",
+      "AWS",
+      "TypeScript"
+    ],
+    "post": "2026-11-20-cdktf-aliased-assume-role-providers-external-modules"
+  },
+  {
+    "title": "Fix CDKTF on Windows: Node, npm, PATH, and PowerShell",
+    "description": "Diagnose a CDKTF CLI that installs but will not launch on Windows by checking command resolution, npm's prefix, Node selection, and PowerShell script policy.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "CDKTF",
+      "Terraform",
+      "Microsoft Windows",
+      "PowerShell",
+      "Node.js"
+    ],
+    "post": "2026-11-20-cdktf-cli-windows-node-npm-path-execution-policy"
+  },
+  {
+    "title": "Recover an Unavailable RethinkDB Changefeed Without Missing State",
+    "description": "Recover a RethinkDB changefeed with bounded backoff, explicit stale status, and a rebuilt cache so reconnecting does not hide updates missed during an outage.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "RethinkDB",
+      "JavaScript",
+      "Reliability"
+    ],
+    "post": "2026-11-20-rethinkdb-changefeed-unavailable-reconnect-reconcile"
+  },
+  {
+    "title": "Bridge the RethinkDB Snapshot Gap with include_initial",
+    "description": "Build a RethinkDB subscription from initial rows and live changes in one stream, with a readiness gate that keeps partial data out of your application.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "RethinkDB",
+      "Python",
+      "Reliability"
+    ],
+    "post": "2026-11-20-rethinkdb-include-initial-snapshot-changefeed-gap"
+  },
+  {
+    "title": "Stop RethinkDB Changefeeds Without Leaking Cursors or Connections",
+    "description": "Give a RethinkDB changefeed a clear shutdown owner, poll idle cursors safely, and close both cursor and connection even when processing or cleanup fails.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "RethinkDB",
+      "Python",
+      "Reliability"
+    ],
+    "post": "2026-11-20-stop-rethinkdb-changefeed-cursor-connection-leaks"
+  },
+  {
+    "title": "Manage RethinkDB Pools for Changefeeds, Failures, and Idle Connections",
+    "description": "Separate changefeeds from short queries, understand failed-node selection, and configure idle cleanup in a pinned rethinkdbdash connection-pool example.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "RethinkDB",
+      "Node.js",
+      "Reliability"
+    ],
+    "post": "2026-11-20-rethinkdb-connection-pools-isolate-feeds-failed-nodes"
+  },
+  {
+    "title": "Paginate RethinkDB with Indexed Boundaries Instead of Large Skips",
+    "description": "Replace deep offset pagination with a compound RethinkDB index, an exclusive continuation boundary, and a stable tie-breaker for equal timestamps.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "RethinkDB",
+      "Python",
+      "Performance"
+    ],
+    "post": "2026-11-20-rethinkdb-keyset-pagination-indexed-between"
+  },
+  {
+    "title": "Wait for RethinkDB Write Readiness After Creating a Table",
+    "description": "Diagnose primary-replica errors after table creation, use a bounded write-readiness check, and distinguish startup timing from persistent cluster failures.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "RethinkDB",
+      "Python",
+      "Reliability"
+    ],
+    "post": "2026-11-20-rethinkdb-table-creation-wait-write-readiness"
+  },
+  {
+    "title": "Why RethinkDB Needs Three Voting Replicas for One-Node Failover",
+    "description": "Explain why two voting replicas cannot tolerate losing one, audit per-shard voting membership, and plan a verified move to three replicas.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "RethinkDB",
+      "High Availability",
+      "Reliability"
+    ],
+    "post": "2026-11-20-rethinkdb-two-node-failover-three-voting-replicas"
+  },
+  {
+    "title": "Place RethinkDB Replicas Across Datacenters Without Losing Quorum",
+    "description": "Use server tags to plan RethinkDB replica placement, keep a voting majority after site loss, and separate primary location from failover authority.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "RethinkDB",
+      "High Availability",
+      "Reliability"
+    ],
+    "post": "2026-11-20-rethinkdb-multi-datacenter-tags-voting-majority"
+  },
+  {
+    "title": "When RethinkDB Can Lose a Write It Already Acknowledged",
+    "description": "Understand how single write acknowledgments differ from disk durability and quorum, and verify RethinkDB settings before testing failure recovery.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "RethinkDB",
+      "Reliability",
+      "Data Integrity"
+    ],
+    "post": "2026-11-20-rethinkdb-write-acks-single-acknowledged-write-loss"
+  },
+  {
+    "title": "Fail Over RethinkDB Client Connections When the Seed Node Dies",
+    "description": "Replace a dead single RethinkDB endpoint with bounded connection selection, verify every endpoint's TLS and access, and recover operations separately.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "RethinkDB",
+      "Python",
+      "Reliability"
+    ],
+    "post": "2026-11-20-rethinkdb-client-connection-failover-seed-node"
+  },
+  {
+    "title": "Diagnose Unavailable RethinkDB Shards with System Tables",
+    "description": "Build a read-only RethinkDB incident trail from intended placement, current replica state, background jobs, and per-table server statistics.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "RethinkDB",
+      "Troubleshooting",
+      "Observability"
+    ],
+    "post": "2026-11-20-diagnose-unavailable-rethinkdb-shards-system-tables"
+  },
+  {
+    "title": "Measure RethinkDB Table Disk Usage Across Shards and Replicas",
+    "description": "Sum RethinkDB table/server disk statistics without counting a server twice, and report missing replicas separately from measured storage totals.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "RethinkDB",
+      "Storage",
+      "Observability"
+    ],
+    "post": "2026-11-20-measure-rethinkdb-table-disk-usage-shards-replicas"
+  },
+  {
+    "title": "Fix RethinkDB Restore Driver and PATH Mismatches",
+    "description": "Find which Python interpreter and restore launcher RethinkDB actually uses, separate missing packages from parser failures, and verify repairs before restoring data.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "RethinkDB",
+      "Python",
+      "Troubleshooting"
+    ],
+    "post": "2026-11-20-rethinkdb-restore-python-driver-path-package-mismatch"
+  },
+  {
+    "title": "Rebuild RethinkDB Indexes After an Upgrade and Verify Readiness",
+    "description": "Inspect outdated RethinkDB indexes, build replacements without dropping the active names first, and verify readiness and query results before completing an upgrade.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "RethinkDB",
+      "Database",
+      "Reliability"
+    ],
+    "post": "2026-11-20-rebuild-rethinkdb-secondary-indexes-upgrade-readiness"
+  },
+  {
+    "title": "Give RethinkDB Pods Stable Identities and Separate Persistent Volumes",
+    "description": "Use a StatefulSet, headless discovery, and one persistent claim per RethinkDB pod, then verify that pod replacement preserves the database server identity.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "RethinkDB",
+      "Kubernetes",
+      "Storage"
+    ],
+    "post": "2026-11-20-rethinkdb-kubernetes-stable-identity-persistent-volumes"
+  },
+  {
+    "title": "Migrate from RethinkDB with Snapshot, Catch-Up, and Cutover Checks",
+    "description": "Build a verifiable RethinkDB migration with initial changefeed state, versioned target writes, deletion tracking, shadow reads, and an explicit writer handoff.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "RethinkDB",
+      "Data Migration",
+      "Reliability"
+    ],
+    "post": "2026-11-20-migrate-rethinkdb-snapshot-changefeed-cutover-checks"
+  },
+  {
+    "title": "Handle Untagged Cloud Resources with Notice and a Deletion Grace Period",
+    "description": "Build a staged cleanup workflow for unowned cloud resources, with complete inventory, accountable notices, reversible quarantine, and fresh checks before deletion.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "AWS",
+      "Cloud Automation",
+      "Governance"
+    ],
+    "post": "2026-11-20-untagged-cloud-resources-owner-notification-quarantine-grace-period"
+  },
+  {
+    "title": "Shut Down Idle Dev Environments and Verify They Can Start Again",
+    "description": "Reduce idle development costs with explicit opt-in, reliable activity checks, dependency-aware shutdown, and verified startup before restoring traffic.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "AWS",
+      "Cloud Automation",
+      "Cost Optimization"
+    ],
+    "post": "2026-11-20-shut-down-idle-dev-environments-dependencies-startup-checks"
+  },
+  {
+    "title": "Trace Cross-Account AWS Automation with STS Roles and CloudTrail",
+    "description": "Configure cross-account role trust, constrain automation permissions, handle temporary sessions, and connect each run to its CloudTrail identity.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "AWS",
+      "IAM",
+      "Cloud Automation"
+    ],
+    "post": "2026-11-20-cross-account-aws-sts-trust-role-chains-cloudtrail"
+  },
+  {
+    "title": "Move Azure Automation Runbooks to Managed Identity with Scoped RBAC",
+    "description": "Replace Azure Automation Run As authentication with managed identity, choose the correct principal, grant narrow permissions, and verify scheduled execution before cleanup.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Azure",
+      "Automation",
+      "IAM"
+    ],
+    "post": "2026-11-20-azure-automation-run-as-managed-identity-rbac-migration"
+  },
+  {
+    "title": "Fix Azure Runbooks That Pass Tests but Fail on Schedule",
+    "description": "Compare published code, schedule parameters, worker identity, Azure context, and loaded modules to find why a runbook succeeds manually but fails on schedule.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Azure",
+      "Automation",
+      "Troubleshooting"
+    ],
+    "post": "2026-11-20-azure-runbook-test-pane-scheduled-failure-context-modules"
+  },
+  {
+    "title": "Stop Cloud Remediation Loops with Idempotency and State Checks",
+    "description": "Prevent event-driven remediation from triggering itself repeatedly with current-state reconciliation, durable operation keys, recovery records, and bounded suppression.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "AWS",
+      "Cloud Automation",
+      "Reliability"
+    ],
+    "post": "2026-11-20-event-driven-cloud-remediation-idempotency-dedupe-loops"
+  },
+  {
+    "title": "Handle Cloud API Delays with Waiters and Read-After-Write Checks",
+    "description": "Replace guessed cloud provisioning delays with bounded state polling, explicit postconditions, durable resource IDs, and recovery for uncertain API outcomes.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "AWS",
+      "Cloud Automation",
+      "Reliability"
+    ],
+    "post": "2026-11-20-cloud-api-eventual-consistency-waiters-read-after-write"
+  },
+  {
+    "title": "Delete Cloud Environments Without Orphaned Disks, IPs, or Snapshots",
+    "description": "Build a dependency-aware deletion plan, protect retained resources, and verify that disks, IP addresses, and snapshots have an explicit final disposition.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "AWS",
+      "Cloud Automation",
+      "Reliability"
+    ],
+    "post": "2026-11-20-delete-cloud-environments-dependency-order-orphan-resources"
+  },
+  {
+    "title": "Clean Up Preview Environments with Expiry Rules and Owner Extensions",
+    "description": "Give preview environments enforceable expiry rules, race-safe owner extensions, and orphan sweeps that catch resources left outside the namespace.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Kubernetes",
+      "Cloud Automation",
+      "Cost Optimization"
+    ],
+    "post": "2026-11-20-cleanup-preview-environments-ttl-owner-extensions-orphan-sweeps"
+  },
+  {
+    "title": "Automate AWS Account Vending with Access, Budgets, and Controls",
+    "description": "Build an AWS account-vending workflow that verifies Control Tower governance, Identity Center access, budget notifications, and readiness before handoff.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "AWS",
+      "Cloud Automation",
+      "IAM"
+    ],
+    "post": "2026-11-20-automate-aws-account-vending-control-tower-identity-budgets"
+  },
+  {
+    "title": "Separate Shared Foundations from Disposable Cloud Resources",
+    "description": "Split cloud resources by ownership and lifetime, publish a small foundation contract, and keep disposable workload teardown away from shared infrastructure.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Terraform",
+      "Cloud Automation",
+      "Architecture"
+    ],
+    "post": "2026-11-20-separate-foundational-disposable-cloud-resource-lifecycles"
+  },
+  {
+    "title": "Make Long-Running Cloud Automation Resume Safely",
+    "description": "Design long-running cloud workflows with durable checkpoints, bounded polling, protected callback tokens, and recovery that resumes existing operations.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "AWS",
+      "Cloud Automation",
+      "Reliability"
+    ],
+    "post": "2026-11-20-durable-cloud-automation-polling-callbacks-checkpoints"
+  },
+  {
+    "title": "Recover Partial Cloud Workflows with Compensating Actions",
+    "description": "Design compensating actions that undo only your workflow's effects, preserve concurrent changes, and leave a durable record when recovery needs help.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Cloud Automation",
+      "AWS",
+      "Reliability"
+    ],
+    "post": "2026-11-20-compensate-partial-cloud-workflows-without-transactions"
+  },
+  {
+    "title": "Trace One Automation Run Across Queues, Functions, and Cloud APIs",
+    "description": "Carry a stable run ID through queue messages and structured logs, then connect function attempts to cloud API request IDs without mixing unrelated work.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "AWS",
+      "Cloud Automation",
+      "Observability"
+    ],
+    "post": "2026-11-20-trace-automation-run-queues-functions-cloud-apis"
+  },
+  {
+    "title": "Test Cloud Automation with Mocks, Sandbox Accounts, and Canaries",
+    "description": "Build evidence in layers: SDK contract tests, isolated cloud rehearsals, and narrowly scoped production canaries with explicit pass and stop criteria.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "AWS",
+      "Cloud Automation",
+      "Testing"
+    ],
+    "post": "2026-11-20-test-cloud-automation-mocks-sandbox-canary"
+  },
+  {
+    "title": "Stop Overlapping Cloud Jobs with Leases and Fencing Tokens",
+    "description": "Coordinate scheduled jobs per resource, understand expired-worker risks, and test a destination that rejects stale fencing tokens before accepting writes.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Cloud Automation",
+      "Distributed Coordination",
+      "Reliability"
+    ],
+    "post": "2026-11-20-stop-overlapping-cloud-jobs-leases-fencing-tokens"
+  },
+  {
+    "title": "Adopt Existing Cloud Resources Without Recreating Them",
+    "description": "Import existing infrastructure into Terraform with explicit ownership, matching configuration, and an import-only review gate that prevents accidental replacement.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Terraform",
+      "Cloud Automation",
+      "Infrastructure as Code"
+    ],
+    "post": "2026-11-20-adopt-existing-cloud-resources-without-recreation"
+  },
+  {
+    "title": "Check Cloud Quotas Before Provisioning a Half-Built Environment",
+    "description": "Check applied quotas, current usage, concurrent commitments, and rollout peaks before provisioning, while keeping recovery ready for unavoidable races.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "AWS",
+      "Cloud Automation",
+      "Capacity Planning"
+    ],
+    "post": "2026-11-20-cloud-quota-preflight-before-provisioning"
+  },
+  {
+    "title": "Verify Data-Plane Readiness After Cloud Provisioning Succeeds",
+    "description": "Verify the intended release through its real access path after provisioning succeeds, using fresh readiness responses, TLS checks, and bounded promotion gates.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Cloud Automation",
+      "Reliability",
+      "Monitoring"
+    ],
+    "post": "2026-11-20-cloud-control-plane-success-data-plane-readiness"
+  },
+  {
+    "title": "Build a Cloud Automation Kill Switch That Preserves the Audit Trail",
+    "description": "Stop new automation work, constrain in-flight actions, preserve evidence, and resume through a new admission generation instead of replaying stale jobs.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Cloud Automation",
+      "AWS",
+      "Incident Management"
+    ],
+    "post": "2026-11-20-kill-switch-cloud-automation-audit-trail"
+  },
+  {
+    "title": "Authenticate GitHub Actions to AWS, Azure, and GCP with OIDC",
+    "description": "Replace stored cloud keys with scoped GitHub Actions federation, using explicit trust rules and separate AWS, Azure, and Google Cloud identities.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "GitHub Action",
+      "OIDC",
+      "Cloud Automation"
+    ],
+    "post": "2026-11-20-github-actions-oidc-aws-azure-gcp"
+  },
+  {
+    "title": "Debug GitHub OIDC Cloud Login: Audience, Subject, and Workflow Claims",
+    "description": "Diagnose GitHub OIDC login failures by inspecting selected claims safely and comparing audience, subject, environment, and reusable-workflow trust rules.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "GitHub Action",
+      "OIDC",
+      "Troubleshooting"
+    ],
+    "post": "2026-11-20-debug-github-oidc-cloud-login-claims"
+  },
+  {
+    "title": "Derive Least-Privilege Cloud IAM from Automation Audit Logs",
+    "description": "Turn cloud audit evidence into a reviewed permission set, test missing recovery paths, and remove administrator access without relying on logs alone.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Cloud Automation",
+      "IAM",
+      "Security"
+    ],
+    "post": "2026-11-20-derive-cloud-iam-automation-audit-logs"
+  },
+  {
+    "title": "Terraform State Lock Stuck in CI? Prove the Writer Is Gone First",
+    "description": "Recover a stuck Terraform state lock by identifying the owner, stopping competing writers, preserving evidence, and checking backend-specific unlock behavior.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Terraform",
+      "CI/CD",
+      "Troubleshooting"
+    ],
+    "post": "2026-11-20-terraform-state-lock-ci-prove-writer-gone"
+  },
+  {
+    "title": "Queue Terraform Applies per State Without Blocking Every Environment",
+    "description": "Give each Terraform state its own apply queue, keep backend locking enabled, and avoid canceling active deployments or replaying stale plans.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Terraform",
+      "CI/CD",
+      "Cloud Automation"
+    ],
+    "post": "2026-11-20-queue-terraform-applies-per-state"
+  },
+  {
+    "title": "Detect Cloud Drift on a Schedule Without Automatically Applying Changes",
+    "description": "Schedule Terraform drift checks that distinguish changes from failures, protect plan evidence, and route destructive proposals to review instead of automatic apply.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Terraform",
+      "Drift Detection",
+      "Cloud Automation"
+    ],
+    "post": "2026-11-20-detect-cloud-drift-schedule-without-auto-apply"
+  },
+  {
+    "title": "Import Cloud Resources in CI with a Terraform No-Change Gate",
+    "description": "Gate Terraform imports on exact resource IDs and zero managed-resource mutations, then apply the reviewed saved plan through a controlled CI workflow.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Terraform",
+      "CI/CD",
+      "Infrastructure as Code"
+    ],
+    "post": "2026-11-20-terraform-import-blocks-ci-no-change-gate"
+  },
+  {
+    "title": "Bootstrap Terraform State Storage and CI Identity Without a Dependency Loop",
+    "description": "Create state storage and CI federation with an independent bootstrap identity, migrate state deliberately, and keep application access separate from recovery authority.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Terraform",
+      "Cloud Automation",
+      "IAM"
+    ],
+    "post": "2026-11-20-bootstrap-terraform-state-backend-ci-identity"
+  },
+  {
+    "title": "Refactor Terraform State in CI with Auditable Moved Blocks",
+    "description": "Refactor resource addresses without recreating objects, gate the migration plan in CI, and preserve moved-block history for environments that upgrade later.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Terraform",
+      "CI/CD",
+      "Infrastructure as Code"
+    ],
+    "post": "2026-11-20-refactor-terraform-state-ci-moved-blocks"
+  },
+  {
+    "title": "Debug an Enabled EventBridge Rule That Never Invokes Lambda",
+    "description": "Trace an enabled EventBridge rule through event matching, target aliases, permissions, and delivery metrics to find why Lambda is not running.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "EventBridge",
+      "AWS Lambda",
+      "Troubleshooting"
+    ],
+    "post": "2026-11-20-eventbridge-enabled-rule-lambda-not-running"
+  },
+  {
+    "title": "EventBridge Delivered but Lambda Failed: Put Recovery at the Right Boundary",
+    "description": "Separate EventBridge delivery failures from Lambda processing failures, configure an alias-specific failure destination, and verify both recovery paths.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "EventBridge",
+      "AWS Lambda",
+      "AWS SQS"
+    ],
+    "post": "2026-11-20-eventbridge-lambda-async-destinations-dlq-boundaries"
+  },
+  {
+    "title": "Replay a Cloud Automation DLQ Without Duplicating Completed Work",
+    "description": "Build a reviewed replay plan that separates completed, unapplied, and uncertain operations before moving failed automation messages back into service.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Cloud Automation",
+      "AWS SQS",
+      "Troubleshooting"
+    ],
+    "post": "2026-11-20-replay-cloud-automation-dlq-without-duplicate-effects"
+  },
+  {
+    "title": "Secure Azure Automation Webhooks Without Leaking Secrets into Job Logs",
+    "description": "Rotate Azure Automation webhook URLs, validate a small request contract, and prevent sensitive inputs from reaching Automation job history.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Azure Automation",
+      "Security",
+      "PowerShell"
+    ],
+    "post": "2026-11-20-secure-azure-automation-webhooks-rotation-validation"
+  },
+  {
+    "title": "Promote Azure Runbooks from Git and Verify the Published Code",
+    "description": "Promote an approved runbook artifact through draft import, content verification, publication, and published-content checks without racing another editor.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Azure Automation",
+      "CI/CD",
+      "PowerShell"
+    ],
+    "post": "2026-11-20-promote-azure-automation-runbooks-git-published-content"
+  },
+  {
+    "title": "Rotate Cloud Application Secrets with an Overlap Window",
+    "description": "Rotate an application credential through overlapping versions, fresh-token canaries, consumer rollout, and evidence-based retirement of the old secret.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Security",
+      "Azure",
+      "Cloud Automation"
+    ],
+    "post": "2026-11-20-rotate-cloud-application-secret-overlapping-versions"
+  },
+  {
+    "title": "Automate Tagged Azure Snapshot Retention Across Subscriptions",
+    "description": "Design daily, weekly, and monthly snapshot retention using explicit subscription scope, ownership tags, overlapping retention sets, and conservative deletion gates.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Azure",
+      "Backup",
+      "Cloud Automation"
+    ],
+    "post": "2026-11-20-azure-snapshot-retention-daily-weekly-monthly-tags"
+  },
+  {
+    "title": "Prove Cloud Backups Work with Isolated Restore Drills",
+    "description": "Test cloud backups in temporary isolated environments, validate known data and application behavior, measure recovery objectives, and verify cleanup.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Backup",
+      "Disaster Recovery",
+      "Cloud Automation"
+    ],
+    "post": "2026-11-20-prove-cloud-backups-ephemeral-restore-integrity-drills"
+  },
+  {
+    "title": "Patch Linux VMs Across AWS, Azure, and GCP in Canary Rings",
+    "description": "Coordinate Linux patching across clouds with representative canaries, explicit reboot decisions, health gates, and tested recovery paths.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Linux",
+      "Cloud Automation",
+      "Patch Management"
+    ],
+    "post": "2026-11-20-patch-linux-vms-multicloud-canary-rings"
+  },
+  {
+    "title": "Handle Cloud API Throttling with Queues, Retry-After, and Jitter",
+    "description": "Coordinate queued cloud work, request rates, concurrency, server retry hints, and bounded jitter without turning throttling into a retry storm.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Cloud Automation",
+      "Rate Limiting",
+      "Troubleshooting"
+    ],
+    "post": "2026-11-20-cloud-api-throttling-queues-retry-after-jitter"
+  },
+  {
+    "title": "Schedule Cloud Automation Across Time Zones Without DST Surprises",
+    "description": "Define daylight-saving policies, test ambiguous local times, and protect maintenance windows from duplicate or delayed cloud automation.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Cloud Automation",
+      "Scheduling",
+      "Python"
+    ],
+    "post": "2026-11-20-schedule-cloud-automation-timezones-dst-windows"
+  },
+  {
+    "title": "Migrate an SMB File Share with a Short, Controlled Write Freeze",
+    "description": "Pre-seed an SMB migration, reconcile changes, freeze writers, and validate file access and server identity before reopening the destination.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "SMB",
+      "File Storage",
+      "Data Migration"
+    ],
+    "post": "2026-11-20-smb-file-share-migration-preseed-delta-dns-cutover"
+  },
+  {
+    "title": "Preserve NTFS Permissions, Owners, Audit Rules, and Migration Timestamps",
+    "description": "Verify NTFS security and timestamps independently during file-share migration, including audit access, inheritance, and destination permission tests.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "File Permissions",
+      "Windows Server",
+      "Data Migration"
+    ],
+    "post": "2026-11-20-preserve-ntfs-acls-owners-audit-timestamps-migration"
+  },
+  {
+    "title": "Move File Shares Between AD Domains Without Losing Intended Access",
+    "description": "Plan cross-domain file-share migration with verified SID mappings, temporary SIDHistory use, ACL translation, and separate share-permission checks.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Active Directory",
+      "File Permissions",
+      "Data Migration"
+    ],
+    "post": "2026-11-20-move-file-shares-ad-domains-sidhistory-acl-translation"
+  },
+  {
+    "title": "Back Up Millions of Small Files Without Per-File API Bottlenecks",
+    "description": "Separate source metadata costs from destination API overhead, use packed backups, and verify a small-file backup with a pinned restic restore lab.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Backup",
+      "File Storage",
+      "Restic"
+    ],
+    "post": "2026-11-20-back-up-millions-small-files-reduce-api-overhead"
+  },
+  {
+    "title": "Diagnose Stale NFS Reads: Caches, fsync, and Reopening Files",
+    "description": "Separate NFS cache delays from buffered writes and old file handles, then use a controlled two-client test to verify publication and reader behavior.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "NFS",
+      "File Storage",
+      "Troubleshooting"
+    ],
+    "post": "2026-11-20-nfs-stale-data-attribute-cache-fsync-reopen"
+  },
+  {
+    "title": "Can Multiple Hosts Safely Update the Same Shared File?",
+    "description": "Understand lost updates, stable lock files, atomic replacement, and the cross-host tests needed before using a shared file as mutable application state.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "File Storage",
+      "NFS",
+      "Concurrency"
+    ],
+    "post": "2026-11-20-multiple-hosts-shared-file-locks-atomic-rename"
+  },
+  {
+    "title": "Fix Kubernetes NFS Permission Denied with UID, GID, and fsGroup",
+    "description": "Diagnose Kubernetes NFS access failures by checking export rules, numeric identities, supplemental groups, and server ownership while retaining root squashing.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Kubernetes",
+      "NFS",
+      "File Permissions"
+    ],
+    "post": "2026-11-20-kubernetes-nfs-permission-denied-uid-fsgroup-root-squash"
+  },
+  {
+    "title": "Choose SMB or NFS for a Mixed Windows and Linux Fleet",
+    "description": "Compare SMB and NFS using identity, filename, locking, and failover tests before moving a mixed Windows and Linux fleet onto shared storage.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "SMB",
+      "NFS",
+      "File Storage"
+    ],
+    "post": "2026-11-20-choose-smb-nfs-mixed-windows-linux-fleet"
+  },
+  {
+    "title": "Why NFS Hangs: Choose hard, soft, timeo, and retrans Carefully",
+    "description": "Diagnose blocked NFS commands without worsening an outage, understand retry settings, and test recovery before changing mount failure behavior.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "NFS",
+      "Linux",
+      "Troubleshooting"
+    ],
+    "post": "2026-11-20-nfs-hangs-hard-soft-timeo-retrans"
+  },
+  {
+    "title": "Benchmark File-Storage Metadata Separately from Bulk I/O",
+    "description": "Separate directory enumeration, file attributes, and creation costs from bulk throughput with a small tested probe and a realistic benchmark plan.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "File Storage",
+      "Performance",
+      "Python"
+    ],
+    "post": "2026-11-20-benchmark-file-storage-metadata-separately"
+  },
+  {
+    "title": "Deleted Files but Space Did Not Return? Trace What Still Holds It",
+    "description": "Trace missing capacity after deletion through open descriptors, hard links, snapshots, quotas, and reservations using safe inspection commands.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "File Storage",
+      "Linux",
+      "Troubleshooting"
+    ],
+    "post": "2026-11-20-deleted-files-capacity-open-handles-snapshots"
+  },
+  {
+    "title": "Why a File-Storage Snapshot Alone Is Not a Ransomware-Safe Backup",
+    "description": "Evaluate snapshots against ransomware threats using separate administration, protected retention, recoverable keys, and an isolated restore drill.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Backup",
+      "Ransomware Protection",
+      "File Storage"
+    ],
+    "post": "2026-11-20-file-storage-snapshot-ransomware-safe-backup"
+  },
+  {
+    "title": "Measure File-Share Restore Time Beyond Terabytes and Transfer Speed",
+    "description": "Measure file-share recovery by file count, metadata work, permissions, and validation, with a tested timing wrapper and a practical rehearsal plan.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "File Storage",
+      "Disaster Recovery",
+      "Backup Testing"
+    ],
+    "post": "2026-11-20-measure-file-share-restore-time-metadata-rto"
+  },
+  {
+    "title": "Stop File Sync from Spreading Deletions and Damaged Files",
+    "description": "Limit destructive synchronization, preserve replaced files, and rehearse recovery with a tested rclone lab while keeping an independent protected copy.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "File Storage",
+      "Ransomware Protection",
+      "Backup"
+    ],
+    "post": "2026-11-20-stop-sync-propagating-deletions-ransomware"
+  },
+  {
+    "title": "Preserve Sparse Files, Links, and Extended Attributes During Migration",
+    "description": "Test sparse allocation, hard-link identity, symbolic-link targets, and extended attributes before approving a file-storage migration.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "File Storage",
+      "Data Migration",
+      "Linux"
+    ],
+    "post": "2026-11-20-preserve-sparse-files-links-extended-attributes-migration"
+  },
+  {
+    "title": "Audit File Paths, Reserved Names, and Case Before Cloud Migration",
+    "description": "Find risky names, long paths, and possible collisions before cloud migration with a read-only Python audit and a reviewed rename process.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "File Storage",
+      "Data Migration",
+      "Python"
+    ],
+    "post": "2026-11-20-audit-file-paths-names-case-cloud-migration"
+  },
+  {
+    "title": "Validate a File-Share Migration with Manifests and Checksums",
+    "description": "Build stable source and destination manifests, compare contents, and reconcile exceptions before approving a large file-share migration.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "File Storage",
+      "Data Migration",
+      "Data Integrity"
+    ],
+    "post": "2026-11-20-validate-file-share-migration-manifests-checksums"
+  },
+  {
+    "title": "Resume Cloud File Transfers with Retries and Verified Checksums",
+    "description": "Use persistent AzCopy jobs to recover interrupted uploads, then verify downloaded bytes against a trusted SHA-256 digest before acceptance.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "File Storage",
+      "Azure Blob Storage",
+      "Data Integrity"
+    ],
+    "post": "2026-11-20-resumable-cloud-file-transfers-chunks-retries-checksums"
+  },
+  {
+    "title": "Cross-Region File Storage: Why Replication Is Not Shared Locking",
+    "description": "Separate replicated bytes from locks, caches, and write ownership before designing cross-region file access or promoting a disaster recovery replica.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "File Storage",
+      "Disaster Recovery",
+      "High Availability"
+    ],
+    "post": "2026-11-20-active-active-file-storage-regions-locks-cache-coherence"
+  },
+  {
+    "title": "SMB Works by IP but Not Hostname: Trace DNS and Kerberos",
+    "description": "Diagnose hostname-only SMB failures by checking the selected address, service identity, ticket ownership, and actual authentication evidence.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "SMB",
+      "Kerberos",
+      "Troubleshooting"
+    ],
+    "post": "2026-11-20-smb-ip-works-hostname-fails-dns-spn-kerberos"
+  },
+  {
+    "title": "Review Secrets and Git History Before Making a Repository Public",
+    "description": "Revoke exposed credentials, rehearse history cleanup in a fresh clone, and review hosted artifacts before changing a private repository's visibility.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Open Source",
+      "Git",
+      "Security"
+    ],
+    "post": "2026-11-20-private-repository-public-secrets-history-review"
+  },
+  {
+    "title": "Sign and Reproduce Open Source Releases Users Can Verify",
+    "description": "Build a deterministic release archive, verify its detached signature, and explain the source, environment, and trusted-key evidence users need.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Open Source",
+      "Security",
+      "CI/CD"
+    ],
+    "post": "2026-11-20-sign-reproduce-open-source-release-artifacts"
+  },
+  {
+    "title": "Keep Git Tags, GitHub Releases, and Package Versions Consistent",
+    "description": "Tie a release version to one source commit and reviewed package artifact, then verify tags, release assets, and registry metadata agree.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Open Source",
+      "Git",
+      "CI/CD"
+    ],
+    "post": "2026-11-20-git-tags-github-releases-package-version-consistency"
+  },
+  {
+    "title": "VXLAN Is Up but Bridged Workloads Cannot Connect",
+    "description": "Trace a Linux bridged VXLAN path through endpoint addresses, bridge ports, VNI settings, and static flood entries before changing the network.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "VXLAN",
+      "Linux",
+      "Networking"
+    ],
+    "post": "2026-11-20-vxlan-up-bridged-workloads-unreachable-addressing-flood"
+  },
+  {
+    "title": "Trace VXLAN ARP Requests That Never Reach the VM",
+    "description": "Follow one ARP request from VXLAN decapsulation to the guest, separating bridge forwarding, VLAN policy, firewall rules, and IP neighbor state.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "VXLAN",
+      "Linux",
+      "Troubleshooting"
+    ],
+    "post": "2026-11-20-vxlan-arp-request-missing-vm-bridge-fdb-neighbor"
+  },
+  {
+    "title": "Fix a Missing Third VXLAN Peer in a Static Flood List",
+    "description": "Audit every VTEP's static flood destinations, distinguish learned unicast from broadcast reachability, and repair missing peers without replacing the list.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "VXLAN",
+      "Linux",
+      "Networking"
+    ],
+    "post": "2026-11-20-vxlan-third-vtep-incomplete-head-end-replication"
+  },
+  {
+    "title": "Diagnose VXLAN Packet Loss with Don't-Fragment MTU Tests",
+    "description": "Calculate VXLAN packet sizes, compare underlay and overlay probes, and distinguish local MTU rejection from fragmentation and missing ICMP feedback.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "VXLAN",
+      "Networking",
+      "Troubleshooting"
+    ],
+    "post": "2026-11-20-vxlan-small-pings-large-packets-path-mtu-df"
+  },
+  {
+    "title": "Preserve a 1500-Byte Tenant MTU Across a VXLAN Underlay",
+    "description": "Plan the underlay capacity needed for a 1500-byte VXLAN tenant MTU, distinguish IP and Ethernet limits, and stage changes with measurable acceptance checks.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "VXLAN",
+      "Linux",
+      "Networking"
+    ],
+    "post": "2026-11-20-preserve-1500-tenant-mtu-vxlan-underlay"
+  },
+  {
+    "title": "Decode VXLAN Captures: Inner MACs, Outer VTEPs, VNI, and UDP",
+    "description": "Read VXLAN captures layer by layer, distinguish workload addresses from tunnel endpoints, and filter a known VNI without mistaking outer traffic for delivery.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "VXLAN",
+      "Networking",
+      "Troubleshooting"
+    ],
+    "post": "2026-11-20-capture-decode-vxlan-inner-outer-vni"
+  },
+  {
+    "title": "No NVE Peers Despite VTEP Pings: Trace the EVPN Control Plane",
+    "description": "Diagnose missing NX-OS VXLAN peers by separating underlay reachability, EVPN neighbor state, update-source identity, route-target import, and NVE programming.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "VXLAN",
+      "BGP",
+      "Troubleshooting"
+    ],
+    "post": "2026-11-20-no-nve-peers-vtep-ping-evpn"
+  },
+  {
+    "title": "EVPN Type 2 Route Present but Host Unreachable: Trace the FDB",
+    "description": "Follow one remote EVPN MAC from FRR's global BGP table through per-VNI state and Linux forwarding entries, without confusing neighbor resolution with bridging.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "VXLAN",
+      "BGP",
+      "Linux"
+    ],
+    "post": "2026-11-20-evpn-type2-host-unreachable-bgp-fdb"
+  },
+  {
+    "title": "EVPN Type 5 Route Missing: Check VRF Import and L3VNI Mapping",
+    "description": "Trace an advertised EVPN prefix through route-target import, FRR VRF-to-L3VNI association, route selection, next-hop resolution, and the Linux routing table.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "VXLAN",
+      "BGP",
+      "Linux"
+    ],
+    "post": "2026-11-20-evpn-type5-not-installed-vrf-l3vni"
+  },
+  {
+    "title": "Diagnose a VLAN-to-VNI Mismatch in a VXLAN Network",
+    "description": "Trace access-port VLAN classification into the VXLAN VNI, distinguish local VLAN numbers from overlay identity, and verify the mapping at both endpoints.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "VXLAN",
+      "Linux",
+      "Troubleshooting"
+    ],
+    "post": "2026-11-20-diagnose-vlan-vni-mismatch-vxlan"
+  },
+  {
+    "title": "Anycast Gateway Works on One Leaf: Check MAC, SVI, and Routing",
+    "description": "Separate local gateway failures from routed-overlay failures by checking host neighbor state, the shared anycast MAC, SVI readiness, and symmetric IRB routes.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "VXLAN",
+      "Networking",
+      "Troubleshooting"
+    ],
+    "post": "2026-11-20-anycast-gateway-one-leaf-shared-mac-svi"
+  },
+  {
+    "title": "Validate EVPN MAC/IP Bindings Before Enabling ARP Suppression",
+    "description": "Check EVPN IP/MAC bindings, Linux neighbor and forwarding state, and controlled cold-client behavior before enabling ARP suppression on a VXLAN segment.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "VXLAN",
+      "Linux",
+      "Troubleshooting"
+    ],
+    "post": "2026-11-20-arp-suppression-evpn-mac-ip-bindings"
+  },
+  {
+    "title": "Trace DHCP and PXE Failures After VXLAN ARP Suppression",
+    "description": "Separate DHCP broadcast delivery, ARP conflict probes, and boot-file transfer when network boot fails after a suppression change on a pure Layer 2 VNI.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "VXLAN",
+      "DHCP",
+      "Troubleshooting"
+    ],
+    "post": "2026-11-20-dhcp-pxe-arp-suppression-pure-l2vni"
+  },
+  {
+    "title": "Diagnose EVPN MAC Moves: Host Mobility, Loops, or Multihoming?",
+    "description": "Build an EVPN MAC-move timeline, compare mobility sequences and Ethernet Segment Identifiers, and distinguish valid host moves from duplicate identities or loops.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "VXLAN",
+      "BGP",
+      "Troubleshooting"
+    ],
+    "post": "2026-11-20-evpn-duplicate-mac-mobility-loops-multihoming"
+  },
+  {
+    "title": "Trace Missing BUM Traffic in EVPN Multihoming",
+    "description": "Diagnose EVPN multihoming broadcast loss by comparing Ethernet segment identity, designated-forwarder state, service membership, and split-horizon behavior.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "VXLAN",
+      "BGP",
+      "Troubleshooting"
+    ],
+    "post": "2026-11-20-evpn-multihoming-bum-df-split-horizon"
+  },
+  {
+    "title": "Choose a VXLAN BUM Replication Method That Fits Your Scale",
+    "description": "Compare VXLAN ingress replication and multicast, understand where EVPN fits, and calculate a realistic replication budget before choosing a design.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "VXLAN",
+      "BGP",
+      "Networking"
+    ],
+    "post": "2026-11-20-vxlan-bum-multicast-ingress-replication-evpn-scale"
+  },
+  {
+    "title": "Route EVPN VXLAN Traffic Through a Central Firewall",
+    "description": "Keep distributed anycast gateways while steering selected traffic through a central firewall, with route checks that expose bypasses and return-path mistakes.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "VXLAN",
+      "BGP",
+      "Networking"
+    ],
+    "post": "2026-11-20-evpn-vxlan-central-firewall-anycast-gateway"
+  },
+  {
+    "title": "Bound the Failure Domain When Stretching VXLAN Between Data Centers",
+    "description": "Limit cross-site VXLAN risk with explicit network membership, BUM budgets, end-to-end MTU checks, and staged partition and recovery tests.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "VXLAN",
+      "Networking",
+      "Reliability"
+    ],
+    "post": "2026-11-20-stretch-vxlan-data-centers-bound-failure-domain"
+  },
+  {
+    "title": "Should You Carry VXLAN Across the Public Internet?",
+    "description": "Assess Internet-carried VXLAN with an authenticated encrypted transport, an explicit nested-tunnel MTU budget, and tests for NAT, packet loss, and route changes.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "VXLAN",
+      "Networking",
+      "Security"
+    ],
+    "post": "2026-11-20-vxlan-public-internet-encryption-carrier-mtu"
+  },
+  {
+    "title": "VXLAN Reaches UDP 4789 but Drops: Trace the Receive Path",
+    "description": "Locate VXLAN receive-path drops by comparing outer captures, local VTEP addressing, VNI membership, firewall rules, and the decapsulated Ethernet path.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "VXLAN",
+      "Linux",
+      "Troubleshooting"
+    ],
+    "post": "2026-11-20-vxlan-udp-4789-arrives-dropped-vni-local-vtep"
+  },
+  {
+    "title": "Detect Broken Compliance Connectors Before Evidence Goes Missing",
+    "description": "Monitor evidence freshness, collection completeness, and account coverage so a healthy-looking connector cannot hide a growing audit-period evidence gap.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Compliance",
+      "Monitoring",
+      "AWS"
+    ],
+    "post": "2026-11-20-detect-broken-compliance-connectors-evidence-gaps"
+  },
+  {
+    "title": "Run Compliance Connectors with Least Privilege",
+    "description": "Give evidence collectors narrowly scoped read access, separate collection from remediation, rotate credentials without silent gaps, and retain useful collection logs.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Compliance",
+      "Security",
+      "AWS"
+    ],
+    "post": "2026-11-20-compliance-connectors-least-privilege-rotation-logs"
+  },
+  {
+    "title": "Route Automated Control Failures Without Creating Alert Fatigue",
+    "description": "Turn automated control failures into owned, deduplicated work with tested alert routing, explicit exception expiry, and evidence-based closure.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Compliance",
+      "Monitoring",
+      "Alertmanager"
+    ],
+    "post": "2026-11-20-automated-control-failures-owner-routing-alert-fatigue"
+  },
+  {
+    "title": "Protect Audit Evidence with Hashes, Trusted Time, and Custody Records",
+    "description": "Build a verifiable evidence package with signed hashes, explicit object versions, trusted timestamps, and custody records that preserve what each check actually proves.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Compliance",
+      "Security",
+      "AWS"
+    ],
+    "post": "2026-11-20-audit-evidence-hashes-immutable-storage-chain-custody"
+  },
+  {
+    "title": "Reconcile Production Deployments with Approved Changes",
+    "description": "Match production deployment evidence to the right approval, artifact, environment, and time window, then investigate unmatched releases without hiding collection gaps.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Compliance",
+      "CI/CD",
+      "GitHub"
+    ],
+    "post": "2026-11-20-reconcile-deployment-logs-approved-changes"
+  },
+  {
+    "title": "Replace “Log Everything” with a Useful Evidence Plan",
+    "description": "Define the events, fields, retention tiers, and retrieval tests your evidence needs, while controlling logging volume and avoiding unnecessary sensitive data.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Compliance",
+      "Logging",
+      "Security"
+    ],
+    "post": "2026-11-20-risk-based-evidence-logging-plan-retention-sensitive-data"
+  },
+  {
+    "title": "Quarantine Noncompliant Resources Without Causing an Outage",
+    "description": "Design guarded remediation with fresh-state checks, narrow targets, dependency review, controlled rollout, and verification of both containment and service health.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Compliance",
+      "AWS",
+      "Reliability"
+    ],
+    "post": "2026-11-20-quarantine-noncompliant-resources-safe-remediation"
+  },
+  {
+    "title": "RDS Failover Finished but Your Application Still Cannot Connect",
+    "description": "Separate DNS caching, stale database connections, and retry overload when an RDS failover completes but application requests still fail.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "AWS",
+      "PostgreSQL",
+      "Troubleshooting"
+    ],
+    "post": "2026-11-20-rds-failover-finished-application-dns-pools-retries"
+  },
+  {
+    "title": "Run a Database Failover Drill That Measures Application Recovery",
+    "description": "Build a staged RDS failover drill that checks application recovery, operation correctness, connection behavior, and sustained service under load.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "AWS",
+      "PostgreSQL",
+      "Reliability"
+    ],
+    "post": "2026-11-20-cloud-database-failover-drill-application-recovery"
+  },
+  {
+    "title": "Drain and Rebuild Database Pools After a Managed Failover",
+    "description": "Recover a Java database pool after failover with controlled admission, bounded draining, HikariCP soft eviction, and gradual traffic restoration.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "PostgreSQL",
+      "Java",
+      "Reliability"
+    ],
+    "post": "2026-11-20-drain-rebuild-database-pools-managed-failover"
+  },
+  {
+    "title": "Gate PostgreSQL Replica Reads on Replay Position",
+    "description": "Use a post-commit PostgreSQL WAL position to gate replica reads, with bounded waiting, fresh snapshots, and explicit handling of topology changes.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "PostgreSQL",
+      "Replication",
+      "Reliability"
+    ],
+    "post": "2026-11-20-read-replica-stale-gate-reads-replay-position"
+  },
+  {
+    "title": "Why Your Cloud PostgreSQL Read Replica Is Slower Than the Primary",
+    "description": "Diagnose slow PostgreSQL replica queries by comparing equivalent workloads, cache behavior, instance capacity, query plans, and recovery conflicts.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "PostgreSQL",
+      "Performance",
+      "Troubleshooting"
+    ],
+    "post": "2026-11-20-cloud-read-replica-slower-primary-cache-recovery"
+  },
+  {
+    "title": "Make RDS Cross-Account Restores Work Beyond the Backup Job",
+    "description": "Prepare RDS snapshot ownership, KMS access, recovery roles, private networking, credentials, and endpoint changes for a usable cross-account restore.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "AWS",
+      "PostgreSQL",
+      "Disaster Recovery"
+    ],
+    "post": "2026-11-20-rds-cross-account-restore-iam-kms-network-dns"
+  },
+  {
+    "title": "Keep PostgreSQL Backup Jobs from Saturating Production I/O",
+    "description": "Choose backup windows, logical dump concurrency, snapshot exports, and replica offload without sacrificing recoverability or overwhelming storage.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "PostgreSQL",
+      "AWS",
+      "Backup"
+    ],
+    "post": "2026-11-20-cloud-database-backup-io-windows-export-replica"
+  },
+  {
+    "title": "Find Orphaned RDS Snapshots After Blue/Green Changes and Restores",
+    "description": "Inventory manual RDS snapshots by stable source identity, then review retention, sharing, and restore dependencies before approving cleanup.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "AWS",
+      "Backup",
+      "Cost Optimization"
+    ],
+    "post": "2026-11-20-find-orphaned-rds-snapshots-blue-green-restores"
+  },
+  {
+    "title": "Prevent Connection Storms After Database Maintenance",
+    "description": "Keep a managed database restart from becoming a longer outage by budgeting fleet connections, limiting retries, and restoring traffic in controlled stages.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "AWS",
+      "PostgreSQL",
+      "Reliability"
+    ],
+    "post": "2026-11-20-database-maintenance-restart-connection-storms"
+  },
+  {
+    "title": "CDC Is Caught Up but Rows Are Missing: Validate the Data",
+    "description": "Validate migration coverage, keyed counts, chunk checksums, large values, and schema behavior before treating low CDC lag as a successful cutover.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "PostgreSQL",
+      "Data Migration",
+      "AWS"
+    ],
+    "post": "2026-11-20-cdc-caught-up-missing-rows-validate-data-schema"
+  },
+  {
+    "title": "Move Managed PostgreSQL Without Superuser or Server Filesystem Access",
+    "description": "Plan a client-side PostgreSQL migration across managed providers with explicit privileges, extension compatibility, ownership mapping, and cutover validation.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "PostgreSQL",
+      "Data Migration",
+      "Cloud"
+    ],
+    "post": "2026-11-20-move-managed-postgresql-without-superuser-filesystem"
+  },
+  {
+    "title": "Check Compatibility Before Upgrading Cloud PostgreSQL Extensions",
+    "description": "Inventory installed extension versions, inspect supported update paths, rehearse application compatibility, and plan recovery before changing managed PostgreSQL.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "PostgreSQL",
+      "Extension",
+      "Database Upgrade"
+    ],
+    "post": "2026-11-20-upgrade-cloud-postgresql-extensions-compatibility"
+  },
+  {
+    "title": "When Managed PostgreSQL Does Not Support Your Extension",
+    "description": "Choose between built-in SQL, supported trusted-language code, external workers, another managed service, and self-hosting when an extension is unavailable.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "PostgreSQL",
+      "Extension",
+      "Architecture"
+    ],
+    "post": "2026-11-20-managed-postgresql-unsupported-extension-alternatives"
+  },
+  {
+    "title": "Choose Between Private IP, an Auth Proxy, and Public Database TLS",
+    "description": "Choose a Cloud SQL connection path by separating network reachability, TLS verification, cloud identity, and database permissions.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "PostgreSQL",
+      "Cloud",
+      "Architecture"
+    ],
+    "post": "2026-11-20-cloud-database-private-ip-auth-proxy-public-tls"
+  },
+  {
+    "title": "Fix SQL Permission Errors After Cloud Database IAM Login",
+    "description": "Diagnose successful IAM login followed by denied PostgreSQL queries, then map workload identities to narrowly scoped database roles.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "PostgreSQL",
+      "Cloud",
+      "Troubleshooting"
+    ],
+    "post": "2026-11-20-cloud-database-iam-login-sql-role-permissions"
+  },
+  {
+    "title": "Replace Shared Database Passwords with Short-Lived Identity Tokens",
+    "description": "Move Cloud SQL workloads from shared passwords to IAM tokens, with automatic refresh, distinct identities, and a migration test that opens new connections.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "PostgreSQL",
+      "Cloud",
+      "Security"
+    ],
+    "post": "2026-11-20-replace-shared-database-passwords-identity-tokens"
+  },
+  {
+    "title": "Rotate Database Credentials Without Breaking Connection Pools",
+    "description": "Rotate database credentials with a staged pool transition, atomic username/password updates, fresh-login checks, and controlled retirement of old connections.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "PostgreSQL",
+      "Java",
+      "Reliability"
+    ],
+    "post": "2026-11-20-rotate-database-credentials-long-lived-pools"
+  },
+  {
+    "title": "Rotate RDS and Cloud SQL Certificates Without Breaking Client Trust",
+    "description": "Stage database CA trust before certificate rotation, check provider-specific restart requirements, and prove fresh PostgreSQL connections still verify correctly.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "PostgreSQL",
+      "Cloud",
+      "Reliability"
+    ],
+    "post": "2026-11-20-rotate-rds-cloud-sql-ca-certificates"
+  },
+  {
+    "title": "Protect Cloud Databases from Accidental Terraform Deletion",
+    "description": "Combine Terraform lifecycle checks, cloud deletion protection, and final backups while understanding what each safeguard cannot prevent.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Terraform",
+      "Cloud",
+      "Disaster Recovery"
+    ],
+    "post": "2026-11-20-terraform-database-deletion-protection-final-snapshots"
+  },
+  {
+    "title": "Fix Azure MySQL Error 10060: DNS, Firewall, and Port 3306",
+    "description": "Diagnose Azure MySQL Flexible Server connection timeouts by checking the actual client path, DNS resolution, TCP reachability, and verified TLS login.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Azure",
+      "MySQL",
+      "Networking",
+      "Troubleshooting"
+    ],
+    "post": "2026-11-20-azure-mysql-error-10060-firewall-dns-port-3306"
+  },
+  {
+    "title": "Connect Azure App Service to Private MySQL: VNet, DNS, and Routes",
+    "description": "Trace App Service's outbound connection to private Azure MySQL through VNet integration, private DNS, and routing without confusing inbound private endpoints.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Azure",
+      "MySQL",
+      "Networking",
+      "Troubleshooting"
+    ],
+    "post": "2026-11-20-app-service-private-mysql-vnet-dns-routing"
+  },
+  {
+    "title": "Connect On-Premises Clients to Private Azure MySQL",
+    "description": "Connect an on-premises client to VNet-integrated Azure MySQL by validating VPN or ExpressRoute routes, hybrid DNS forwarding, and verified database login.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Azure",
+      "MySQL",
+      "Networking"
+    ],
+    "post": "2026-11-20-on-premises-azure-mysql-vpn-expressroute"
+  },
+  {
+    "title": "Connect to Azure MySQL with Managed Identity and Entra Tokens",
+    "description": "Use a managed identity for Azure MySQL login with the correct token audience, database user mapping, and verified TLS in a pinned Python example.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Azure",
+      "MySQL",
+      "Security"
+    ],
+    "post": "2026-11-20-passwordless-azure-mysql-managed-identity-user-mapping"
+  },
+  {
+    "title": "Fix Azure MySQL Certificate Verification Without Weakening TLS",
+    "description": "Diagnose Azure MySQL certificate failures by checking CA bundles, certificate names, runtime trust configuration, and client verification modes.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Azure",
+      "MySQL",
+      "Security",
+      "Troubleshooting"
+    ],
+    "post": "2026-11-20-azure-mysql-certificate-verify-failed-ca-hostname"
+  },
+  {
+    "title": "Diagnose Azure MySQL CPU Spikes with Query Insight and Slow Logs",
+    "description": "Investigate Azure MySQL CPU spikes by aligning host metrics, slow logs, and statement counts without confusing query elapsed time with CPU consumption.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Azure",
+      "MySQL",
+      "Performance",
+      "Troubleshooting"
+    ],
+    "post": "2026-11-20-azure-mysql-cpu-spikes-query-insight-slow-logs"
+  },
+  {
+    "title": "Fix Azure MySQL Timeouts from Connection Limits and Pool Sizing",
+    "description": "Separate pool waits, MySQL connection limits, and expired idle sessions, then size application pools against the full Azure MySQL connection budget.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Azure",
+      "MySQL",
+      "Performance",
+      "Troubleshooting"
+    ],
+    "post": "2026-11-20-azure-mysql-timeouts-connection-limits-pool-sizing"
+  },
+  {
+    "title": "Restore Azure MySQL to a New Server and Cut Over Safely",
+    "description": "Restore Azure MySQL to a separate server, verify the recovery point, reconcile later writes, and move applications without overwriting the original server.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Azure",
+      "MySQL",
+      "Backup",
+      "Disaster Recovery"
+    ],
+    "post": "2026-11-20-azure-mysql-point-in-time-restore-new-server-cutover"
+  },
+  {
+    "title": "Recover a Deleted Azure MySQL Flexible Server",
+    "description": "Collect deletion evidence, prepare the documented Azure MySQL recovery request, and validate the restored server before allowing application traffic.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Azure",
+      "MySQL",
+      "Backup",
+      "Disaster Recovery"
+    ],
+    "post": "2026-11-20-recover-deleted-azure-mysql-flexible-server"
+  },
+  {
+    "title": "Test Azure MySQL Geo-Restore, DNS Cutover, and Recovery Time",
+    "description": "Rehearse Azure MySQL geo-restore with application-side DNS checks, measured recovery milestones, and honest evidence of recovery time and data gaps.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Azure",
+      "MySQL",
+      "Disaster Recovery",
+      "Reliability"
+    ],
+    "post": "2026-11-20-test-azure-mysql-geo-restore-dns-cutover-rto"
+  },
+  {
+    "title": "Migrate RDS MySQL to Azure with MyDumper and Data-In Replication",
+    "description": "Seed Azure MySQL from an RDS snapshot made with MyDumper, resume from its exact binary-log position, and verify catch-up before a controlled cutover.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Azure",
+      "MySQL",
+      "AWS",
+      "Database Migration"
+    ],
+    "post": "2026-11-20-migrate-rds-mysql-azure-mydumper-data-in-replication"
+  },
+  {
+    "title": "Speed Up Large Azure MySQL Imports with Measured Parallelism",
+    "description": "Tune large Azure MySQL imports by measuring loader throughput, index creation, compute limits, and IOPS, then verify the full restore before scaling down.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Azure",
+      "MySQL",
+      "Performance",
+      "Database Migration"
+    ],
+    "post": "2026-11-20-speed-up-large-azure-mysql-imports"
+  },
+  {
+    "title": "Consolidate Multiple MySQL Sources into Azure with Safe Staging",
+    "description": "Plan MySQL consolidation into Azure with explicit source identities, separate staging feeds, collision checks, and per-source recovery checkpoints.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Azure",
+      "MySQL",
+      "Database Migration"
+    ],
+    "post": "2026-11-20-consolidate-multiple-mysql-sources-azure"
+  },
+  {
+    "title": "Schedule Azure MySQL Maintenance and Make Notifications Actionable",
+    "description": "Set an Azure MySQL maintenance window, route Service Health alerts to an owner, and verify application recovery with a practical maintenance checklist.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Azure",
+      "MySQL",
+      "Monitoring",
+      "Reliability"
+    ],
+    "post": "2026-11-20-schedule-azure-mysql-maintenance-alerts"
+  },
+  {
+    "title": "Diagnose Azure MySQL Replica Lag Before Changing Server Size",
+    "description": "Investigate Azure MySQL replica lag using service metrics, transaction and worker checks, and evidence that separates capacity limits from replication errors.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Azure",
+      "MySQL",
+      "Performance",
+      "Troubleshooting"
+    ],
+    "post": "2026-11-20-troubleshoot-azure-mysql-read-replica-lag"
+  },
+  {
+    "title": "Prevent Azure MySQL Storage Exhaustion Before Writes Stop",
+    "description": "Combine Azure MySQL storage autogrow, growth-based capacity alerts, and IOPS checks to detect exhaustion early and recover without risky cleanup.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Azure",
+      "MySQL",
+      "Monitoring",
+      "Reliability"
+    ],
+    "post": "2026-11-20-prevent-azure-mysql-storage-read-only"
+  },
+  {
+    "title": "Send Useful Azure MySQL Audit Logs to Log Analytics",
+    "description": "Route Azure MySQL audit events to Log Analytics, verify a known event, and measure volume while preserving the audit coverage your team actually needs.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Azure",
+      "MySQL",
+      "Logging",
+      "Security"
+    ],
+    "post": "2026-11-20-azure-mysql-audit-logs-log-analytics"
+  },
+  {
+    "title": "Build an Azure MySQL Alert Pack with Four Independent Signals",
+    "description": "Build and validate separate Azure Monitor rules for MySQL CPU, connections, storage, and replica lag, with deliberate thresholds and delivery checks.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Azure",
+      "MySQL",
+      "Monitoring",
+      "Reliability"
+    ],
+    "post": "2026-11-20-azure-mysql-monitor-alert-pack"
+  },
+  {
+    "title": "Diagnose Azure MySQL Bicep SKU, Zone, and Capacity Failures",
+    "description": "Separate Bicep errors from Azure MySQL quota, zone, and capacity failures using deployment details, regional capabilities, and controlled configuration changes.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Azure",
+      "MySQL",
+      "Troubleshooting"
+    ],
+    "post": "2026-11-20-debug-azure-mysql-bicep-sku-zone-capacity"
+  },
+  {
+    "title": "Move Azure MySQL from VNet Integration Without Losing the Access Path",
+    "description": "Plan Azure MySQL's irreversible VNet-detach transition with a downtime window, private-endpoint DNS checks, verified TLS, and controlled application recovery.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Azure",
+      "MySQL",
+      "Networking"
+    ],
+    "post": "2026-11-20-move-azure-mysql-vnet-private-link-public-access"
+  },
+  {
+    "title": "Measure Application Recovery During an Azure MySQL Forced Failover",
+    "description": "Run a controlled Azure MySQL failover rehearsal and measure application recovery, connection-pool behavior, sustained success, and uncertain write outcomes.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Azure",
+      "MySQL",
+      "Reliability",
+      "Testing"
+    ],
+    "post": "2026-11-20-measure-azure-mysql-zone-redundant-failover-recovery"
+  },
+  {
+    "title": "Promote an Azure MySQL Cross-Region Replica During an Outage",
+    "description": "Promote an Azure MySQL read replica with an explicit data-loss decision, fenced writers, verified application cutover, and a separate failback plan.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Azure",
+      "MySQL",
+      "Disaster Recovery"
+    ],
+    "post": "2026-11-20-promote-cross-region-azure-mysql-read-replica"
+  },
+  {
+    "title": "Route Azure MySQL Reporting Traffic Across Replicas with ProxySQL",
+    "description": "Configure a dedicated ProxySQL read pool for Azure MySQL replicas, with explicit routing, TLS checks, connection limits, and replica freshness tests.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Azure",
+      "MySQL",
+      "Performance",
+      "Networking"
+    ],
+    "post": "2026-11-20-route-azure-mysql-read-replicas-proxysql"
+  },
+  {
+    "title": "Preflight Azure MySQL 8.0 Upgrades with Checks and Replica Logs",
+    "description": "Assess an Azure MySQL 8.0 upgrade with an explicit checker target, reviewed findings, replica error evidence, and realistic application rehearsal.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Azure",
+      "MySQL",
+      "Testing",
+      "Troubleshooting"
+    ],
+    "post": "2026-11-20-preflight-azure-mysql-80-upgrade-compatibility"
+  },
+  {
+    "title": "Import Azure MySQL, VNet, and Private DNS into Terraform Safely",
+    "description": "Adopt an existing Azure MySQL server and its private network into Terraform with explicit ownership, reviewed imports, and a no-change acceptance plan.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Azure",
+      "MySQL",
+      "Terraform",
+      "Networking"
+    ],
+    "post": "2026-11-20-import-azure-mysql-network-dns-terraform-state"
+  },
+  {
+    "title": "Check Azure MySQL Parameter Restart Requirements Before Changing Them",
+    "description": "Distinguish saved, running, and session-level MySQL settings, inspect restart requirements, and coordinate an Azure parameter change with application recovery.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Azure",
+      "MySQL",
+      "Reliability",
+      "Troubleshooting"
+    ],
+    "post": "2026-11-20-azure-mysql-parameter-restart-assessment"
+  },
+  {
+    "title": "Import Azure MySQL Stored Objects Without DEFINER or SUPER Errors",
+    "description": "Migrate MySQL routines, triggers, and events into Azure by reviewing definers, binary-log restrictions, and the privileges objects need after import.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Azure",
+      "MySQL",
+      "Database Migration",
+      "Security"
+    ],
+    "post": "2026-11-20-import-azure-mysql-routines-triggers-events-definer"
+  },
+  {
+    "title": "Retain Azure MySQL Backups Beyond 35 Days with MyDumper and Blob Storage",
+    "description": "Build a long-retention logical backup workflow with consistent MyDumper exports, protected Blob storage, integrity checks, and isolated restore drills.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Azure",
+      "MySQL",
+      "Backup",
+      "Disaster Recovery"
+    ],
+    "post": "2026-11-20-retain-azure-mysql-backups-mydumper-blob-storage"
+  },
+  {
+    "title": "Recover One Azure MySQL Table from a Full-Server Restore",
+    "description": "Recover a selected Azure MySQL table or database through an isolated full-server restore, then reconcile recovered records without erasing newer work.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Azure",
+      "MySQL",
+      "Backup",
+      "Disaster Recovery"
+    ],
+    "post": "2026-11-20-recover-azure-mysql-table-full-server-pitr"
+  },
+  {
+    "title": "Run Azure MySQL Schema Migrations from Azure Pipelines",
+    "description": "Run reviewed MySQL schema changes through Azure Pipelines with private connectivity, verified TLS, deployment gates, and a clear partial-failure recovery process.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Azure",
+      "MySQL",
+      "Azure Pipelines",
+      "Database Migration"
+    ],
+    "post": "2026-11-20-azure-mysql-schema-migrations-pipelines-task"
+  },
+  {
+    "title": "Enable and Rotate Customer-Managed Keys for Azure MySQL",
+    "description": "Configure customer-managed encryption for Azure MySQL, rotate to an explicit key version, and verify access and recovery before retiring older keys.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Azure",
+      "MySQL",
+      "Azure Key Vault",
+      "Security"
+    ],
+    "post": "2026-11-20-azure-mysql-customer-managed-key-rotation"
+  },
+  {
+    "title": "Clone Azure MySQL for Development and Mask Sensitive Data",
+    "description": "Build a development clone through a restricted Azure MySQL restore, explicit masking rules, relationship checks, and a clean destination containing only approved data.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Azure",
+      "MySQL",
+      "Data Masking",
+      "Development"
+    ],
+    "post": "2026-11-20-clone-azure-mysql-development-mask-sensitive-data"
+  },
+  {
+    "title": "Schedule Azure MySQL Stop/Start Around the 30-Day Restart",
+    "description": "Schedule Azure MySQL dev/test shutdowns and startups, verify their outcomes, and detect unexpected running servers before the 30-day automatic restart surprises you.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Azure",
+      "MySQL",
+      "Azure Automation",
+      "Monitoring"
+    ],
+    "post": "2026-11-20-schedule-azure-mysql-stop-start-automatic-restart"
+  },
+  {
+    "title": "Diagnose Azure MySQL Slowdowns from Exhausted CPU Credits",
+    "description": "Identify Burstable CPU-credit exhaustion with Azure MySQL metrics, separate it from other bottlenecks, and choose a recovery plan that does not amplify overload.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Azure",
+      "MySQL",
+      "Performance",
+      "Troubleshooting"
+    ],
+    "post": "2026-11-20-azure-mysql-burstable-exhausted-cpu-credits"
+  },
+  {
+    "title": "Diagnose High Azure MySQL Memory Use Before Scaling Up",
+    "description": "Separate useful MySQL caching from memory pressure using Azure metrics, connection trends, instrumented allocations, and version-aware temporary-table checks.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Azure",
+      "MySQL",
+      "Performance",
+      "Troubleshooting"
+    ],
+    "post": "2026-11-20-diagnose-azure-mysql-high-memory-before-scaling"
+  },
+  {
+    "title": "Detect Azure MySQL IOPS Throttling and Tune Storage Performance",
+    "description": "Investigate Azure MySQL storage saturation with correctly aggregated I/O metrics, identify the limiting capacity, and validate an IOPS change against application outcomes.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Azure",
+      "MySQL",
+      "Performance",
+      "Troubleshooting"
+    ],
+    "post": "2026-11-20-detect-azure-mysql-iops-throttling-storage-performance"
+  },
+  {
+    "title": "Stream Azure MySQL Changes with Debezium and Data-Out Replication",
+    "description": "Configure Debezium to snapshot and stream Azure MySQL binlogs with verified TLS, retained recovery state, explicit snapshot constraints, and a practical CDC smoke test.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Azure",
+      "MySQL",
+      "Debezium",
+      "Kafka"
+    ],
+    "post": "2026-11-20-stream-azure-mysql-debezium-data-out-binlog"
+  },
+  {
+    "title": "Scale Azure MySQL with Safe Connection Retries",
+    "description": "Plan Azure MySQL compute and storage changes, drain application traffic, retry fresh connections safely, and verify recovery without replaying uncertain writes.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Azure",
+      "MySQL",
+      "Reliability",
+      "Performance"
+    ],
+    "post": "2026-11-20-scale-azure-mysql-compute-storage-connection-retries"
+  },
+  {
+    "title": "Preserve Azure MySQL Scheduled Events During Dump-and-Restore Migrations",
+    "description": "Preserve MySQL event definitions, owners, schedules, and time zones during an Azure migration while preventing duplicate jobs and checking restored execution safely.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Azure",
+      "MySQL",
+      "Database Migration",
+      "Backup"
+    ],
+    "post": "2026-11-20-preserve-azure-mysql-scheduled-events-dump-restore"
+  },
+  {
+    "title": "Return a Valid Kubernetes AdmissionReview v1 Response",
+    "description": "Build and test AdmissionReview v1 responses with the original request UID, correctly encoded JSON Patch, explicit denial, and a clean no-change response.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Kubernetes",
+      "Python",
+      "JSON",
+      "Testing"
+    ],
+    "post": "2026-11-20-kubernetes-admissionreview-v1-response-uid-json-patch"
+  },
+  {
+    "title": "Write Webhook JSON Patches for Missing Labels and Empty Pod Arrays",
+    "description": "Build shape-aware webhook patches that preserve existing labels, handle absent or empty optional Pod lists, avoid duplicate entries, and pass local fixture tests.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Kubernetes",
+      "JSON",
+      "Python",
+      "Testing"
+    ],
+    "post": "2026-11-20-webhook-json-patch-missing-labels-empty-pod-arrays"
+  },
+  {
+    "title": "Fix Mutating Webhook TLS Errors and Rotate Certificates Safely",
+    "description": "Diagnose webhook certificate failures by checking Service DNS names, admission CA bundles, served certificate chains, and safe leaf or CA rotation order.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Kubernetes",
+      "Security",
+      "Troubleshooting"
+    ],
+    "post": "2026-11-20-fix-mutating-webhook-tls-service-dns-ca-bundle-rotation"
+  },
+  {
+    "title": "Fix Stalled cert-manager CA Injection for Mutating Webhooks",
+    "description": "Trace stalled webhook CA injection through source annotations, Certificate Secrets, controller permissions, feature settings, and version-aware rotation checks.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Kubernetes",
+      "Cert-Manager",
+      "Security",
+      "Troubleshooting"
+    ],
+    "post": "2026-11-20-cert-manager-webhook-ca-bundle-injection-stalls"
+  },
+  {
+    "title": "Find Why Your Mutating Webhook Is Never Called",
+    "description": "Trace missing webhook calls through request operations, resource rules, API versions, subresources, namespace and object selectors, then verify with a scoped dry run.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Kubernetes",
+      "Troubleshooting",
+      "Testing"
+    ],
+    "post": "2026-11-20-mutating-webhook-never-called-rules-selectors"
+  },
+  {
+    "title": "Debug Failed Webhook Calls Through Endpoints, Routing, and Timeouts",
+    "description": "Locate failed webhook calls across Service selection, backend ports, NetworkPolicy, control-plane routing, TLS, and handler latency using scoped diagnostic checks.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Kubernetes",
+      "Networking",
+      "Troubleshooting"
+    ],
+    "post": "2026-11-20-debug-failed-calling-webhook-endpoints-routing-timeouts"
+  },
+  {
+    "title": "Scope Mutating Webhooks Without Breaking System Namespaces",
+    "description": "Combine namespace enrollment, protected namespace exclusions, and workload opt-in selectors to limit webhook impact and preserve recovery paths during an outage.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Kubernetes",
+      "Reliability",
+      "Security"
+    ],
+    "post": "2026-11-20-scope-mutating-webhooks-protect-system-namespaces"
+  },
+  {
+    "title": "Skip Irrelevant Mutating Webhook Calls with CEL Match Conditions",
+    "description": "Filter optional webhook calls inside the API server with guarded CEL expressions, predictable error handling, and a practical canary test matrix.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Kubernetes",
+      "Reliability",
+      "Performance"
+    ],
+    "post": "2026-11-20-cel-matchconditions-skip-irrelevant-webhook-calls"
+  },
+  {
+    "title": "Make Mutating Webhooks Idempotent Under IfNeeded Reinvocation",
+    "description": "Build repeatable Pod mutations that avoid duplicate environment variables, handle later container injection, and remain safe under IfNeeded reinvocation.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Kubernetes",
+      "Reliability",
+      "Python"
+    ],
+    "post": "2026-11-20-idempotent-mutating-webhooks-reinvocation-ifneeded"
+  },
+  {
+    "title": "Design Mutating Webhooks That Tolerate Changing Invocation Order",
+    "description": "Design compatible webhook mutations with explicit field ownership, order-independent behavior, and local composition tests before a cluster canary.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Kubernetes",
+      "Reliability",
+      "Testing"
+    ],
+    "post": "2026-11-20-design-mutating-webhooks-changing-invocation-order"
+  },
+  {
+    "title": "Handle UPDATE and DELETE Admission Requests with the Right Object",
+    "description": "Route admission requests by operation, compare proposed updates with oldObject, and handle deletion without treating the stored resource as a mutable request.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Kubernetes",
+      "Python",
+      "Reliability"
+    ],
+    "post": "2026-11-20-handle-update-delete-admission-oldobject-object"
+  },
+  {
+    "title": "Support Server-Side Dry Runs with Honest Webhook Side Effects",
+    "description": "Make server-side dry runs exercise real mutation logic without external writes, and verify that webhook sideEffects declarations match the implementation.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Kubernetes",
+      "Testing",
+      "Reliability"
+    ],
+    "post": "2026-11-20-mutating-webhook-server-dry-run-sideeffects"
+  },
+  {
+    "title": "Use Equivalent Webhook Matching Without Mixing API Versions",
+    "description": "Distinguish original and converted admission versions, register a supported payload contract, and test version-aware mutations with an HPA example.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Kubernetes",
+      "Python",
+      "Reliability"
+    ],
+    "post": "2026-11-20-webhook-matchpolicy-equivalent-api-version"
+  },
+  {
+    "title": "Switch a Mutating Webhook from Ignore to Fail with a Canary",
+    "description": "Move webhook failures from fail-open to fail-closed behavior using narrow canary scope, request-path checks, guarded changes, and a rehearsed recovery path.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Kubernetes",
+      "Reliability",
+      "Testing"
+    ],
+    "post": "2026-11-20-switch-webhook-failurepolicy-ignore-to-fail"
+  },
+  {
+    "title": "Keep Mutating Webhooks Fast and Available During Disruptions",
+    "description": "Combine webhook replicas, deliberate placement, disruption budgets, rollout controls, and measured timeouts without mistaking configuration for availability.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Kubernetes",
+      "Reliability",
+      "Performance"
+    ],
+    "post": "2026-11-20-keep-mutating-webhooks-fast-available"
+  },
+  {
+    "title": "Observe Mutating Webhooks with Metrics and Audit Evidence",
+    "description": "Separate slow calls, explicit denials, fail-open errors, and actual mutations using API server metrics, focused audit records, and safe webhook logs.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Kubernetes",
+      "Observability",
+      "Prometheus"
+    ],
+    "post": "2026-11-20-observe-mutating-webhooks-metrics-audit-patches"
+  },
+  {
+    "title": "Canary a Mutating Webhook with Opt-In Namespaces",
+    "description": "Roll out a webhook through explicit namespace enrollment, compare expected mutations with actual results, and define promotion and exit criteria before expanding.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Kubernetes",
+      "Testing",
+      "Reliability"
+    ],
+    "post": "2026-11-20-canary-mutating-webhook-opt-in-namespaces"
+  },
+  {
+    "title": "Reconcile Existing Kubernetes Resources with a Bounded Job",
+    "description": "Backfill existing resources with a scoped reconciliation Job that previews patches, preserves user values, checks concurrent changes, and reports partial progress.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Kubernetes",
+      "Python",
+      "Automation"
+    ],
+    "post": "2026-11-20-reconcile-existing-kubernetes-resources-with-job"
+  },
+  {
+    "title": "Inject an Init Container, Volume, and Mount with One JSON Patch",
+    "description": "Build one admission patch for an init container and shared volume, preserve existing Pod fields, and test conflicts before injecting a mount.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Kubernetes",
+      "Python",
+      "Automation"
+    ],
+    "post": "2026-11-20-inject-init-container-volume-mount-json-patch"
+  },
+  {
+    "title": "Kubernetes 1.36 Mutation Policies: ApplyConfiguration vs. JSONPatch",
+    "description": "Replace a small webhook with a scoped Kubernetes 1.36 mutation policy, compare merge and JSON Patch expressions, and test the migration without losing coverage.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Kubernetes",
+      "Automation",
+      "Security"
+    ],
+    "post": "2026-11-20-kubernetes-mutatingadmissionpolicy-applyconfiguration-jsonpatch"
+  },
+  {
+    "title": "Prevent a Mutating Webhook from Blocking Its Own Recovery",
+    "description": "Break webhook startup dependency loops with explicit namespace exclusions, inspect failed replacement Pods, and rehearse recovery without disabling all admission.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Kubernetes",
+      "Reliability",
+      "DevOps"
+    ],
+    "post": "2026-11-20-prevent-mutating-webhook-blocking-own-pods"
+  },
+  {
+    "title": "Deploy Webhooks in a Safe Helm or GitOps Order",
+    "description": "Separate webhook startup from admission activation, use a two-stage Helm install or Argo CD sync waves, and verify the control-plane request path before expansion.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Kubernetes",
+      "Helm",
+      "GitOps"
+    ],
+    "post": "2026-11-20-deploy-webhook-safe-helm-gitops-order"
+  },
+  {
+    "title": "Load Static Mutating Webhook Manifests in Kubernetes 1.37",
+    "description": "Load webhook registration from API-server files, plan an independent HTTPS endpoint, and distinguish startup failures from rejected runtime reloads in Kubernetes 1.37.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Kubernetes",
+      "Security",
+      "Configuration"
+    ],
+    "post": "2026-11-20-kubernetes-static-mutating-webhook-manifests-bootstrap"
+  },
+  {
+    "title": "Skip Static Mirror Pods in Kubernetes Mutating Webhooks",
+    "description": "Exclude static mirror Pods from mutation, identify their real source of truth, and distinguish ineffective changes from valid admission targets.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Kubernetes",
+      "Automation",
+      "Security"
+    ],
+    "post": "2026-11-20-skip-static-mirror-pods-mutating-webhooks"
+  },
+  {
+    "title": "Should a Kubernetes Finalizer Live in a Controller or Webhook?",
+    "description": "Choose who adds a finalizer, keep cleanup in a controller, and test that protection is persisted before external resources are created or deletion completes.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Kubernetes",
+      "Go",
+      "Automation"
+    ],
+    "post": "2026-11-20-kubernetes-finalizer-controller-or-mutating-webhook"
+  },
+  {
+    "title": "Escape JSON Patch Paths for Kubernetes Labels and Annotations",
+    "description": "Escape JSON Pointer tokens correctly, preserve annotation values and sibling keys, and preview a Kubernetes JSON Patch without confusing path and JSON encoding.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Kubernetes",
+      "Python",
+      "Automation"
+    ],
+    "post": "2026-11-20-escape-json-patch-paths-labels-annotations"
+  },
+  {
+    "title": "Stop Webhook Fields from Sticking Across kubectl apply Updates",
+    "description": "Diagnose retained webhook fields by comparing apply history, live state and mutation behavior, then define explicit ownership and removal rules.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Kubernetes",
+      "Go",
+      "Automation"
+    ],
+    "post": "2026-11-20-stop-mutating-webhook-fields-sticking-kubectl-apply"
+  },
+  {
+    "title": "Choose Between Workload Template and Pod Admission Mutation",
+    "description": "Decide whether to mutate a workload's Pod template or each generated Pod, with correct metadata placement, admission rules, rollout tradeoffs, and inspection examples.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Kubernetes",
+      "DevOps",
+      "Automation"
+    ],
+    "post": "2026-11-20-choose-workload-template-or-pod-mutation"
+  },
+  {
+    "title": "Avoid Duplicate Mutation Across CronJobs, Jobs, and Pods",
+    "description": "Trace CronJob-to-Job-to-Pod metadata, choose one injection stage, and verify scheduled and manual Jobs without copying generated helpers into every template layer.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Kubernetes",
+      "Automation",
+      "DevOps"
+    ],
+    "post": "2026-11-20-mutate-cronjob-job-pod-without-duplicate-injection"
+  },
+  {
+    "title": "Replace a Workload When a Webhook Cannot Change Its Namespace",
+    "description": "Build a replacement workflow for namespace changes, with a checked Kustomize example and explicit identity, storage, traffic, and rollback decisions.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Kubernetes",
+      "DevOps"
+    ],
+    "post": "2026-11-20-replace-workload-when-webhook-cannot-change-namespace"
+  },
+  {
+    "title": "Preserve New Pod Fields When a Webhook Uses Older Go Types",
+    "description": "Prevent older Go admission webhooks from deleting newer Pod fields by keeping the original JSON and emitting narrowly scoped patches.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Kubernetes",
+      "Go",
+      "DevOps"
+    ],
+    "post": "2026-11-20-preserve-new-pod-fields-stale-webhook-go-types"
+  },
+  {
+    "title": "Keep Mixed Webhook Replicas Consistent During Rolling Upgrades",
+    "description": "Separate webhook code rollouts from policy changes, compare admission results locally, and manage mixed replicas without assuming an atomic cutover.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Kubernetes",
+      "DevOps"
+    ],
+    "post": "2026-11-20-prevent-mixed-webhook-patches-rolling-upgrade"
+  },
+  {
+    "title": "Version Webhook-Injected Fields for Safe Upgrades and Rollbacks",
+    "description": "Define explicit versions for injected fields, check for drift before migration, and test forward and reverse patches without overwriting user changes.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Kubernetes",
+      "DevOps"
+    ],
+    "post": "2026-11-20-version-webhook-injected-fields-upgrade-rollback"
+  },
+  {
+    "title": "Resolve Image Digests Without Blocking Admission on a Registry",
+    "description": "Resolve image tags before deployment, retain immutable references, and design admission checks that do not wait for a container registry.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Kubernetes",
+      "DevOps"
+    ],
+    "post": "2026-11-20-resolve-image-digests-without-admission-registry-dependency"
+  },
+  {
+    "title": "Rewrite Images to a Private Registry Without Breaking Pulls",
+    "description": "Map image repositories without losing pinned digests, verify mirrored content, and keep registry credentials and node CA trust aligned.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Kubernetes",
+      "DevOps"
+    ],
+    "post": "2026-11-20-rewrite-images-private-registry-digests-pull-credentials"
+  },
+  {
+    "title": "Default Pod Resources Without Fighting LimitRange or VPA",
+    "description": "Assign clear ownership for resource defaults, preserve existing requests, and check limits without overriding namespace policy or autoscaling.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Kubernetes",
+      "Go",
+      "DevOps"
+    ],
+    "post": "2026-11-20-pod-resource-defaults-limitrange-vpa-user-intent"
+  },
+  {
+    "title": "Add imagePullSecrets Without Duplicating ServiceAccount References",
+    "description": "Append only missing Pod pull-secret references, preserve ServiceAccount defaults and user choices, and keep credential material out of admission logic.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Kubernetes",
+      "DevOps"
+    ],
+    "post": "2026-11-20-add-imagepullsecrets-webhook-without-duplicates"
+  },
+  {
+    "title": "Inject Topology Spread Without Unexpected Pending Pods",
+    "description": "Design opt-in topology-spread defaults with correct selectors, preserve existing constraints, and test hard scheduling boundaries before rollout.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Kubernetes",
+      "DevOps"
+    ],
+    "post": "2026-11-20-inject-topology-spread-without-unschedulable-pods"
+  },
+  {
+    "title": "Default ServiceAccount Token Mounts Without Breaking API Clients",
+    "description": "Set token-mount defaults before Pod admission, preserve deliberate API access, and distinguish automatic mounts from explicit token projections.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Kubernetes",
+      "Security",
+      "DevOps"
+    ],
+    "post": "2026-11-20-default-serviceaccount-token-mount-api-dependent-workloads"
   }
 ]

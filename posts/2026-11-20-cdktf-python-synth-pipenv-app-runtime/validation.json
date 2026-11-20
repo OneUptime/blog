@@ -1,0 +1,43 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-20",
+  "runtimeTestsPerformed": true,
+  "infrastructureDeploymentPerformed": false,
+  "versions": {
+    "cdktf": "0.21.0",
+    "python": "3.11.13",
+    "pipenv": "2026.11.0",
+    "constructs": "10.8.1",
+    "node": "24.1.0",
+    "jsii": "1.143.0"
+  },
+  "checks": [
+    "Pipenv installation created isolated environment and lock",
+    "Published diagnostic ran in outside and project interpreters",
+    "Pipenv verify and sync passed",
+    "Plain Python app command failed with ModuleNotFoundError",
+    "Changing only app command to pipenv run python main.py made CDKTF CLI synth pass",
+    "Direct Python synthesis passed and output value checked",
+    "Python AST, JSON, shell syntax and Mermaid six-node five-edge structure checked",
+    "Social image visually reviewed: readable and unclipped"
+  ],
+  "limitations": [
+    "No Terraform init/plan/apply, provider installation or cloud access",
+    "No Windows or CI runner execution",
+    "Module shadowing and missing Node scenarios explained from docs, not reproduced",
+    "No browser Mermaid rendering"
+  ],
+  "sources": [
+    "https://developer.hashicorp.com/terraform/cdktf",
+    "https://github.com/hashicorp/terraform-cdk/blob/v0.21.0/packages/@cdktf/cli-core/templates/python/cdktf.json",
+    "https://docs.python.org/3.11/library/sys.html#sys.executable",
+    "https://docs.python.org/3.11/library/importlib.metadata.html",
+    "https://docs.python.org/3.11/library/importlib.html#importlib.util.find_spec",
+    "https://pipenv.pypa.io/en/latest/commands.html",
+    "https://pypi.org/pypi/cdktf/0.21.0/json",
+    "https://pipenv.pypa.io/en/latest/virtualenv.html",
+    "https://docs.python.org/3.11/tutorial/modules.html#the-module-search-path",
+    "https://aws.github.io/jsii/user-guides/lib-user/",
+    "https://pip.pypa.io/en/stable/user_guide/#running-pip"
+  ]
+}

@@ -1,0 +1,8 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-20",
+  "validationScope": "Official documentation and pinned OneUptime source review; metadata, Bash syntax, structural Mermaid validation, image generation and visual inspection. No live identity integration testing.",
+  "runtimeTestsPerformed": false,
+  "sourceRevisionReviewed": "0de2d9ceac0a2404f5df7ad1f9ab1e22c56bea7e",
+  "wordCountWhitespace": 1499
+}

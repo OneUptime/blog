@@ -1,0 +1,35 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-20",
+  "runtimeTestsPerformed": true,
+  "infrastructureDeploymentPerformed": false,
+  "sources": [
+    "https://dev.mysql.com/doc/refman/8.0/en/events-configuration.html",
+    "https://dev.mysql.com/doc/refman/8.0/en/information-schema-events-table.html",
+    "https://dev.mysql.com/doc/refman/8.0/en/show-create-event.html",
+    "https://learn.microsoft.com/en-us/azure/mysql/flexible-server/concepts-server-parameters#event_scheduler",
+    "https://dev.mysql.com/doc/refman/8.0/en/mysqldump-stored-programs.html",
+    "https://dev.mysql.com/doc/refman/8.0/en/mysqldump.html",
+    "https://github.com/mysql/mysql-server/blob/mysql-8.0.46/client/mysqldump.cc",
+    "https://dev.mysql.com/doc/refman/8.0/en/events-privileges.html",
+    "https://dev.mysql.com/doc/refman/8.0/en/mysql-command-options.html",
+    "https://dev.mysql.com/doc/refman/8.0/en/events-metadata.html",
+    "https://dev.mysql.com/doc/refman/8.0/en/create-event.html",
+    "https://dev.mysql.com/doc/refman/8.0/en/alter-event.html",
+    "https://dev.mysql.com/doc/refman/8.0/en/events-status-info.html"
+  ],
+  "tests": [
+    "Two Bash examples passed bash -n",
+    "Exact inventory SELECT executed against SQLite fixture with adapted information_schema table, including recurring, disabled one-time, and unrelated-schema events; filtering, ordering and retained fields checked",
+    "MySQL 8.0.46 mysqldump event serialization reviewed for definer, SQL mode, time zone and opt_drop handling",
+    "Mermaid six nodes/five edges structurally checked",
+    "Two SELECTs and SHOW CREATE EVENT parsed with sqlglot 28.0.0 MySQL dialect",
+    "Generated social image visually inspected; complete title legible without clipping"
+  ],
+  "limitations": [
+    "No MySQL server, mysqldump export, mysql import or Azure parameter change executed",
+    "SQLite fixture validates inventory selection only, not MySQL privileges, scheduler behavior or event creation",
+    "Definitions and show/global-variable SQL source-reviewed; no live event execution or definer migration verified",
+    "Mermaid not rendered"
+  ]
+}

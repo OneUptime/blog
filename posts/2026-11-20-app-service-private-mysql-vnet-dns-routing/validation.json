@@ -1,0 +1,27 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-20",
+  "runtimeTestsPerformed": false,
+  "infrastructureDeploymentPerformed": false,
+  "sources": [
+    "https://learn.microsoft.com/en-us/azure/app-service/overview-private-endpoint",
+    "https://learn.microsoft.com/en-us/azure/mysql/flexible-server/concepts-networking-private-link",
+    "https://learn.microsoft.com/en-us/azure/mysql/flexible-server/concepts-networking-vnet",
+    "https://learn.microsoft.com/en-us/azure/app-service/overview-vnet-integration",
+    "https://learn.microsoft.com/en-us/troubleshoot/azure/app-service/troubleshoot-vnet-integration-apps",
+    "https://learn.microsoft.com/en-us/azure/private-link/private-endpoint-dns",
+    "https://learn.microsoft.com/en-us/azure/app-service/overview-name-resolution",
+    "https://learn.microsoft.com/en-us/azure/app-service/configure-vnet-integration-routing"
+  ],
+  "tests": [
+    "Kudu CMD examples compared with official native Windows App Service command documentation; placeholders and explicit 3306 port checked",
+    "Official inbound/private-endpoint, outbound/VNet integration, MySQL network models, DNS zone and routing guidance reviewed",
+    "Mermaid structurally checked: eight nodes and seven edges; not rendered",
+    "Generated social image visually inspected: readable title without clipping"
+  ],
+  "limitations": [
+    "No Windows CMD parser or Kudu command execution available; source review only",
+    "No live App Service integration, DNS, routing, private endpoint, TLS or MySQL login tests performed",
+    "Platform-provided diagnostic tools have no independently pinned binary release in this example"
+  ]
+}

@@ -1,0 +1,33 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-20",
+  "runtimeTestsPerformed": false,
+  "infrastructureDeploymentPerformed": false,
+  "sources": [
+    "https://kubernetes.io/docs/concepts/cluster-administration/admission-webhooks-good-practices/",
+    "https://kubernetes.io/docs/concepts/overview/working-with-objects/labels/#label-selectors",
+    "https://kubernetes.io/docs/concepts/overview/working-with-objects/namespaces/#automatic-labelling",
+    "https://github.com/kubernetes/kubernetes/blob/v1.35.0/staging/src/k8s.io/apiserver/pkg/admission/plugin/webhook/predicates/namespace/matcher.go",
+    "https://kubernetes.io/docs/reference/kubectl/generated/kubectl_get/",
+    "https://kubernetes.io/docs/reference/kubectl/generated/kubectl_label/",
+    "https://kubernetes.io/docs/concepts/workloads/pods/#pod-templates",
+    "https://github.com/kubernetes/kubernetes/blob/v1.35.0/staging/src/k8s.io/apiserver/pkg/admission/plugin/webhook/predicates/object/matcher.go",
+    "https://raw.githubusercontent.com/kubernetes/kubernetes/v1.35.0/api/openapi-spec/swagger.json",
+    "https://raw.githubusercontent.com/kubernetes/apimachinery/v0.35.0/pkg/labels/selector.go"
+  ],
+  "tests": [
+    "Two YAML fragments parsed with PyYAML 6.0.2; matching fragment validated inside synthetic complete webhook entry against official Kubernetes v1.35.0 OpenAPI definition using jsonschema 4.25.1",
+    "20 namespace-name/enrollment/workload-opt-in combinations checked with a restricted local boolean model of the shown selectors",
+    "CLI inventory selector checked against YAML enrollment and exact protected-name list; Pod template label checked against objectSelector",
+    "Four Bash blocks passed bash -n",
+    "Official namespace/object matcher and label selector semantics source-reviewed",
+    "Generated social image visually reviewed; full title fits without clipping"
+  ],
+  "limitations": [
+    "No Kubernetes selector runtime, namespace-label changes, workload rollout, admission request or outage rehearsal executed",
+    "Local boolean model covers only the shown matchLabels and single NotIn requirement, not a general selector evaluator",
+    "YAML fragments are intentionally incomplete and require integration into existing owned resources",
+    "Protected namespace list is illustrative and requires cluster-specific review",
+    "No Mermaid diagram needed; tables present scope and expected outcomes"
+  ]
+}

@@ -1,0 +1,31 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-20",
+  "runtimeTestsPerformed": true,
+  "infrastructureDeploymentPerformed": false,
+  "sources": [
+    "https://learn.microsoft.com/en-us/azure/mysql/flexible-server/resolve-capacity-errors",
+    "https://learn.microsoft.com/en-us/azure/azure-resource-manager/templates/deployment-history",
+    "https://learn.microsoft.com/en-us/cli/azure/deployment/operation/group?view=azure-cli-latest",
+    "https://github.com/Azure/azure-cli/blob/azure-cli-2.80.0/src/azure-cli/azure/cli/command_modules/resource/commands.py",
+    "https://learn.microsoft.com/en-us/azure/templates/microsoft.dbformysql/2024-12-30/flexibleservers",
+    "https://learn.microsoft.com/en-us/azure/azure-resource-manager/bicep/bicep-cli",
+    "https://learn.microsoft.com/en-us/cli/azure/mysql/flexible-server?view=azure-cli-latest",
+    "https://github.com/Azure/azure-cli/blob/azure-cli-2.80.0/src/azure-cli/azure/cli/command_modules/rdbms/_params.py",
+    "https://learn.microsoft.com/en-us/azure/azure-resource-manager/bicep/deploy-what-if"
+  ],
+  "tests": [
+    "Three shell examples passed bash -n",
+    "JMESPath 1.0.1 synthetic test retained nested failed-operation details, omitted succeeded operations, handled empty input and extracted correlation ID",
+    "Reviewed Azure CLI 2.80.0 resource command registrations and MySQL list-skus location parameter source",
+    "Reviewed MySQL API 2024-12-30 property paths and official capacity error categories",
+    "Reviewed Bicep build and what-if boundaries; no capacity guarantee inferred",
+    "Social image visually inspected; readable without clipping"
+  ],
+  "limitations": [
+    "Azure CLI commands were not executed; no authenticated service lookup performed",
+    "No actual user Bicep template was compiled or deployed for this article",
+    "Synthetic JMESPath checks do not establish actual deployment response content",
+    "No region access, quota, provider registration or infrastructure changes performed"
+  ]
+}

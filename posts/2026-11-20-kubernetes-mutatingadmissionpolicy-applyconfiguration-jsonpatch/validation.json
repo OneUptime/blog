@@ -1,0 +1,30 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-20",
+  "runtimeTestsPerformed": true,
+  "infrastructureDeploymentPerformed": false,
+  "sources": [
+    "https://v1-36.docs.kubernetes.io/docs/reference/access-authn-authz/mutating-admission-policy/",
+    "https://kubernetes.io/docs/tasks/configure-pod-container/configure-service-account/#opt-out-of-api-credential-automounting",
+    "https://kubernetes.io/docs/reference/using-api/cel/",
+    "https://github.com/kubernetes/apiserver/blob/v0.36.0/pkg/admission/plugin/policy/mutating/patch/smd.go",
+    "https://github.com/kubernetes/api/blob/v0.36.0/admissionregistration/v1/types.go",
+    "https://github.com/kubernetes/apiserver/blob/v0.36.0/pkg/admission/plugin/policy/mutating/patch/json_patch.go",
+    "https://www.rfc-editor.org/rfc/rfc6902",
+    "https://kubernetes.io/docs/reference/using-api/api-concepts/#dry-run",
+    "https://raw.githubusercontent.com/kubernetes/kubernetes/v1.36.0/api/openapi-spec/swagger.json",
+    "https://raw.githubusercontent.com/kubernetes/apiserver/v0.36.0/go.mod"
+  ],
+  "tests": [
+    "Complete ApplyConfiguration policy, alternative JSONPatch policy and binding checked against v1.36.0 OpenAPI shapes with PyYAML/jsonschema",
+    "Three CEL expressions parsed with cel-go0.26.0, matching upstream v0.36.0 dependency",
+    "Absence predicate compiled and evaluated with dynamic object fixtures: omitted, explicit true, explicit false",
+    "Social image generated and visually reviewed with complete title visible"
+  ],
+  "limitations": [
+    "No Kubernetes cluster contacted or policies installed",
+    "CEL Object/JSONPatch constructors parsed only; no Kubernetes-specific type checking, patch application or cost-budget evaluation",
+    "Local dynamic-variable predicate fixtures are not Kubernetes typed object/defaulting tests",
+    "Tokenless application behavior and old/new admission coverage transitions require staging verification"
+  ]
+}

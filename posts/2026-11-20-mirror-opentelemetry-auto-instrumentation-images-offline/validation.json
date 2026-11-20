@@ -1,0 +1,9 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-20",
+  "validationScope": "Tagged Operator source and documentation review; YAML parsing and CRD field/type/required/enum subset checks; Bash syntax, Mermaid structure, metadata, and visual image checks. No live Kubernetes or registry testing.",
+  "runtimeTestsPerformed": false,
+  "operatorVersionReviewed": "v0.163.0",
+  "javaInstrumentationImageVersion": "2.33.1-3",
+  "wordCountWhitespace": 1395
+}

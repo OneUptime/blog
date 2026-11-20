@@ -1,0 +1,28 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-20",
+  "runtimeTestsPerformed": true,
+  "infrastructureDeploymentPerformed": false,
+  "tests": [
+    "Boto3 1.40.76 service model inspected for assignment request/response fields",
+    "Six local botocore Stubber scenarios passed: pending, success, failure, account mismatch, request ID mismatch, permission denial",
+    "Published Python matches tested file exactly",
+    "Mermaid eight nodes/eight edges structurally checked",
+    "Generated social image visually inspected and unclipped"
+  ],
+  "sources": [
+    "https://docs.aws.amazon.com/controltower/latest/userguide/aft-overview.html",
+    "https://docs.aws.amazon.com/singlesignon/latest/APIReference/API_CreateAccountAssignment.html",
+    "https://docs.aws.amazon.com/singlesignon/latest/APIReference/API_DescribeAccountAssignmentCreationStatus.html",
+    "https://docs.aws.amazon.com/singlesignon/latest/APIReference/API_ListAccountAssignments.html",
+    "https://docs.aws.amazon.com/cost-management/latest/userguide/budgets-managing-costs.html",
+    "https://docs.aws.amazon.com/cost-management/latest/userguide/budgets-best-practices.html",
+    "https://docs.aws.amazon.com/controltower/latest/controlreference/control-behavior.html"
+  ],
+  "limitations": [
+    "No AWS API calls, account creation, AFT deployment or identity login",
+    "No budget delivery or governance enforcement tested",
+    "No durable checkpoint implementation or live assignment reconciliation tested",
+    "Mermaid not rendered"
+  ]
+}

@@ -1,0 +1,29 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-20",
+  "runtimeTestsPerformed": true,
+  "infrastructureDeploymentPerformed": false,
+  "tests": [
+    "Exact main.ts compiled and synthesized with CDKTF0.21.0 and provider-aws21.22.1",
+    "Executed article Node resource-map inspection; matched address aws_cloudwatch_log_group.logging_application_81125BEB, name /example/existing-app and provider aws",
+    "Verified Terraform1.11.4 import help and source-reviewed state/plan commands and resource-specific import name",
+    "All Bash snippets syntax-checked; seven-node six-edge Mermaid structure checked",
+    "Generated1280x720 social image visually reviewed: complete readable title without clipping"
+  ],
+  "limitations": [
+    "No AWS authentication, API call, import, state mutation or deployment tested",
+    "No Terraform AWS binary validation or remote plan run; provider import semantics verified from official6.25.0 docs",
+    "Root-resource inspection intentionally does not enumerate resources inside Terraform modules or instances",
+    "Mermaid not browser-rendered; Node24.1.0/macOS arm64, TypeScript5.8.3, ts-node10.9.2, constructs10.8.1"
+  ],
+  "sources": [
+    "https://developer.hashicorp.com/terraform/cdktf",
+    "https://developer.hashicorp.com/terraform/cli/commands/import",
+    "https://registry.npmjs.org/@cdktf/provider-aws/21.22.1",
+    "https://github.com/hashicorp/terraform-provider-aws/blob/v6.25.0/website/docs/r/cloudwatch_log_group.html.markdown",
+    "https://developer.hashicorp.com/terraform/cdktf/concepts/resources",
+    "https://developer.hashicorp.com/terraform/cli/state/resource-addressing",
+    "https://developer.hashicorp.com/terraform/cli/commands/state/list",
+    "https://developer.hashicorp.com/terraform/cli/commands/state/show"
+  ]
+}

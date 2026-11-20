@@ -1,0 +1,30 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-20",
+  "runtimeTestsPerformed": true,
+  "infrastructureDeploymentPerformed": false,
+  "sources": [
+    "https://learn.microsoft.com/en-us/azure/mysql/flexible-server/concepts-service-tiers-storage",
+    "https://learn.microsoft.com/en-us/azure/mysql/flexible-server/concepts-monitor-mysql-reference",
+    "https://dev.mysql.com/doc/refman/8.0/en/memory-use.html",
+    "https://dev.mysql.com/doc/refman/8.0/en/innodb-buffer-pool.html",
+    "https://learn.microsoft.com/en-us/azure/mysql/flexible-server/concepts-server-parameters",
+    "https://dev.mysql.com/doc/refman/8.0/en/server-status-variables.html",
+    "https://dev.mysql.com/doc/refman/8.0/en/performance-schema-memory-summary-tables.html",
+    "https://dev.mysql.com/doc/refman/8.0/en/internal-temporary-tables.html",
+    "https://learn.microsoft.com/en-us/azure/mysql/flexible-server/how-to-troubleshoot-low-memory-issues"
+  ],
+  "tests": [
+    "Three SQL SELECT examples parsed with sqlglot 28.0.0 MySQL dialect",
+    "Exact current-allocation ranking query executed against synthetic SQLite Performance Schema-shaped table; current ordering, historical peak distinction, MiB conversion and zero filtering verified",
+    "Illustrative buffer-pool interval ratio arithmetic verified as 99.5 percent",
+    "Reviewed MySQL 8.0 TempTable version rules, instrumentation limitations and Azure total-memory metric definition",
+    "Generated social image visually inspected without clipping"
+  ],
+  "limitations": [
+    "No MySQL or Azure server queried, load test executed, or configuration changed",
+    "SQLite checks test query logic on synthetic data, not MySQL Performance Schema runtime or instrumentation coverage",
+    "Global parameter values need session-specific interpretation in a real environment",
+    "No claim of diagnosis or demonstrated improvement for an actual workload"
+  ]
+}

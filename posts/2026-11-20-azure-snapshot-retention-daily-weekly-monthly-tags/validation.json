@@ -1,0 +1,33 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-20",
+  "runtimeTestsPerformed": true,
+  "infrastructureDeploymentPerformed": false,
+  "tests": [
+    "Python 3.11.13 exact expected retention union for 400 daily snapshots; disjoint keep/candidate partition checked",
+    "Held oldest snapshot preserved; stale newest snapshot blocks candidates; empty and single histories checked",
+    "Year-boundary fixture and five malformed input cases checked",
+    "Published Python matches tested implementation; minimal example keeps its only snapshot",
+    "Official Az.Compute 9.0.0 loaded with Az.Accounts 5.3.0 under PowerShell 7.4.6; Get/Remove snapshot command metadata inspected",
+    "PowerShell inventory snippet parsed; Mermaid seven nodes/six edges structurally checked",
+    "Generated image visually reviewed for readable unclipped title"
+  ],
+  "sources": [
+    "https://learn.microsoft.com/en-us/azure/azure-resource-manager/management/tag-resources",
+    "https://learn.microsoft.com/en-us/azure/virtual-machines/disks-incremental-snapshots",
+    "https://www.powershellgallery.com/packages/Az.Compute/9.0.0",
+    "https://learn.microsoft.com/en-us/powershell/module/az.compute/get-azsnapshot",
+    "https://learn.microsoft.com/en-us/powershell/module/az.accounts/set-azcontext",
+    "https://learn.microsoft.com/en-us/powershell/module/az.accounts/disable-azcontextautosave",
+    "https://learn.microsoft.com/en-us/azure/virtual-machines/snapshot-copy-managed-disk",
+    "https://docs.python.org/3.11/library/datetime.html",
+    "https://learn.microsoft.com/en-us/powershell/module/az.compute/remove-azsnapshot?view=azps-15.4.0",
+    "https://learn.microsoft.com/en-us/azure/azure-resource-manager/management/lock-resources"
+  ],
+  "limitations": [
+    "No live Azure inventory, snapshot creation, deletion, lock or restore tests",
+    "Python selector requires prevalidated normalized rows for one disk family; it does not implement Azure normalization or deletion",
+    "Retention policy uses occupied UTC periods, not rolling age cutoffs; missing backups need separate monitoring",
+    "Mermaid not rendered"
+  ]
+}

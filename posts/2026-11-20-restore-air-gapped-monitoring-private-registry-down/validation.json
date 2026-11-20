@@ -1,0 +1,9 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-20",
+  "validationScope": "Official documentation and pinned bundle-source review; metadata, four Bash syntax checks, structural Mermaid checks, and generated image inspection. No deployment execution.",
+  "runtimeTestsPerformed": false,
+  "bundleSourceCommit": "0de2d9ceac0a2404f5df7ad1f9ab1e22c56bea7e",
+  "exampleVersion": "17.0.0",
+  "wordCountWhitespace": 1430
+}

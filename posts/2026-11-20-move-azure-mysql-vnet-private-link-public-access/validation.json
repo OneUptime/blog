@@ -1,0 +1,31 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-20",
+  "runtimeTestsPerformed": false,
+  "infrastructureDeploymentPerformed": false,
+  "sources": [
+    "https://learn.microsoft.com/en-us/azure/mysql/flexible-server/concepts-networking-vnet",
+    "https://learn.microsoft.com/en-us/azure/mysql/flexible-server/concepts-networking-private-link",
+    "https://learn.microsoft.com/en-us/azure/private-link/private-endpoint-dns",
+    "https://learn.microsoft.com/en-us/azure/mysql/flexible-server/how-to-network-from-private-to-public",
+    "https://learn.microsoft.com/en-us/azure/mysql/flexible-server/concepts-networking-public",
+    "https://learn.microsoft.com/en-us/powershell/module/dnsclient/resolve-dnsname?view=windowsserver2025-ps",
+    "https://learn.microsoft.com/en-us/powershell/module/nettcpip/test-netconnection?view=windowsserver2025-ps",
+    "https://dev.mysql.com/doc/refman/8.4/en/connection-options.html",
+    "https://dev.mysql.com/doc/refman/8.4/en/mysql-command-options.html"
+  ],
+  "tests": [
+    "PowerShell examples parsed with PowerShell 7.4.6 parser; Windows cmdlets not executed",
+    "MySQL client command passed bash -n; flags checked against MySQL 8.4 documentation",
+    "Mermaid structural check: six declared nodes and five resolved edges",
+    "Reviewed dedicated Azure transition workflow, irreversible downtime warning and incomplete-endpoint lockout condition",
+    "Reviewed Private Link DNS zone and public-access separation",
+    "Social image visually reviewed; readable without clipping"
+  ],
+  "limitations": [
+    "No network transition, private endpoint, DNS change or database connection executed",
+    "No downtime measurement or application recovery test performed",
+    "PowerShell parser does not verify Windows module availability or connectivity",
+    "Mermaid structure checked, not rendered"
+  ]
+}
