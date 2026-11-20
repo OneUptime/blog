@@ -51,10 +51,10 @@ Evaluate the real connection's `Match` conditions, rather than reading one confi
 
 ```bash
 /usr/sbin/sshd -T -f /etc/ssh/sshd_config \
-  -C user=alice,addr=198.51.100.27,host=workstation.example.net,laddr=192.0.2.10,lport=22
+  -C user=alice,addr=198.51.100.27,host=198.51.100.27,laddr=192.0.2.10,lport=22
 ```
 
-Replace every example value. Here, `host` means the resolved **source** hostname; `addr` is the source address seen by sshd. Reproduce any configuration path and command-line overrides used by the running service. The [sshd test mode](https://manpages.ubuntu.com/manpages/noble/man8/sshd.8.html) prints effective settings and exits; it does not test PAM or execute a login.
+Replace every example value; `addr` is the source address seen by sshd. With the default [`UseDNS no`](https://manpages.ubuntu.com/manpages/noble/man5/sshd_config.5.html), set `host` to that numeric address as shown. With `UseDNS yes`, use the source hostname only when sshd's [reverse lookup and forward-address verification](https://raw.githubusercontent.com/openssh/openssh-portable/V_9_6_P1/auth.c) succeed; otherwise use the numeric address. The [test-mode parser](https://raw.githubusercontent.com/openssh/openssh-portable/V_9_6_P1/servconf.c) uses the supplied `host` directly, so it must match what the running daemon would derive. Reproduce any configuration path and command-line overrides used by the running service. The [sshd test mode](https://manpages.ubuntu.com/manpages/noble/man8/sshd.8.html) prints effective settings and exits; it does not test PAM or execute a login.
 
 Inspect `authenticationmethods`, `usepam`, `forcecommand`, `chrootdirectory`, `permittty`, and authorized-key locations. Follow included files when locating the responsible rule.
 
