@@ -2,7 +2,6 @@
 
 ## SSH
 
-27. How to Rotate SSH Host Keys Gracefully with `UpdateHostKeys`
 28. How to Publish and Verify SSH Host Fingerprints with DNSSEC-Protected SSHFP Records
 29. How to Chain a Local Port Forward Through Multiple SSH Jump Hosts with `ProxyJump`
 30. How to Restrict a Reverse SSH Tunnel’s Listen Address and Port with `PermitListen` and `GatewayPorts`

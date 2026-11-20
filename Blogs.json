@@ -824133,5 +824133,18 @@
     ],
     "post": "2026-11-20-audit-public-key-authenticated-ssh-session",
     "readmePath": "posts/2026-11-20-audit-public-key-authenticated-ssh-session/README.md"
+  },
+  {
+    "title": "How to Rotate SSH Host Keys Gracefully with `UpdateHostKeys`",
+    "description": "Rotate plain SSH host keys through an overlap window, verify that clients persist replacement trust, and retire old keys without surprising disconnected clients.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "SSH",
+      "OpenSSH",
+      "Security",
+      "Linux"
+    ],
+    "post": "2026-11-20-rotate-ssh-host-keys-updatehostkeys",
+    "readmePath": "posts/2026-11-20-rotate-ssh-host-keys-updatehostkeys/README.md"
   }
 ]
