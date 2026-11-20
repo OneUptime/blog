@@ -823998,5 +823998,19 @@
     ],
     "post": "2026-11-20-ssh-broken-pipe-idle-nat-server-session-failures",
     "readmePath": "posts/2026-11-20-ssh-broken-pipe-idle-nat-server-session-failures/README.md"
+  },
+  {
+    "title": "“Remote Port Forwarding Failed for Listen Port”: Check Bind Conflicts, `GatewayPorts`, and Forwarding Policy",
+    "description": "Diagnose SSH remote forwarding failures by separating server bind conflicts, requested listen addresses, forwarding permissions, and client-side destination failures.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "SSH",
+      "OpenSSH",
+      "Remote Port Forwarding",
+      "GatewayPorts",
+      "Troubleshooting"
+    ],
+    "post": "2026-11-20-ssh-remote-port-forwarding-failed-bind-gatewayports-policy",
+    "readmePath": "posts/2026-11-20-ssh-remote-port-forwarding-failed-bind-gatewayports-policy/README.md"
   }
 ]
