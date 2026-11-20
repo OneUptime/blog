@@ -2,7 +2,6 @@
 
 ## SSH
 
-39. How to Diagnose SSH Sessions That Hang Only on Large Packets by Testing MTU
 40. How to Limit SSH Connection Floods with `MaxStartups` and `PerSourcePenalties` in OpenSSH 9.8+
 
 ## Aerospike
