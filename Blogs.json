@@ -824175,5 +824175,18 @@
     ],
     "post": "2026-11-20-chain-local-port-forward-multiple-ssh-proxyjump",
     "readmePath": "posts/2026-11-20-chain-local-port-forward-multiple-ssh-proxyjump/README.md"
+  },
+  {
+    "title": "How to Restrict SSH Certificate Logins with `AuthorizedPrincipalsFile` and Critical Options",
+    "description": "Restrict OpenSSH certificate access with account-specific principals, source-address and forced-command constraints, and tests that exclude alternative authentication paths.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "OpenSSH",
+      "SSH",
+      "Security",
+      "Linux"
+    ],
+    "post": "2026-11-20-restrict-ssh-certificate-logins-authorizedprincipalsfile-critical-options",
+    "readmePath": "posts/2026-11-20-restrict-ssh-certificate-logins-authorizedprincipalsfile-critical-options/README.md"
   }
 ]

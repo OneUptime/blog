@@ -2,7 +2,6 @@
 
 ## SSH
 
-31. How to Restrict SSH Certificate Logins with `AuthorizedPrincipalsFile` and Critical Options
 32. How to Forward a Unix Domain Socket over SSH
 33. How to Build Short, Collision-Resistant SSH `ControlPath` Values with `%C` for Long Hostnames and Multiple Users
 34. How to Repair Stale SSH Multiplexing Sockets After a Crash
