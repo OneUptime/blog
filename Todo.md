@@ -1053,15 +1053,35 @@ Research: [OneUptime air-gapped alerting](https://oneuptime.com/enterprise/air-g
 
     Completed: [Article](posts/2026-11-20-select-cadvisor-metric-groups-enable-disable/README.md) (20 November 2026).
 10. Reducing cAdvisor Cardinality with Container Label Whitelists and Prometheus Relabeling
+
+    Completed: [Article](posts/2026-11-20-reduce-cadvisor-cardinality-container-labels-relabeling/README.md) (20 November 2026).
 11. Calculating Container CPU Cores, Percent, and Throttling from cAdvisor Metrics
+
+    Completed: [Article](posts/2026-11-20-calculate-cadvisor-container-cpu-cores-percent-throttling/README.md) (20 November 2026).
 12. cAdvisor Memory Metrics Explained: Usage, Working Set, RSS, Cache, and Container Limits
+
+    Completed: [Article](posts/2026-11-20-cadvisor-memory-usage-working-set-rss-cache-limits/README.md) (20 November 2026).
 13. Why `container_fs_usage_bytes` Does Not Match a Container’s Writable Layer—and What to Monitor Instead
+
+    Completed: [Article](posts/2026-11-20-cadvisor-filesystem-usage-container-writable-layer/README.md) (20 November 2026).
 14. Alerting on Container OOM Kills with cAdvisor Without Losing Events Across Restarts
+
+    Completed: [Article](posts/2026-11-20-cadvisor-oom-alerts-restarts-event-gaps/README.md) (20 November 2026).
 15. Troubleshooting Missing Per-Container Network Metrics in Host-Networked Containers
+
+    Completed: [Article](posts/2026-11-20-cadvisor-host-network-missing-container-metrics/README.md) (20 November 2026).
 16. Tuning cAdvisor Housekeeping and Prometheus Scrape Intervals Without Stale Data or High Overhead
+
+    Completed: [Article](posts/2026-11-20-tune-cadvisor-housekeeping-prometheus-scrape-intervals/README.md) (20 November 2026).
 17. Securing the cAdvisor Metrics Endpoint with a Reverse Proxy, TLS, and Authentication
+
+    Completed: [Article](posts/2026-11-20-secure-cadvisor-metrics-nginx-tls-authentication/README.md) (20 November 2026).
 18. Building Grafana Dashboards That Filter cAdvisor Pseudo-Containers and Survive Label Changes
+
+    Completed: [Article](posts/2026-11-20-grafana-cadvisor-filters-stable-label-contract/README.md) (20 November 2026).
 19. Keeping Metrics for Stopped Containers After cAdvisor Forgets Them
+
+    Completed: [Article](posts/2026-11-20-retain-stopped-container-metrics-cadvisor-prometheus/README.md) (20 November 2026).
 20. Migrating cAdvisor Images from `gcr.io` to `ghcr.io` for v0.53 and Later
 21. How to Determine Which cAdvisor Version Is Embedded in a Kubernetes Release
 22. How to Fix cAdvisor When It Reports Only the Host Root Cgroup

@@ -1,0 +1,24 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-20",
+  "runtimeTestsPerformed": true,
+  "infrastructureDeploymentPerformed": false,
+  "sources": [
+    "https://prometheus.io/docs/prometheus/latest/querying/basics/",
+    "https://prometheus.io/docs/prometheus/latest/configuration/recording_rules/",
+    "https://grafana.com/docs/grafana/latest/datasources/prometheus/template-variables/",
+    "https://grafana.com/docs/grafana/latest/visualizations/dashboards/variables/variable-syntax/"
+  ],
+  "tests": [
+    "Promtool 3.7.3 checked and evaluated the published recording rule with synthetic application, parent, infrastructure, missing image metadata, distinct runtime IDs and duplicate-input series.",
+    "Five expression assertions verified raw population, application filtering, preserved recording-rule values/identities, and detection of duplicate inputs.",
+    "Grafana query template checked after manual substitution of cluster/namespace/pod; documentation reviewed for regex interpolation and query-variable types.",
+    "Four-edge Mermaid structure checked; not graphically rendered.",
+    "Generated 1280x720 social image visually reviewed, readable without clipping."
+  ],
+  "limitations": [
+    "No Grafana UI, actual interpolation engine, Kubernetes cluster or cAdvisor deployment was run.",
+    "Synthetic fixtures test the explicitly defined label population; filters are not claimed universal across runtimes.",
+    "No historical backfill or exporter upgrade was performed."
+  ]
+}

@@ -1,0 +1,28 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-20",
+  "runtimeTestsPerformed": true,
+  "infrastructureDeploymentPerformed": false,
+  "sources": [
+    "https://github.com/google/cadvisor/blob/v0.55.1/manager/manager.go",
+    "https://github.com/google/cadvisor/blob/v0.55.1/metrics/prometheus.go",
+    "https://prometheus.io/docs/prometheus/latest/querying/functions/#increase",
+    "https://prometheus.io/docs/prometheus/latest/configuration/alerting_rules/",
+    "https://prometheus.io/docs/alerting/latest/configuration/",
+    "https://docs.docker.com/reference/cli/docker/system/events/",
+    "https://github.com/kubernetes/kube-state-metrics/blob/main/docs/metrics/workload/pod-metrics.md"
+  ],
+  "tests": [
+    "Promtool 3.7.3 checked the published rule file and evaluated five expression plus seven alert-state assertions.",
+    "Fixtures covered observed increment, reset and increment, constant nonzero counter, lone sample, zero counter, continued firing at 13 minutes and resolution by 18 minutes.",
+    "Read pinned cAdvisor 0.55.1 manager/exporter source for OOM source initialization, event/victim identities and metric group gating.",
+    "Shell examples passed bash syntax checks; Docker events options reviewed against official documentation.",
+    "Six-edge Mermaid flow structurally checked; not graphically rendered.",
+    "Generated 1280x720 social image visually inspected with readable unclipped title."
+  ],
+  "limitations": [
+    "No live OOM was induced and no Docker, Kubernetes, Alertmanager receiver or durable event pipeline was exercised.",
+    "Synthetic fixtures validate query/rule behavior, not collector coverage or notification delivery.",
+    "The article explicitly avoids claiming lossless detection from metrics and identifies event retention as a separate deployment requirement."
+  ]
+}

@@ -1,0 +1,31 @@
+# Validation summary
+
+## Checks performed
+
+- Promtool 3.7.3 validated the complete published scrape configuration.
+- Promtool synthetic fixtures returned sample age 60 seconds for an older memory sample and CPU rate one core for the counter fixture.
+- Compose fragment passed official schema at commit 6b3a2a93e77c30ded1aa8264307e74d1208a6eae.
+- Pinned source reviewed for housekeeping flags, adaptive scheduling, jitter, filesystem refresh, and container_last_seen export-time behavior.
+- Five-edge Mermaid structure checked; no graphical rendering.
+- Generated 1280x720 social image visually reviewed; readable title without clipping.
+
+## Limitations
+
+- No cAdvisor deployment, performance benchmark or end-to-end alert timing measurement was run.
+- Query fixtures verify expression semantics, not actual exported timestamp age on a running deployment.
+- Housekeeping example is a staging baseline; no universal overhead or freshness guarantee is made.
+
+## Reviewed sources
+
+- https://github.com/google/cadvisor/blob/v0.55.1/container/common/fsHandler.go
+- https://github.com/google/cadvisor/blob/v0.55.1/docs/runtime_options.md
+- https://github.com/google/cadvisor/blob/v0.55.1/manager/manager.go
+- https://github.com/google/cadvisor/blob/v0.55.1/manager/container.go
+- https://prometheus.io/docs/prometheus/latest/configuration/configuration/
+- https://github.com/google/cadvisor/blob/v0.55.1/metrics/prometheus.go
+- https://prometheus.io/docs/prometheus/latest/querying/functions/#timestamp
+- https://prometheus.io/docs/prometheus/latest/querying/basics/#staleness
+
+## Repository checks
+
+The repository validator passed for this post in an isolated fixture with its catalog entry, author list, tag allowlist, and social image. Shell examples, if present, passed bash syntax checking. The full existing catalog was not revalidated.

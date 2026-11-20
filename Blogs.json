@@ -827648,5 +827648,123 @@
       "Monitoring"
     ],
     "post": "2026-11-20-select-cadvisor-metric-groups-enable-disable"
+  },
+  {
+    "title": "Reduce cAdvisor Label Cost Without Losing Container Identity",
+    "description": "Control cAdvisor metadata labels at the exporter, use metric relabeling carefully, and measure series count, churn, and label cost without merging containers.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Prometheus",
+      "Docker",
+      "Monitoring"
+    ],
+    "post": "2026-11-20-reduce-cadvisor-cardinality-container-labels-relabeling"
+  },
+  {
+    "title": "Calculate Container CPU Cores, Percent, and Throttling with cAdvisor",
+    "description": "Turn cAdvisor CPU counters into useful core usage, quota utilization, and throttling measurements with explicit denominators and tested PromQL examples.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Docker",
+      "Prometheus",
+      "Monitoring"
+    ],
+    "post": "2026-11-20-calculate-cadvisor-container-cpu-cores-percent-throttling"
+  },
+  {
+    "title": "Understand cAdvisor Memory Usage, Working Set, RSS, and Limits",
+    "description": "Read cAdvisor memory gauges correctly, compare usage with working set and RSS, and build limit-aware queries without mistaking cache or missing data for safety.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Docker",
+      "Linux",
+      "Prometheus",
+      "Monitoring"
+    ],
+    "post": "2026-11-20-cadvisor-memory-usage-working-set-rss-cache-limits"
+  },
+  {
+    "title": "Why cAdvisor Filesystem Usage Differs from a Container's Writable Layer",
+    "description": "Diagnose differences between cAdvisor filesystem usage and Docker writable-layer size, then monitor host capacity, container growth, volumes, and logs separately.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Docker",
+      "Linux",
+      "Monitoring",
+      "Prometheus"
+    ],
+    "post": "2026-11-20-cadvisor-filesystem-usage-container-writable-layer"
+  },
+  {
+    "title": "Alert on cAdvisor OOM Events Across Restarts Without Hiding Gaps",
+    "description": "Build reset-aware cAdvisor OOM alerts, test short-lived containers and missing samples, and retain runtime events when a metrics scrape cannot preserve the evidence.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Docker",
+      "Prometheus",
+      "Monitoring",
+      "Alerting"
+    ],
+    "post": "2026-11-20-cadvisor-oom-alerts-restarts-event-gaps"
+  },
+  {
+    "title": "Diagnose Missing cAdvisor Metrics for Host-Networked Containers",
+    "description": "Distinguish missing network collection from shared-namespace accounting, inspect host-networked containers safely, and choose metrics that match the attribution you need.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Docker",
+      "Linux",
+      "Networking",
+      "Monitoring"
+    ],
+    "post": "2026-11-20-cadvisor-host-network-missing-container-metrics"
+  },
+  {
+    "title": "Tune cAdvisor Housekeeping and Prometheus Scrape Intervals",
+    "description": "Balance cAdvisor collection and Prometheus scraping with explicit timing, freshness checks, realistic rate windows, and a staged measurement plan.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Prometheus",
+      "Docker",
+      "Monitoring",
+      "Performance"
+    ],
+    "post": "2026-11-20-tune-cadvisor-housekeeping-prometheus-scrape-intervals"
+  },
+  {
+    "title": "Secure cAdvisor Metrics with NGINX, TLS, and Client Certificates",
+    "description": "Put cAdvisor behind a restricted NGINX endpoint with verified server TLS and client-certificate authentication, then test both successful scrapes and rejected clients.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Docker",
+      "Prometheus",
+      "Nginx",
+      "Security",
+      "Monitoring"
+    ],
+    "post": "2026-11-20-secure-cadvisor-metrics-nginx-tls-authentication"
+  },
+  {
+    "title": "Build cAdvisor Dashboards with Explicit Filters and Stable Labels",
+    "description": "Filter parent and infrastructure series deliberately, give Grafana a documented container-label contract, and test dashboard behavior before exporter labels change.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Grafana",
+      "Prometheus",
+      "Kubernetes",
+      "Monitoring"
+    ],
+    "post": "2026-11-20-grafana-cadvisor-filters-stable-label-contract"
+  },
+  {
+    "title": "Keep Stopped-Container Metrics After cAdvisor Removes Them",
+    "description": "Preserve scraped container history in Prometheus, query stopped containers without pretending they are live, and distinguish exporter cache, retention, and missing observations.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Prometheus",
+      "Docker",
+      "Monitoring"
+    ],
+    "post": "2026-11-20-retain-stopped-container-metrics-cadvisor-prometheus"
   }
 ]
