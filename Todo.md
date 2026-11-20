@@ -2,7 +2,6 @@
 
 ## SSH
 
-24. How to Apply Different SSH Authentication Requirements by User and Group with `Match` Blocks
 25. How to Audit Which Public Key Authenticated Each SSH Session
 26. How to Restrict One `authorized_keys` Entry by Source IP, Command, and Forwarding
 27. How to Rotate SSH Host Keys Gracefully with `UpdateHostKeys`

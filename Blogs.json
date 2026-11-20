@@ -824105,5 +824105,19 @@
     ],
     "post": "2026-11-20-create-use-resident-openssh-fido2-security-key",
     "readmePath": "posts/2026-11-20-create-use-resident-openssh-fido2-security-key/README.md"
+  },
+  {
+    "title": "How to Apply Different SSH Authentication Requirements by User and Group with `Match` Blocks",
+    "description": "Build per-user and per-group SSH authentication policies with Match blocks, understand overlapping rules, and verify required authentication paths before rollout.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "SSH",
+      "OpenSSH",
+      "Authentication",
+      "Linux",
+      "Security"
+    ],
+    "post": "2026-11-20-ssh-authentication-requirements-user-group-match",
+    "readmePath": "posts/2026-11-20-ssh-authentication-requirements-user-group-match/README.md"
   }
 ]
