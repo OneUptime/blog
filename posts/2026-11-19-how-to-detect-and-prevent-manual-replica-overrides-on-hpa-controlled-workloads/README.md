@@ -30,7 +30,7 @@ Save timestamps and recent HPA events. An unexpected change immediately after a 
 ## Use managed fields as an ownership clue
 
 ```bash
-kubectl get deployment checkout -n production -o json |
+kubectl get deployment checkout -n production -o json --show-managed-fields |
   jq '.metadata.managedFields[]? |
       select(.fieldsV1."f:spec"."f:replicas" != null) |
       {manager, operation, subresource, time}'
