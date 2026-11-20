@@ -824146,5 +824146,20 @@
     ],
     "post": "2026-11-20-rotate-ssh-host-keys-updatehostkeys",
     "readmePath": "posts/2026-11-20-rotate-ssh-host-keys-updatehostkeys/README.md"
+  },
+  {
+    "title": "How to Publish and Verify SSH Host Fingerprints with DNSSEC-Protected SSHFP Records",
+    "description": "Publish trusted SSH host fingerprints in DNS, validate the DNSSEC chain and resolver path, and prove that OpenSSH authenticates a server through SSHFP.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "SSH",
+      "OpenSSH",
+      "SSHFP",
+      "DNSSEC",
+      "DNS",
+      "Security"
+    ],
+    "post": "2026-11-20-publish-verify-sshfp-dnssec",
+    "readmePath": "posts/2026-11-20-publish-verify-sshfp-dnssec/README.md"
   }
 ]

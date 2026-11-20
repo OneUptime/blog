@@ -2,7 +2,6 @@
 
 ## SSH
 
-28. How to Publish and Verify SSH Host Fingerprints with DNSSEC-Protected SSHFP Records
 29. How to Chain a Local Port Forward Through Multiple SSH Jump Hosts with `ProxyJump`
 30. How to Restrict a Reverse SSH Tunnel’s Listen Address and Port with `PermitListen` and `GatewayPorts`
 31. How to Restrict SSH Certificate Logins with `AuthorizedPrincipalsFile` and Critical Options
