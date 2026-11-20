@@ -1092,7 +1092,10 @@ ls -la ~/dynamodb-data
 // 2. No VPC endpoints
 // 3. Capacity limits are not enforced
 // 4. Global tables not supported
-// 5. Some advanced features may behave differently
+// 5. Point-in-time recovery (PITR) not supported
+// 6. AWS_ACCESS_KEY_ID may contain only letters and numbers
+// 7. Some advanced features may behave differently
+// See https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/DynamoDBLocal.UsageNotes.html
 
 // Add a check in your code to log the environment
 console.log(`DynamoDB mode: ${process.env.DYNAMODB_ENDPOINT ? 'LOCAL' : 'AWS'}`);
