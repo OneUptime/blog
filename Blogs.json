@@ -823942,5 +823942,19 @@
     ],
     "post": "2026-11-20-ssh-terminal-works-cron-ci-home-trust-agent-tty",
     "readmePath": "posts/2026-11-20-ssh-terminal-works-cron-ci-home-trust-agent-tty/README.md"
+  },
+  {
+    "title": "“Pseudo-terminal Will Not Be Allocated”: When to Use `-T`, `-t`, or `-tt` in SSH Automation",
+    "description": "Choose SSH terminal allocation deliberately, distinguish local stdin warnings from server refusals, and preserve command input, output, and exit status in automation.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "SSH",
+      "OpenSSH",
+      "Automation",
+      "Terminal",
+      "Troubleshooting"
+    ],
+    "post": "2026-11-20-ssh-pseudo-terminal-t-t-tt-automation",
+    "readmePath": "posts/2026-11-20-ssh-pseudo-terminal-t-t-tt-automation/README.md"
   }
 ]
