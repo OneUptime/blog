@@ -4729,7 +4729,6 @@ Research: [OneUptime air-gapped alerting](https://oneuptime.com/enterprise/air-g
 
 ## Prometheus Rules
 
-1. How to Load Prometheus Rule Files and Reload Them Without Restarting the Server
 2. How to Fix a Valid Prometheus Rule File That Does Not Appear on the `/rules` Page
 3. How to Validate Prometheus Rule YAML and PromQL with `promtool check rules`
 4. How to Debug an Alerting Rule That Stays Inactive, Pending, or Never Reaches Firing

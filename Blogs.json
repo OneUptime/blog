@@ -828932,5 +828932,17 @@
       "S3"
     ],
     "post": "2026-11-20-rotate-registry-storage-credentials"
+  },
+  {
+    "title": "How to Load Prometheus Rule Files and Reload Them Without Restarting the Server",
+    "description": "Load Prometheus recording and alerting rules, validate the files seen by the server, and verify a runtime reload without restarting Prometheus.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Prometheus",
+      "Monitoring",
+      "Alerting"
+    ],
+    "post": "2026-11-21-load-prometheus-rules-reload-without-restart",
+    "readmePath": "posts/2026-11-21-load-prometheus-rules-reload-without-restart/README.md"
   }
 ]
