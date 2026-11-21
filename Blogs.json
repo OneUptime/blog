@@ -830270,5 +830270,116 @@
       "Troubleshooting"
     ],
     "post": "2026-11-20-monitor-db2-utility-progress"
+  },
+  {
+    "title": "Configure Db2 JDBC TLS and Diagnose Certificate Failures",
+    "description": "Configure encrypted Db2 JDBC connections with explicit certificate trust and hostname checks, then separate truststore, endpoint, protocol, and login failures.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Database",
+      "Java",
+      "TLS",
+      "Troubleshooting"
+    ],
+    "post": "2026-11-20-db2-jdbc-tls-truststore-hostname-protocol"
+  },
+  {
+    "title": "Run kube-bench Per Node and Keep Results Attributable",
+    "description": "Create a finite kube-bench Job for each selected node, preserve Pod and node identities with the reports, and distinguish missing coverage from passing checks.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Kubernetes",
+      "Security",
+      "Compliance"
+    ],
+    "post": "2026-11-20-kube-bench-once-per-node-attributed-results"
+  },
+  {
+    "title": "Fix Pending kube-bench Jobs on Control-Plane Nodes",
+    "description": "Diagnose unscheduled kube-bench Pods, correct control-plane label matching and taint tolerations, and preserve the evidence when creating a replacement Job.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Kubernetes",
+      "Security",
+      "Troubleshooting"
+    ],
+    "post": "2026-11-20-kube-bench-pending-control-plane-selectors-tolerations"
+  },
+  {
+    "title": "Fix kube-bench HostPath Failures on Read-Only Nodes",
+    "description": "Diagnose kube-bench host-path failures without creating fake evidence, weakening node permissions, or assuming managed platforms allow host inspection.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Kubernetes",
+      "Security",
+      "Troubleshooting"
+    ],
+    "post": "2026-11-20-kube-bench-hostpath-read-only-managed-nodes"
+  },
+  {
+    "title": "Fix kube-bench Version Mapping and Config Directory Errors",
+    "description": "Repair incomplete kube-bench binary installations by restoring matching configuration files, separating config paths, and validating benchmark selection.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Kubernetes",
+      "Security",
+      "Troubleshooting"
+    ],
+    "post": "2026-11-20-kube-bench-missing-version-mapping-config-directory"
+  },
+  {
+    "title": "Choose the Right kube-bench Profile for Your Distribution",
+    "description": "Select kube-bench profiles for EKS, AKS, GKE, K3s, RKE2, and MicroK8s by checking distribution guidance, bundled controls, and assessment scope.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Kubernetes",
+      "Security",
+      "Compliance"
+    ],
+    "post": "2026-11-20-select-kube-bench-cis-profile-kubernetes-distributions"
+  },
+  {
+    "title": "Override kube-bench Version Detection Without Changing Scope",
+    "description": "Override kube-bench version detection deliberately, check mapping fallbacks and environment precedence, and retain evidence of the benchmark actually selected.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Kubernetes",
+      "Security",
+      "Troubleshooting"
+    ],
+    "post": "2026-11-20-kube-bench-version-detection-override-benchmark"
+  },
+  {
+    "title": "Customize kube-bench Paths Without Weakening the Checks",
+    "description": "Point kube-bench at real component files on nonstandard nodes, account for configuration overrides, and verify path selection without changing benchmark expectations.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Kubernetes",
+      "Security",
+      "Configuration"
+    ],
+    "post": "2026-11-20-kube-bench-custom-component-paths"
+  },
+  {
+    "title": "Interpret kube-bench PASS, FAIL, WARN, and INFO Results",
+    "description": "Read kube-bench statuses alongside reasons, scoring, and manual-check definitions so skipped or unexecuted controls do not become false compliance claims.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Kubernetes",
+      "Security",
+      "Compliance"
+    ],
+    "post": "2026-11-20-interpret-kube-bench-pass-fail-warn-info"
+  },
+  {
+    "title": "Rerun Failed kube-bench Checks and Groups During Remediation",
+    "description": "Select failed kube-bench controls for focused remediation, verify the checks actually ran, and return to a full assessment before closing the change.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Kubernetes",
+      "Security",
+      "Troubleshooting"
+    ],
+    "post": "2026-11-20-rerun-failed-kube-bench-checks-groups"
   }
 ]

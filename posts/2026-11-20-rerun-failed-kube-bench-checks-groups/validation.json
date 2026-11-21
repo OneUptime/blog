@@ -1,0 +1,22 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-21",
+  "runtimeTestsPerformed": true,
+  "sources": [
+    "https://github.com/aquasecurity/kube-bench/blob/v0.14.0/cmd/common.go",
+    "https://github.com/aquasecurity/kube-bench/blob/v0.14.0/cmd/root.go",
+    "https://github.com/aquasecurity/kube-bench/blob/v0.14.0/check/controls.go"
+  ],
+  "tests": [
+    "Official native v0.14.0 binary: exact check, group, unknown ID, mistaken group-as-check, empty filter, and incompatible check/group selection verified against six synthetic controls",
+    "Article jq failed-ID extraction returned L.2; membership query accepted correct result and rejected empty result",
+    "Three Bash blocks passed syntax checks",
+    "Eight-node eight-edge Mermaid structurally reviewed",
+    "1280x720 social image visually reviewed without clipping"
+  ],
+  "limitations": [
+    "No actual Kubernetes or Linux node assessment or remediation performed",
+    "Native fixture validates filtering and report processing, not host visibility or compliance",
+    "Mermaid was not rendered"
+  ]
+}

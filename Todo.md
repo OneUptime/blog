@@ -1771,17 +1771,37 @@ Research: [OneUptime air-gapped alerting](https://oneuptime.com/enterprise/air-g
     Completed: [Article](posts/2026-11-20-monitor-db2-utility-progress/README.md) (20 November 2026).
 20. How to Configure Db2 JDBC TLS and Diagnose Truststore, Hostname, and Protocol Failures
 
+    Completed: [Article](posts/2026-11-20-db2-jdbc-tls-truststore-hostname-protocol/README.md) (20 November 2026).
+
 ## Kube-bench
 
 1. How to Run kube-bench Once per Kubernetes Node and Preserve Node-Attributed Results
+
+    Completed: [Article](posts/2026-11-20-kube-bench-once-per-node-attributed-results/README.md) (20 November 2026).
 2. How to Fix kube-bench Jobs Stuck in Pending by Correcting Control-Plane Selectors and Tolerations
+
+    Completed: [Article](posts/2026-11-20-kube-bench-pending-control-plane-selectors-tolerations/README.md) (20 November 2026).
 3. How to Fix kube-bench HostPath Mount Failures on Read-Only or Managed Nodes
+
+    Completed: [Article](posts/2026-11-20-kube-bench-hostpath-read-only-managed-nodes/README.md) (20 November 2026).
 4. How to Fix kube-bench “Missing version_mapping” and Config-Directory Errors After Binary Installation
+
+    Completed: [Article](posts/2026-11-20-kube-bench-missing-version-mapping-config-directory/README.md) (20 November 2026).
 5. How to Select the Correct kube-bench CIS Profile for EKS, AKS, GKE, K3s, RKE2, and MicroK8s
+
+    Completed: [Article](posts/2026-11-20-select-kube-bench-cis-profile-kubernetes-distributions/README.md) (20 November 2026).
 6. How to Override kube-bench Kubernetes Version Detection Without Running the Wrong Benchmark
+
+    Completed: [Article](posts/2026-11-20-kube-bench-version-detection-override-benchmark/README.md) (20 November 2026).
 7. How to Customize kube-bench Component Paths for Nonstandard Kubernetes Distributions
+
+    Completed: [Article](posts/2026-11-20-kube-bench-custom-component-paths/README.md) (20 November 2026).
 8. How to Interpret kube-bench PASS, FAIL, WARN, and INFO Results—and Identify Manual Checks
+
+    Completed: [Article](posts/2026-11-20-interpret-kube-bench-pass-fail-warn-info/README.md) (20 November 2026).
 9. How to Re-run Only Failed kube-bench Checks and Groups During Remediation
+
+    Completed: [Article](posts/2026-11-20-rerun-failed-kube-bench-checks-groups/README.md) (20 November 2026).
 10. How to Record Approved kube-bench Exceptions with `--skip` Without Hiding New Drift
 11. How to Gate CI on kube-bench Failures with JUnit Output and Deterministic Exit Codes
 12. How to Parse kube-bench JSON and Track CIS Compliance Drift Between Cluster Releases

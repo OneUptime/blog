@@ -1,0 +1,26 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-21",
+  "runtimeTestsPerformed": true,
+  "sources": [
+    "https://kubernetes.io/docs/tasks/debug/debug-application/debug-running-pod/",
+    "https://github.com/aquasecurity/kube-bench/blob/v0.14.0/job-node.yaml",
+    "https://github.com/aquasecurity/kube-bench/blob/v0.14.0/cfg/config.yaml",
+    "https://kubernetes.io/docs/concepts/storage/volumes/#hostpath",
+    "https://kubernetes.io/docs/concepts/storage/volumes/#read-only-mounts",
+    "https://docs.cloud.google.com/kubernetes-engine/docs/concepts/autopilot-security",
+    "https://docs.cloud.google.com/kubernetes-engine/docs/how-to/autopilot-privileged-allowlists"
+  ],
+  "tests": [
+    "Three shell blocks passed bash syntax checking",
+    "Article mount fragment parsed as Kubernetes PodSpec and readOnly/Directory settings asserted",
+    "Local Kubernetes1.34 API accepted valid Pod specs including nonexistent source path and rejected invalid hostPath type",
+    "Eight-node eight-edge Mermaid structurally checked",
+    "1280x720 social image visually reviewed without clipping"
+  ],
+  "limitations": [
+    "No Linux kubelet, runtime or real host mount; no actual filesystem permission, immutable-node or managed-platform deployment tested",
+    "API test deliberately demonstrates that object acceptance does not establish mount success",
+    "No kube-bench scan; Mermaid not rendered"
+  ]
+}

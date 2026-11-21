@@ -1,0 +1,28 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-21",
+  "runtimeTestsPerformed": true,
+  "sources": [
+    "https://github.com/aquasecurity/kube-bench/blob/v0.14.0/.goreleaser.yml",
+    "https://github.com/aquasecurity/kube-bench/blob/v0.14.0/docs/installation.md",
+    "https://github.com/aquasecurity/kube-bench/blob/v0.14.0/cmd/root.go",
+    "https://github.com/aquasecurity/kube-bench/releases/tag/v0.14.0",
+    "https://github.com/aquasecurity/kube-bench/blob/v0.14.0/cmd/common.go",
+    "https://github.com/aquasecurity/kube-bench/blob/v0.14.0/cmd/run.go",
+    "https://github.com/aquasecurity/kube-bench/blob/v0.14.0/cfg/config.yaml"
+  ],
+  "tests": [
+    "Official Linuxamd64 and Darwinarm64v0.14.0 archive SHA256 hashes matched published release checksums",
+    "Inspected both archives for global config and cis-1.11/node.yaml",
+    "Official Darwinarm64binary reported0.14.0 and reproduced missingversionmapping, missingtargetmapping and missingcontrolfile failures",
+    "Complete-config invalid-target probe reached target validation without running checks",
+    "Four shell blocks passed bash syntax checks, including one explicitly labeled argument fragment",
+    "Six-node five-edge Mermaid structurally checked",
+    "1280x720 social image visually reviewed without clipping"
+  ],
+  "limitations": [
+    "No Linuxnode scan; native execution tested configuration loading and deliberate early-error paths only",
+    "Checksums fetched from same official release; no independent signature verification",
+    "Mermaid not rendered; presence checks do not establish benchmark suitability"
+  ]
+}

@@ -1,0 +1,26 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-21",
+  "runtimeTestsPerformed": true,
+  "sources": [
+    "https://kubernetes.io/docs/concepts/workloads/controllers/job/",
+    "https://github.com/aquasecurity/kube-bench/blob/v0.14.0/cfg/config.yaml",
+    "https://kubernetes.io/docs/reference/access-authn-authz/psp-to-pod-security-standards/",
+    "https://github.com/aquasecurity/kube-bench/blob/v0.14.0/job-node.yaml",
+    "https://kubernetes.io/docs/concepts/workloads/controllers/daemonset/",
+    "https://kubernetes.io/docs/reference/kubectl/generated/kubectl_logs/",
+    "https://github.com/aquasecurity/kube-bench/blob/v0.14.0/cmd/root.go"
+  ],
+  "tests": [
+    "Python generator executed against two synthetic node records and tagged upstream template",
+    "4 shell blocks passed bash syntax checks",
+    "Kubernetes1.34 envtest API accepted both generated Jobs and corresponding unscheduled Pods; read-only mounts and backoffLimit asserted",
+    "Six-node five-edge Mermaid structurally checked",
+    "1280x720 social image visually reviewed without clipping"
+  ],
+  "limitations": [
+    "No scheduler, controller-manager, kubelet or Linux worker: no kube-bench scans, scheduling, host mounts, image pulls or live log retrieval executed",
+    "API validation used local Kubernetes1.34 while benchmark example is1.32; target-cluster admission and platform compatibility still require validation",
+    "Mermaid not rendered; no compliance result claimed"
+  ]
+}

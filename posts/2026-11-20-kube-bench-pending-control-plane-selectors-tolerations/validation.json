@@ -1,0 +1,29 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-21",
+  "runtimeTestsPerformed": true,
+  "sources": [
+    "https://kubernetes.io/docs/tasks/debug/debug-application/debug-running-pod/",
+    "https://kubernetes.io/docs/reference/setup-tools/kubeadm/implementation-details/",
+    "https://kubernetes.io/docs/reference/labels-annotations-taints/",
+    "https://github.com/aquasecurity/kube-bench/blob/v0.14.0/job-master.yaml",
+    "https://kubernetes.io/docs/concepts/scheduling-eviction/assign-pod-node/",
+    "https://kubernetes.io/docs/concepts/scheduling-eviction/taint-and-toleration/",
+    "https://github.com/aquasecurity/kube-bench/blob/v0.14.0/docs/running.md",
+    "https://kubernetes.io/docs/concepts/workloads/controllers/job/"
+  ],
+  "tests": [
+    "Generated replacement Job from pinned upstream manifest and article scheduling fragment",
+    "Four shell blocks passed bash syntax checks",
+    "Kubernetes component-helpers0.34 matched modern/legacy Linux nodes and excluded worker/Windows fixtures",
+    "Toleration tests matched role NoSchedule but rejected NoExecute and unrelated key",
+    "Local Kubernetes1.34 API accepted replacement Job and rejected ordinary Job-template mutation",
+    "Eight-node seven-edge Mermaid structurally checked",
+    "1280x720 social image visually reviewed without clipping"
+  ],
+  "limitations": [
+    "No live scheduler or kubelet: no node placement, admission-policy compatibility, image pull, host mount or kube-bench execution verified",
+    "API emitted expected legacy master-label deprecation warning; compatibility term retained deliberately",
+    "Mermaid not rendered"
+  ]
+}

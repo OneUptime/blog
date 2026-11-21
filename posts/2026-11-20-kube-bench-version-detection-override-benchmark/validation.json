@@ -1,0 +1,24 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-21",
+  "runtimeTestsPerformed": true,
+  "sources": [
+    "https://github.com/aquasecurity/kube-bench/blob/v0.14.0/cmd/root.go",
+    "https://github.com/aquasecurity/kube-bench/blob/v0.14.0/cmd/util.go",
+    "https://github.com/aquasecurity/kube-bench/blob/v0.14.0/cfg/config.yaml",
+    "https://github.com/aquasecurity/kube-bench/blob/v0.14.0/cmd/common.go"
+  ],
+  "tests": [
+    "Official v0.14.0 Darwinbinary exercised explicit minor, unlisted-minor fallback, conflicting flags, environment override, command-line precedence and explicit distribution profile",
+    "All native probes stopped before scans using deliberate invalid targets or conflicting flags",
+    "Exact-mapping helper accepted1.32 and rejected1.33 and decoratedversion input",
+    "Five shell blocks passed bash syntax checks",
+    "Six-node six-edge Mermaid structurally checked",
+    "1280x720 social image visually reviewed without clipping"
+  ],
+  "limitations": [
+    "No Linuxnode scan or compliance result; discovery networking and actual container visibility not tested",
+    "Behavior pinned to v0.14.0 rather than asserted universally across versions",
+    "Mermaid not rendered"
+  ]
+}

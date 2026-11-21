@@ -1,0 +1,30 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-21",
+  "runtimeTestsPerformed": true,
+  "sources": [
+    "https://github.com/aquasecurity/kube-bench/tree/v0.14.0/cfg",
+    "https://github.com/aquasecurity/kube-bench/blob/v0.14.0/cfg/config.yaml",
+    "https://docs.aws.amazon.com/eks/latest/best-practices/protecting-the-infrastructure.html",
+    "https://learn.microsoft.com/en-us/azure/aks/cis-kubernetes",
+    "https://docs.cloud.google.com/kubernetes-engine/docs/concepts/cis-benchmarks",
+    "https://docs.k3s.io/security/hardening-guide",
+    "https://docs.rke2.io/security/hardening_guide",
+    "https://canonical.com/microk8s/docs/how-to-cis-harden",
+    "https://github.com/aquasecurity/kube-bench/blob/v0.14.0/cmd/util.go",
+    "https://github.com/aquasecurity/kube-bench/blob/v0.14.0/cmd/common.go"
+  ],
+  "tests": [
+    "Profile-inspection Python example executed for six pinned profiles and checked30 target files",
+    "Missing-profile and missing-control-file cases rejected",
+    "Official v0.14.0 Darwinbinary reached target validation for six explicit profiles using deliberate invalid targets; no scans executed",
+    "Three shell blocks passed bash syntax checking",
+    "Six-node five-edge Mermaid structurally checked",
+    "1280x720 social image visually reviewed without clipping"
+  ],
+  "limitations": [
+    "No EKS,AKS,GKE,K3s,RKE2 orMicroK8s cluster scanned; profile presence and parser behavior do not establish compatibility or compliance",
+    "Vendor guidance reviewed at authoring time; profile inventory pinned to kube-benchv0.14.0",
+    "Mermaid not rendered"
+  ]
+}

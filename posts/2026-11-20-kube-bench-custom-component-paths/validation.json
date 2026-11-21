@@ -1,0 +1,26 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-21",
+  "runtimeTestsPerformed": true,
+  "sources": [
+    "https://github.com/aquasecurity/kube-bench/blob/v0.14.0/docs/controls.md",
+    "https://github.com/aquasecurity/kube-bench/blob/v0.14.0/cmd/run.go",
+    "https://github.com/aquasecurity/kube-bench/blob/v0.14.0/cfg/config.yaml",
+    "https://github.com/aquasecurity/kube-bench/blob/v0.14.0/cmd/util.go",
+    "https://github.com/aquasecurity/kube-bench/blob/v0.14.0/cmd/common.go",
+    "https://github.com/aquasecurity/kube-bench/blob/v0.14.0/docs/running.md",
+    "https://github.com/aquasecurity/kube-bench/blob/v0.14.0/cfg/cis-1.11/node.yaml"
+  ],
+  "tests": [
+    "Focused Go tests against v0.14.0 source passed first-existing candidate, absent candidate fallback, svc key and benchmark-specific merge precedence",
+    "Two shell blocks passed bash syntax checks",
+    "Two YAML fragments parsed and component/mount structure checked",
+    "Six-node five-edge Mermaid structurally checked",
+    "1280x720 social image visually reviewed without clipping"
+  ],
+  "limitations": [
+    "Go tests used temporary local fixture files, not real kubelet configuration",
+    "No Linuxnode audit, process matching, host mount or actual service permission check executed",
+    "Mermaid not rendered"
+  ]
+}

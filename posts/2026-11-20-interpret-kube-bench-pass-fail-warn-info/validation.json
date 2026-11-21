@@ -1,0 +1,24 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-21",
+  "runtimeTestsPerformed": true,
+  "sources": [
+    "https://github.com/aquasecurity/kube-bench/blob/v0.14.0/check/check.go",
+    "https://github.com/aquasecurity/kube-bench/blob/v0.14.0/check/controls.go",
+    "https://github.com/aquasecurity/kube-bench/blob/v0.14.0/docs/controls.md",
+    "https://github.com/aquasecurity/kube-bench/blob/v0.14.0/cmd/common.go",
+    "https://github.com/aquasecurity/kube-bench/blob/v0.14.0/cmd/root.go"
+  ],
+  "tests": [
+    "Native v0.14.0 synthetic six-control fixture produced PASS, FAIL, manual WARN, skipped INFO, unscored WARN and missing-tests WARN",
+    "Default exit zero and configured exit 3 verified with failed synthetic control",
+    "Three bash blocks syntax checked; both jq projections executed against real synthetic report",
+    "Eight-node seven-edge Mermaid structurally checked",
+    "1280x720 social image visually reviewed; no clipping",
+    "Confirmed --nototals flag spelling against tagged root.go"
+  ],
+  "limitations": [
+    "Synthetic local checks only; no Kubernetes cluster or Linux node audited",
+    "Mermaid was not rendered"
+  ]
+}

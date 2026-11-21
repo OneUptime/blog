@@ -1,0 +1,27 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-21",
+  "runtimeTestsPerformed": false,
+  "sources": [
+    "https://www.ibm.com/support/pages/download-and-install-ibm-data-studio-42x",
+    "https://www.ibm.com/docs/en/db2/11.5.x?topic=ctsijdc-configuring-connections-under-data-server-driver-jdbc-sqlj-use-tls",
+    "https://docs.oracle.com/en/java/javase/17/docs/specs/man/keytool.html",
+    "https://www.ibm.com/docs/en/masv-and-l/maximo-manage/cd?topic=troubleshooting-database-connection-failure-due-ssl-tsl-error",
+    "https://www.ibm.com/docs/en/db2/11.5.x?topic=validation-configuring-db2-clients",
+    "https://www.ibm.com/docs/en/db2/11.5.x?topic=dsdjsss-configuring-connections-under-data-server-driver-jdbc-sqlj-use-ssl",
+    "https://www.ibm.com/docs/en/db2/11.5.x?topic=information-data-server-driver-jdbc-sqlj-configuration-properties",
+    "https://docs.oracle.com/en/java/javase/17/security/java-secure-socket-extension-jsse-reference-guide.html"
+  ],
+  "tests": [
+    "Java diagnostic program compiled with Zulu17.0.16 javac --release17",
+    "3 shell blocks passed bash -n",
+    "Generated temporary local CA certificate, printed it, imported into JKS and confirmed trustedCertEntry using Java17 keytool",
+    "Six-node six-edge Mermaid structurally checked",
+    "1280x720 social image visually reviewed without clipping"
+  ],
+  "limitations": [
+    "No Db2 server or JCC runtime connection: no TLS handshake, hostname rejection, database authentication or certificate renewal exercised",
+    "Java compilation does not validate string-valued JCC properties; these were reviewed against IBM documentation",
+    "Certificate tooling used a temporary local fixture, not a production CA; Mermaid not rendered"
+  ]
+}
