@@ -1,0 +1,33 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-21",
+  "runtimeTestsPerformed": true,
+  "infrastructureDeploymentPerformed": false,
+  "localServerTestPerformed": true,
+  "sources": [
+    "https://docs.docker.com/compose/how-tos/networking/",
+    "https://docs.nats.io/learn/security/encryption",
+    "https://github.com/nats-io/nats-server/blob/v2.11.4/server/opts.go",
+    "https://github.com/nats-io/nats-docker",
+    "https://docs.docker.com/reference/cli/docker/compose/run/",
+    "https://docs.openssl.org/3.6/man1/openssl-verification-options/",
+    "https://docs.openssl.org/3.6/man1/openssl-x509/",
+    "https://github.com/nats-io/nats.go/blob/v1.42.0/nats.go"
+  ],
+  "tests": [
+    "Official Docker Registry manifest inspection verified nats:2.11.4-alpine index digest and Linux ARM64 image config, server version, entrypoint and default command.",
+    "Published Compose YAML passed official Compose JSON schema validation (schema commit 6b3a2a93e77c30ded1aa8264307e74d1208a6eae).",
+    "Created temporary one-day lab CA and separate server/client certificates with OpenSSL 3.6.2; verified server DNS nats and IP 127.0.0.1 plus server/client purposes and inspected SAN/issuer/dates.",
+    "NATS Server 2.11.4 configuration check passed after mapping container file paths and listener to local temporary paths/loopback.",
+    "Published nats.go 1.42.0 client compiled and completed verified TLS connection and NATS flush round trip.",
+    "Separate negative client checks rejected wrong hostname, untrusted server CA and missing client certificate without disabling verification.",
+    "Owned server stopped; temporary certificates, keys and configuration removed.",
+    "Eight-edge Mermaid structural check; generated 1280x720 image visually reviewed without clipping."
+  ],
+  "limitations": [
+    "Docker daemon/CLI unavailable: no docker compose execution, container network, bind-mount permissions or container startup tested.",
+    "Only local single-server client TLS tested; no cluster links, authorization policies, revocation, certificate renewal or production PKI integration.",
+    "Lab used directly signed leaf certificates; intermediate-chain guidance was documentation-reviewed, not executed.",
+    "Mermaid checked structurally without graphical rendering."
+  ]
+}

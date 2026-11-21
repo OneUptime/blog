@@ -1176,15 +1176,35 @@ Research: [OneUptime air-gapped alerting](https://oneuptime.com/enterprise/air-g
 
     Completed: [Article](posts/2026-11-20-diagnose-nats-slow-consumers-bounded-backpressure/README.md) (20 November 2026).
 10. How to Stop Async JetStream Publishers from Overrunning Storage: Pending Limits, Publish Acks, and Client-Side Backpressure
+
+    Completed: [Article](posts/2026-11-20-bound-async-jetstream-publishers-pending-acks-backpressure/README.md) (20 November 2026).
 11. How to Configure NATS Mutual TLS in Docker Without Certificate SAN or Hostname Errors
+
+    Completed: [Article](posts/2026-11-20-nats-mutual-tls-docker-certificate-san-hostnames/README.md) (20 November 2026).
 12. How to Isolate NATS Tenants with Accounts, JWT Credentials, Subject Permissions, and Imports/Exports
+
+    Completed: [Article](posts/2026-11-20-isolate-nats-tenants-accounts-jwt-subject-permissions/README.md) (20 November 2026).
 13. How to Run a Three-Replica JetStream Cluster on Kubernetes: PVCs, Zone Spread, PDBs, and Rolling Upgrades
+
+    Completed: [Article](posts/2026-11-20-three-replica-jetstream-kubernetes-pvc-zone-spread-upgrades/README.md) (20 November 2026).
 14. How to Back Up and Recover NATS JetStream: Stream Snapshots, RAFT Quorum, and Peer Removal
+
+    Completed: [Article](posts/2026-11-20-backup-recover-nats-jetstream-snapshots-quorum-peers/README.md) (20 November 2026).
 15. How to Replicate JetStream Across Regions: Mirrors vs. Sources, Gateways, and Leaf Nodes
+
+    Completed: [Article](posts/2026-11-20-replicate-jetstream-regions-mirrors-sources-gateways-leaf-nodes/README.md) (20 November 2026).
 16. NATS Reconnect Buffers Explained: How to Bound Offline Publishes, Flush State, and Drain on Shutdown
+
+    Completed: [Article](posts/2026-11-20-nats-reconnect-buffers-offline-publishes-flush-drain/README.md) (20 November 2026).
 17. How to Route JetStream Events with Multi-Subject Filters and Subject Transforms Without Breaking Permissions
+
+    Completed: [Article](posts/2026-11-20-route-jetstream-multi-subject-filters-transforms-permissions/README.md) (20 November 2026).
 18. How to Debug NATS Request-Reply Timeouts, No-Responders Errors, and Orphaned Replies
+
+    Completed: [Article](posts/2026-11-20-debug-nats-request-reply-timeouts-no-responders-orphaned-replies/README.md) (20 November 2026).
 19. How to Connect Browser Clients to NATS over WebSockets with TLS and Origin Controls
+
+    Completed: [Article](posts/2026-11-20-browser-nats-websockets-tls-origin-controls/README.md) (20 November 2026).
 20. How to Diagnose NATS Cluster and JetStream Health with `/varz`, `/connz`, `/routez`, and `/jsz`
 
 ## Artifact Management

@@ -1,0 +1,29 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-21",
+  "runtimeTestsPerformed": true,
+  "infrastructureDeploymentPerformed": false,
+  "versions": {
+    "nats-server": "2.11.4",
+    "nats.go": "1.42.0",
+    "Go": "1.25.0"
+  },
+  "sources": [
+    "https://docs.nats.io/learn/resilient-clients/reconnection",
+    "https://github.com/nats-io/nats.go/blob/v1.42.0/nats.go",
+    "https://docs.nats.io/reference/protocols/client",
+    "https://docs.nats.io/learn/resilient-clients/drain-and-shutdown"
+  ],
+  "tests": [
+    "All four exact Go fragments compiled together and executed: connect, publish, timed flush, drain and close callback.",
+    "Local owned server stopped/restarted: 1024-byte threshold accepted four 256-byte payloads, reported1116 bytes, then rejected overflow; timed offline flush failed; all accepted payloads received after reconnect.",
+    "Buffer disabled with -1 rejected offline publish; Drain during reconnect returned ErrConnectionReconnecting and closed.",
+    "Eight-edge Mermaid structure checked; no graphical diagram rendering.",
+    "Social image generated using repository script and visually reviewed at1280x720."
+  ],
+  "limitations": [
+    "No TLS, multi-server failover, retry exhaustion, slow network, application crash, outbox implementation or production deployment tested.",
+    "Happy-path published fragment execution had no business subscriber; delivery assertion uses separate test subscription.",
+    "No exact process-memory limit or performance claim."
+  ]
+}

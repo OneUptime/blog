@@ -1,0 +1,29 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-21",
+  "runtimeTestsPerformed": true,
+  "infrastructureDeploymentPerformed": false,
+  "localServerTestPerformed": true,
+  "sources": [
+    "https://docs.nats.io/learn/jetstream/publishing",
+    "https://github.com/nats-io/nats.go/blob/v1.42.0/jetstream/jetstream_options.go",
+    "https://github.com/nats-io/nats.go/blob/v1.42.0/jetstream/publish.go",
+    "https://github.com/nats-io/nats.go/blob/v1.42.0/jetstream/errors.go",
+    "https://docs.nats.io/learn/jetstream/shaping-the-stream"
+  ],
+  "tests": [
+    "Compiled and executed exact publishWindow helper with Go 1.25.0, nats.go 1.42.0 and disposable NATS Server 2.11.4.",
+    "One-message DiscardNew stream produced one successful PubAck and one error from a two-record window; completion channel closed and pending count became zero despite rejection.",
+    "Rejected input exceeding 32 records, payload exceeding 64 KiB, and missing ID; already-canceled context recorded a non-submission error.",
+    "Controlled non-answering Core subscriber exhausted two async slots; third publication returned ErrTooManyStalledMsgs; outstanding futures returned ErrAsyncPublishTimeout and cleared.",
+    "Published helper matches executed source; publisher options match tested configuration. Eight-edge Mermaid structure checked.",
+    "Generated 1280x720 social image visually reviewed; readable title without clipping.",
+    "Owned test server stopped and temporary storage removed."
+  ],
+  "limitations": [
+    "No physical disk exhaustion, disk-latency simulation, packet loss, cluster failover or throughput benchmark.",
+    "Test harness initially expected the generic timeout sentinel; source review corrected it to the version-specific ErrAsyncPublishTimeout and the complete rerun passed.",
+    "The helper does not implement durable outbox storage, retry scheduling, result persistence or downstream idempotency.",
+    "Mermaid structure checked without graphical rendering."
+  ]
+}

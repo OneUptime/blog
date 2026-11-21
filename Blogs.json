@@ -828129,5 +828129,124 @@
       "Troubleshooting"
     ],
     "post": "2026-11-20-diagnose-nats-slow-consumers-bounded-backpressure"
+  },
+  {
+    "title": "Bound Async JetStream Publishers with Pending Limits and Publish Acks",
+    "description": "Bound asynchronous JetStream publication, inspect every acknowledgment or error, and handle full streams without hiding failures or growing queues forever.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "NATS",
+      "Messaging",
+      "Go"
+    ],
+    "post": "2026-11-20-bound-async-jetstream-publishers-pending-acks-backpressure"
+  },
+  {
+    "title": "Configure NATS Mutual TLS in Docker Without Hostname Errors",
+    "description": "Match NATS certificate names to Docker connection addresses, require trusted client certificates, and verify mutual TLS without disabling hostname checks.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "NATS",
+      "Docker",
+      "Security",
+      "TLS"
+    ],
+    "post": "2026-11-20-nats-mutual-tls-docker-certificate-san-hostnames"
+  },
+  {
+    "title": "Isolate NATS Tenants with Accounts, JWTs, and Private Exports",
+    "description": "Build two isolated NATS accounts, issue restricted JWT credentials, and share one subject through a private export and account-specific activation.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "NATS",
+      "Security",
+      "Messaging"
+    ],
+    "post": "2026-11-20-isolate-nats-tenants-accounts-jwt-subject-permissions"
+  },
+  {
+    "title": "Run Three-Replica JetStream on Kubernetes with Controlled Upgrades",
+    "description": "Render a three-server JetStream topology with persistent storage, strict zone spreading, disruption limits, and a staged upgrade process that checks replica health.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "NATS",
+      "Kubernetes",
+      "Helm",
+      "Messaging"
+    ],
+    "post": "2026-11-20-three-replica-jetstream-kubernetes-pvc-zone-spread-upgrades"
+  },
+  {
+    "title": "Recover NATS JetStream with Snapshots and Quorum-Aware Decisions",
+    "description": "Back up JetStream messages and consumer state, rehearse restoration into an isolated target, and distinguish snapshot recovery from quorum and peer maintenance.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "NATS",
+      "Backup",
+      "Disaster Recovery",
+      "Messaging"
+    ],
+    "post": "2026-11-20-backup-recover-nats-jetstream-snapshots-quorum-peers"
+  },
+  {
+    "title": "Replicate JetStream Across Regions with Mirrors and Sources",
+    "description": "Choose mirrors or sources for regional JetStream copies, distinguish gateways from leaf links, and test domain routing and catch-up after a destination restart.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "NATS",
+      "Messaging",
+      "Cross-Region Replication",
+      "Python"
+    ],
+    "post": "2026-11-20-replicate-jetstream-regions-mirrors-sources-gateways-leaf-nodes"
+  },
+  {
+    "title": "Bound NATS Reconnect Buffers and Shut Down Without False Guarantees",
+    "description": "Bound offline NATS publishes, understand what flush confirms, and handle shutdown during a reconnect without mistaking memory buffering for durable delivery.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "NATS",
+      "Messaging",
+      "Go",
+      "Reliability"
+    ],
+    "post": "2026-11-20-nats-reconnect-buffers-offline-publishes-flush-drain"
+  },
+  {
+    "title": "Route JetStream Events with Filters, Transforms, and Narrow Permissions",
+    "description": "Combine JetStream subject transforms and multiple consumer filters while keeping consumer creation separate from a worker's narrowly scoped read permissions.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "NATS",
+      "Messaging",
+      "Security",
+      "Go"
+    ],
+    "post": "2026-11-20-route-jetstream-multi-subject-filters-transforms-permissions"
+  },
+  {
+    "title": "Debug NATS Request-Reply Timeouts and Orphaned Replies",
+    "description": "Separate no-responders errors from request deadlines, trace late replies through inbox permissions, and retry safely when a responder may already have completed work.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "NATS",
+      "Messaging",
+      "Go",
+      "Troubleshooting"
+    ],
+    "post": "2026-11-20-debug-nats-request-reply-timeouts-no-responders-orphaned-replies"
+  },
+  {
+    "title": "Connect Browser Clients to NATS with TLS and Origin Controls",
+    "description": "Configure an authenticated NATS WebSocket listener, restrict browser origins, trust its TLS certificate, and bundle a pinned JavaScript client for a dashboard.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "NATS",
+      "WebSocket",
+      "TLS",
+      "JavaScript",
+      "Security"
+    ],
+    "post": "2026-11-20-browser-nats-websockets-tls-origin-controls"
   }
 ]

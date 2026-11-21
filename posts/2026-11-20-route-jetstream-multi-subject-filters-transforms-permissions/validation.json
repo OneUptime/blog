@@ -1,0 +1,29 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-21",
+  "runtimeTestsPerformed": true,
+  "infrastructureDeploymentPerformed": false,
+  "versions": {
+    "nats-server": "2.11.4",
+    "nats.go": "1.42.0",
+    "Go": "1.25.0"
+  },
+  "sources": [
+    "https://docs.nats.io/learn/jetstream/subject-mapping",
+    "https://docs.nats.io/learn/jetstream/filtering",
+    "https://github.com/nats-io/nats.go/blob/v1.42.0/jetstream/consumer_config.go",
+    "https://github.com/nats-io/nats.go/blob/v1.42.0/jetstream/consumer.go"
+  ],
+  "tests": [
+    "Exact published provision function compiled and executed against temporary local authenticated server.",
+    "Three source subjects stored under transformed names; restricted user fetched union of two filters and double-acked both records; all3 remained stored.",
+    "Worker unauthorized consumer-create failed with asynchronous permission violation.",
+    "Published permission object used inside temporary worker user configuration; random credentials not printed.",
+    "Eight Mermaid edges structurally checked; generated1280x720 image visually reviewed."
+  ],
+  "limitations": [
+    "No TLS, domains, cross-account imports, production deployment, credential rotation or inbox isolation test.",
+    "Other-consumer and stream-read denial are recommended additional checks, not executed.",
+    "Mermaid not graphically rendered."
+  ]
+}

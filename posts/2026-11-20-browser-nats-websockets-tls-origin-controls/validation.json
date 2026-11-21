@@ -1,0 +1,33 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-21",
+  "runtimeTestsPerformed": true,
+  "infrastructureDeploymentPerformed": false,
+  "versions": {
+    "nats-server": "2.11.4",
+    "@nats-io/nats-core": "3.5.0",
+    "esbuild": "0.25.5",
+    "ws": "8.18.2"
+  },
+  "sources": [
+    "https://github.com/nats-io/nats.js/blob/v3.5.0/core/README.md",
+    "https://github.com/nats-io/nats-server/blob/v2.11.4/server/websocket.go",
+    "https://docs.nats.io/learn/websocket/browsers-and-origins",
+    "https://docs.nats.io/learn/websocket/tls-and-proxies",
+    "https://github.com/nats-io/nats.ws",
+    "https://github.com/nats-io/nats.js/blob/v3.5.0/core/src/ws_transport.ts"
+  ],
+  "tests": [
+    "Exact published JavaScript bundled for browser using esbuild0.25.5 and nats-core3.5.0.",
+    "Published server configuration passed2.11.4 -t with temporary certificate paths and environment-supplied secret.",
+    "Node WebSocket transport with wsFactory and trusted disposable CA authenticated and delivered event; wrong origin, wrong password and untrusted CA rejected.",
+    "Missing Origin accepted with valid authentication, matching pinned server source.",
+    "Seven-edge Mermaid structure checked; social image generated and visually reviewed."
+  ],
+  "limitations": [
+    "No actual browser session, reverse proxy, deployment, credential issuance/renewal or browser trust-store integration tested.",
+    "Runtime fixture used loopback ports, temporary CA, additional publisher identity and Node wsFactory; published UI function was bundled, not run in browser.",
+    "No TLS verification bypass; temporary private keys and credentials removed.",
+    "Mermaid not graphically rendered."
+  ]
+}

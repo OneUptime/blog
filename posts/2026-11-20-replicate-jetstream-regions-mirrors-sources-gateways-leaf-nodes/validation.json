@@ -1,0 +1,28 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-21",
+  "runtimeTestsPerformed": true,
+  "infrastructureDeploymentPerformed": false,
+  "localServerTestPerformed": true,
+  "sources": [
+    "https://docs.nats.io/learn/jetstream/mirrors-and-sources",
+    "https://docs.nats.io/learn/topologies/super-clusters",
+    "https://docs.nats.io/learn/topologies/leaf-nodes",
+    "https://github.com/nats-io/nats.py/blob/v2.10.0/nats/js/api.py",
+    "https://github.com/nats-io/nats-architecture-and-design/blob/main/adr/ADR-59.md"
+  ],
+  "tests": [
+    "Two disposable NATS Server 2.11.4 processes with separate EAST/WEST JetStream domains and a WEST-to-EAST loopback leaf connection.",
+    "Executed all published Python fragments inside an async wrapper with nats-py 2.10.0, including shared StreamSource object, domain selection, stream creation, publications and inspection.",
+    "Mirror retained source sequence/payload/subject/timestamp for three records; aggregate contained those plus WEST record. Timestamps compared through raw message-get API because pinned Python RawStreamMsg lacks time.",
+    "Stopped destination WEST only, published fourth record to EAST, restarted WEST with same store; mirror caught up to four and aggregate to five, source errors absent and lag zero.",
+    "Both owned server processes stopped and temporary stores removed.",
+    "Eight-edge Mermaid structure checked; 1280x720 generated social image visually reviewed without clipping."
+  ],
+  "limitations": [
+    "No real regions, WAN latency, network partition, gateways, TLS, restricted accounts, multi-replica cluster or production promotion tested.",
+    "Server snippets used equivalent temporary absolute store paths in harness, not the published relative directory names.",
+    "No retention expiry, deletion propagation, cross-domain cycle or consumer-state migration test.",
+    "Mermaid checked structurally without graphical rendering."
+  ]
+}

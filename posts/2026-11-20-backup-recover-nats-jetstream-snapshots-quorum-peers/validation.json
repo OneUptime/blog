@@ -1,0 +1,31 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-21",
+  "runtimeTestsPerformed": true,
+  "infrastructureDeploymentPerformed": false,
+  "localServerTestPerformed": true,
+  "sources": [
+    "https://github.com/nats-io/natscli/releases/tag/v0.2.2",
+    "https://docs.nats.io/learn/backup-recovery/",
+    "https://github.com/nats-io/natscli/blob/v0.2.2/cli/stream_command.go",
+    "https://docs.nats.io/learn/backup-recovery/stream-backup-restore",
+    "https://docs.nats.io/learn/clustering/replication-and-r3",
+    "https://github.com/nats-io/natscli/blob/v0.2.2/cli/server_cluster_command.go"
+  ],
+  "tests": [
+    "Official NATS CLI 0.2.2 ARM64 archive checksum verified against release SHA256SUMS; signature not verified.",
+    "Two isolated NATS Server 2.11.4 instances with separate temporary stores: backed up a three-record file stream with durable consumer after acknowledgment of sequence one.",
+    "Executed published backup --consumers --check --no-progress and restore commands; verified backup.json and stream.tar.s2 archive files.",
+    "Published stream info --json and consumer info --json commands returned three records and saved acknowledgment floor one.",
+    "nats-py 2.10.0 checked all payloads, identifying headers, sequence range and durable state; restored consumer resumed at sequence two while original remained at one.",
+    "A second restore into the existing target stream was rejected without deleting source or target.",
+    "Both owned servers stopped and temporary data/archives removed.",
+    "Eight-edge Mermaid structure checked; generated 1280x720 image visually reviewed without title clipping."
+  ],
+  "limitations": [
+    "No clustered quorum loss, peer removal, permanent disk loss, replicated-stream restore or production cutover performed.",
+    "No TLS, authentication, encrypted backup transfer, external database restore or cross-stream consistency test.",
+    "Peer-removal scopes and prompt behavior reviewed in pinned CLI help/source only.",
+    "Mermaid not graphically rendered."
+  ]
+}

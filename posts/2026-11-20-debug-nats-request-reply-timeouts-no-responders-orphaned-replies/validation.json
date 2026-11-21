@@ -1,0 +1,28 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-21",
+  "runtimeTestsPerformed": true,
+  "infrastructureDeploymentPerformed": false,
+  "versions": {
+    "nats-server": "2.11.4",
+    "nats.go": "1.42.0",
+    "Go": "1.25.0"
+  },
+  "sources": [
+    "https://docs.nats.io/learn/resilient-clients/request-reply-resilience",
+    "https://github.com/nats-io/nats.go/blob/v1.42.0/context.go",
+    "https://github.com/nats-io/nats.go/blob/v1.42.0/nats.go",
+    "https://docs.nats.io/learn/security/authorization"
+  ],
+  "tests": [
+    "Published outcome helper executed for no responders, deadline expiry and context cancellation.",
+    "Subscribed silent handler produced timeout; late handler response observed on reply subject after caller timeout; next request returned its own fresh response.",
+    "Both published Go fragments compiled with wrapper declarations; logging call-site fragment compiled but not executed.",
+    "Five-message sequence diagram structurally checked; social image generated and visually reviewed."
+  ],
+  "limitations": [
+    "No TLS, account imports, authorization failure, database effects, idempotency implementation or production outage tested.",
+    "Temporary reply-subject observer is test-only and is not proposed for production sensitive traffic.",
+    "Diagram not graphically rendered."
+  ]
+}

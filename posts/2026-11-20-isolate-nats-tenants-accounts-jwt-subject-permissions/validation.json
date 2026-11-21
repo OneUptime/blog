@@ -1,0 +1,31 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-21",
+  "runtimeTestsPerformed": true,
+  "infrastructureDeploymentPerformed": false,
+  "localServerTestPerformed": true,
+  "sources": [
+    "https://docs.nats.io/learn/security/operator-mode",
+    "https://docs.nats.io/learn/security/cross-account",
+    "https://github.com/nats-io/nsc/releases/tag/v2.11.0",
+    "https://github.com/nats-io/nsc/blob/v2.11.0/cmd/adduser.go",
+    "https://github.com/nats-io/nsc/blob/v2.11.0/cmd/generateactivation.go",
+    "https://github.com/nats-io/nsc/blob/v2.11.0/cmd/addimport.go",
+    "https://github.com/nats-io/nsc/blob/v2.11.0/cmd/memresolverconfigbuilder.go",
+    "https://github.com/nats-io/nats.go/blob/v1.42.0/nats.go"
+  ],
+  "tests": [
+    "Downloaded official nsc 2.11.0 ARM64 release and verified SHA256SUMS; signature not verified.",
+    "Executed operator/system-account creation, two tenant accounts, three restricted users, credential-file generation, private export, targeted one-day activation, renamed import and memory resolver generation in temporary isolated nsc store.",
+    "NATS Server 2.11.4 configuration check and startup passed with relative auth.conf include.",
+    "Go 1.25.0/nats.go 1.42.0 acceptance checks: A received its private event; B did not receive same-named A traffic; activated public event arrived as shared.public; B forbidden publish produced asynchronous permission error and no message delivery.",
+    "Published connection fragment compiled with pinned client. Nine-edge Mermaid structure checked.",
+    "Temporary signing keys, credentials, claims and owned server removed after test.",
+    "1280x720 social image generated and visually reviewed; title readable without clipping."
+  ],
+  "limitations": [
+    "Single loopback server without TLS; no clustered resolver propagation, production deployment or JetStream management access tested.",
+    "No activation expiry, key theft recovery, revocation propagation or failed wrong-target activation test.",
+    "Mermaid structure checked without graphical rendering."
+  ]
+}
