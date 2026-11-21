@@ -829719,5 +829719,116 @@
       "Troubleshooting"
     ],
     "post": "2026-11-20-kubebuilder-webhook-old-validation-code-image-service"
+  },
+  {
+    "title": "Enforce Immutable CRD Fields with Kubebuilder ValidateUpdate",
+    "description": "Compare old and new custom resources in ValidateUpdate, return precise immutable-field errors, and test allowed edits without accidentally freezing the whole object.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Kubernetes",
+      "Kubebuilder",
+      "Validation"
+    ],
+    "post": "2026-11-20-kubebuilder-immutable-crd-fields-validateupdate"
+  },
+  {
+    "title": "Test Kubebuilder Validation Markers Beyond the Fake Client",
+    "description": "Test generated CRD constraints with envtest, prove what the fake client misses, and check rejected writes, valid boundaries, and server defaults.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Kubernetes",
+      "Kubebuilder",
+      "Testing"
+    ],
+    "post": "2026-11-20-kubebuilder-validation-markers-fake-client-envtest"
+  },
+  {
+    "title": "Fix Multiple Conversion Hubs in Kubebuilder Webhooks",
+    "description": "Find duplicate conversion hubs in your manager scheme, repair version roles, and test the result without confusing hub selection with CRD storage versions.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Kubernetes",
+      "Kubebuilder",
+      "Troubleshooting"
+    ],
+    "post": "2026-11-20-kubebuilder-conversion-multiple-hubs-group-kind"
+  },
+  {
+    "title": "Preserve Fields Across Kubebuilder API Version Conversions",
+    "description": "Design conversion webhooks that preserve newer fields during older API reads and updates, with tested annotation helpers and explicit compatibility limits.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Kubernetes",
+      "Kubebuilder",
+      "Go"
+    ],
+    "post": "2026-11-20-kubebuilder-non-reversible-conversion-preserve-fields"
+  },
+  {
+    "title": "Clear CRD storedVersions Only After Migrating Stored Objects",
+    "description": "Retire an old CRD version safely by separating object rewrites, storedVersions cleanup, client migration, and removal of conversion support.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Kubernetes",
+      "Kubebuilder",
+      "Troubleshooting"
+    ],
+    "post": "2026-11-20-kubebuilder-crd-storedversions-storage-migration"
+  },
+  {
+    "title": "Test Controller Intent in envtest, Not Pod Scheduling",
+    "description": "Write envtest assertions for child specifications, ownership, status inputs, and finalizers without waiting for absent schedulers or garbage collectors.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Kubernetes",
+      "Kubebuilder",
+      "Testing"
+    ],
+    "post": "2026-11-20-kubebuilder-envtest-pod-scheduling-garbage-collection"
+  },
+  {
+    "title": "Run Kubebuilder envtest in CI and Air-Gapped Builds",
+    "description": "Pin and package envtest binaries, restore them without downloads, and separate API-server assets from Go dependencies in reliable offline CI jobs.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Kubernetes",
+      "Kubebuilder",
+      "Testing",
+      "Air-Gapped"
+    ],
+    "post": "2026-11-20-kubebuilder-envtest-ci-air-gapped-builds"
+  },
+  {
+    "title": "Index Cross-Namespace References in Kubebuilder Controllers",
+    "description": "Build a namespace-aware reference index for fast reverse lookups, query the manager cache correctly, and test updates with a real informer cache.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Kubernetes",
+      "Kubebuilder",
+      "Go"
+    ],
+    "post": "2026-11-20-kubebuilder-index-cross-namespace-object-references"
+  },
+  {
+    "title": "Scope Kubebuilder Caches Without Losing Referenced Objects",
+    "description": "Configure namespace defaults and per-type cache overrides, preserve shared dependencies, and distinguish cache visibility from API permissions.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Kubernetes",
+      "Kubebuilder",
+      "Troubleshooting"
+    ],
+    "post": "2026-11-20-kubebuilder-manager-cache-selected-namespaces"
+  },
+  {
+    "title": "Record Kubebuilder Events on Meaningful State Transitions",
+    "description": "Emit useful readiness Events without repeating them on every reconcile, using persisted conditions, a tested transition helper, and explicit delivery limits.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Kubernetes",
+      "Kubebuilder",
+      "Observability"
+    ],
+    "post": "2026-11-20-kubebuilder-events-readiness-transitions"
   }
 ]

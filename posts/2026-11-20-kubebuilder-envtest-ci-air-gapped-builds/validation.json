@@ -1,0 +1,25 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-21",
+  "runtimeTestsPerformed": true,
+  "sources": [
+    "https://github.com/kubernetes-sigs/controller-runtime/blob/v0.22.4/tools/setup-envtest/README.md",
+    "https://book.kubebuilder.io/reference/envtest",
+    "https://go.dev/ref/mod#environment-variables",
+    "https://go.dev/doc/toolchain"
+  ],
+  "tests": [
+    "Pinned setup-envtest built and Kubernetes1.34.0 darwin-arm64 assets downloaded in local preparation",
+    "Dedicated tar package checksum verification and restore passed",
+    "Installed-only lookup succeeded with deliberately unusable remote index; absent1.33.0 lookup failed as expected",
+    "Actual local envtest test passed using restored assets with GOPROXY=off GOSUMDB=off GOTOOLCHAIN=local and warm module cache",
+    "Six-node five-edge Mermaid structurally reviewed",
+    "1280x720 social image visually reviewed with readable unclipped text"
+  ],
+  "limitations": [
+    "macOS arm64 test only, not Linux CI or enforced network isolation",
+    "Module cache already populated; no cold-cache offline build performed",
+    "Archive integrity checked, no detached signature verification",
+    "Mermaid not rendered"
+  ]
+}

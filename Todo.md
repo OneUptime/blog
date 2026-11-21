@@ -1614,15 +1614,35 @@ Research: [OneUptime air-gapped alerting](https://oneuptime.com/enterprise/air-g
 
     Completed: [Article](posts/2026-11-20-kubebuilder-webhook-old-validation-code-image-service/README.md) (20 November 2026).
 10. How to Enforce Immutable CRD Fields in Kubebuilder with `ValidateUpdate`
+
+    Completed: [Article](posts/2026-11-20-kubebuilder-immutable-crd-fields-validateupdate/README.md) (20 November 2026).
 11. How to Test Kubebuilder Validation Markers When the Fake Client Does Not Run API-Server Validation
+
+    Completed: [Article](posts/2026-11-20-kubebuilder-validation-markers-fake-client-envtest/README.md) (20 November 2026).
 12. Fixing `multiple hubs defined for group-kind` in Kubebuilder Conversion Webhooks
+
+    Completed: [Article](posts/2026-11-20-kubebuilder-conversion-multiple-hubs-group-kind/README.md) (20 November 2026).
 13. How to Handle Non-Reversible Field Changes in Kubebuilder Conversion Webhooks Without Breaking Reads
+
+    Completed: [Article](posts/2026-11-20-kubebuilder-non-reversible-conversion-preserve-fields/README.md) (20 November 2026).
 14. How to Clear CRD `status.storedVersions` Before Removing an API Version from a Kubebuilder Operator
+
+    Completed: [Article](posts/2026-11-20-kubebuilder-crd-storedversions-storage-migration/README.md) (20 November 2026).
 15. Why Kubebuilder envtest Never Schedules Pods or Garbage-Collects Children—and What to Assert Instead
+
+    Completed: [Article](posts/2026-11-20-kubebuilder-envtest-pod-scheduling-garbage-collection/README.md) (20 November 2026).
 16. How to Make Kubebuilder envtest Work in CI and Air-Gapped Builds with `setup-envtest` and `KUBEBUILDER_ASSETS`
+
+    Completed: [Article](posts/2026-11-20-kubebuilder-envtest-ci-air-gapped-builds/README.md) (20 November 2026).
 17. How to Index Referenced Object Names in Kubebuilder for Fast Reverse Lookups
+
+    Completed: [Article](posts/2026-11-20-kubebuilder-index-cross-namespace-object-references/README.md) (20 November 2026).
 18. How to Scope a Kubebuilder Manager Cache to Selected Namespaces Without Missing Watched Objects
+
+    Completed: [Article](posts/2026-11-20-kubebuilder-manager-cache-selected-namespaces/README.md) (20 November 2026).
 19. How to Record Kubernetes Events from Kubebuilder Without Emitting Duplicates on Every Reconcile
+
+    Completed: [Article](posts/2026-11-20-kubebuilder-events-readiness-transitions/README.md) (20 November 2026).
 20. How to Upgrade a Kubebuilder go/v3 Project to go/v4 While Preserving Controllers, Webhooks, and Kustomize Overlays
 
 ## HugePages

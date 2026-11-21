@@ -1,0 +1,22 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-21",
+  "runtimeTestsPerformed": true,
+  "sources": [
+    "https://github.com/kubernetes-sigs/controller-runtime/blob/v0.22.1/pkg/client/interfaces.go",
+    "https://github.com/kubernetes-sigs/controller-runtime/blob/v0.22.1/pkg/cache/informer_cache.go"
+  ],
+  "tests": [
+    "Exact helper compiled with Go1.25.0 controller-runtime0.22.1",
+    "Key extraction tested explicit/default namespaces and deduplication",
+    "Real envtest1.34.0 informer cache returned two cross-namespace parents and one distinct local parent",
+    "Removing a reference updated cached query count; uncached synthetic selector rejected",
+    "Six-node five-edge Mermaid structurally reviewed",
+    "1280x720 social image visually reviewed; title and branding not clipped"
+  ],
+  "limitations": [
+    "No full controller event mapper, production authorization or performance benchmark",
+    "Integration CRD preserves spec fields for fixture; production reference-validation schema not implemented",
+    "Mermaid not rendered"
+  ]
+}

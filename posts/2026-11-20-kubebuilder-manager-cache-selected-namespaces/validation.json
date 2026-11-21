@@ -1,0 +1,24 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-21",
+  "runtimeTestsPerformed": true,
+  "sources": [
+    "https://book.kubebuilder.io/reference/scopes",
+    "https://github.com/kubernetes-sigs/controller-runtime/blob/v0.22.1/pkg/cache/cache.go",
+    "https://github.com/kubernetes-sigs/controller-runtime/blob/v0.22.1/pkg/client/client.go"
+  ],
+  "tests": [
+    "Exact cache options compiled and used by real cache with envtest1.34.0 and controller-runtime0.22.1",
+    "Default Pods visible in2 namespaces; ConfigMap override visible in3 namespaces",
+    "Shared ConfigMap read passed; excluded namespace cache error contrasted with successful direct API read",
+    "Unregistered Secret informer read failed as expected",
+    "Six-node five-edge Mermaid structurally reviewed",
+    "1280x720 social image visually inspected, no clipping"
+  ],
+  "limitations": [
+    "No full manager/controller event mapping or deployment tested",
+    "Envtest administrative identity; no RBAC enforcement test",
+    "Nil/empty map semantics source-reviewed, not separately exercised",
+    "Mermaid not rendered"
+  ]
+}

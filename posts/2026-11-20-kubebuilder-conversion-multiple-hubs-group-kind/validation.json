@@ -1,0 +1,23 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-21",
+  "runtimeTestsPerformed": true,
+  "sources": [
+    "https://github.com/kubernetes-sigs/controller-runtime/blob/v0.22.1/pkg/webhook/conversion/conversion.go",
+    "https://github.com/kubernetes-sigs/controller-runtime/blob/v0.22.1/pkg/conversion/conversion.go",
+    "https://book.kubebuilder.io/multiversion-tutorial/conversion",
+    "https://kubernetes.io/docs/tasks/extend-kubernetes/custom-resources/custom-resource-definition-versioning/"
+  ],
+  "tests": [
+    "Exact ConversionRoles helper compiled and ran with controller-runtime0.22.1 and Go1.25.0",
+    "Two distinct registered hub types reproduced multiple(2) hubs error, including empty group-kind diagnostic",
+    "Corrected one-hub one-spoke arrangement passed IsConvertible; missing group-kind returns error",
+    "Three-node four-edge Mermaid structurally reviewed",
+    "1280x720 social image visually reviewed, legible without clipping"
+  ],
+  "limitations": [
+    "Fixture spoke methods only test topology, not field conversion",
+    "No deployed webhook, CRD migration, TLS or API-server integration tested",
+    "Mermaid not rendered"
+  ]
+}

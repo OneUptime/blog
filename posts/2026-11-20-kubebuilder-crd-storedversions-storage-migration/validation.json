@@ -1,0 +1,24 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-21",
+  "runtimeTestsPerformed": true,
+  "sources": [
+    "https://v1-34.docs.kubernetes.io/docs/tasks/extend-kubernetes/custom-resources/custom-resource-definition-versioning/",
+    "https://kubernetes.io/docs/reference/kubectl/generated/kubectl_replace/",
+    "https://kubernetes.io/docs/reference/kubectl/generated/kubectl_patch/",
+    "https://book.kubebuilder.io/reference/markers/crd"
+  ],
+  "tests": [
+    "Local envtest1.34.0 with controller-runtime0.22.1: created v1 object, switched storage to v2, early version removal rejected",
+    "Object rewrite retained both storedVersions entries; resourceVersion-guarded JSON status patch and subsequent version removal passed",
+    "Final v2 read preserved fixture value; six-node five-edge Mermaid structurally reviewed",
+    "Exact jq target guard and expected JSON patch tested for target and wrong-storage fixtures",
+    "kubectl1.34 help confirms used patch flags; social image1280x720 visually reviewed without clipping"
+  ],
+  "limitations": [
+    "Identical-schema None conversion fixture only, no webhook or production migration",
+    "No raw etcd inspection, multi-server propagation, pagination, conflict recovery or all-object migration proof",
+    "kubectl examples source-reviewed; equivalent API operations exercised via Go client",
+    "Mermaid not rendered"
+  ]
+}

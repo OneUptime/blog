@@ -1,0 +1,22 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-21",
+  "runtimeTestsPerformed": true,
+  "sources": [
+    "https://github.com/kubernetes-sigs/controller-runtime/blob/v0.22.1/pkg/webhook/admission/validator_custom.go",
+    "https://kubernetes.io/docs/tasks/extend-kubernetes/custom-resources/custom-resource-definitions/#transition-rules",
+    "https://github.com/kubernetes-sigs/kubebuilder/releases/tag/v4.9.0"
+  ],
+  "tests": [
+    "Exact validator compiled in actual Kubebuilder4.9.0 scaffold using controller-runtime0.22.1 and Go1.25.0",
+    "Targeted Go tests passed valid/empty creation, changed target rejection, unchanged/mutable/metadata updates, wrong types and deletion",
+    "Error cause field spec.targetCluster and preservation of original object verified",
+    "Actual make generate and make manifests passed; required targetCluster/minLength1 and CREATE/UPDATE webhook rules inspected",
+    "Five-node four-edge Mermaid structurally reviewed;1280x720 social image visually reviewed"
+  ],
+  "limitations": [
+    "No live admission, envtest API server, TLS, deployment or conversion test",
+    "Strict immutable-from-creation policy only; optional/set-once migration requires separate design",
+    "Mermaid not rendered"
+  ]
+}

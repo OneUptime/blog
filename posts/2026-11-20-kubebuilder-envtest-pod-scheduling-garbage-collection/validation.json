@@ -1,0 +1,25 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-21",
+  "runtimeTestsPerformed": true,
+  "sources": [
+    "https://book.kubebuilder.io/reference/envtest",
+    "https://kubernetes.io/docs/concepts/overview/components/",
+    "https://github.com/kubernetes-sigs/controller-runtime/blob/v0.22.1/pkg/controller/controllerutil/controllerutil.go",
+    "https://kubernetes.io/docs/concepts/architecture/garbage-collection/",
+    "https://kubernetes.io/docs/concepts/overview/working-with-objects/finalizers/"
+  ],
+  "tests": [
+    "Exact complete test passed with Go1.25.0 controller-runtime0.22.1 and local envtest1.34.0",
+    "Stored image and controller owner reference, empty node assignment and synthetic Ready status verified",
+    "Background owner deletion left child throughout 500ms observation; explicit fixture child deletion passed",
+    "Five-node five-edge Mermaid structurally reviewed",
+    "1280x720 social image visually reviewed without title clipping"
+  ],
+  "limitations": [
+    "No operator reconciler or manager started; test creates fixture objects directly",
+    "No actual Pod execution, scheduler, kubelet, garbage collection or finalizer-cleanup implementation tested",
+    "Ready condition was synthetic; bounded absence observation is not proof by itself",
+    "Mermaid not rendered"
+  ]
+}

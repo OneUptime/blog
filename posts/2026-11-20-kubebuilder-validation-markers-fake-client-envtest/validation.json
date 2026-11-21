@@ -1,0 +1,21 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-21",
+  "runtimeTestsPerformed": true,
+  "sources": [
+    "https://github.com/kubernetes-sigs/controller-runtime/blob/v0.22.1/pkg/client/fake/doc.go",
+    "https://book.kubebuilder.io/reference/envtest",
+    "https://kubernetes.io/docs/tasks/extend-kubernetes/custom-resources/custom-resource-definitions/",
+    "https://github.com/kubernetes-sigs/controller-runtime/blob/v0.22.4/tools/setup-envtest/README.md"
+  ],
+  "tests": [
+    "Actual make generate manifests passed in Kubebuilder4.9.0 fixture; generated minimum,maximum,enum,default reviewed",
+    "Exact complete Go test passed with controller-runtime0.22.1, Go1.25.0 and local Kubernetes1.34.0 API server plus etcd",
+    "Fake acceptance, three invalid creates, two valid boundaries, server default, rejected update and unchanged persisted value verified",
+    "Six-node five-edge Mermaid structurally reviewed; 1280x720 social image visually reviewed with no clipping"
+  ],
+  "limitations": [
+    "Local envtest only; no full cluster, webhook, controller, scheduling, production permissions or deployment tested",
+    "Mermaid not rendered"
+  ]
+}

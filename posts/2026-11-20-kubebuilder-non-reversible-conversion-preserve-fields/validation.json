@@ -1,0 +1,24 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-21",
+  "runtimeTestsPerformed": true,
+  "sources": [
+    "https://book.kubebuilder.io/multiversion-tutorial/conversion-concepts",
+    "https://kubernetes.io/docs/tasks/extend-kubernetes/custom-resources/custom-resource-definition-versioning/#webhook-conversion",
+    "https://github.com/kubernetes-sigs/cluster-api/blob/v1.11.2/util/conversion/conversion.go",
+    "https://github.com/kubernetes-sigs/controller-runtime/blob/v0.22.1/pkg/conversion/conversion.go"
+  ],
+  "tests": [
+    "Exact standard-library helper compiled and tested with Go1.25.0",
+    "Non-default zone round trip, UTC default, annotations preservation and no source mutation passed",
+    "Malformed JSON, null, unknown format, invalid zone and oversized input rejected",
+    "Six-node five-edge Mermaid structurally reviewed",
+    "1280x720 social image visually reviewed without clipping"
+  ],
+  "limitations": [
+    "Conversion method fragments not integrated with generated API types or deployed webhook",
+    "No API-server reads/updates, admission, storage migration or rolling upgrade tested",
+    "Two-zone fixture only; annotation is user-controlled and not a security boundary",
+    "Mermaid not rendered"
+  ]
+}
