@@ -1,0 +1,26 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-21",
+  "runtimeTestsPerformed": false,
+  "localCodeTestsPerformed": true,
+  "sources": [
+    "https://docs.aws.amazon.com/IAM/latest/UserGuide/id_credentials_access-keys.html",
+    "https://github.com/distribution/distribution/blob/v3.1.2/registry/storage/driver/s3-aws/s3.go",
+    "https://github.com/distribution/distribution/blob/v3.1.2/docs/content/about/configuration.md#override-specific-configuration-options",
+    "https://docs.aws.amazon.com/cli/latest/reference/sts/get-caller-identity.html",
+    "https://docs.aws.amazon.com/cli/latest/reference/s3api/head-object.html",
+    "https://github.com/distribution/distribution/blob/v3.1.2/docs/content/about/configuration.md#http",
+    "https://docs.aws.amazon.com/AmazonS3/latest/userguide/using-presigned-url.html",
+    "https://docs.aws.amazon.com/IAM/latest/UserGuide/id-credentials-access-keys-update.html"
+  ],
+  "tests": [
+    "Distribution3.1.2 configuration parser accepted synthetic accesskey/secretkey/sessiontoken environment overrides while preserving bucket",
+    "Bash examples passed syntax checks; AWS CLI arguments reviewed against official v2 reference",
+    "Six Mermaid edges structurally checked;1280x720 image visually reviewed"
+  ],
+  "limitations": [
+    "No AWS identity or storage API calls executed; no real credentials created, rotated, deactivated or used",
+    "No production rollout, signed URL expiration, transfer continuity or garbage collection tested",
+    "Mermaid not rendered"
+  ]
+}

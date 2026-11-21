@@ -828822,5 +828822,115 @@
       "Storage"
     ],
     "post": "2026-11-20-registry-retention-multiplatform-signatures-sbom"
+  },
+  {
+    "title": "Copy Multi-Platform Images Between Registries Without Losing Architectures",
+    "description": "Copy a complete image index with crane0.20.6, pin the source digest, compare destination descriptors, and test both platform content and separate artifact requirements.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Container Registry",
+      "Docker",
+      "Migration"
+    ],
+    "post": "2026-11-20-copy-multiplatform-image-between-registries"
+  },
+  {
+    "title": "Mirror an Entire Container Release Offline with Verified Digests",
+    "description": "Build an offline release bundle, preserve multi-platform images, verify imported digests, and find missing dependencies before deployment.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Container Registry",
+      "Air-Gapped",
+      "Docker"
+    ],
+    "post": "2026-11-20-mirror-container-release-air-gapped-digest-verification"
+  },
+  {
+    "title": "Promote the Same Image Digest from Staging to Production",
+    "description": "Promote an approved container image without rebuilding, verify its production digest, and keep release evidence attached to the exact tested artifact.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Container Registry",
+      "CI/CD",
+      "Deployment"
+    ],
+    "post": "2026-11-20-promote-same-image-digest-staging-production"
+  },
+  {
+    "title": "Registry unknown/unknown: Attestation or Broken Platform Image?",
+    "description": "Inspect unknown/unknown registry entries safely, identify BuildKit attestations, and separate expected metadata from missing or broken platform images.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Container Registry",
+      "Docker",
+      "Supply Chain Security"
+    ],
+    "post": "2026-11-20-registry-unknown-platform-attestations-manifests"
+  },
+  {
+    "title": "Query the OCI Registry API: Tokens, Media Types, and Pagination",
+    "description": "Make read-only registry API requests, handle bearer authentication, negotiate image manifests, and enumerate tags without silently missing pages.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Container Registry",
+      "API",
+      "Authentication"
+    ],
+    "post": "2026-11-20-query-oci-distribution-api-auth-media-types-pagination"
+  },
+  {
+    "title": "Registry Push Succeeds but Pull Fails with blob unknown",
+    "description": "Trace missing registry blobs through upload completion, repository mounts, storage routing, and garbage collection without damaging recovery evidence.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Container Registry",
+      "Troubleshooting",
+      "Storage"
+    ],
+    "post": "2026-11-20-registry-push-success-pull-blob-unknown"
+  },
+  {
+    "title": "Back Up and Restore a Registry Without Changing Image Digests",
+    "description": "Plan a consistent registry backup, restore into isolated storage, and verify tags, multi-platform manifests, and blobs before reopening service.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Container Registry",
+      "Backup",
+      "Disaster Recovery"
+    ],
+    "post": "2026-11-20-backup-restore-registry-preserve-image-digests"
+  },
+  {
+    "title": "Reliable Registry Webhooks: Deduplication, Retries, and Ordering",
+    "description": "Build a durable registry event inbox, handle duplicate delivery and out-of-order events, and reconcile missed notifications without repeating side effects.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Container Registry",
+      "Webhook",
+      "Reliability"
+    ],
+    "post": "2026-11-20-reliable-registry-webhook-consumers"
+  },
+  {
+    "title": "Registry SLOs That Detect Real Image Pull Failures",
+    "description": "Combine registry HTTP metrics with complete pull checks to measure availability, manifest latency, blob transfer, and storage failures accurately.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Container Registry",
+      "SLO",
+      "Monitoring"
+    ],
+    "post": "2026-11-20-registry-slos-real-pull-failures"
+  },
+  {
+    "title": "Rotate Registry Storage Credentials Without Breaking Transfers",
+    "description": "Rotate registry storage credentials with an overlap window, staged verification, and explicit handling of uploads, signed URLs, and maintenance jobs.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Container Registry",
+      "Security",
+      "S3"
+    ],
+    "post": "2026-11-20-rotate-registry-storage-credentials"
   }
 ]

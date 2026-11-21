@@ -1,0 +1,24 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-21",
+  "runtimeTestsPerformed": true,
+  "runtimeTestScope": "Owned loopback registry fixtures only",
+  "localCodeTestsPerformed": true,
+  "sources": [
+    "https://github.com/opencontainers/image-spec/blob/v1.1.1/image-index.md",
+    "https://github.com/google/go-containerregistry/blob/v0.20.6/pkg/crane/copy.go",
+    "https://github.com/google/go-containerregistry/blob/v0.20.6/cmd/crane/doc/crane_copy.md",
+    "https://github.com/opencontainers/distribution-spec/blob/v1.1.1/spec.md#listing-referrers"
+  ],
+  "tests": [
+    "crane0.20.6 CLI copied synthetic AMD64/ARM64 index between owned loopback test registries: digest unchanged and all destination compressed layers readable",
+    "No-clobber rejected existing destination; explicit linux/amd64 copy produced single manifest",
+    "Index jq guard accepted array and rejected missing/empty index; shell syntax passed",
+    "Five Mermaid edges structurally checked;1280x720 image visually reviewed"
+  ],
+  "limitations": [
+    "Local fixture used HTTP and anonymous test registries; no production TLS, credentials, remote registry, actual workload execution or signature/referrer copy",
+    "Test servers closed after test; no Docker daemon or personal credential configuration used",
+    "Mermaid not rendered"
+  ]
+}

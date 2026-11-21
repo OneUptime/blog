@@ -1,0 +1,23 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-21",
+  "runtimeTestsPerformed": true,
+  "runtimeTestScope": "Owned loopback registry fixtures only",
+  "localCodeTestsPerformed": true,
+  "sources": [
+    "https://github.com/google/go-containerregistry/blob/v0.20.6/cmd/crane/cmd/pull.go",
+    "https://github.com/opencontainers/image-spec/blob/v1.1.1/image-layout.md",
+    "https://github.com/opencontainers/distribution-spec/blob/v1.1.1/spec.md#listing-referrers",
+    "https://github.com/google/go-containerregistry/blob/v0.20.6/cmd/crane/cmd/push.go"
+  ],
+  "tests": [
+    "crane0.20.6 OCI directory pull followed by source registry shutdown and destination push preserved synthetic AMD64/ARM64 index digest and readable layers",
+    "Separate --index push published wrapper with different digest",
+    "Bash syntax passed; seven Mermaid edges structurally checked",
+    "1280x720 social image visually reviewed: complete readable title"
+  ],
+  "limitations": [
+    "Anonymous HTTP loopback fixtures only; no production TLS/authentication, signature artifact transfer, actual product release, or Kubernetes workload execution",
+    "Mermaid structurally checked but not rendered"
+  ]
+}

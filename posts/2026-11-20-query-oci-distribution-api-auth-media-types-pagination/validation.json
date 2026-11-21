@@ -1,0 +1,26 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-21",
+  "runtimeTestsPerformed": true,
+  "runtimeTestScope": "Owned synthetic HTTP fixture on loopback only",
+  "localCodeTestsPerformed": true,
+  "sources": [
+    "https://github.com/opencontainers/distribution-spec/blob/v1.1.1/spec.md#pulling-manifests",
+    "https://distribution.github.io/distribution/spec/auth/token/",
+    "https://curl.se/docs/manpage.html",
+    "https://github.com/opencontainers/distribution-spec/blob/v1.1.1/spec.md#pulling-manifests",
+    "https://github.com/opencontainers/distribution-spec/blob/v1.1.1/spec.md#listing-tags"
+  ],
+  "tests": [
+    "curl8.7.1 header-file bearer credential and four-type Accept header observed by local fixture",
+    "Two-page listing followed fixture Link despite short first page; both tags collected",
+    "Six jq1.6 token validation cases passed including CR/LF rejection",
+    "Bash syntax and three-participant six-message Mermaid structure passed",
+    "1280x720 image visually reviewed"
+  ],
+  "limitations": [
+    "Synthetic HTTP fixture only, not live registry, authorization service, TLS or production credentials",
+    "Manual pagination tutorial, not complete automated Link parser",
+    "Mermaid not rendered"
+  ]
+}

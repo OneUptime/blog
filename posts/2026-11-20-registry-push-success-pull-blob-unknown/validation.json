@@ -1,0 +1,24 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-21",
+  "runtimeTestsPerformed": false,
+  "localCodeTestsPerformed": true,
+  "sources": [
+    "https://github.com/opencontainers/distribution-spec/blob/v1.1.1/spec.md#error-codes",
+    "https://github.com/google/go-containerregistry/blob/v0.20.6/cmd/crane/doc/crane_manifest.md",
+    "https://github.com/opencontainers/distribution-spec/blob/v1.1.1/spec.md#checking-if-content-exists-in-the-registry",
+    "https://github.com/distribution/distribution/blob/v3.1.2/registry/storage/schema2manifesthandler.go",
+    "https://github.com/opencontainers/distribution-spec/blob/v1.1.1/spec.md#mounting-a-blob-from-another-repository",
+    "https://github.com/distribution/distribution/blob/v3.1.2/registry/storage/blob_test.go",
+    "https://distribution.github.io/distribution/about/garbage-collection/"
+  ],
+  "tests": [
+    "Distribution3.1.2 TestSimpleBlobUpload, TestBlobMount, TestVerifyManifestBlobLayerAndConfig passed against controlled test storage",
+    "Exact jq config/layer enumeration passed; Bash syntax and five Mermaid edges checked",
+    "1280x720 social image visually reviewed"
+  ],
+  "limitations": [
+    "No live registry, production credentials/TLS, real corruption, restoration, or Kubernetes pull tested",
+    "Mermaid not rendered"
+  ]
+}

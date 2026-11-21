@@ -1365,15 +1365,35 @@ Research: [OneUptime air-gapped alerting](https://oneuptime.com/enterprise/air-g
 
     Completed: [Article](posts/2026-11-20-registry-retention-multiplatform-signatures-sbom/README.md) (20 November 2026).
 10. Copying a Multi-Platform Image Between Registries Without Collapsing It to One Architecture
+
+    Completed: [Article](posts/2026-11-20-copy-multiplatform-image-between-registries/README.md) (20 November 2026).
 11. Mirroring an Entire Container Release into an Air-Gapped Registry with Digest Verification
+
+    Completed: [Article](posts/2026-11-20-mirror-container-release-air-gapped-digest-verification/README.md) (20 November 2026).
 12. Promoting the Exact Same Image Digest from Staging to Production Without Rebuilding
+
+    Completed: [Article](posts/2026-11-20-promote-same-image-digest-staging-production/README.md) (20 November 2026).
 13. Why Registry UIs Show `unknown/unknown`: Distinguishing Attestations from Broken Platform Manifests
+
+    Completed: [Article](posts/2026-11-20-registry-unknown-platform-attestations-manifests/README.md) (20 November 2026).
 14. Querying the OCI Distribution API: Bearer Tokens, Media-Type `Accept` Headers, and Pagination
+
+    Completed: [Article](posts/2026-11-20-query-oci-distribution-api-auth-media-types-pagination/README.md) (20 November 2026).
 15. Why a Registry Push Completes but Pull Fails with `blob unknown`: Upload State, Cross-Repository Mounts, and Garbage Collection
+
+    Completed: [Article](posts/2026-11-20-registry-push-success-pull-blob-unknown/README.md) (20 November 2026).
 16. Backing Up and Restoring a Self-Hosted Registry Without Changing Image Digests
+
+    Completed: [Article](posts/2026-11-20-backup-restore-registry-preserve-image-digests/README.md) (20 November 2026).
 17. Reliable Registry Webhook Consumers: Deduplication, Retries, and Event Ordering
+
+    Completed: [Article](posts/2026-11-20-reliable-registry-webhook-consumers/README.md) (20 November 2026).
 18. Registry SLOs That Catch Real Pull Failures: 5xx Rate, Manifest Latency, Blob Throughput, and Storage Errors
+
+    Completed: [Article](posts/2026-11-20-registry-slos-real-pull-failures/README.md) (20 November 2026).
 19. Rotating Container Registry Storage Credentials Without Interrupting Pulls, Pushes, or Garbage Collection
+
+    Completed: [Article](posts/2026-11-20-rotate-registry-storage-credentials/README.md) (20 November 2026).
 20. Failing Over Between Container Registries Without Serving Stale Tags or Missing Digests
 
 ## JuiceFS

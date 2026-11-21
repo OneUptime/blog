@@ -1,0 +1,25 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-21",
+  "runtimeTestsPerformed": true,
+  "runtimeTestScope": "Disposable Distribution3.1.2 process with anonymous loopback requests and metrics scrape",
+  "localCodeTestsPerformed": true,
+  "sources": [
+    "https://github.com/distribution/distribution/blob/v3.1.2/docs/content/about/configuration.md#prometheus",
+    "https://github.com/distribution/distribution/blob/v3.1.2/registry/handlers/app.go",
+    "https://prometheus.io/docs/prometheus/latest/querying/functions/#rate",
+    "https://prometheus.io/docs/practices/histograms/",
+    "https://github.com/distribution/distribution/blob/v3.1.2/docs/content/about/configuration.md#redirect"
+  ],
+  "tests": [
+    "Observed actual registry request counter, duration buckets and response-size labels after base200/manifest404/blob404 requests",
+    "Promtool3.7.3 accepted all three query rules; synthetic ratio tests for10percent, no5xx series and absent telemetry passed with documented last-bit floating comparison tolerance",
+    "Debug YAML parsed; seven Mermaid edges structurally checked",
+    "1280x720 social image visually reviewed"
+  ],
+  "limitations": [
+    "No real production SLO, object-storage failure, authentication outage, container pull or throughput benchmark tested",
+    "Histogram and byte-rate expressions syntax checked, not validated against production distributions",
+    "Mermaid not rendered"
+  ]
+}

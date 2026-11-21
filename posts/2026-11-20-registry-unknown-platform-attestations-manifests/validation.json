@@ -1,0 +1,24 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-21",
+  "runtimeTestsPerformed": false,
+  "localCodeTestsPerformed": true,
+  "sources": [
+    "https://github.com/opencontainers/image-spec/blob/v1.1.1/image-index.md",
+    "https://docs.docker.com/build/metadata/attestations/",
+    "https://github.com/moby/buildkit/blob/v0.20.2/docs/attestations/attestation-storage.md",
+    "https://github.com/google/go-containerregistry/blob/v0.20.6/cmd/crane/doc/crane_manifest.md",
+    "https://docs.docker.com/build/metadata/attestations/attestation-storage/",
+    "https://github.com/opencontainers/distribution-spec/blob/v1.1.1/spec.md#listing-referrers"
+  ],
+  "tests": [
+    "jq1.6 relationship filter accepted present target and flagged absent/null targets; unclassified entry not mislabeled",
+    "Index guard positive/empty/missing cases and five-row inventory output passed",
+    "All Bash syntax and five Mermaid edges structurally checked",
+    "Social image1280x720 visually reviewed"
+  ],
+  "limitations": [
+    "Synthetic JSON only; no live registry UI, BuildKit build, signature verification or container execution",
+    "Mermaid not rendered"
+  ]
+}

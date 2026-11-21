@@ -1,0 +1,24 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-21",
+  "runtimeTestsPerformed": true,
+  "runtimeTestScope": "Disposable Distribution3.1.2 processes and temporary filesystem roots on loopback HTTP",
+  "localCodeTestsPerformed": true,
+  "sources": [
+    "https://distribution.github.io/distribution/storage-drivers/filesystem/",
+    "https://github.com/distribution/distribution/blob/v3.1.2/registry/storage/paths.go",
+    "https://github.com/distribution/distribution/blob/v3.1.2/docs/content/about/configuration.md#maintenance",
+    "https://github.com/google/go-containerregistry/blob/v0.20.6/cmd/crane/doc/crane_digest.md"
+  ],
+  "tests": [
+    "Distribution binary built from v3.1.2 source; synthetic AMD64/ARM64 index pushed, process stopped, complete tree copied to separate root, restored service preserved tag/index digest and readable configs/layers",
+    "Pinned configuration parser accepted exact maintenance fragment with synthetic filesystem driver; readonly true and uploadpurging false verified",
+    "Bash syntax and seven Mermaid edges structurally checked",
+    "1280x720 social image visually reviewed"
+  ],
+  "limitations": [
+    "No production TLS/authentication, object-store recovery, real backup product, secrets restore or container execution tested",
+    "Local processes stopped and temporary roots cleaned up after test",
+    "Mermaid not rendered"
+  ]
+}

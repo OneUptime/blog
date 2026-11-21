@@ -1,0 +1,26 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-21",
+  "runtimeTestsPerformed": true,
+  "runtimeTestScope": "Owned anonymous loopback registry fixtures",
+  "localCodeTestsPerformed": true,
+  "sources": [
+    "https://github.com/opencontainers/image-spec/blob/v1.1.1/image-index.md",
+    "https://github.com/google/go-containerregistry/blob/v0.20.6/pkg/crane/copy.go",
+    "https://github.com/google/go-containerregistry/blob/v0.20.6/cmd/crane/doc/crane_copy.md",
+    "https://github.com/google/go-containerregistry/blob/v0.20.6/pkg/crane/tag.go",
+    "https://kubernetes.io/docs/concepts/containers/images/",
+    "https://github.com/opencontainers/distribution-spec/blob/v1.1.1/spec.md#listing-referrers"
+  ],
+  "tests": [
+    "Pinned crane0.20.6 copy preserved approved two-platform index after staging tag moved; both destination platform layers readable; same-repository tag retained digest",
+    "Five digest-input cases passed exact shell guard, including multiline and empty rejection; bash syntax passed",
+    "Kubernetes fragment parsed as YAML; six Mermaid edges structurally checked",
+    "Social image1280x720 visually reviewed"
+  ],
+  "limitations": [
+    "No production TLS/authentication, signatures, real application or Kubernetes rollout tested",
+    "YAML contains explicit digest placeholder and is a fragment, not an API-validated Deployment",
+    "Mermaid not rendered"
+  ]
+}

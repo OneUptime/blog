@@ -1,0 +1,22 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-21",
+  "runtimeTestsPerformed": false,
+  "localCodeTestsPerformed": true,
+  "sources": [
+    "https://distribution.github.io/distribution/about/notifications/",
+    "https://github.com/distribution/distribution/blob/v3.1.2/notifications/http.go",
+    "https://github.com/distribution/distribution/blob/v3.1.2/notifications/event.go",
+    "https://www.sqlite.org/lang_upsert.html",
+    "https://docs.python.org/3.11/library/sqlite3.html#transaction-control"
+  ],
+  "tests": [
+    "Exact inbox helper passed duplicate replay, reordered events, separate source namespaces, identity conflict rollback, invalid-event rollback and reopen persistence with SQLite3.54.1",
+    "Distribution3.1.2 TestHTTPSink and TestEventEnvelopeJSONFormat passed",
+    "Five Mermaid edges structurally checked;1280x720 image visually reviewed"
+  ],
+  "limitations": [
+    "No production receiver, authentication, concurrency/worker leases, downstream effects or registry failover tested",
+    "Mermaid not rendered"
+  ]
+}
