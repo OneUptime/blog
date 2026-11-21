@@ -1,0 +1,24 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-21",
+  "runtimeTestsPerformed": false,
+  "localCodeTestsPerformed": true,
+  "sources": [
+    "https://clusterpedia.io/docs/usage/search/multi-cluster/#sorting-by-multiple-fields",
+    "https://github.com/clusterpedia-io/clusterpedia/blob/v0.9.0/staging/src/github.com/clusterpedia-io/api/clusterpedia/v1beta1/conversion.go",
+    "https://github.com/kubernetes/apimachinery/blob/v0.31.2/pkg/util/sets/string.go",
+    "https://github.com/clusterpedia-io/clusterpedia/blob/v0.9.0/pkg/storage/internalstorage/util.go"
+  ],
+  "tests": [
+    "Go1.25.0 actual v0.9.0 API conversion:100 direct OrderBy inputs preserved sequence;100 label-selector conversions produced four observed sequences",
+    "Malformed direction rejected; apimachinery0.31.2 unordered set behavior source reviewed",
+    "Python3 SQLite fixture produced identical full order after reversed insertions, identical stable pages, and a skipped row after deletion shifted offsets",
+    "Exact Python URL helper executed and decoded to intended order; shell syntax and five Mermaid edges structurally checked;1280x720 image visually reviewed"
+  ],
+  "limitations": [
+    "No live Clusterpedia, PostgreSQL/MySQL, SQL translation execution or pagination API tested",
+    "SQLite is an ordering illustration, not a Clusterpedia integration backend",
+    "Four label sequences are a local observation, not a guaranteed distribution",
+    "Mermaid not rendered"
+  ]
+}

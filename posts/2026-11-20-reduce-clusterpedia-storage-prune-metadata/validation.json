@@ -1,0 +1,25 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-21",
+  "runtimeTestsPerformed": false,
+  "localCodeTestsPerformed": true,
+  "sources": [
+    "https://kubernetes.io/docs/reference/using-api/server-side-apply/",
+    "https://github.com/clusterpedia-io/clusterpedia/blob/v0.9.0/pkg/synchromanager/clustersynchro/default_resource_synchro.go",
+    "https://clusterpedia.io/docs/features/prune-fields/",
+    "https://github.com/clusterpedia-io/clusterpedia/blob/v0.9.0/pkg/synchromanager/features/features.go"
+  ],
+  "tests": [
+    "Exact Python estimator executed on synthetic object; removed only targets while preserving ownership, annotation, spec/status and source bytes",
+    "No-target fixture returned equal sizes; malformed root rejected",
+    "Helm3.17.3/chart2.7.0 rendered both pruning gates true in manager command",
+    "Pinned defaults and synchronization prune function source reviewed",
+    "Shell syntax and five Mermaid edges structurally checked;1280x720 image visually reviewed"
+  ],
+  "limitations": [
+    "No live synchronization, source API, database size measurement, row rewrite or disk reclamation tested",
+    "Estimator measures compact JSON payload only, not database overhead or backend pruning execution",
+    "Helm fixture retained known external-DSN coalescing warning",
+    "Mermaid not rendered"
+  ]
+}

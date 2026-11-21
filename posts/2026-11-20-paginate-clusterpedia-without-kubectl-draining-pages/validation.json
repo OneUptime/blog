@@ -1,0 +1,26 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-21",
+  "runtimeTestsPerformed": false,
+  "localCodeTestsPerformed": true,
+  "sources": [
+    "https://clusterpedia.io/docs/usage/search/multi-cluster/#paging",
+    "https://kubernetes.io/docs/reference/kubectl/generated/kubectl_get/",
+    "https://github.com/clusterpedia-io/clusterpedia/blob/v0.9.0/staging/src/github.com/clusterpedia-io/api/clusterpedia/v1beta1/conversion.go",
+    "https://github.com/clusterpedia-io/clusterpedia/blob/v0.9.0/pkg/storage/internalstorage/util.go",
+    "https://github.com/clusterpedia-io/clusterpedia/blob/v0.9.0/pkg/storage/internalstorage/resource_storage.go"
+  ],
+  "tests": [
+    "Official kubectl1.34.0 executed against an owned synthetic loopback HTTP server with three fake Pods and page size2",
+    "No continuation: one list request and two objects; continuation: two list requests and three objects; raw: one request retaining continuation",
+    "Temporary kubeconfig and cache only; server shut down after test",
+    "v0.9.0 limit precedence, numeric offset and continuation generation source reviewed",
+    "Shell syntax and seven Mermaid edges structurally checked;1280x720 social image visually reviewed"
+  ],
+  "limitations": [
+    "No live Kubernetes or Clusterpedia server, database query, authorization, TLS or synchronization tested",
+    "Synthetic server demonstrates kubectl behavior only; article backend claims source-reviewed",
+    "Article page-navigation shell block syntax-checked, not executed against a real API",
+    "Mermaid not rendered"
+  ]
+}

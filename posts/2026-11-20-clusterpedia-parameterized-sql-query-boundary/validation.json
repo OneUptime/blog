@@ -1,0 +1,25 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-21",
+  "runtimeTestsPerformed": false,
+  "localCodeTestsPerformed": true,
+  "sources": [
+    "https://clusterpedia.io/docs/usage/search/",
+    "https://github.com/clusterpedia-io/clusterpedia/blob/v0.9.0/pkg/storage/internalstorage/features.go",
+    "https://github.com/clusterpedia-io/clusterpedia/blob/v0.9.0/pkg/storage/internalstorage/util.go",
+    "https://github.com/clusterpedia-io/clusterpedia-helm/blob/clusterpedia-2.7.0/charts/clusterpedia/templates/apiserver-deployment.yaml",
+    "https://gorm.io/docs/security.html"
+  ],
+  "tests": [
+    "Exact Python URL helper executed: fixed statement, separate encoded values, punctuation round trip, empty/non-string/oversized inputs rejected",
+    "Helm3.17.3/chart2.7.0 API-server command rendered raw gate false and parameterized gate true",
+    "Reviewed v0.9.0 SQL parser, feature defaults, branch precedence and upstream tests; upstream tests not executed",
+    "Shell syntax and five Mermaid edges structurally checked; social image visually reviewed at1280x720"
+  ],
+  "limitations": [
+    "No live Clusterpedia or database queries; no deployed authentication, authorization, endpoint isolation or performance tests",
+    "Helper constructs a URL, not a complete authenticated report service",
+    "Helm fixture has known external-DSN coalescing warning; no API validation",
+    "Mermaid not rendered"
+  ]
+}

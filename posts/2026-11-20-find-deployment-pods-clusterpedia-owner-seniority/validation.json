@@ -1,0 +1,26 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-21",
+  "runtimeTestsPerformed": false,
+  "localCodeTestsPerformed": true,
+  "sources": [
+    "https://kubernetes.io/docs/concepts/overview/working-with-objects/owners-dependents/",
+    "https://kubernetes.io/docs/concepts/workloads/controllers/deployment/",
+    "https://github.com/clusterpedia-io/clusterpedia/blob/v0.9.0/pkg/storage/internalstorage/resource_storage.go",
+    "https://clusterpedia.io/docs/usage/search/specified-cluster/",
+    "https://github.com/clusterpedia-io/clusterpedia/blob/v0.9.0/pkg/storage/internalstorage/resource_storage.go",
+    "https://github.com/clusterpedia-io/clusterpedia/blob/v0.9.0/pkg/storage/internalstorage/json_builder.go"
+  ],
+  "tests": [
+    "Go1.25.0 executed tagged v0.9.0 API conversion for single-member UID and name/group owner selectors",
+    "Verified seniority1 and default0; malformed integer rejected",
+    "Tagged storage implementation reviewed for controller owner extraction, intermediate queries and omitted owner filter without exactly one cluster",
+    "Shell syntax and six Mermaid relationships structurally checked;1280x720 image visually reviewed"
+  ],
+  "limitations": [
+    "No live Deployment rollout, Kubernetes query, SQL traversal or synchronization tested",
+    "Local tests cover query option conversion; stored ownership behavior source-reviewed only",
+    "YAML fragment source-reviewed, not API-applied",
+    "Mermaid not rendered"
+  ]
+}

@@ -828601,5 +828601,115 @@
       "Troubleshooting"
     ],
     "post": "2026-11-20-query-nested-fields-clusterpedia"
+  },
+  {
+    "title": "Find a Deployment's Pods with Clusterpedia Owner Seniority",
+    "description": "Follow Deployment-to-ReplicaSet-to-Pod ownership in Clusterpedia using owner UIDs, the correct seniority, and synchronized intermediate resources.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Kubernetes",
+      "Multi-Cluster",
+      "Troubleshooting"
+    ],
+    "post": "2026-11-20-find-deployment-pods-clusterpedia-owner-seniority"
+  },
+  {
+    "title": "Paginate Clusterpedia Without Fetching Every Page in kubectl",
+    "description": "Request bounded Clusterpedia pages, understand kubectl continuation behavior, and use raw queries for explicit page-by-page navigation.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Kubernetes",
+      "Multi-Cluster",
+      "kubectl"
+    ],
+    "post": "2026-11-20-paginate-clusterpedia-without-kubectl-draining-pages"
+  },
+  {
+    "title": "Build Stable Multi-Field Sorts for Clusterpedia Pagination",
+    "description": "Preserve Clusterpedia sort precedence with explicit URL parameters, add identity tie-breakers, and understand what stable ordering cannot guarantee.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Kubernetes",
+      "Multi-Cluster",
+      "Database"
+    ],
+    "post": "2026-11-20-stable-multi-field-sorts-clusterpedia-pagination"
+  },
+  {
+    "title": "Query Workload Types Together with Clusterpedia Collections",
+    "description": "Search Deployments, DaemonSets, and StatefulSets together with a bounded Clusterpedia collection query while preserving type and member identity.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Kubernetes",
+      "Multi-Cluster",
+      "Observability"
+    ],
+    "post": "2026-11-20-query-workloads-clusterpedia-collection-resources"
+  },
+  {
+    "title": "Search Clusterpedia by Creation Window and Partial Resource Name",
+    "description": "Combine precise creation-time windows with Clusterpedia partial-name searches while handling timezone encoding, boundaries, and incomplete results.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Kubernetes",
+      "Multi-Cluster",
+      "Troubleshooting"
+    ],
+    "post": "2026-11-20-search-clusterpedia-time-window-fuzzy-name"
+  },
+  {
+    "title": "Auto-Import Managed Clusters with Clusterpedia Policies",
+    "description": "Build a scoped Clusterpedia import policy, map platform resources to credentials, and understand lifecycle, rotation, and policy-update boundaries.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Kubernetes",
+      "Multi-Cluster",
+      "Automation"
+    ],
+    "post": "2026-11-20-auto-import-clusterpedia-clusterimportpolicy"
+  },
+  {
+    "title": "Tune Clusterpedia Database Pools and Slow-Query Logging",
+    "description": "Budget Clusterpedia database connections across processes, verify pinned pool behavior, and use slow-query logs to guide measured tuning.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Kubernetes",
+      "Database",
+      "Performance"
+    ],
+    "post": "2026-11-20-tune-clusterpedia-database-pools-slow-query-logging"
+  },
+  {
+    "title": "Reduce Clusterpedia Storage by Pruning Apply Metadata",
+    "description": "Verify Clusterpedia metadata pruning, estimate object-payload savings, and preserve the source cluster's apply metadata and useful search fields.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Kubernetes",
+      "Database",
+      "Performance"
+    ],
+    "post": "2026-11-20-reduce-clusterpedia-storage-prune-metadata"
+  },
+  {
+    "title": "Isolate Slow Clusterpedia Health Checks with Standalone TCP",
+    "description": "Diagnose health-check contention and test Clusterpedia's standalone TCP option without confusing transport isolation with a fix for API failures.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Kubernetes",
+      "Multi-Cluster",
+      "Troubleshooting"
+    ],
+    "post": "2026-11-20-clusterpedia-health-check-standalone-tcp"
+  },
+  {
+    "title": "Use Clusterpedia SQL Filters Without Exposing Arbitrary Statements",
+    "description": "Keep Clusterpedia SQL filters behind fixed application queries, bind values separately, and test the boundary that feature gates alone cannot enforce.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Kubernetes",
+      "Multi-Cluster",
+      "Security"
+    ],
+    "post": "2026-11-20-clusterpedia-parameterized-sql-query-boundary"
   }
 ]

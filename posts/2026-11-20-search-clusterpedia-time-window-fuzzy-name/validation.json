@@ -1,0 +1,24 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-21",
+  "runtimeTestsPerformed": false,
+  "localCodeTestsPerformed": true,
+  "sources": [
+    "https://github.com/clusterpedia-io/clusterpedia/blob/v0.9.0/pkg/storage/internalstorage/resource_storage.go",
+    "https://github.com/clusterpedia-io/clusterpedia/blob/v0.9.0/pkg/storage/internalstorage/util.go",
+    "https://clusterpedia.io/docs/usage/search/multi-cluster/#fuzzy-search",
+    "https://github.com/clusterpedia-io/clusterpedia/blob/v0.9.0/staging/src/github.com/clusterpedia-io/api/clusterpedia/v1beta1/conversion.go"
+  ],
+  "tests": [
+    "Go1.25.0 actual v0.9.0 converter accepted equivalent UTC/offset bounds, date-label interval and fuzzy extra selector; reversed and malformed intervals rejected",
+    "Exact Python3 URL helper executed; encoded plus-offset timestamp round-tripped",
+    "Illustrative predicate fixture included start/interior, excluded end/pre-start and required both fragments",
+    "Pinned storage source reviewed for creationTimestamp origin, >=/< bounds and AND-combined LIKE filters",
+    "Shell syntax and four Mermaid edges structurally checked;1280x720 image visually reviewed"
+  ],
+  "limitations": [
+    "No live Clusterpedia, SQL execution, backend collation, Kubernetes search or synchronization tested",
+    "Python boundary fixture illustrates reviewed semantics rather than executing backend code",
+    "Mermaid not rendered"
+  ]
+}

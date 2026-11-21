@@ -1,0 +1,26 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-21",
+  "runtimeTestsPerformed": false,
+  "localCodeTestsPerformed": true,
+  "sources": [
+    "https://github.com/clusterpedia-io/clusterpedia/blob/v0.9.0/pkg/storage/internalstorage/register.go",
+    "https://go.dev/doc/database/manage-connections",
+    "https://github.com/clusterpedia-io/clusterpedia/blob/v0.9.0/pkg/storage/internalstorage/config.go",
+    "https://github.com/clusterpedia-io/clusterpedia-helm/blob/clusterpedia-2.7.0/charts/clusterpedia/templates/internalstorage-configmap.yaml",
+    "https://github.com/clusterpedia-io/clusterpedia/blob/v0.9.0/pkg/storage/internalstorage/metrics.go",
+    "https://gorm.io/docs/logger.html"
+  ],
+  "tests": [
+    "Go1.25.0 executed exact extracted v0.9.0 pool normalization function with minimal local types/constants; verified normal values, thirty-minute clamp, nonpositive defaults and invalid idle/open relationship",
+    "Helm3.17.3/chart2.7.0 rendered exact pool/log fragment and log-disabled variant; ConfigMap parsed and asserted",
+    "Source reviewed for per-handle pool initialization, metric names and logger configuration",
+    "Shell syntax and six Mermaid edges structurally checked;1280x720 image visually reviewed"
+  ],
+  "limitations": [
+    "No live database, full Clusterpedia binary, pool saturation, SQL logging or capacity benchmark",
+    "Pool rule test extracts the tagged function; it does not execute storage initialization",
+    "Helm fixture uses isolated external-database values with known DSN coalescing warning",
+    "Mermaid not rendered"
+  ]
+}

@@ -1,0 +1,25 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-21",
+  "runtimeTestsPerformed": false,
+  "localCodeTestsPerformed": true,
+  "sources": [
+    "https://github.com/clusterpedia-io/clusterpedia/blob/v0.9.0/pkg/storage/internalstorage/collectionresource.go",
+    "https://clusterpedia.io/docs/concepts/collection-resource/",
+    "https://clusterpedia.io/docs/usage/search/collection-resource/",
+    "https://github.com/clusterpedia-io/clusterpedia/blob/v0.9.0/staging/src/github.com/clusterpedia-io/api/clusterpedia/v1beta1/types.go",
+    "https://github.com/clusterpedia-io/clusterpedia/blob/v0.9.0/pkg/storage/internalstorage/collectionresource_storage.go",
+    "https://github.com/kubernetes/api/blob/v0.34.0/apps/v1/types.go"
+  ],
+  "tests": [
+    "Go1.25.0 serialized actual v0.9.0 CollectionResource type and confirmed top-level continue/remainingItemCount",
+    "Exact jq1.6 summary/projection handled three same-name workload kinds, empty items and missing member annotation without identity collapse",
+    "Tagged collection membership, metadata behavior, pagination and Kubernetes apps/v1 status fields source reviewed",
+    "Shell syntax and six Mermaid edges structurally checked;1280x720 social image visually reviewed"
+  ],
+  "limitations": [
+    "No live collection API, storage query, RBAC or synchronization tested",
+    "Synthetic response projection and type serialization do not establish fleet coverage",
+    "Mermaid not rendered"
+  ]
+}

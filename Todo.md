@@ -1302,15 +1302,35 @@ Research: [OneUptime air-gapped alerting](https://oneuptime.com/enterprise/air-g
 
     Completed: [Article](posts/2026-11-20-query-nested-fields-clusterpedia/README.md) (20 November 2026).
 10. How to Find Every Pod Owned by a Deployment with Clusterpedia Owner Seniority
+
+    Completed: [Article](posts/2026-11-20-find-deployment-pods-clusterpedia-owner-seniority/README.md) (20 November 2026).
 11. How to Paginate Large Clusterpedia Queries Without kubectl Fetching Every Remaining Page
+
+    Completed: [Article](posts/2026-11-20-paginate-clusterpedia-without-kubectl-draining-pages/README.md) (20 November 2026).
 12. How to Build Stable Multi-Field Sorts for Clusterpedia Pagination
+
+    Completed: [Article](posts/2026-11-20-stable-multi-field-sorts-clusterpedia-pagination/README.md) (20 November 2026).
 13. How to Query Deployments, DaemonSets, and StatefulSets Together with Clusterpedia Collection Resources
+
+    Completed: [Article](posts/2026-11-20-query-workloads-clusterpedia-collection-resources/README.md) (20 November 2026).
 14. How to Search Clusterpedia by Creation-Time Window and Fuzzy Resource Name
+
+    Completed: [Article](posts/2026-11-20-search-clusterpedia-time-window-fuzzy-name/README.md) (20 November 2026).
 15. How to Auto-Import Cluster API, Karmada, or vCluster Clusters with a ClusterImportPolicy
+
+    Completed: [Article](posts/2026-11-20-auto-import-clusterpedia-clusterimportpolicy/README.md) (20 November 2026).
 16. How to Tune Clusterpedia Database Connection Pools and Slow-Query Logging for Many Clusters
+
+    Completed: [Article](posts/2026-11-20-tune-clusterpedia-database-pools-slow-query-logging/README.md) (20 November 2026).
 17. How to Reduce Clusterpedia Storage by Pruning managedFields and Last-Applied Annotations
+
+    Completed: [Article](posts/2026-11-20-reduce-clusterpedia-storage-prune-metadata/README.md) (20 November 2026).
 18. How to Fix Slow PediaCluster Health Checks with Clusterpedia’s Standalone TCP Feature Gate
+
+    Completed: [Article](posts/2026-11-20-clusterpedia-health-check-standalone-tcp/README.md) (20 November 2026).
 19. How to Use Clusterpedia Raw SQL Queries Without Exposing an Injection Endpoint
+
+    Completed: [Article](posts/2026-11-20-clusterpedia-parameterized-sql-query-boundary/README.md) (20 November 2026).
 20. How to Recover Clusterpedia After Storage Loss: Restore the Database or Re-Synchronize Member Clusters?
 
 ## Container Registries

@@ -1,0 +1,30 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-21",
+  "runtimeTestsPerformed": false,
+  "localCodeTestsPerformed": true,
+  "sources": [
+    "https://github.com/clusterpedia-io/clusterpedia/blob/v0.9.0/kustomize/clusterimportpolicy/cluster_api.yaml",
+    "https://github.com/clusterpedia-io/clusterpedia/blob/v0.9.0/kustomize/clusterimportpolicy/karmada.yaml",
+    "https://github.com/clusterpedia-io/clusterpedia/blob/v0.9.0/kustomize/clusterimportpolicy/vcluster.yaml",
+    "https://clusterpedia.io/docs/concepts/cluster-import-policy/",
+    "https://release-1-9.cluster-api.sigs.k8s.io/developer/providers/contracts/control-plane",
+    "https://kubernetes.io/docs/reference/kubectl/generated/kubectl_create/kubectl_create_secret_generic/",
+    "https://github.com/kubernetes-sigs/cluster-api/blob/v1.9.0/api/v1beta1/condition_consts.go",
+    "https://github.com/clusterpedia-io/clusterpedia/blob/v0.9.0/pkg/controller/pediaclusterlifecycle/pediaclusterlifecycle_controller.go"
+  ],
+  "tests": [
+    "Policy YAML matches v0.9.0 ClusterImportPolicy schema; rendered PediaCluster matches chart2.7.0 schema",
+    "Go1.25.0 actual v0.9.0 policy template methods tested opt-in/opt-out/wrong namespace, true/false readiness, generated name and reference name",
+    "Synthetic kubeconfig byte marker preserved with exactly one base64 decode; no real credentials used",
+    "Pinned lifecycle auth-only updates, creation-only gate and platform example mappings source reviewed",
+    "Shell syntax and six Mermaid edges structurally checked;1280x720 image visually reviewed"
+  ],
+  "limitations": [
+    "No live Cluster API, Karmada, vCluster, Kubernetes admission or controller reconciliation tested",
+    "Synthetic credential marker is not a usable kubeconfig or TLS test",
+    "No live RBAC, rotation, selector removal, deletion or garbage collection tested",
+    "CAPI example pins v1.9.0/v1beta1 contract; newer installed versions require adaptation",
+    "Mermaid not rendered"
+  ]
+}

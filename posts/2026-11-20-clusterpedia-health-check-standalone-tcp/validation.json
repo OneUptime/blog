@@ -1,0 +1,24 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-21",
+  "runtimeTestsPerformed": false,
+  "localCodeTestsPerformed": true,
+  "sources": [
+    "https://github.com/clusterpedia-io/clusterpedia/blob/v0.9.0/pkg/synchromanager/clustersynchro/cluster_monitor.go",
+    "https://clusterpedia.io/docs/features/health-checker-with-standalone-tcp/",
+    "https://github.com/clusterpedia-io/clusterpedia/blob/v0.9.0/pkg/synchromanager/clustersynchro/cluster_synchro.go",
+    "https://github.com/clusterpedia-io/clusterpedia/blob/v0.9.0/pkg/synchromanager/features/features.go"
+  ],
+  "tests": [
+    "client-go0.31.2 synthetic TLS test: equivalent configurations reused one connection; separate dialer opened another; verified CA and synthetic bearer authentication retained",
+    "Helm3.17.3/chart2.7.0 rendered exact enabled feature gate in manager command",
+    "All shell blocks passed bash syntax; six Mermaid edges structurally checked",
+    "1280x720 social image visually inspected: complete readable title"
+  ],
+  "limitations": [
+    "No live Clusterpedia, Kubernetes API, congestion test or performance measurement",
+    "Owned local TLS fixture demonstrates transport separation only",
+    "Helm fixture retains known external-DSN coalescing warning; no API validation",
+    "Mermaid structurally checked, not rendered"
+  ]
+}
