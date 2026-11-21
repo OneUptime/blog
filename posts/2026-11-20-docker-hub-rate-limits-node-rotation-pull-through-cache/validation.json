@@ -1,0 +1,24 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-21",
+  "runtimeTestsPerformed": false,
+  "localCodeTestsPerformed": true,
+  "sources": [
+    "https://docs.docker.com/docker-hub/usage/",
+    "https://docs.docker.com/docker-hub/troubleshoot/",
+    "https://distribution.github.io/distribution/recipes/mirror/",
+    "https://distribution.github.io/distribution/about/configuration/",
+    "https://github.com/distribution/distribution/tree/v3.1.2/registry/proxy",
+    "https://kubernetes.io/docs/tasks/configure-pod-container/pull-image-private-registry/"
+  ],
+  "tests": [
+    "Exact YAML parsed with Distribution3.1.2; filesystem, enabled deletion, htpasswd, TLS path, upstream URL and168h retention asserted",
+    "Upstream proxy TestGet, TestProxyManifests and TestProxyStoreGet passed using test stores",
+    "Five Mermaid edges structurally checked;1280x720 image visually reviewed"
+  ],
+  "limitations": [
+    "No Docker Hub credentials, live cache deployment, Kubernetes nodes or real image pulls",
+    "No measured quota reduction, cache hit ratio, multi-platform warming, cleanup or outage guarantees",
+    "Mermaid not rendered"
+  ]
+}

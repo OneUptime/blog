@@ -1,0 +1,29 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-21",
+  "runtimeTestsPerformed": false,
+  "localCodeTestsPerformed": true,
+  "sources": [
+    "https://github.com/distribution/distribution/releases/tag/v3.1.2",
+    "https://docs.docker.com/engine/security/certificates/",
+    "https://github.com/distribution/distribution/blob/v3.1.2/registry/auth/htpasswd/access.go",
+    "https://httpd.apache.org/docs/2.4/programs/htpasswd.html",
+    "https://github.com/distribution/distribution/blob/v3.1.2/registry/storage/driver/s3-aws/s3.go",
+    "https://distribution.github.io/distribution/storage-drivers/s3/",
+    "https://distribution.github.io/distribution/about/configuration/",
+    "https://github.com/distribution/distribution/blob/v3.1.2/Dockerfile",
+    "https://pkg.go.dev/crypto/x509#SystemCertPool",
+    "https://hub.docker.com/v2/repositories/library/registry/tags/3.1.2"
+  ],
+  "tests": [
+    "Actual Distribution3.1.2 configuration package tests passed; added test parsed exact article YAML and asserted S3 driver, TLS paths, htpasswd, redirect and verification settings",
+    "Upstream v3.1.2 htpasswd package tests passed",
+    "Official Docker Hub3.1.2 tag metadata confirmed; digest recorded in local research",
+    "Shell syntax and four Mermaid edges structurally checked;1280x720 image visually reviewed"
+  ],
+  "limitations": [
+    "No Docker daemon, registry process, S3 credentials or storage backend used",
+    "No end-to-end TLS, authentication, image push/pull, restart durability or multipart upload test",
+    "Configuration parsing does not validate certificate files or backend permissions; Mermaid not rendered"
+  ]
+}

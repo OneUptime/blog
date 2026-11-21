@@ -1,0 +1,23 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-21",
+  "runtimeTestsPerformed": false,
+  "localCodeTestsPerformed": true,
+  "sources": [
+    "https://distribution.github.io/distribution/about/deploying/#load-balancing-considerations",
+    "https://github.com/distribution/distribution/blob/v3.1.2/registry/storage/driver/s3-aws/s3.go",
+    "https://github.com/distribution/distribution/blob/v3.1.2/registry/handlers/hmac.go",
+    "https://github.com/distribution/distribution/blob/v3.1.2/registry/handlers/app.go",
+    "https://curl.se/docs/manpage.html#--resolve"
+  ],
+  "tests": [
+    "Actual Distribution3.1.2 hmac.go and upstream hmac_test.go tests passed: state round trip, same-key acceptance and different-key rejection",
+    "Article fragment parsed by Distribution3.1.2 with version field; shared bucket/prefix, public host and60s drain checked",
+    "Shell syntax and nine Mermaid edges structurally checked;1280x720 social image visually reviewed"
+  ],
+  "limitations": [
+    "No multi-replica runtime, load balancer, shared object storage, Redis or production upload interrupted",
+    "Fragment parser check does not include deployment-specific authentication and TLS configuration",
+    "No live curl execution; Mermaid not rendered"
+  ]
+}

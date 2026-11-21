@@ -1,0 +1,23 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-21",
+  "runtimeTestsPerformed": false,
+  "localCodeTestsPerformed": true,
+  "sources": [
+    "https://kubernetes.io/docs/tasks/configure-pod-container/pull-image-private-registry/",
+    "https://github.com/kubernetes/kubernetes/blob/v1.34.1/pkg/credentialprovider/keyring.go",
+    "https://github.com/kubernetes/kubernetes/blob/v1.34.1/plugin/pkg/admission/serviceaccount/admission.go",
+    "https://kubernetes.io/docs/tasks/configure-pod-container/configure-service-account/#add-imagepullsecrets-to-a-service-account"
+  ],
+  "tests": [
+    "Extracted unchanged Kubernetes v1.34.1 URL-matching functions tested with Go: exact authority, wrong/missing port, wrong path, one-level wildcard and extra hostname level",
+    "Exact jq Secret projection executed on synthetic data and confirmed no credential value printed",
+    "YAML fragment parsed and field placement checked; shell syntax passed; five Mermaid edges structurally checked",
+    "1280x720 image visually reviewed"
+  ],
+  "limitations": [
+    "No Kubernetes API, kubelet Secret retrieval, admission runtime or actual image pull",
+    "Extracted helper test is not a full Kubernetes build",
+    "YAML fragment is not a complete Deployment or server-side validation; Mermaid not rendered"
+  ]
+}

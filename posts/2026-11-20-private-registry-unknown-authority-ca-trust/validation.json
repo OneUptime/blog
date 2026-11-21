@@ -1,0 +1,22 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-21",
+  "runtimeTestsPerformed": false,
+  "localCodeTestsPerformed": true,
+  "sources": [
+    "https://docs.openssl.org/3.6/man1/openssl-s_client/",
+    "https://docs.openssl.org/3.6/man1/openssl-verify/",
+    "https://docs.docker.com/engine/security/certificates/",
+    "https://github.com/containerd/containerd/blob/v2.1.5/docs/hosts.md"
+  ],
+  "tests": [
+    "OpenSSL3.6.2 generated a temporary root/intermediate/leaf fixture: exact verification accepted valid chain and rejected wrong hostname, wrong root and missing intermediate; temporary keys removed",
+    "Both TOML fragments parsed with Python3.11 tomllib and checked against tagged containerd2.1.5 documentation",
+    "Shell syntax and five Mermaid edges structurally checked;1280x720 image visually reviewed"
+  ],
+  "limitations": [
+    "No live registry connection, s_client session, Docker pull or containerd CRI pull",
+    "No host trust store, daemon configuration or personal credentials changed",
+    "TOML syntax is not runtime configuration validation; Mermaid not rendered"
+  ]
+}

@@ -828711,5 +828711,116 @@
       "Security"
     ],
     "post": "2026-11-20-clusterpedia-parameterized-sql-query-boundary"
+  },
+  {
+    "title": "Recover Clusterpedia Storage: Restore a Backup or Rebuild the Index",
+    "description": "Choose between restoring Clusterpedia's database and rebuilding its current inventory, then verify member coverage before reopening search traffic.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Kubernetes",
+      "Multi-Cluster",
+      "Backup"
+    ],
+    "post": "2026-11-20-recover-clusterpedia-storage-loss"
+  },
+  {
+    "title": "Run Distribution Registry 3 with TLS, Basic Auth, and S3 Storage",
+    "description": "Configure Distribution3.1.2 with verified TLS, bcrypt authentication, and an S3-compatible backend, then test authentication and durable image storage separately.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Container Registry",
+      "Docker",
+      "S3",
+      "Security"
+    ],
+    "post": "2026-11-20-distribution-registry-3-tls-auth-s3"
+  },
+  {
+    "title": "Fix Private Registry Unknown-Authority Errors with Correct CA Trust",
+    "description": "Diagnose private-registry certificate failures, repair the certificate chain, and install CA trust in the Docker or containerd client that actually pulls images.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Container Registry",
+      "TLS",
+      "Troubleshooting"
+    ],
+    "post": "2026-11-20-private-registry-unknown-authority-ca-trust"
+  },
+  {
+    "title": "Debug Registry Unauthorized and Insufficient-Scope Token Errors",
+    "description": "Trace a registry bearer-token exchange, distinguish an expected challenge from invalid credentials or missing scope, and inspect failures without exposing tokens.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Container Registry",
+      "Authentication",
+      "Troubleshooting"
+    ],
+    "post": "2026-11-20-registry-bearer-token-unauthorized-insufficient-scope"
+  },
+  {
+    "title": "Fix ImagePullBackOff When the Pull Secret Looks Valid",
+    "description": "Trace a pull secret from the Pod's namespace to registry credential matching, and separate missing references from wrong hosts, expired credentials, and TLS failures.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Kubernetes",
+      "Container Registry",
+      "Troubleshooting"
+    ],
+    "post": "2026-11-20-imagepullsecret-registry-host-namespace-scope"
+  },
+  {
+    "title": "Replace Static Pull Secrets with Kubelet Credential Providers",
+    "description": "Pilot an ECR kubelet credential provider with pinned configuration, scoped node identity, and cache-aware tests before retiring namespace pull secrets.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Kubernetes",
+      "Container Registry",
+      "Authentication"
+    ],
+    "post": "2026-11-20-kubelet-image-credential-provider-migration"
+  },
+  {
+    "title": "Reduce Docker Hub 429s During Node Rotations with a Pull-Through Cache",
+    "description": "Use an authenticated Distribution cache to reduce repeated image downloads during node replacement, while accounting for quotas, cache misses, and private-image access.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Kubernetes",
+      "Container Registry",
+      "Docker"
+    ],
+    "post": "2026-11-20-docker-hub-rate-limits-node-rotation-pull-through-cache"
+  },
+  {
+    "title": "Make Distribution Registry Replicas Share Storage and Upload State",
+    "description": "Design Distribution3.1.2 replicas around shared content, a consistent upload secret, correct load-balancer behavior, and measured failover tests.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Container Registry",
+      "High Availability",
+      "Storage"
+    ],
+    "post": "2026-11-20-distribution-registry-high-availability-shared-storage"
+  },
+  {
+    "title": "Reclaim Distribution Registry Space Without Racing Active Uploads",
+    "description": "Separate manifest deletion from blob reclamation, stop all registry writers, review a garbage-collection dry run, and verify retained images before reopening pushes.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Container Registry",
+      "Storage",
+      "Maintenance"
+    ],
+    "post": "2026-11-20-distribution-registry-safe-garbage-collection"
+  },
+  {
+    "title": "Retain Multi-Platform Images, Signatures, and SBOMs as a Connected Set",
+    "description": "Build retention decisions from image and artifact relationships so cleanup preserves platform manifests, signatures, SBOMs, and digest-pinned rollback releases.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Container Registry",
+      "Supply Chain Security",
+      "Storage"
+    ],
+    "post": "2026-11-20-registry-retention-multiplatform-signatures-sbom"
   }
 ]

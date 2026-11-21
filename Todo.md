@@ -1333,17 +1333,37 @@ Research: [OneUptime air-gapped alerting](https://oneuptime.com/enterprise/air-g
     Completed: [Article](posts/2026-11-20-clusterpedia-parameterized-sql-query-boundary/README.md) (20 November 2026).
 20. How to Recover Clusterpedia After Storage Loss: Restore the Database or Re-Synchronize Member Clusters?
 
+    Completed: [Article](posts/2026-11-20-recover-clusterpedia-storage-loss/README.md) (20 November 2026).
+
 ## Container Registries
 
 1. Self-Hosting CNCF Distribution Registry 3: TLS, Basic Auth, and S3-Compatible Storage
+
+    Completed: [Article](posts/2026-11-20-distribution-registry-3-tls-auth-s3/README.md) (20 November 2026).
 2. Fixing Private Registry `x509: certificate signed by unknown authority` Without Using `--insecure-registry`
+
+    Completed: [Article](posts/2026-11-20-private-registry-unknown-authority-ca-trust/README.md) (20 November 2026).
 3. `unauthorized` vs. `insufficient_scope`: Debugging the OCI Registry Bearer-Token Flow
+
+    Completed: [Article](posts/2026-11-20-registry-bearer-token-unauthorized-insufficient-scope/README.md) (20 November 2026).
 4. Why a Valid `imagePullSecret` Still Produces `ImagePullBackOff`: Registry Host Matching and Secret Scope
+
+    Completed: [Article](posts/2026-11-20-imagepullsecret-registry-host-namespace-scope/README.md) (20 November 2026).
 5. Replacing Long-Lived `imagePullSecrets` with Kubelet Image Credential Provider Plugins
+
+    Completed: [Article](posts/2026-11-20-kubelet-image-credential-provider-migration/README.md) (20 November 2026).
 6. Stopping Docker Hub 429s During Kubernetes Node Rotations with an Authenticated Pull-Through Cache
+
+    Completed: [Article](posts/2026-11-20-docker-hub-rate-limits-node-rotation-pull-through-cache/README.md) (20 November 2026).
 7. Making a Self-Hosted Container Registry Highly Available: Shared Storage, Load Balancing, and Safe Caches
+
+    Completed: [Article](posts/2026-11-20-distribution-registry-high-availability-shared-storage/README.md) (20 November 2026).
 8. Reclaiming Registry Disk Space Safely: Delete Manifests, Put the Registry in Read-Only Mode, Then Run Garbage Collection
+
+    Completed: [Article](posts/2026-11-20-distribution-registry-safe-garbage-collection/README.md) (20 November 2026).
 9. Writing Retention Rules That Preserve Multi-Platform Images, Signatures, and SBOM Referrers
+
+    Completed: [Article](posts/2026-11-20-registry-retention-multiplatform-signatures-sbom/README.md) (20 November 2026).
 10. Copying a Multi-Platform Image Between Registries Without Collapsing It to One Architecture
 11. Mirroring an Entire Container Release into an Air-Gapped Registry with Digest Verification
 12. Promoting the Exact Same Image Digest from Staging to Production Without Rebuilding
