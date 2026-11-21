@@ -1,0 +1,28 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-21",
+  "runtimeTestsPerformed": false,
+  "localCodeTestsPerformed": true,
+  "sources": [
+    "https://github.com/juicedata/juicefs/blob/v1.4.2/pkg/vfs/writer.go",
+    "https://www.freedesktop.org/software/systemd/man/257/journalctl.html",
+    "https://github.com/juicedata/juicefs/blob/v1.4.2/docs/en/guide/cache.md#client-write-cache",
+    "https://curl.se/docs/manpage.html",
+    "https://github.com/juicedata/juicefs/blob/v1.4.2/cmd/mount.go",
+    "https://github.com/juicedata/juicefs/blob/v1.4.2/docs/en/administration/troubleshooting.md#io-error-object-storage",
+    "https://github.com/juicedata/juicefs/blob/v1.4.2/pkg/chunk/cached_store.go"
+  ],
+  "tests": [
+    "JuiceFS1.4.2 writer flush deadline and separate PUT timeout/retry path source-reviewed; defaults verified in executable help",
+    "Python arithmetic produced67.1seconds for stated idealized inputs",
+    "System curl8.7.1 sent HEAD to owned local HTTP fixture and exposed403 response without treating it as transport failure; server closed afterward",
+    "Bash syntax and seven-node/six-edge Mermaid checked",
+    "1280x720 image generated and visually reviewed"
+  ],
+  "limitations": [
+    "HTTP fixture did not test TLS, object authentication, network constraints or actual provider behavior",
+    "No FUSE flush, upload backlog or recovery test",
+    "Arithmetic is illustrative, not benchmark evidence",
+    "Mermaid not rendered"
+  ]
+}

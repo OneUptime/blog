@@ -1,0 +1,29 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-21",
+  "runtimeTestsPerformed": false,
+  "localCodeTestsPerformed": true,
+  "sources": [
+    "https://kubernetes.io/docs/concepts/storage/persistent-volumes/#access-modes",
+    "https://github.com/juicedata/juicefs-csi-driver/blob/v0.34.0/docs/en/guide/pv.md",
+    "https://github.com/juicedata/juicefs-csi-driver/blob/v0.34.0/docs/en/getting_started.md",
+    "https://github.com/juicedata/charts/releases/tag/helm-chart-juicefs-csi-driver-0.34.0",
+    "https://kubernetes.io/docs/concepts/scheduling-eviction/assign-pod-node/#inter-pod-affinity-and-anti-affinity",
+    "https://github.com/juicedata/juicefs-csi-driver/blob/v0.34.0/docs/en/guide/pv.md#dynamic-provisioning",
+    "https://busybox.net/downloads/BusyBox.html"
+  ],
+  "tests": [
+    "Official chart0.34.0 archive SHA256 matched repository-index digest",
+    "Helm3.17.3 rendered exact article values for Kubernetes1.34.0:10 resources including CSIDriver; dashboard disabled and no credential Secret generated",
+    "Checked CE mount-image environment in both controller and node workloads; registry resolved ce-v1.4.2 digest4177c77bc873898127debf45786515b78c79bee18fed378d276fb221baa85640",
+    "YAML checked SC provisioner/Secret references,Retain,PVC RWX,class linkage,Deployment claim reference and required hostname anti-affinity",
+    "Shell syntax and eight-node/seven-edge Mermaid checked",
+    "1280x720 social image visually reviewed"
+  ],
+  "limitations": [
+    "No Kubernetes API server validation, installation, provisioning, FUSE mount or cross-node read",
+    "Registry digest lookup does not validate image execution or every platform",
+    "BusyBox marker command source-reviewed and syntax checked, not run in Kubernetes",
+    "Mermaid not rendered"
+  ]
+}

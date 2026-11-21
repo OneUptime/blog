@@ -1,0 +1,22 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-21",
+  "runtimeTestsPerformed": false,
+  "localCodeTestsPerformed": true,
+  "sources": [
+    "https://github.com/juicedata/juicefs/blob/v1.4.2/cmd/warmup.go",
+    "https://github.com/juicedata/juicefs/blob/v1.4.2/docs/en/guide/cache.md#client-read-cache",
+    "https://docs.python.org/3/library/pathlib.html"
+  ],
+  "tests": [
+    "Python3.9.6 exact list-builder with temporary path substitution: valid selection, duplicate elimination, exclusive-output refusal, size-budget rejection and symlink-escape rejection",
+    "Official JuiceFS1.4.2 warmup help and tagged parser reviewed",
+    "Shell syntax and eight-node/six-edge Mermaid structure checked",
+    "1280x720 social image visually reviewed"
+  ],
+  "limitations": [
+    "No FUSE cache warmup, coverage query, object transfer or job benchmark run",
+    "Path checks assume stable inputs, not hostile concurrent filesystem mutation",
+    "Mermaid not rendered"
+  ]
+}

@@ -1,0 +1,24 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-21",
+  "runtimeTestsPerformed": true,
+  "sources": [
+    "https://github.com/juicedata/juicefs/blob/v1.4.2/docs/en/security/trash.md",
+    "https://man7.org/linux/man-pages/man2/unlink.2.html",
+    "https://github.com/juicedata/juicefs/blob/v1.4.2/pkg/meta/base.go",
+    "https://github.com/juicedata/juicefs/blob/v1.4.2/cmd/gc.go",
+    "https://docs.aws.amazon.com/AmazonS3/latest/userguide/DeletingObjectVersions.html"
+  ],
+  "tests": [
+    "JuiceFS1.4.2 status --more and check-only gc executed on disposable SQLite/file volume",
+    "Synthetic old unreferenced four-byte chunk reported as one leaked object and retained with unchanged SHA256",
+    "Pinned gc/help and metadata close implementation reviewed",
+    "Shell syntax and eight-node/eight-edge Mermaid structure checked",
+    "1280x720 image visually reviewed"
+  ],
+  "limitations": [
+    "No FUSE unlink, live sustained inode, real trash expiration or background deletion tested",
+    "No destructive gc, compaction, production storage or S3 versioning test",
+    "No throughput/reclamation timing claims; Mermaid not rendered"
+  ]
+}

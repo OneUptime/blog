@@ -1428,15 +1428,35 @@ Research: [OneUptime air-gapped alerting](https://oneuptime.com/enterprise/air-g
 
     Completed: [Article](posts/2026-11-20-juicefs-writeback-small-files-staging-risk/README.md) (20 November 2026).
 10. Warming JuiceFS Cache Before a Job Without Causing Prefetch Read Amplification
+
+    Completed: [Article](posts/2026-11-20-warm-juicefs-cache-without-read-amplification/README.md) (20 November 2026).
 11. When JuiceFS Cache Slows Sequential Reads: Using `--cache-partial-only` Correctly
+
+    Completed: [Article](posts/2026-11-20-juicefs-cache-partial-only-sequential-reads/README.md) (20 November 2026).
 12. Fixing JuiceFS `flush timeout` and Slow Uploads to Object Storage
+
+    Completed: [Article](posts/2026-11-20-fix-juicefs-flush-timeout-slow-uploads/README.md) (20 November 2026).
 13. Providing ReadWriteMany Volumes with the JuiceFS CSI Driver and Dynamic Provisioning
+
+    Completed: [Article](posts/2026-11-20-juicefs-csi-readwritemany-dynamic-provisioning/README.md) (20 November 2026).
 14. JuiceFS CSI Pod Stuck in `ContainerCreating`: Tracing the Mount Pod, CSIDriver, and Kubelet Root
+
+    Completed: [Article](posts/2026-11-20-juicefs-csi-containercreating-mount-pod-kubelet/README.md) (20 November 2026).
 15. Reducing JuiceFS CSI Mount-Pod Overhead with Shared Mounts and Right-Sized Resources
+
+    Completed: [Article](posts/2026-11-20-reduce-juicefs-csi-mount-pod-overhead/README.md) (20 November 2026).
 16. Fixing JuiceFS Permission Mismatches Across Hosts by Synchronizing UID and GID Values
+
+    Completed: [Article](posts/2026-11-20-fix-juicefs-uid-gid-permission-mismatches/README.md) (20 November 2026).
 17. Encrypting JuiceFS Data at Rest Without Leaving Plaintext in the Client Cache
+
+    Completed: [Article](posts/2026-11-20-encrypt-juicefs-data-client-cache/README.md) (20 November 2026).
 18. Why Deleting JuiceFS Files Does Not Immediately Shrink Object Storage Usage: Trash, Open Handles, and Garbage Collection
+
+    Completed: [Article](posts/2026-11-20-juicefs-deletion-object-storage-trash-gc/README.md) (20 November 2026).
 19. Bringing Existing S3 Data into JuiceFS: Why Raw Bucket Objects Are Invisible and When to Use `sync`
+
+    Completed: [Article](posts/2026-11-20-import-existing-s3-data-juicefs-sync/README.md) (20 November 2026).
 20. Exposing a JuiceFS Volume Through the S3 Gateway: Credentials, TLS, and Multi-User Limitations
 21. How to Upgrade a Mounted JuiceFS Client In Place with Smooth FUSE Handover
 22. How to Rotate Expiring S3 STS Credentials in JuiceFS Without Unmounting Clients

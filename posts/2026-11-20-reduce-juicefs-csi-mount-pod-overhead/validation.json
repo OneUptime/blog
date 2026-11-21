@@ -1,0 +1,24 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-21",
+  "runtimeTestsPerformed": false,
+  "localCodeTestsPerformed": true,
+  "sources": [
+    "https://github.com/juicedata/juicefs-csi-driver/blob/v0.34.0/docs/en/guide/resource-optimization.md#share-mount-pod-for-the-same-file-system",
+    "https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/",
+    "https://github.com/juicedata/charts/releases/tag/helm-chart-juicefs-csi-driver-0.34.0",
+    "https://github.com/juicedata/juicefs-csi-driver/blob/v0.34.0/docs/en/guide/configurations.md#configmap",
+    "https://github.com/juicedata/juicefs-csi-driver/blob/v0.34.0/docs/en/guide/configurations.md#automatic-mount-point-recovery"
+  ],
+  "tests": [
+    "Helm3.17.3 chart0.34.0 install and upgrade renders for Kubernetes1.34 each produced10 objects",
+    "Verified sharing environment and selector/resources in embedded ConfigMap for both renders",
+    "Bash syntax, eight-node/seven-edge diagram structure and reservation arithmetic passed",
+    "1280x720 social image visually reviewed"
+  ],
+  "limitations": [
+    "No Kubernetes API, dynamic mount-pod creation, live resource measurements or recovery tested",
+    "Illustrative resource values are not production recommendations",
+    "Mermaid structurally checked but not rendered"
+  ]
+}

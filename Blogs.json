@@ -829054,5 +829054,115 @@
       "Data Integrity"
     ],
     "post": "2026-11-20-juicefs-writeback-small-files-staging-risk"
+  },
+  {
+    "title": "Warm JuiceFS Cache for a Job Without Downloading Its Entire Dataset",
+    "description": "Select a bounded JuiceFS warmup set, run it on the client's actual cache, and compare total transfer cost with job speed before adjusting prefetch.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "JuiceFS",
+      "Performance",
+      "Storage"
+    ],
+    "post": "2026-11-20-warm-juicefs-cache-without-read-amplification"
+  },
+  {
+    "title": "Use JuiceFS cache-partial-only When Sequential Reads Outrun Local Disk",
+    "description": "Test whether JuiceFS cache writes slow sequential scans, understand what cache-partial-only actually changes, and preserve useful caching for smaller reads.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "JuiceFS",
+      "Storage",
+      "Performance"
+    ],
+    "post": "2026-11-20-juicefs-cache-partial-only-sequential-reads"
+  },
+  {
+    "title": "Diagnose JuiceFS Flush Timeouts Before Increasing Upload Timeouts",
+    "description": "Trace JuiceFS flush failures through upload errors, bandwidth limits, buffering, and staging before changing concurrency or timeout settings.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "JuiceFS",
+      "Troubleshooting",
+      "Storage"
+    ],
+    "post": "2026-11-20-fix-juicefs-flush-timeout-slow-uploads"
+  },
+  {
+    "title": "Provision Shared Kubernetes Volumes with the JuiceFS CSI Driver",
+    "description": "Install a pinned JuiceFS CSI chart, connect an existing filesystem, and test a dynamically provisioned ReadWriteMany claim across two worker nodes.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "JuiceFS",
+      "Kubernetes",
+      "CSI"
+    ],
+    "post": "2026-11-20-juicefs-csi-readwritemany-dynamic-provisioning"
+  },
+  {
+    "title": "Trace JuiceFS CSI ContainerCreating Failures from Pod to Kubelet",
+    "description": "Follow a blocked application through its claim, CSI node registration, mount pod, and kubelet paths before restarting or replacing storage components.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "JuiceFS",
+      "Kubernetes",
+      "Troubleshooting"
+    ],
+    "post": "2026-11-20-juicefs-csi-containercreating-mount-pod-kubelet"
+  },
+  {
+    "title": "Reduce JuiceFS CSI Overhead with Shared Mounts and Measured Resource Requests",
+    "description": "Reduce JuiceFS mount-pod overhead by choosing a sharing boundary, measuring combined demand, and verifying resource settings before a staged rollout.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "JuiceFS",
+      "Kubernetes",
+      "Performance"
+    ],
+    "post": "2026-11-20-reduce-juicefs-csi-mount-pod-overhead"
+  },
+  {
+    "title": "Fix JuiceFS Permission Mismatches by Aligning Numeric User and Group IDs",
+    "description": "Diagnose JuiceFS access differences across hosts, align numeric identities safely, and verify existing files and new processes without broad permission changes.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "JuiceFS",
+      "Linux",
+      "Security"
+    ],
+    "post": "2026-11-20-fix-juicefs-uid-gid-permission-mismatches"
+  },
+  {
+    "title": "Encrypt JuiceFS Objects and Protect Plaintext in the Client Cache",
+    "description": "Combine JuiceFS object encryption with encrypted cache storage, guarded startup, and recoverable keys without assuming every local copy is protected.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "JuiceFS",
+      "Security",
+      "Storage"
+    ],
+    "post": "2026-11-20-encrypt-juicefs-data-client-cache"
+  },
+  {
+    "title": "Why JuiceFS Deletes Do Not Immediately Reduce Object Storage Usage",
+    "description": "Trace retained JuiceFS storage through trash, open files, stale slices, background cleanup, and bucket versions before choosing a cleanup action.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "JuiceFS",
+      "Storage",
+      "Troubleshooting"
+    ],
+    "post": "2026-11-20-juicefs-deletion-object-storage-trash-gc"
+  },
+  {
+    "title": "Import Existing S3 Objects into JuiceFS with a Verified Sync Workflow",
+    "description": "Import an existing S3 prefix into JuiceFS without confusing raw objects with filesystem data, and verify paths, content, and cutover boundaries.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "JuiceFS",
+      "S3",
+      "Storage"
+    ],
+    "post": "2026-11-20-import-existing-s3-data-juicefs-sync"
   }
 ]

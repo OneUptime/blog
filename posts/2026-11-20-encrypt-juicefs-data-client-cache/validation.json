@@ -1,0 +1,23 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-21",
+  "runtimeTestsPerformed": true,
+  "sources": [
+    "https://github.com/juicedata/juicefs/blob/v1.4.2/docs/en/security/encryption.md",
+    "https://docs.openssl.org/3.6/man1/openssl-genrsa/",
+    "https://github.com/juicedata/juicefs/blob/v1.4.2/cmd/format.go",
+    "https://man7.org/linux/man-pages/man8/findmnt.8.html",
+    "https://github.com/util-linux/util-linux/blob/v2.41.2/sys-utils/mountpoint.1.adoc"
+  ],
+  "tests": [
+    "JuiceFS1.4.2 and OpenSSL3.6.2: generated encrypted RSA2048 PKCS8 key in disposable directory; file-backed SQLite volume format succeeded with correct passphrase",
+    "Identical format to separate fresh destination rejected deliberately incorrect passphrase",
+    "Shell syntax, seven-node/six-edge Mermaid structure checked",
+    "1280x720 social image visually reviewed"
+  ],
+  "limitations": [
+    "Local macOS format initialization only; no FUSE mount, file I/O through JuiceFS, S3 or Redis service tested",
+    "No Linux encrypted device, mountpoint guard execution, cache contents or cold recovery tested",
+    "No cryptographic security audit or benchmark; Mermaid not rendered"
+  ]
+}

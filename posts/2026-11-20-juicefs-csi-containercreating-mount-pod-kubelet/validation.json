@@ -1,0 +1,27 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-21",
+  "runtimeTestsPerformed": false,
+  "localCodeTestsPerformed": true,
+  "sources": [
+    "https://github.com/juicedata/juicefs-csi-driver/blob/v0.34.0/docs/en/administration/troubleshooting.md",
+    "https://github.com/juicedata/juicefs-csi-driver/blob/v0.34.0/docs/en/guide/pv.md",
+    "https://kubernetes-csi.github.io/docs/csi-driver-object.html",
+    "https://kubernetes-csi.github.io/docs/csi-node-object.html",
+    "https://kubernetes.io/docs/reference/kubectl/generated/kubectl_logs/",
+    "https://github.com/juicedata/charts/releases/tag/helm-chart-juicefs-csi-driver-0.34.0",
+    "https://github.com/juicedata/juicefs-csi-driver/blob/v0.34.0/docs/en/administration/troubleshooting-cases.md"
+  ],
+  "tests": [
+    "Helm3.17.3 chart0.34.0 rendered with default and alternate kubeletDir for Kubernetes1.34",
+    "Exact jq1.6 inspection evaluated on both DaemonSet fixtures; kubelet-dir,plugins_registry and DRIVER_REG_SOCK_PATH matched roots",
+    "Rendered CSIDriver attachRequired:false verified",
+    "Bash syntax and seven-node/six-edge Mermaid structure checked",
+    "1280x720 social image visually reviewed"
+  ],
+  "limitations": [
+    "No live kubectl queries, node registration, FUSE mount, pod failure or recovery tested",
+    "Fixture checks validate generated configuration, not effective host kubelet settings",
+    "Mermaid not rendered"
+  ]
+}

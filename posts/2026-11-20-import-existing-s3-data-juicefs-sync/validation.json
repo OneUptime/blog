@@ -1,0 +1,23 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-21",
+  "runtimeTestsPerformed": true,
+  "sources": [
+    "https://github.com/juicedata/juicefs/blob/v1.4.2/docs/en/faq.md",
+    "https://docs.aws.amazon.com/AmazonS3/latest/userguide/object-keys.html",
+    "https://github.com/juicedata/juicefs/blob/v1.4.2/pkg/object/s3.go",
+    "https://github.com/juicedata/juicefs/blob/v1.4.2/docs/en/guide/sync.md#sync-without-mount-point"
+  ],
+  "tests": [
+    "JuiceFS1.4.2 native jfs import/export with disposable SQLite metadata and local file object storage",
+    "Dry run copied no files; nested file, empty file and binary roundtrip preserved exact bytes",
+    "check-all updated destination after same-length source content change",
+    "Shell syntax, six-node/six-edge Mermaid structure checked",
+    "1280x720 image visually reviewed"
+  ],
+  "limitations": [
+    "No S3 endpoint, AWS credentials, TLS or real cloud migration tested",
+    "No version history, directory collisions, multi-writer cutover or production performance tested",
+    "Mermaid not rendered"
+  ]
+}

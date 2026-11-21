@@ -1,0 +1,24 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-21",
+  "runtimeTestsPerformed": false,
+  "localCodeTestsPerformed": true,
+  "sources": [
+    "https://github.com/juicedata/juicefs/blob/v1.4.2/docs/en/administration/sync_accounts_between_multiple_hosts.md",
+    "https://docs.python.org/3.11/library/os.html#os.stat",
+    "https://github.com/juicedata/juicefs/blob/v1.4.2/docs/en/security/posix_acl.md",
+    "https://kubernetes.io/docs/tasks/configure-pod-container/security-context/",
+    "https://github.com/juicedata/juicefs-csi-driver/blob/v0.34.0/docs/en/security/permission.md"
+  ],
+  "tests": [
+    "Python3.11.13 report tested against real local file, symlink, missing path and missing argument",
+    "Verified current process UID/GID, numeric file owner,0640 mode and symlink detection; file bytes and mode unchanged",
+    "YAML securityContext and shell syntax checked; seven-node/five-edge diagram structurally checked",
+    "1280x720 social image visually reviewed"
+  ],
+  "limitations": [
+    "No JuiceFS mount, Linux identity migration, cross-host access or Kubernetes deployment executed",
+    "Report is diagnostic and does not evaluate ACLs or all path ancestors",
+    "Mermaid not rendered"
+  ]
+}
