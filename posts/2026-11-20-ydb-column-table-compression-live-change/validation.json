@@ -1,0 +1,26 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-21",
+  "runtimeTestsPerformed": false,
+  "sources": [
+    "https://www.github.com/nawazdhandala",
+    "https://github.com/ydb-platform/ydb/blob/d234401baddb8ad37a8fbd99e2a4838e4787fb6c/ydb/docs/en/core/concepts/compression.md",
+    "https://ydb.tech/docs/en/yql/reference/syntax/create_table/?version=v26.2",
+    "https://github.com/ydb-platform/ydb/blob/26.2.1.16/ydb/docs/en/core/yql/reference/syntax/show_create.md",
+    "https://github.com/ydb-platform/ydb/blob/26.2.1.16/ydb/docs/en/core/yql/reference/syntax/alter_table/columns.md",
+    "https://github.com/ydb-platform/ydb/blob/26.2.1.16/ydb/docs/en/core/yql/reference/syntax/_includes/column_option_list.md"
+  ],
+  "tests": [
+    "Reviewed CREATE/ALTER COLUMN/SHOW CREATE syntax against YDB26.2.1.16 documentation source",
+    "Reviewed per-column algorithm/level options and official historical recompression caveat at commitd234401baddb8ad37a8fbd99e2a4838e4787fb6c",
+    "SQL artifacts exactly match article snippets",
+    "Seven-node six-edge Mermaid structurally checked",
+    "1280x720 image visually inspected"
+  ],
+  "limitations": [
+    "No database DDL,compression benchmark,compaction or historical rewrite executed",
+    "No claim that all existing data will be recompressed",
+    "Source review rather than server parser validation",
+    "Mermaid not rendered"
+  ]
+}

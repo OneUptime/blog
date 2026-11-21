@@ -2215,15 +2215,35 @@ Research: [OneUptime air-gapped alerting](https://oneuptime.com/enterprise/air-g
 
     Completed: [Article](posts/2026-11-20-fix-ydb-unable-to-connect/README.md) (20 November 2026).
 3. Integrate YDB with Java: Native SDK, JDBC, Connection Pooling, and Retry Boundaries
+
+    Completed: [Article](posts/2026-11-20-ydb-java-sdk-jdbc-pooling-retries/README.md) (20 November 2026).
 4. Connect SQLAlchemy 2.0 to YDB: URLs, Credentials, TLS, and Engine Configuration
+
+    Completed: [Article](posts/2026-11-20-sqlalchemy-ydb-urls-credentials-tls-engine/README.md) (20 November 2026).
 5. Use `Serial` and `BigSerial` in YDB Without Creating a Hot Primary-Key Partition
+
+    Completed: [Article](posts/2026-11-20-ydb-serial-bigserial-hot-primary-key/README.md) (20 November 2026).
 8. Avoid Write Amplification from Too Many YDB Secondary Indexes
+
+    Completed: [Article](posts/2026-11-20-ydb-secondary-index-write-amplification/README.md) (20 November 2026).
 9. Design YDB Primary Keys and Partitioning to Prevent Hot Shards
+
+    Completed: [Article](posts/2026-11-20-ydb-primary-keys-partitioning-hot-shards/README.md) (20 November 2026).
 11. Configure YDB TTL and Understand Why Expired Rows Can Still Appear
+
+    Completed: [Article](posts/2026-11-20-ydb-ttl-expired-rows-visible/README.md) (20 November 2026).
 12. Change Compression on a Live YDB Column Table: `lz4`, `zstd`, and When Old Data Is Recompressed
+
+    Completed: [Article](posts/2026-11-20-ydb-column-table-compression-live-change/README.md) (20 November 2026).
 13. Build a YDB Changefeed Consumer That Preserves Per-Key Ordering and Survives Restarts
+
+    Completed: [Article](posts/2026-11-20-ydb-changefeed-consumer-ordering-restarts/README.md) (20 November 2026).
 14. Find YDB’s Top CPU and Read-Heavy Queries with `.sys` Views
+
+    Completed: [Article](posts/2026-11-20-ydb-top-cpu-read-heavy-system-views/README.md) (20 November 2026).
 15. Read a YDB Query Plan to Spot Full Scans, Fan-Out, and Missing Indexes
+
+    Completed: [Article](posts/2026-11-20-read-ydb-query-plan-scans-fanout-indexes/README.md) (20 November 2026).
 16. Retry YDB Transactions Correctly: Whole-Transaction Retries, Idempotency, and Commit Ambiguity
 18. Size and Tune YDB SDK Session Pools for Serverless Cold Starts and Overload
 19. Back Up and Restore YDB with Local Dumps, S3 Export, and Incremental Backup Collections

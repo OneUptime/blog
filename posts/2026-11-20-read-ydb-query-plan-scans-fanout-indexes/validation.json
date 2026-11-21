@@ -1,0 +1,25 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-21",
+  "runtimeTestsPerformed": false,
+  "sources": [
+    "https://www.github.com/nawazdhandala",
+    "https://ydb.tech/docs/en/reference/ydb-cli/sql",
+    "https://github.com/ydb-platform/ydb/blob/26.2.1.16/ydb/docs/en/core/dev/secondary-indexes.md",
+    "https://github.com/ydb-platform/ydb/blob/26.2.1.16/ydb/docs/en/core/yql/query_plans.md",
+    "https://ydb.tech/docs/en/yql/query_plans"
+  ],
+  "tests": [
+    "Checked CLI2.35.0 explain,explain-analyze,stats full and file flags in actual help",
+    "Reviewed YDB26.2.1.16 plan operators and explicit index selection source",
+    "SQLite adapted semantic check returns same20ordered rows for baseline/candidate,IDs0..38even",
+    "Five-node four-edge Mermaid structurally checked",
+    "1280x720 social image visually inspected"
+  ],
+  "limitations": [
+    "No YDB DDL,EXPLAIN,query execution or plan captured",
+    "SQLite validates intended result semantics only,not optimizer behavior",
+    "No performance comparison claimed",
+    "Mermaid not rendered"
+  ]
+}

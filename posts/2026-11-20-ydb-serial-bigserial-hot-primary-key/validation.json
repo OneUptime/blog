@@ -1,0 +1,27 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-21",
+  "runtimeTestsPerformed": true,
+  "sources": [
+    "https://www.github.com/nawazdhandala",
+    "https://github.com/ydb-platform/ydb/blob/26.2.1.16/ydb/docs/en/core/yql/reference/types/serial.md",
+    "https://github.com/ydb-platform/ydb/blob/26.2.1.16/ydb/docs/en/core/dev/primary-key/row-oriented.md",
+    "https://ydb.tech/docs/en/yql/reference/syntax/create_table/?version=v26.2",
+    "https://docs.python.org/3/library/hashlib.html",
+    "https://ydb.tech/docs/en/yql/reference/syntax/declare",
+    "https://ydb.tech/docs/en/troubleshooting/performance/schemas/overloaded-shards"
+  ],
+  "tests": [
+    "Reviewed YDB26.2.1.16 serial types and primary-key guidance against tagged documentation",
+    "Executed Python3.14.10 routing helper;stable input repeats,empty key rejection,10000 synthetic keys across16 top-bit regions",
+    "Illustrative region counts581..678,total10000;not a partition/load result",
+    "Seven-node six-edge Mermaid structurally checked",
+    "1280x720 social image visually inspected"
+  ],
+  "limitations": [
+    "No YDB DDL,insert,sequence allocation or migration executed",
+    "No performance,partition splitting or database retry test",
+    "Hash model does not represent actual physical partitions",
+    "Mermaid not rendered"
+  ]
+}

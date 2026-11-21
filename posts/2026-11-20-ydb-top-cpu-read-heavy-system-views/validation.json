@@ -1,0 +1,25 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-21",
+  "runtimeTestsPerformed": false,
+  "sources": [
+    "https://www.github.com/nawazdhandala",
+    "https://github.com/ydb-platform/ydb/blob/26.2.1.16/ydb/docs/en/core/dev/system-views.md",
+    "https://ydb.tech/docs/en/yql/reference/syntax/declare",
+    "https://ydb.tech/docs/en/reference/observability/metrics/",
+    "https://ydb.tech/docs/en/yql/query_plans"
+  ],
+  "tests": [
+    "Verified views,columns,units,retention,ranking and incompleteness against YDB26.2.1.16 official source",
+    "SQL artifacts match article blocks",
+    "Adapted SQLite aggregate query ranks1000runs/50CPU-seconds above1run/10CPU-seconds and excludes upper interval boundary",
+    "Seven-node eight-edge Mermaid structurally checked",
+    "1280x720 image visually inspected"
+  ],
+  "limitations": [
+    "No live YDB system view or timestamp binding executed",
+    "SQLite verifies aggregation intent,not YDB parser or view coverage",
+    "No plan or performance benchmark captured",
+    "Mermaid not rendered"
+  ]
+}

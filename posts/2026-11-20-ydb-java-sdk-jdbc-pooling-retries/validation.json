@@ -1,0 +1,28 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-21",
+  "runtimeTestsPerformed": false,
+  "sources": [
+    "https://www.github.com/nawazdhandala",
+    "https://github.com/ydb-platform/ydb-jdbc-driver/blob/v2.4.1/pom.xml",
+    "https://github.com/ydb-platform/ydb-java-sdk/blob/v2.5.0/query/src/main/java/tech/ydb/query/tools/SessionRetryContext.java",
+    "https://github.com/ydb-platform/ydb-jdbc-driver/blob/v2.4.1/jdbc/src/main/java/tech/ydb/jdbc/settings/YdbConnectionProperties.java",
+    "https://github.com/brettwooldridge/HikariCP/blob/HikariCP-6.3.0/README.md",
+    "https://ydb.tech/docs/en/recipes/ydb-sdk/session-pool-limit",
+    "https://github.com/ydb-platform/ydb-jdbc-driver/blob/v2.4.1/jdbc/src/test/java/tech/ydb/jdbc/context/BadSessionRetryTest.java",
+    "https://ydb.tech/docs/en/recipes/ydb-sdk/retry"
+  ],
+  "tests": [
+    "Compiled native example against SDK2.5.0 with JDK17.0.16/Maven3.9.11",
+    "Compiled JDBC example separately against driver2.4.1 and HikariCP6.3.0",
+    "Reviewed tagged retry builder, JDBC BAD_SESSION tests, certificate/token properties and dependency versions",
+    "Seven-node seven-edge Mermaid structurally reviewed",
+    "1280x720 social image visually inspected"
+  ],
+  "limitations": [
+    "No database,TLS,credentials or transactions executed",
+    "No pool load test or failure injection",
+    "Compilation only;matching server versions not tested",
+    "Mermaid not rendered"
+  ]
+}

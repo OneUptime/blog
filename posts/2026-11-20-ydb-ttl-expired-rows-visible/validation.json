@@ -1,0 +1,27 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-21",
+  "runtimeTestsPerformed": false,
+  "sources": [
+    "https://www.github.com/nawazdhandala",
+    "https://github.com/ydb-platform/ydb/blob/26.2.1.16/ydb/docs/en/core/concepts/_includes/ttl.md",
+    "https://ydb.tech/docs/en/yql/reference/syntax/create_table/with",
+    "https://ydb.tech/docs/en/yql/reference/syntax/declare",
+    "https://ydb.tech/docs/en/reference/ydb-cli/commands/scheme-describe",
+    "https://ydb.tech/docs/en/reference/ydb-cli/table-ttl-set"
+  ],
+  "tests": [
+    "Reviewed TTL/null/extension behavior against tagged YDB26.2.1.16 documentation",
+    "SQL files match article blocks",
+    "Adapted SQLite UTC-text comparison tested past,equal,future,NULL;only future retained",
+    "CLI2.35.0 schema and TTL help reviewed",
+    "Six-node five-edge Mermaid structurally checked",
+    "1280x720 image visually inspected"
+  ],
+  "limitations": [
+    "No YDB DDL,Timestamp comparison,TTL scheduling or deletion tested",
+    "SQLite check verifies portable comparison intent,not YDB implementation",
+    "No recovery or retention-policy migration executed",
+    "Mermaid not rendered"
+  ]
+}

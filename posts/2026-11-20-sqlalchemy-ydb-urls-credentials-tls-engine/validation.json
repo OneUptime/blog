@@ -1,0 +1,29 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-21",
+  "runtimeTestsPerformed": true,
+  "sources": [
+    "https://www.github.com/nawazdhandala",
+    "https://github.com/ydb-platform/ydb-sqlalchemy/blob/0.1.24/README.md",
+    "https://github.com/ydb-platform/ydb-sqlalchemy/blob/0.1.24/ydb_sqlalchemy/sqlalchemy/__init__.py",
+    "https://docs.sqlalchemy.org/en/20/core/engines.html",
+    "https://github.com/ydb-platform/ydb-python-dbapi/blob/0.1.24/ydb_dbapi/connections.py",
+    "https://github.com/ydb-platform/ydb-sqlalchemy/blob/0.1.24/README.md#authentication",
+    "https://docs.sqlalchemy.org/en/20/core/connections.html",
+    "https://docs.sqlalchemy.org/en/20/core/pooling.html"
+  ],
+  "tests": [
+    "Installed pinned SQLAlchemy2.0.46,ydb-sqlalchemy0.1.24,ydb-dbapi0.1.24,ydb3.35.0 in Python3.14.10 environment",
+    "Executed helper and intercepted do_connect before network call;host,port,path,protocol,CA bytes and credentials asserted",
+    "Checked invalid database paths and empty token rejection",
+    "Python snippets parse;Bash syntax passes",
+    "Eight-node seven-edge Mermaid structurally checked",
+    "1280x720 social image visually inspected"
+  ],
+  "limitations": [
+    "No actual CA/token validation,TLS handshake,authentication or query",
+    "No pool saturation or credential rotation test",
+    "Dummy files used;interception proves configuration forwarding only",
+    "Mermaid not rendered"
+  ]
+}

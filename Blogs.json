@@ -831813,5 +831813,118 @@
       "Security"
     ],
     "post": "2026-11-20-fix-ydb-unable-to-connect"
+  },
+  {
+    "title": "Integrate YDB with Java: SDK, JDBC, Pools, and Safe Retries",
+    "description": "Choose YDB's native Java SDK or JDBC, bound session usage, and place retries around operations that can safely run again.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Java",
+      "Database",
+      "Performance"
+    ],
+    "post": "2026-11-20-ydb-java-sdk-jdbc-pooling-retries"
+  },
+  {
+    "title": "Connect SQLAlchemy 2.0 to YDB with Explicit TLS and Credentials",
+    "description": "Configure a YDB SQLAlchemy engine with the correct URL, explicit TLS trust, file-loaded credentials, bounded pooling, and a read-only connection probe.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Python",
+      "Database",
+      "SQLAlchemy",
+      "Security"
+    ],
+    "post": "2026-11-20-sqlalchemy-ydb-urls-credentials-tls-engine"
+  },
+  {
+    "title": "Use YDB Serial and BigSerial Without a Hot Primary-Key Prefix",
+    "description": "Keep YDB auto-increment identifiers from concentrating writes by separating value generation from primary-key routing and reviewing retry semantics.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Database",
+      "SQL",
+      "Performance"
+    ],
+    "post": "2026-11-20-ydb-serial-bigserial-hot-primary-key"
+  },
+  {
+    "title": "Avoid Write Amplification from Too Many YDB Secondary Indexes",
+    "description": "Review YDB secondary indexes by query benefit, consistency needs, and write cost, then test a smaller index set without breaking application reads.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Database",
+      "SQL",
+      "Performance"
+    ],
+    "post": "2026-11-20-ydb-secondary-index-write-amplification"
+  },
+  {
+    "title": "Design YDB Primary Keys and Partitions to Prevent Hot Shards",
+    "description": "Match YDB row-table keys, traffic patterns, and partition boundaries so extra partitions can actually share the application's load.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Database",
+      "Performance",
+      "Database Design"
+    ],
+    "post": "2026-11-20-ydb-primary-keys-partitioning-hot-shards"
+  },
+  {
+    "title": "Configure YDB TTL and Explain Why Expired Rows Still Appear",
+    "description": "Separate YDB's background TTL cleanup from application expiry rules, with a safe staging schema, explicit read filters, and practical checks.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Database",
+      "SQL",
+      "Troubleshooting"
+    ],
+    "post": "2026-11-20-ydb-ttl-expired-rows-visible"
+  },
+  {
+    "title": "Change YDB Column-Table Compression Without Assuming a Full Rewrite",
+    "description": "Change a YDB column's compression with versioned SQL, measure new data separately, and understand why historical data may retain its old encoding.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Database",
+      "Performance",
+      "Storage"
+    ],
+    "post": "2026-11-20-ydb-column-table-compression-live-change"
+  },
+  {
+    "title": "Build a YDB Changefeed Consumer That Handles Ordering and Restarts",
+    "description": "Consume YDB row changes sequentially, persist events before acknowledging offsets, and handle replay with a durable inbox and explicit ordering limits.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Database",
+      "Python",
+      "Data Streaming"
+    ],
+    "post": "2026-11-20-ydb-changefeed-consumer-ordering-restarts"
+  },
+  {
+    "title": "Find YDB's CPU-Heavy and Read-Heavy Queries with System Views",
+    "description": "Use YDB system views to distinguish expensive individual queries from repeated workload cost, with bounded SQL and careful metric interpretation.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Database",
+      "Monitoring",
+      "Performance",
+      "SQL"
+    ],
+    "post": "2026-11-20-ydb-top-cpu-read-heavy-system-views"
+  },
+  {
+    "title": "Read a YDB Query Plan for Full Scans, Fan-Out, and Missing Indexes",
+    "description": "Read YDB plans from data access through distributed stages, distinguish explanation from execution, and compare an index candidate safely.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Database",
+      "SQL",
+      "Performance",
+      "Troubleshooting"
+    ],
+    "post": "2026-11-20-read-ydb-query-plan-scans-fanout-indexes"
   }
 ]

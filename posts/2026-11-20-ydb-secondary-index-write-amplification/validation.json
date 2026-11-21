@@ -1,0 +1,27 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-21",
+  "runtimeTestsPerformed": false,
+  "sources": [
+    "https://www.github.com/nawazdhandala",
+    "https://ydb.tech/docs/en/concepts/query_execution/secondary_indexes",
+    "https://ydb.tech/docs/en/reference/ydb-cli/commands/scheme-describe",
+    "https://github.com/ydb-platform/ydb/blob/26.2.1.16/ydb/docs/en/core/yql/reference/syntax/create_table/secondary_index.md",
+    "https://github.com/ydb-platform/ydb/blob/26.2.1.16/ydb/docs/en/core/dev/secondary-indexes.md",
+    "https://ydb.tech/docs/en/concepts/query_execution/secondary_indexes",
+    "https://ydb.tech/docs/en/concepts/query_execution/secondary_indexes#online-index"
+  ],
+  "tests": [
+    "Reviewed YDB26.2.1.16 INDEX and index usage documentation plus official consistency/online-build guidance",
+    "Ran YDB CLI2.35.0 scheme describe help and confirmed stats option",
+    "Confirmed downloadable SQL exactly matches article blocks",
+    "Six-node eight-edge Mermaid structurally checked",
+    "1280x720 social image visually inspected"
+  ],
+  "limitations": [
+    "No DDL,query plan,benchmark or index retirement executed",
+    "CLI help confirms command syntax only",
+    "No measured write amplification factor claimed",
+    "Mermaid not rendered"
+  ]
+}

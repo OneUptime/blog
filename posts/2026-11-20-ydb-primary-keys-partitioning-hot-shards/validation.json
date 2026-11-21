@@ -1,0 +1,26 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-21",
+  "runtimeTestsPerformed": true,
+  "sources": [
+    "https://www.github.com/nawazdhandala",
+    "https://ydb.tech/docs/en/concepts/datamodel/table",
+    "https://ydb.tech/docs/en/troubleshooting/performance/schemas/overloaded-shards",
+    "https://github.com/ydb-platform/ydb/blob/26.2.1.16/ydb/docs/en/core/concepts/datamodel/_includes/table.md",
+    "https://ydb.tech/docs/en/dev/primary-key/row-oriented",
+    "https://ydb.tech/docs/en/reference/ydb-cli/commands/scheme-describe"
+  ],
+  "tests": [
+    "Reviewed YDB26.2.1.16 explicit-boundary,min/max and uniform partition options",
+    "Ran Python3.14.10 range model:10000 consecutive IDs yield2500 in each explicit range,all10000 in first uniformUint32 range",
+    "Verified CLI2.35.0 partition-boundaries and partition-stats flags in help",
+    "Seven-node nine-edge Mermaid structurally checked",
+    "1280x720 image visually inspected"
+  ],
+  "limitations": [
+    "No DDL,shard creation,automatic split,load test or migration executed",
+    "Python model is mathematical,not physical YDB topology",
+    "No workload performance claims",
+    "Mermaid not rendered"
+  ]
+}
