@@ -1,0 +1,26 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-21",
+  "runtimeTestsPerformed": false,
+  "localCodeTestsPerformed": true,
+  "sources": [
+    "https://docs.jfrog.com/administration/docs/openid-connect-integration",
+    "https://docs.github.com/en/actions/reference/security/oidc",
+    "https://github.com/jfrog/setup-jfrog-cli/blob/v4.16.0/README.md",
+    "https://github.com/jfrog/setup-jfrog-cli/blob/v4.16.0/action.yml",
+    "https://docs.jfrog.com/integrations/docs/github-actions-oidc-authentication"
+  ],
+  "tests": [
+    "Official tag v4.16.0 resolves to76f97e1f8bb39a6bc22052265732581d73325212; action inputs and CLI2.131.0 checked against tagged action.yml",
+    "actionlint1.7.7 (archive checksum verified) passes workflow; shellcheck integration disabled",
+    "YAML parses; inputs match action schema; audience/ref/event consistent with claims; embedded bash syntax passes",
+    "Mermaid sequence participants and6messages structurally checked",
+    "1280x720 social image visually reviewed: complete readable title"
+  ],
+  "limitations": [
+    "No GitHub OIDC token requested or JFrog identity mapping configured",
+    "No real issuer/audience/claim verification, permission rejection, expiration or upload tested",
+    "Licensed JFrog platform and staging acceptance still required",
+    "Mermaid not rendered"
+  ]
+}

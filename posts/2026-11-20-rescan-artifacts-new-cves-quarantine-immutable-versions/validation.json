@@ -1,0 +1,25 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-21",
+  "runtimeTestsPerformed": false,
+  "localCodeTestsPerformed": true,
+  "sources": [
+    "https://github.com/aquasecurity/trivy/blob/v0.76.2/docs/guide/configuration/db.md",
+    "https://github.com/aquasecurity/trivy/blob/v0.76.2/docs/guide/scanner/vulnerability.md",
+    "https://github.com/aquasecurity/trivy/blob/v0.76.2/docs/guide/configuration/filtering.md",
+    "https://goharbor.io/docs/2.14.0/working-with-projects/project-configuration/",
+    "https://goharbor.io/docs/2.14.0/administration/vulnerability-scanning/scan-individual-artifact/"
+  ],
+  "tests": [
+    "Trivy0.76.2 archive SHA256 matches official release API digest; binary image help and version JSON checked",
+    "Exact jq1.6 filter retains HIGH/CRITICAL/UNKNOWN and absent fix version, excludes LOW; missing/null/object Results rejected; empty Results remains empty without approval claim",
+    "Shell syntax passed; Mermaid7edges structurally reviewed",
+    "1280x720 social image visually reviewed: complete readable title"
+  ],
+  "limitations": [
+    "No vulnerability DB downloaded or image scan executed",
+    "No Harbor instance, quarantine, admission, cached-image or live workload test",
+    "Synthetic reports test filter only, not full schema/coverage/security decision",
+    "Mermaid not rendered"
+  ]
+}

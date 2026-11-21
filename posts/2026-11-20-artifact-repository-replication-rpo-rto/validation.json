@@ -1,0 +1,23 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-21",
+  "runtimeTestsPerformed": false,
+  "localCodeTestsPerformed": true,
+  "sources": [
+    "https://goharbor.io/docs/2.14.0/administration/configuring-replication/",
+    "https://goharbor.io/docs/2.14.0/install-config/harbor-ha-helm/",
+    "https://goharbor.io/docs/2.14.0/administration/configuring-replication/create-replication-rules/",
+    "https://docs.python.org/3.9/library/datetime.html"
+  ],
+  "tests": [
+    "Python3.9.6 exact example prints240/1440seconds; boundary300/1800, equivalent timezone offset, future watermark and reversed recovery time tested",
+    "Harbor2.14 replication membership exclusions, version limitation, triggers, deletion and label behavior source reviewed",
+    "Seven Mermaid edges structurally reviewed",
+    "1280x720 image visually reviewed with readable complete title"
+  ],
+  "limitations": [
+    "No Harbor deployment, replication, outage, fencing or failback executed",
+    "Timing helper does not establish inventory completeness, clock quality or real RPO/RTO",
+    "No Mermaid renderer used"
+  ]
+}

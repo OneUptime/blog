@@ -1,0 +1,27 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-21",
+  "runtimeTestsPerformed": false,
+  "localCodeTestsPerformed": true,
+  "sources": [
+    "https://docs.npmjs.com/cli/v11/using-npm/scope/",
+    "https://pip.pypa.io/en/stable/cli/pip_install/",
+    "https://packaging.python.org/en/latest/specifications/name-normalization/",
+    "https://help.sonatype.com/en/routing-rules.html",
+    "https://docs.jfrog.com/artifactory/docs/virtual-repositories"
+  ],
+  "tests": [
+    "npm11.10.0 scoped metadata request against two owned HTTP fixtures: private404 rejects without default-package fallback; isolated config/cache and disabled update notifier",
+    "Exact published Python normalization assertions passed on Python3.9.6",
+    "bash syntax passed",
+    "Mermaid8edges structural review",
+    "1280x720 social image visually inspected: complete readable title"
+  ],
+  "limitations": [
+    "No actual public package publication",
+    "No Nexus/Artifactory deployment, cached-content behavior or server routing enforcement tested",
+    "No pip multiple-index runtime test or hashed requirement installation for this article",
+    "No real HTTPS authentication or transitive build tested",
+    "Mermaid not rendered"
+  ]
+}

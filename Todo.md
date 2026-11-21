@@ -1239,15 +1239,35 @@ Research: [OneUptime air-gapped alerting](https://oneuptime.com/enterprise/air-g
 
     Completed: [Article](posts/2026-11-20-find-production-artifacts-before-cleanup/README.md) (20 November 2026).
 10. How to Proxy Maven Central, npm, PyPI, and Docker Hub Without Letting Cache Expiry Break Reproducible Builds
+
+    Completed: [Article](posts/2026-11-20-proxy-package-registries-cache-expiry-reproducible-builds/README.md) (20 November 2026).
 11. How to Prevent Dependency Confusion with Private Namespace Routing, Upstream Allow-Lists, and Repository Order
+
+    Completed: [Article](posts/2026-11-20-prevent-dependency-confusion-private-namespace-routing/README.md) (20 November 2026).
 12. How to Debug 401 and 403 Errors When Maven, npm, pip, or Docker Publishes to an Artifact Repository
+
+    Completed: [Article](posts/2026-11-20-debug-artifact-publish-401-403-maven-npm-python-docker/README.md) (20 November 2026).
 13. How to Give CI Pipelines Short-Lived Artifact Repository Access with OIDC Instead of Static Tokens
+
+    Completed: [Article](posts/2026-11-20-ci-artifact-repository-short-lived-oidc-access/README.md) (20 November 2026).
 14. How to Attach SBOMs, SLSA Provenance, and Cosign Signatures to OCI Artifacts—and Verify Them at Deploy Time
+
+    Completed: [Article](posts/2026-11-20-attach-sbom-slsa-cosign-oci-verify-deployment/README.md) (20 November 2026).
 15. How to Re-Scan Stored Artifacts for New CVEs and Quarantine Vulnerable Versions Without Mutating Them
+
+    Completed: [Article](posts/2026-11-20-rescan-artifacts-new-cves-quarantine-immutable-versions/README.md) (20 November 2026).
 16. How to Migrate from Nexus to Artifactory Without Changing Package Coordinates or Losing Checksums
+
+    Completed: [Article](posts/2026-11-20-migrate-nexus-artifactory-preserve-coordinates-checksums/README.md) (20 November 2026).
 17. How to Back Up an Artifact Repository Consistently: Database, Blob Store, Encryption Keys, and Restore Drills
+
+    Completed: [Article](posts/2026-11-20-back-up-artifact-repository-consistent-restore/README.md) (20 November 2026).
 18. How to Design Artifact Repository Replication and Failover Around Explicit RPO and RTO Targets
+
+    Completed: [Article](posts/2026-11-20-artifact-repository-replication-rpo-rto/README.md) (20 November 2026).
 19. How to Trace an Artifact from Source Commit to Build Run, Signature, Promotion, and Production Deployment
+
+    Completed: [Article](posts/2026-11-20-trace-artifact-source-build-promotion-production/README.md) (20 November 2026).
 20. How to Build an Air-Gapped Artifact Mirror with a Complete Dependency Closure and Controlled Updates
 
 ## Clusterpedia

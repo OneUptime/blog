@@ -1,0 +1,29 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-21",
+  "runtimeTestsPerformed": false,
+  "localCodeTestsPerformed": true,
+  "sources": [
+    "https://www.rfc-editor.org/rfc/rfc9110.html",
+    "https://docs.docker.com/reference/api/registry/auth/",
+    "https://maven.apache.org/plugins/maven-deploy-plugin/usage.html",
+    "https://docs.npmjs.com/cli/v11/configuring-npm/npmrc/",
+    "https://docs.npmjs.com/cli/v11/configuring-npm/package-json/#publishconfig",
+    "https://twine.readthedocs.io/en/stable/",
+    "https://packaging.python.org/en/latest/specifications/pypirc/",
+    "https://docs.docker.com/reference/cli/docker/login/",
+    "https://curl.se/docs/manpage.html"
+  ],
+  "tests": [
+    "Exact curl8.7.1 shell against owned loopback HTTP fixture:200/401/403 preserved with headers/body/status",
+    "Default curl credential config ignored via -q; fixture asserts no Authorization header",
+    "Maven XML parsed; shell bash syntax passed",
+    "Mermaid6edges structurally reviewed",
+    "1280x720 social image visually reviewed: complete readable title"
+  ],
+  "limitations": [
+    "No real publishing, credentials, TLS, Docker token exchange, repository permissions or policy enforcement tested",
+    "Maven/npm/Twine configuration descriptions source-reviewed, not live deployments",
+    "Mermaid not rendered"
+  ]
+}

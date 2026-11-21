@@ -1,0 +1,27 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-21",
+  "runtimeTestsPerformed": false,
+  "localCodeTestsPerformed": false,
+  "sources": [
+    "https://help.sonatype.com/en/prepare-a-backup.html",
+    "https://docs.jfrog.com/installation/docs/backups",
+    "https://help.sonatype.com/en/back-up-and-restore-postgresql-backed-deployments.html",
+    "https://help.sonatype.com/en/configure-and-run-the-backup-task.html",
+    "https://www.postgresql.org/docs/17/libpq-pgservice.html",
+    "https://www.postgresql.org/docs/17/app-pgdump.html",
+    "https://www.postgresql.org/docs/17/app-pgrestore.html",
+    "https://docs.jfrog.com/installation/docs/manage-keys"
+  ],
+  "tests": [
+    "PostgreSQL17 custom archive, connection service and list-only flags reviewed against official documentation",
+    "Shell snippet passes bash -n; no database commands executed",
+    "Eight Mermaid edges and declared nodes structurally reviewed",
+    "1280x720 image visually inspected; complete title readable"
+  ],
+  "limitations": [
+    "No repository or database backup/restore performed",
+    "No cluster, object-store snapshot, key recovery, reconciliation or RPO/RTO measurement",
+    "Shell syntax validation is not an execution test; Mermaid not rendered"
+  ]
+}

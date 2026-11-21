@@ -1,0 +1,24 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-21",
+  "runtimeTestsPerformed": false,
+  "localCodeTestsPerformed": true,
+  "sources": [
+    "https://docs.github.com/en/actions/reference/workflows-and-actions/variables",
+    "https://git-scm.com/docs/git-rev-parse",
+    "https://jqlang.org/manual/v1.6/",
+    "https://slsa.dev/spec/v1.2/build-provenance",
+    "https://kubernetes.io/docs/concepts/containers/images/"
+  ],
+  "tests": [
+    "Exact shell example executed with Git2.54.0 and jq1.6 in disposable local Git repository and synthetic CI environment",
+    "Verified checked-out commit, run attempt and digest record; tag-only reference, short digest and whitespace rejected",
+    "SLSA1.2 provenance, GitHub variables, Git and jq documentation reviewed; Kubernetes digest semantics checked",
+    "Seven diagram edges structurally reviewed; 1280x720 social image visually inspected"
+  ],
+  "limitations": [
+    "No GitHub Actions job, registry publication, signature verification or production deployment executed",
+    "Custom index is not SLSA evidence or a complete registry-reference validator",
+    "No runtime imageID mapping tested; Mermaid not rendered"
+  ]
+}

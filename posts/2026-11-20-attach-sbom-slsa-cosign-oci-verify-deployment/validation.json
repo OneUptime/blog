@@ -1,0 +1,26 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-21",
+  "runtimeTestsPerformed": false,
+  "localCodeTestsPerformed": true,
+  "sources": [
+    "https://github.com/sigstore/cosign/blob/v3.0.2/cmd/cosign/cli/options/predicate.go",
+    "https://github.com/sigstore/cosign/blob/v3.0.2/cmd/cosign/cli/options/attest.go",
+    "https://slsa.dev/spec/v1.2/verifying-artifacts",
+    "https://github.com/sigstore/cosign/blob/v3.0.2/cmd/cosign/cli/verify/verify_attestation.go",
+    "https://docs.sigstore.dev/policy-controller/overview/"
+  ],
+  "tests": [
+    "Cosign3.0.2 Darwin arm64 SHA256 matches official release API digest; binary help and tagged source confirm flags/predicate aliases/new bundle defaults",
+    "CUE0.14.1 archive checksum verified; matches Cosign go.mod library version",
+    "Exact published CUE accepts synthetic expected statement and rejects wrong source, commit, builder, buildType, extra parameters and missing commit",
+    "Published shell syntax checked; Mermaid7edges structurally reviewed",
+    "1280x720 social image visually reviewed: complete readable title"
+  ],
+  "limitations": [
+    "No signatures generated or verified, public Sigstore calls, registry uploads/referrer behavior or deployment",
+    "Unsigned CUE fixtures test policy only; not integrated Cosign signature validation",
+    "No Kubernetes admission policy tested",
+    "Mermaid not rendered"
+  ]
+}
