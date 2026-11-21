@@ -1,0 +1,30 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-21",
+  "runtimeTestsPerformed": false,
+  "sources": [
+    "https://man7.org/linux/man-pages/man8/numactl.8.html",
+    "https://man7.org/linux/man-pages/man1/lscpu.1.html",
+    "https://man7.org/linux/man-pages/man5/proc_pid_status.5.html",
+    "https://www.kernel.org/doc/html/v6.12/admin-guide/cgroup-v2.html#cpuset",
+    "https://www.kernel.org/doc/html/v6.12/admin-guide/mm/hugetlbpage.html",
+    "https://github.com/numactl/numactl/blob/v2.0.19/numactl.8",
+    "https://man7.org/linux/man-pages/man7/numa.7.html",
+    "https://raw.githubusercontent.com/torvalds/linux/v6.12/fs/proc/task_mmu.c",
+    "https://man7.org/linux/man-pages/man5/proc_pid_smaps.5.html"
+  ],
+  "tests": [
+    "Reviewed Linux6.12 HugeTLB per-node and policy-aware interfaces, cgroupcpuset, procfs mapping source and man-pages",
+    "Checked numactl2.0.19 flags against tagged official manual",
+    "Shell snippets passed bash -n; exact awk token filter selected2 huge entries and excluded filename containing huge in synthetic fixture",
+    "Capacity arithmetic32x2MiB=64MiB and256x2MiB=512MiB checked",
+    "Seven-node six-edge Mermaid structurally reviewed",
+    "1280x720 image visually inspected with unclipped text"
+  ],
+  "limitations": [
+    "No Linux NUMA reservation, process binding or actual procfs collection",
+    "No performance, cgroup constraint, shared-mapping or migration testing",
+    "Only synthetic text filtering executed; no kernel runtime tests",
+    "Mermaid not rendered"
+  ]
+}

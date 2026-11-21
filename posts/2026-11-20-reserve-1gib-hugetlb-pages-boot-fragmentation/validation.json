@@ -1,0 +1,25 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-21",
+  "runtimeTestsPerformed": false,
+  "sources": [
+    "https://www.kernel.org/doc/html/v6.12/admin-guide/mm/hugetlbpage.html",
+    "https://docs.redhat.com/en/documentation/red_hat_enterprise_linux/9/html/monitoring_and_managing_system_status_and_performance/configuring-huge-pages_monitoring-and-managing-system-status-and-performance",
+    "https://www.kernel.org/doc/html/v6.12/admin-guide/kernel-parameters.html",
+    "https://docs.redhat.com/en/documentation/red_hat_enterprise_linux/9/html/managing_monitoring_and_updating_the_kernel/configuring-kernel-command-line-parameters_managing-monitoring-and-updating-the-kernel",
+    "https://docs.redhat.com/en/documentation/red_hat_enterprise_linux/9/html-single/managing_monitoring_and_updating_the_kernel/index"
+  ],
+  "tests": [
+    "Linux6.12 tagged HugeTLB and kernel-parameter source documentation reviewed",
+    "RHEL9 HugeTLB and grubby official documentation checked for selected-kernel update, inspection and removal forms",
+    "All shell blocks passed bash -n;1GiB and8GiB capacity arithmetic checked",
+    "Seven-node six-edge Mermaid structurally reviewed",
+    "1280x720 social image visually inspected; complete readable title"
+  ],
+  "limitations": [
+    "No Linux host, grubby invocation, boot entry modification or reboot test",
+    "No allocation, fragmentation, NUMA or application first-touch test",
+    "RHEL9 command example is distinct from upstream6.12 documentation baseline",
+    "Mermaid not rendered"
+  ]
+}

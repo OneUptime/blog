@@ -829830,5 +829830,115 @@
       "Observability"
     ],
     "post": "2026-11-20-kubebuilder-events-readiness-transitions"
+  },
+  {
+    "title": "Migrate Kubebuilder go/v3 to go/v4 Without Losing Custom Code",
+    "description": "Regenerate a pinned go/v4 scaffold separately, port controller and webhook behavior, preserve deployment identity, and verify Kustomize overlays before rollout.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Kubernetes",
+      "Kubebuilder",
+      "Go"
+    ],
+    "post": "2026-11-20-kubebuilder-go-v3-v4-project-migration"
+  },
+  {
+    "title": "Choose HugeTLB or Transparent Huge Pages for Your Workload",
+    "description": "Compare explicit HugeTLB pools with Transparent Huge Pages, inspect current policy safely, and evaluate capacity and tail-latency tradeoffs before tuning.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Linux",
+      "HugePages",
+      "Performance"
+    ],
+    "post": "2026-11-20-hugetlb-transparent-huge-pages-latency-capacity"
+  },
+  {
+    "title": "Diagnose MAP_HUGETLB ENOMEM When Linux Still Has Free RAM",
+    "description": "Diagnose HugeTLB allocation failures by checking page size, outstanding reservations, NUMA restrictions, and process limits before changing memory settings.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Linux",
+      "HugePages",
+      "Troubleshooting"
+    ],
+    "post": "2026-11-20-mmap-map-hugetlb-enomem-free-ram"
+  },
+  {
+    "title": "Reserve 1 GiB HugeTLB Pages at Boot After Runtime Allocation Fails",
+    "description": "Plan a 1 GiB HugeTLB pool, add scoped boot parameters, verify actual capacity after restart, and retain a recovery path when runtime allocation is fragmented.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Linux",
+      "HugePages",
+      "Memory Management"
+    ],
+    "post": "2026-11-20-reserve-1gib-hugetlb-pages-boot-fragmentation"
+  },
+  {
+    "title": "Run 2 MiB and 1 GiB Huge Page Pools with Separate hugetlbfs Mounts",
+    "description": "Configure separate hugetlbfs mounts for 2 MiB and 1 GiB pages, distinguish filesystem limits from pool capacity, and test file-backed mappings safely.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Linux",
+      "HugePages",
+      "Memory Management"
+    ],
+    "post": "2026-11-20-2mib-1gib-hugepage-pools-separate-hugetlbfs-mounts"
+  },
+  {
+    "title": "Reserve Huge Pages on NUMA Nodes and Verify Application Placement",
+    "description": "Allocate HugeTLB pages on selected NUMA nodes, align CPU and memory policy, and verify actual application mappings instead of trusting host-wide counters.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Linux",
+      "HugePages",
+      "Performance"
+    ],
+    "post": "2026-11-20-reserve-huge-pages-numa-nodes-verify-placement"
+  },
+  {
+    "title": "Find the Processes and Mappings Consuming Your HugeTLB Pool",
+    "description": "Trace missing HugeTLB capacity from pool counters to process mappings, shared backing objects, and outstanding reservations without double-counting memory.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Linux",
+      "HugePages",
+      "Troubleshooting"
+    ],
+    "post": "2026-11-20-find-processes-mappings-consuming-hugetlb-pool"
+  },
+  {
+    "title": "Interpret HugeTLB Counters Without Double-Counting Memory",
+    "description": "Read HugeTLB pool, free, reserved, and surplus counters correctly, reconcile multiple page sizes, and build capacity views without adding overlapping values.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Linux",
+      "HugePages",
+      "Monitoring"
+    ],
+    "post": "2026-11-20-interpret-hugepages-counters-without-double-counting"
+  },
+  {
+    "title": "Verify Linux THP Usage with smaps, numa_maps, and vmstat",
+    "description": "Verify Transparent Huge Page backing for a target mapping, distinguish policy from evidence, and interpret NUMA and VM counters without overclaiming attribution.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Linux",
+      "HugePages",
+      "Performance"
+    ],
+    "post": "2026-11-20-verify-linux-allocation-thp-smaps-numa-maps-vmstat"
+  },
+  {
+    "title": "Fix SIGBUS After a HugeTLB mmap Succeeds",
+    "description": "Diagnose HugeTLB faults after successful mmap by checking backing-file bounds, reservations, NUMA eligibility, cgroup charging, and fork-time behavior.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Linux",
+      "HugePages",
+      "Troubleshooting"
+    ],
+    "post": "2026-11-20-fix-hugetlb-mmap-sigbus-page-fault-backing"
   }
 ]

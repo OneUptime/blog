@@ -1645,17 +1645,37 @@ Research: [OneUptime air-gapped alerting](https://oneuptime.com/enterprise/air-g
     Completed: [Article](posts/2026-11-20-kubebuilder-events-readiness-transitions/README.md) (20 November 2026).
 20. How to Upgrade a Kubebuilder go/v3 Project to go/v4 While Preserving Controllers, Webhooks, and Kustomize Overlays
 
+    Completed: [Article](posts/2026-11-20-kubebuilder-go-v3-v4-project-migration/README.md) (20 November 2026).
+
 ## HugePages
 
 1. Explicit HugeTLB vs Transparent Huge Pages: How to Choose for Latency, Capacity Guarantees, and Operational Control
+
+    Completed: [Article](posts/2026-11-20-hugetlb-transparent-huge-pages-latency-capacity/README.md) (20 November 2026).
 2. How to Diagnose `mmap(MAP_HUGETLB)` ENOMEM When Linux Still Has Free RAM
+
+    Completed: [Article](posts/2026-11-20-mmap-map-hugetlb-enomem-free-ram/README.md) (20 November 2026).
 3. How to Reserve 1 GiB HugeTLB Pages at Boot When Runtime Allocation Fails from Fragmentation
+
+    Completed: [Article](posts/2026-11-20-reserve-1gib-hugetlb-pages-boot-fragmentation/README.md) (20 November 2026).
 4. How to Run 2 MiB and 1 GiB Huge Page Pools Side by Side with Separate hugetlbfs Mounts
+
+    Completed: [Article](posts/2026-11-20-2mib-1gib-hugepage-pools-separate-hugetlbfs-mounts/README.md) (20 November 2026).
 5. How to Reserve Huge Pages on Specific NUMA Nodes and Verify the Application Uses the Right Socket
+
+    Completed: [Article](posts/2026-11-20-reserve-huge-pages-numa-nodes-verify-placement/README.md) (20 November 2026).
 6. Where Did My Huge Pages Go? Finding the Processes and Mappings Consuming the HugeTLB Pool
+
+    Completed: [Article](posts/2026-11-20-find-processes-mappings-consuming-hugetlb-pool/README.md) (20 November 2026).
 7. How to Interpret `HugePages_Free`, `HugePages_Rsvd`, `HugePages_Surp`, and `Hugetlb` Without Double-Counting Memory
+
+    Completed: [Article](posts/2026-11-20-interpret-hugepages-counters-without-double-counting/README.md) (20 November 2026).
 8. How to Verify Whether a Linux Allocation Actually Uses THP with `smaps`, `numa_maps`, and `vmstat`
+
+    Completed: [Article](posts/2026-11-20-verify-linux-allocation-thp-smaps-numa-maps-vmstat/README.md) (20 November 2026).
 9. How to Fix `mmap` SIGBUS After a HugeTLB Mapping Succeeds but the Page Fault Cannot Be Backed
+
+    Completed: [Article](posts/2026-11-20-fix-hugetlb-mmap-sigbus-page-fault-backing/README.md) (20 November 2026).
 10. How to Request Non-Default Huge Page Sizes with `MAP_HUGE_*` for `mmap` and `SHM_HUGE_*` for `shmget`
 11. How to Explain THP Allocation Stalls with `compact_stall`, `thp_fault_alloc`, and the Defrag Policy
 12. Why `MADV_HUGEPAGE` Does Not Collapse Your Mapping: Alignment, Fragmentation, and `khugepaged` Diagnostics

@@ -1,0 +1,29 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-21",
+  "runtimeTestsPerformed": true,
+  "sources": [
+    "https://www.kernel.org/doc/html/v6.12/admin-guide/mm/hugetlbpage.html",
+    "https://man7.org/linux/man-pages/man8/mount.8.html",
+    "https://raw.githubusercontent.com/torvalds/linux/v6.12/fs/hugetlbfs/inode.c",
+    "https://man7.org/linux/man-pages/man8/findmnt.8.html",
+    "https://docs.python.org/3.12/library/mmap.html",
+    "https://docs.python.org/3.12/library/os.html#os.ftruncate",
+    "https://docs.python.org/3.12/library/tempfile.html",
+    "https://man7.org/linux/man-pages/man5/fstab.5.html"
+  ],
+  "tests": [
+    "Published Python probe executed on macOS ordinary temporary files at2MiB and1GiB lengths; endpoint values, cleanup and invalid size rejection passed",
+    "Article Python is byte-identical to tested helper",
+    "Shell blocks passed bash -n;fstab six-field shape and size selections checked",
+    "Linux6.12 HugeTLB documentation and hugetlbfs option source reviewed; mount/findmnt/fstab and Python interfaces checked",
+    "Seven-node six-edge Mermaid structurally reviewed",
+    "1280x720 social image visually reviewed without clipping"
+  ],
+  "limitations": [
+    "No Linux hugetlbfs mount, physical huge-page allocation or cgroup/NUMA test",
+    "Ordinary-file probe success does not establish HugeTLB backing",
+    "fstab was not installed or exercised by Linux mount tooling",
+    "No real application startup; Mermaid not rendered"
+  ]
+}

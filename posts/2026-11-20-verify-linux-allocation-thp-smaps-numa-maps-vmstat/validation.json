@@ -1,0 +1,27 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-21",
+  "runtimeTestsPerformed": true,
+  "sources": [
+    "https://man7.org/linux/man-pages/man5/proc_pid_maps.5.html",
+    "https://man7.org/linux/man-pages/man5/proc_pid_smaps.5.html",
+    "https://www.kernel.org/doc/html/v6.12/admin-guide/mm/transhuge.html#monitoring-usage",
+    "https://raw.githubusercontent.com/torvalds/linux/v6.12/fs/proc/task_mmu.c",
+    "https://man7.org/linux/man-pages/man7/numa.7.html",
+    "https://www.kernel.org/doc/html/v6.12/admin-guide/mm/transhuge.html",
+    "https://man7.org/linux/man-pages/man2/madvise.2.html"
+  ],
+  "tests": [
+    "Exact Python address selector passed synthetic start/interior/end-exclusive/final-mapping/missing-address tests",
+    "Linux6.12 THP monitoring and task_mmu.c reporting paths checked:AnonHugePages PMD scope, separate page-size reporting, HugeTLB huge marker",
+    "Shell snippets passed bash -n",
+    "Six-node five-edge Mermaid structurally reviewed",
+    "1280x720 social image visually reviewed with complete readable title"
+  ],
+  "limitations": [
+    "No Linux THP allocation, collapse, split, NUMA or performance test",
+    "No actual procfs/sysfs snapshots; only synthetic parsing executed",
+    "Host counters cannot uniquely attribute allocations; smaller-THP attribution not implemented",
+    "Mermaid not rendered"
+  ]
+}

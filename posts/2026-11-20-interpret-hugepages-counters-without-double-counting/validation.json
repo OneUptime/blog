@@ -1,0 +1,26 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-21",
+  "runtimeTestsPerformed": true,
+  "sources": [
+    "https://man7.org/linux/man-pages/man5/proc_meminfo.5.html",
+    "https://www.kernel.org/doc/html/v6.12/admin-guide/mm/hugetlbpage.html",
+    "https://www.kernel.org/doc/html/v6.12/mm/hugetlbfs_reserv.html",
+    "https://raw.githubusercontent.com/torvalds/linux/v6.12/mm/hugetlb.c",
+    "https://www.kernel.org/doc/html/v6.12/admin-guide/mm/transhuge.html"
+  ],
+  "tests": [
+    "Exact published helper tested on synthetic1024x2MiB and4x1GiB pools:6291456KiB total, surplus not added twice",
+    "Checked nonfree calculation, free-minus-reserved256, negative difference-16 retained, empty-root rejection",
+    "Linux6.12 hugetlb.c meminfo and sysfs reader implementations checked directly",
+    "Shell snippets passed bash -n",
+    "Six-node five-edge Mermaid structurally reviewed",
+    "1280x720 image visually reviewed with complete title"
+  ],
+  "limitations": [
+    "No live Linux pool or allocation/reservation lifecycle test",
+    "No concurrent scraping test or guarantee of atomic snapshots",
+    "Reservation explanation uses documented model, not a reproduction of older internals",
+    "Mermaid not rendered"
+  ]
+}

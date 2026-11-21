@@ -1,0 +1,25 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-21",
+  "runtimeTestsPerformed": false,
+  "sources": [
+    "https://www.kernel.org/doc/html/v6.12/admin-guide/mm/hugetlbpage.html",
+    "https://www.kernel.org/doc/html/v6.12/admin-guide/mm/transhuge.html",
+    "https://man7.org/linux/man-pages/man2/mmap.2.html",
+    "https://man7.org/linux/man-pages/man2/madvise.2.html",
+    "https://www.kernel.org/doc/html/v6.12/mm/hugetlbfs_reserv.html"
+  ],
+  "tests": [
+    "Linux6.12 tagged HugeTLB/THP documentation reviewed alongside mmap/madvise interfaces",
+    "Exact inspection shell script passed bash syntax checking; awk summary filter selected7 expected fields from synthetic meminfo fixture",
+    "Capacity arithmetic verified:16384 times2MiB equals32GiB",
+    "Six-node six-edge Mermaid structurally reviewed",
+    "1280x720 social image visually reviewed with unclipped title"
+  ],
+  "limitations": [
+    "Host is macOS; no Linux procfs/sysfs inventory, allocation or tuning executed",
+    "No performance, fragmentation, NUMA, cgroup or fault-reservation testing",
+    "Synthetic parser fixture only; no kernel runtime evidence",
+    "Mermaid not rendered"
+  ]
+}

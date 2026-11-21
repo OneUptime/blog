@@ -1,0 +1,28 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-21",
+  "runtimeTestsPerformed": true,
+  "sources": [
+    "https://www.kernel.org/doc/html/v6.12/admin-guide/mm/hugetlbpage.html",
+    "https://www.kernel.org/doc/html/v6.12/filesystems/proc.html",
+    "https://man7.org/linux/man-pages/man5/proc_pid_smaps.5.html",
+    "https://man7.org/linux/man-pages/man5/proc_pid_maps.5.html",
+    "https://man7.org/linux/man-pages/man5/proc_pid_fd.5.html",
+    "https://man7.org/linux/man-pages/man2/memfd_create.2.html",
+    "https://man7.org/linux/man-pages/man1/ipcs.1.html",
+    "https://man7.org/linux/man-pages/man2/shmctl.2.html",
+    "https://man7.org/linux/man-pages/man8/findmnt.8.html"
+  ],
+  "tests": [
+    "Exact published parser tested using synthetic smaps: ordinary filenames and THP excluded; resident and unfaulted HugeTLB retained; final HugeTLB block emitted",
+    "Shell syntax checks passed",
+    "Official Linux6.12 procfs/HugeTLB and maps/fd/smaps/ipcs/shmctl/memfd documentation reviewed",
+    "Seven-node six-edge Mermaid structurally reviewed",
+    "1280x720 image visually inspected and readable"
+  ],
+  "limitations": [
+    "No live Linux process inventory, shared object inspection or page release",
+    "Synthetic parser execution only; no physical memory reconciliation test",
+    "No PID/IPC/mount namespace experiment; Mermaid not rendered"
+  ]
+}

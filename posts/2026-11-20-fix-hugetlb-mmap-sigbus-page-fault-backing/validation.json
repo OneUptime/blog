@@ -1,0 +1,32 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-21",
+  "runtimeTestsPerformed": false,
+  "sources": [
+    "https://www.freedesktop.org/software/systemd/man/257/coredumpctl.html",
+    "https://man7.org/linux/man-pages/man5/proc_pid_maps.5.html",
+    "https://man7.org/linux/man-pages/man5/proc_pid_smaps.5.html",
+    "https://man7.org/linux/man-pages/man1/stat.1.html",
+    "https://man7.org/linux/man-pages/man2/mmap.2.html",
+    "https://raw.githubusercontent.com/torvalds/linux/v6.12/mm/hugetlb.c",
+    "https://man7.org/linux/man-pages/man2/ftruncate.2.html",
+    "https://www.kernel.org/doc/html/v6.12/admin-guide/mm/hugetlbpage.html",
+    "https://www.kernel.org/doc/html/v6.12/mm/hugetlbfs_reserv.html",
+    "https://www.kernel.org/doc/html/v6.12/admin-guide/cgroup-v2.html",
+    "https://man7.org/linux/man-pages/man8/findmnt.8.html"
+  ],
+  "tests": [
+    "Reviewed Linux6.12 HugeTLB fault-handler source and reservation documentation",
+    "Verified cgroupv2 fault-time limit and opt-in memory_hugetlb_accounting SIGBUS behavior in official docs",
+    "Checked systemd257 coredumpctl, GNUstat, findmnt and mmap/maps/smaps/ftruncate interfaces",
+    "All shell blocks passed bash -n; file-offset example arithmetic verified",
+    "Seven-node six-edge Mermaid structurally reviewed",
+    "1280x720 social image visually inspected with unclipped text"
+  ],
+  "limitations": [
+    "No Linux fault, allocation, cgroup charging, truncation or fork reproduction",
+    "No live core inspection or process snapshots; commands source-reviewed only",
+    "No claim that reservation or one-byte warm-up guarantees full lifecycle success",
+    "Mermaid not rendered"
+  ]
+}

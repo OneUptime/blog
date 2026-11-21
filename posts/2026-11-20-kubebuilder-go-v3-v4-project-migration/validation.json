@@ -1,0 +1,28 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-21",
+  "runtimeTestsPerformed": true,
+  "sources": [
+    "https://book-v3.book.kubebuilder.io/migration/migration_guide_gov3_to_gov4",
+    "https://book.kubebuilder.io/reference/commands/alpha_generate.html",
+    "https://book.kubebuilder.io/migrations.html",
+    "https://github.com/kubernetes-sigs/kubebuilder/releases/tag/v4.9.0",
+    "https://kubernetes.io/docs/tasks/manage-kubernetes-objects/kustomization/"
+  ],
+  "tests": [
+    "Verified official Kubebuilder3.14.0 and4.9.0 binaries; actual go/v3 fixture generated with API/controller/defaulting/validation",
+    "Legacy controller-gen0.11.3 failed under Go1.25; generation/manifests/build passed using verified Go1.20.14",
+    "4.9.0 alpha generate with explicit separate output and CLI onPATH passed generation/fmt/vet/lint; original input file hashes unchanged",
+    "Ported custom API field, controller delay, webhook default/validation and staging overlay; target build and targeted tests passed",
+    "Kustomize5.7.1 rendered21 objects; checked identity, required target/minLength, overlay annotation and both admission webhook configurations",
+    "Six-node six-edge Mermaid structurally reviewed",
+    "1280x720 social image visually reviewed; all title text visible"
+  ],
+  "limitations": [
+    "No deployed upgrade, full envtest suite or end-to-end run",
+    "Legacy Kustomize3 render not run on macOS arm64; target overlay render checked",
+    "Fixture rules are small examples, not a production operator migration",
+    "No CRD storage migration or certificate issuance exercised",
+    "Mermaid not rendered"
+  ]
+}
