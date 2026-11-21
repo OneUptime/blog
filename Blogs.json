@@ -831702,5 +831702,116 @@
       "Troubleshooting"
     ],
     "post": "2026-11-20-teradata-2646-spool-exhaustion-diagnosis"
+  },
+  {
+    "title": "Find Teradata AMP Skew in Tables and Redistributed Joins",
+    "description": "Separate stored-table skew from join redistribution, inspect hot key values and map-aware hash distribution, and choose fixes that preserve query correctness.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Database",
+      "SQL",
+      "Performance"
+    ],
+    "post": "2026-11-20-teradata-amp-skew-primary-index-redistribution"
+  },
+  {
+    "title": "Read Teradata EXPLAIN Plans: Scans, Movement and Confidence",
+    "description": "Read a Teradata EXPLAIN plan as a flow of rows, distinguish scans from data movement, and turn confidence and spool estimates into testable tuning questions.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Database",
+      "SQL",
+      "Performance"
+    ],
+    "post": "2026-11-20-read-teradata-explain-plan-data-movement"
+  },
+  {
+    "title": "Collect Teradata Statistics the Optimizer Can Use",
+    "description": "Choose Teradata statistics from real predicates and joins, distinguish individual from joint column statistics, and verify collection before judging plan changes.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Database",
+      "SQL",
+      "Performance"
+    ],
+    "post": "2026-11-20-teradata-statistics-optimizer-useful-columns"
+  },
+  {
+    "title": "Choose a Teradata Primary Index for Distribution and Local Joins",
+    "description": "Compare Teradata primary-index candidates against data distribution, lookup and join workloads, while keeping uniqueness, table maps and migration costs explicit.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Database",
+      "SQL",
+      "Database Design"
+    ],
+    "post": "2026-11-20-teradata-primary-index-distribution-local-joins"
+  },
+  {
+    "title": "Teradata CTEs, Derived Tables or Volatile Tables for Reuse?",
+    "description": "Compare query-local CTEs and derived tables with session-scoped volatile tables, accounting for optimizer rewrites, build cost, spool lifetime and data freshness.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Database",
+      "SQL",
+      "Performance"
+    ],
+    "post": "2026-11-20-teradata-cte-derived-volatile-table-rework"
+  },
+  {
+    "title": "Load Teradata from Python: Batches, FastLoad and Parallel Sessions",
+    "description": "Build a bounded batch-insert baseline, evaluate FastLoad eligibility and diagnostics, and measure parallel loading without hiding commit costs or rejected rows.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Python",
+      "Database",
+      "Performance"
+    ],
+    "post": "2026-11-20-teradata-python-batch-inserts-fastload"
+  },
+  {
+    "title": "Diagnose Teradata Python Timeouts by Connection Stage",
+    "description": "Separate TCP connection, logon, SQL request and idle-session failures in the Teradata Python driver, with explicit timeout units and safe stage-level timing.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Python",
+      "Database",
+      "Troubleshooting"
+    ],
+    "post": "2026-11-20-teradata-python-driver-timeout-boundaries"
+  },
+  {
+    "title": "Secure Teradata Python Connections with TLS and Identity",
+    "description": "Configure verified Teradata TLS, choose browser OIDC or Kerberos appropriately, and use stored-password protection without confusing encryption with access control.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Python",
+      "Database",
+      "Security"
+    ],
+    "post": "2026-11-20-secure-teradata-python-tls-identity-passwords"
+  },
+  {
+    "title": "Run YDB in Testcontainers Without Breaking Endpoint Discovery",
+    "description": "Use YDB's Java test helper to handle container endpoint discovery, with pinned dependencies, a query smoke check, and clear limits for local tests.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Java",
+      "Docker",
+      "Testing",
+      "Database"
+    ],
+    "post": "2026-11-20-ydb-testcontainers-endpoint-discovery"
+  },
+  {
+    "title": "Fix YDB Connection Failures: Endpoint, TLS, Database, and Identity",
+    "description": "Diagnose YDB connection failures in stages, checking the endpoint, TLS trust, database path, discovered addresses, and authenticated identity.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Database",
+      "Troubleshooting",
+      "Security"
+    ],
+    "post": "2026-11-20-fix-ydb-unable-to-connect"
   }
 ]

@@ -1,0 +1,28 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-21",
+  "runtimeTestsPerformed": false,
+  "sources": [
+    "https://www.github.com/nawazdhandala",
+    "https://ydb.tech/docs/en/concepts/connect",
+    "https://java.testcontainers.org/features/networking/",
+    "https://github.com/ydb-platform/ydb-java-sdk/blob/v2.5.0/tests/common/src/main/java/tech/ydb/test/integration/YdbHelperFactory.java",
+    "https://github.com/ydb-platform/ydb-java-sdk/blob/v2.5.0/tests/common/src/main/java/tech/ydb/test/integration/docker/GrpcProxyServer.java",
+    "https://github.com/ydb-platform/ydb-java-sdk/blob/v2.5.0/tests/common/src/main/java/tech/ydb/test/integration/docker/DiscoveryServiceProxy.java",
+    "https://ydb.tech/docs/en/reference/docker/configuration",
+    "https://github.com/ydb-platform/ydb-java-sdk/blob/v2.5.0/tests/common/src/main/java/tech/ydb/test/integration/YdbEnvironment.java",
+    "https://github.com/ydb-platform/ydb-java-sdk/blob/v2.5.0/query/src/test/java/tech/ydb/query/QueryExampleTest.java"
+  ],
+  "tests": [
+    "Java fixture compiled with JDK17.0.16 and Maven3.9.11 against YDB2.5.0 and transitive Testcontainers2.0.3",
+    "Reviewed tagged proxy/discovery/environment/helper source",
+    "Mermaid six nodes seven edges checked structurally",
+    "1280x720 social image visually inspected"
+  ],
+  "limitations": [
+    "No Docker runtime or YDB query executed",
+    "Image digest is an explicit user-selected placeholder; no server version compatibility claimed",
+    "No TLS/authentication or actual cluster failover test",
+    "Mermaid not rendered"
+  ]
+}

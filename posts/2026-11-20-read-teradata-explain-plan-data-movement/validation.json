@@ -1,0 +1,27 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-21",
+  "runtimeTestsPerformed": false,
+  "sources": [
+    "https://docs.teradata.com/r/Enterprise_IntelliFlex_VMware/SQL-Request-and-Transaction-Processing/Interpreting-EXPLAIN-Output/DYNAMIC-EXPLAIN",
+    "https://docs.teradata.com/r/Enterprise_IntelliFlex_VMware/SQL-Request-and-Transaction-Processing/Interpreting-EXPLAIN-Output/EXPLAIN-Request-Modifier",
+    "https://docs.teradata.com/r/Enterprise_IntelliFlex_VMware/Database-Design/Design-Issues-for-Tactical-Queries/All-AMP-Tactical-Queries-and-Partitioned-Tables",
+    "https://docs.teradata.com/r/Enterprise_IntelliFlex_VMware/SQL-Request-and-Transaction-Processing/Interpreting-EXPLAIN-Output/EXPLAIN-Request-Modifier-Phrase-Terminology",
+    "https://docs.teradata.com/r/Lake-Working-with-SQL/SQL-Reference/SQL-Request-and-Transaction-Processing/Interpreting-EXPLAIN-Output/EXPLAIN-Confidence-Levels?contentId=TNaartsZcnjtyHEocBJf8g",
+    "https://docs.teradata.com/r/Lake-Working-with-SQL/SQL-Reference/SQL-Request-and-Transaction-Processing/Interpreting-EXPLAIN-Output/EXPLAIN-Request-Modifier-and-Parallel-Steps"
+  ],
+  "tests": [
+    "Reviewed17.20 static/dynamicEXPLAIN and phrase documentation plus official confidence and parallel-step guidance",
+    "SQL block matches companion file",
+    "Portable SELECT with date literals adapted to SQLite verified November boundaries and regional totalsN30/S5; STATICEXPLAIN not executed",
+    "Eight-node seven-edge teaching Mermaid structurally checked",
+    "1280x720 social image visually inspected"
+  ],
+  "limitations": [
+    "No live Teradata syntax,EXPLAIN or generated plan",
+    "Diagram is illustrative,not captured output",
+    "SQLite fixture is result-semantics check only",
+    "No optimizer estimates,spool or runtime measurement",
+    "Mermaid not rendered"
+  ]
+}

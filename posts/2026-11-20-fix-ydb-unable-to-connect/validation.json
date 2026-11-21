@@ -1,0 +1,27 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-21",
+  "runtimeTestsPerformed": true,
+  "sources": [
+    "https://www.github.com/nawazdhandala",
+    "https://ydb.tech/docs/en/concepts/connect",
+    "https://ydb.tech/docs/en/downloads/ydb-cli",
+    "https://ydb.tech/docs/en/reference/ydb-cli/connect",
+    "https://ydb.tech/docs/en/reference/ydb-cli/commands/config-info",
+    "https://ydb.tech/docs/en/reference/ydb-cli/commands/discovery-list",
+    "https://ydb.tech/docs/en/reference/ydb-cli/commands/discovery-whoami",
+    "https://ydb.tech/docs/en/reference/ydb-cli/sql"
+  ],
+  "tests": [
+    "Ran official macOS ARM64 YDB CLI2.35.0 version and global/sql/discovery help commands",
+    "Confirmed ca-file,token-file,endpoint,database and sql script flags in actual help",
+    "All Bash snippets passed bash -n",
+    "Seven-node six-edge Mermaid structurally checked",
+    "1280x720 image visually inspected"
+  ],
+  "limitations": [
+    "No connection,credential loading,TLS handshake,discovery or database query executed",
+    "Downloaded official CLI over HTTPS;no separate signature verification",
+    "Mermaid not rendered;no server compatibility test"
+  ]
+}

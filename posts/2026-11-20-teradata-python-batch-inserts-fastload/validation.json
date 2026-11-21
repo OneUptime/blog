@@ -1,0 +1,27 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-21",
+  "runtimeTestsPerformed": true,
+  "sources": [
+    "https://pypi.org/project/teradatasql/20.0.0.76/",
+    "https://docs.teradata.com/r/Lake-Database-Reference/Database-Administration/Loading-and-Exporting-Data-Application-DBAs/FastLoad-Utility",
+    "https://docs.teradata.com/r/Enterprise_IntelliFlex_Lake_VMware/Teradata-FastLoad-Reference-17.20/Using-Teradata-FastLoad/Programming-Considerations/Loading-No-Primary-Index-Tables",
+    "https://github.com/Teradata/python-driver/blob/5762e99d5af6173e0cb0359154f6aa86cd8ee86f/README.md#fastload",
+    "https://github.com/Teradata/python-driver/blob/5762e99d5af6173e0cb0359154f6aa86cd8ee86f/samples/FastLoadBatch.py"
+  ],
+  "tests": [
+    "Installed/imported teradatasql20.0.0.76 in isolated CPython3.14.10 environment",
+    "Reviewed official source commit5762e99d5af6173e0cb0359154f6aa86cd8ee86f and FastLoad batch sample",
+    "Fake-connection tests verified23rows batched10/10/3 with one commit; injected failure rollback/propagation; zero size rejected",
+    "All Python snippets parsed; helper matches executed companion",
+    "Seven-node seven-edge Mermaid structurally checked",
+    "1280x720 social image visually inspected"
+  ],
+  "limitations": [
+    "No Teradata connection,SQL execution,FastLoad or data reconciliation test",
+    "Fake connection tests application flow only",
+    "FastLoad diagnostics are a fragment,not a complete transaction manager",
+    "No network-failure,parallel-transfer or throughput benchmark",
+    "Mermaid not rendered"
+  ]
+}

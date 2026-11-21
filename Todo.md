@@ -2182,18 +2182,38 @@ Research: [OneUptime air-gapped alerting](https://oneuptime.com/enterprise/air-g
 
     Completed: [Article](posts/2026-11-20-teradata-2646-spool-exhaustion-diagnosis/README.md) (20 November 2026).
 2. Find and Fix AMP Skew in Teradata: Primary Indexes, Redistribution, and Hot Values
+
+    Completed: [Article](posts/2026-11-20-teradata-amp-skew-primary-index-redistribution/README.md) (20 November 2026).
 3. Read a Teradata `EXPLAIN` Plan: All-AMP Scans, Redistributes, Duplicates, and Confidence
+
+    Completed: [Article](posts/2026-11-20-read-teradata-explain-plan-data-movement/README.md) (20 November 2026).
 4. Collect Teradata Statistics That the Optimizer Can Actually Use
+
+    Completed: [Article](posts/2026-11-20-teradata-statistics-optimizer-useful-columns/README.md) (20 November 2026).
 5. Choose a Teradata Primary Index for Even Distribution and Local Joins
+
+    Completed: [Article](posts/2026-11-20-teradata-primary-index-distribution-local-joins/README.md) (20 November 2026).
 7. CTE, Derived Table, or Volatile Table in Teradata: Which One Reduces Rework and Spool?
+
+    Completed: [Article](posts/2026-11-20-teradata-cte-derived-volatile-table-rework/README.md) (20 November 2026).
 17. Bulk Load Teradata from Python: Batch Inserts vs FastLoad and When Parallel Sessions Pay Off
+
+    Completed: [Article](posts/2026-11-20-teradata-python-batch-inserts-fastload/README.md) (20 November 2026).
 18. Diagnose Teradata Python Driver Timeouts: Connection, Logon, Request, and Session Limits
+
+    Completed: [Article](posts/2026-11-20-teradata-python-driver-timeout-boundaries/README.md) (20 November 2026).
 19. Configure Secure Teradata Connections with TLS, Browser/OIDC, Kerberos, and Stored Passwords
+
+    Completed: [Article](posts/2026-11-20-secure-teradata-python-tls-identity-passwords/README.md) (20 November 2026).
 
 ## YDB
 
 1. Run YDB in Testcontainers Without Breaking Endpoint Discovery
+
+    Completed: [Article](posts/2026-11-20-ydb-testcontainers-endpoint-discovery/README.md) (20 November 2026).
 2. Fix “Unable to Connect” in YDB: Endpoint, Database Path, TLS, and Credentials Checklist
+
+    Completed: [Article](posts/2026-11-20-fix-ydb-unable-to-connect/README.md) (20 November 2026).
 3. Integrate YDB with Java: Native SDK, JDBC, Connection Pooling, and Retry Boundaries
 4. Connect SQLAlchemy 2.0 to YDB: URLs, Credentials, TLS, and Engine Configuration
 5. Use `Serial` and `BigSerial` in YDB Without Creating a Hot Primary-Key Partition

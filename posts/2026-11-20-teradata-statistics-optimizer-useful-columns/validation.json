@@ -1,0 +1,27 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-21",
+  "runtimeTestsPerformed": false,
+  "sources": [
+    "https://docs.teradata.com/r/Enterprise_IntelliFlex_VMware/SQL-Data-Definition-Language-Syntax-and-Examples/Statistics-Statements/COLLECT-STATISTICS-Optimizer-Form?contentId=mqxn5NLKhKR~FJuqpSzx_g",
+    "https://docs.teradata.com/r/Enterprise_IntelliFlex_VMware/SQL-Data-Definition-Language-Syntax-and-Examples/Statistics-Statements/HELP-STATISTICS-Optimizer-Form/Examples/Example-Summary-Statistics-on-a-Database?contentId=7F~xmClR8UlVQWKtIBWEJQ",
+    "https://docs.teradata.com/r/Enterprise_IntelliFlex_VMware/SQL-Data-Definition-Language-Syntax-and-Examples/Statistics-Statements/SHOW-STATISTICS",
+    "https://docs.teradata.com/r/Lake-Database-Reference/Database-Administration/Improving-Query-Performance-Using-COLLECT-STATISTICS-Application-DBAs/Statistics-Collection",
+    "https://docs.teradata.com/r/Lake-Working-with-SQL/SQL-Commands/SQL-Data-Definition-Language/Statistics-Statements/COLLECT-STATISTICS-Optimizer-Form/COLLECT-STATISTICS-Usage-Notes-Optimizer-Form/Collecting-Statistics-on-Multiple-Columns",
+    "https://docs.teradata.com/r/Lake-Working-with-SQL/SQL-Reference/SQL-Request-and-Transaction-Processing/Interpreting-EXPLAIN-Output/EXPLAIN-Confidence-Levels?contentId=TNaartsZcnjtyHEocBJf8g",
+    "https://docs.teradata.com/r/Lake-Working-with-SQL/SQL-Reference/SQL-Request-and-Transaction-Processing/Query-Rewrite-Statistics-and-Optimization/Optimizing-the-Recollection-of-Statistics"
+  ],
+  "tests": [
+    "Compared COLLECT single/joint column syntax and HELP commands against official examples",
+    "SQL blocks match companion file",
+    "Python synthetic1000row correlation arithmetic verified marginal product0.64 versus joint0.80",
+    "Eight-node seven-edge Mermaid structurally checked",
+    "1280x720 social image visually inspected"
+  ],
+  "limitations": [
+    "No Teradata collection,permissions,parser or optimizer execution",
+    "Correlation arithmetic is not a simulation of Teradata cardinality estimation",
+    "No sampling,threshold or maintenance benchmark",
+    "Mermaid not rendered"
+  ]
+}

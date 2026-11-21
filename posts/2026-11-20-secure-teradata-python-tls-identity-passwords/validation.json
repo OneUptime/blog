@@ -1,0 +1,26 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-21",
+  "runtimeTestsPerformed": true,
+  "sources": [
+    "https://github.com/Teradata/python-driver/blob/5762e99d5af6173e0cb0359154f6aa86cd8ee86f/README.md#connection-parameters",
+    "https://github.com/Teradata/python-driver/blob/5762e99d5af6173e0cb0359154f6aa86cd8ee86f/README.md#LogonMethods",
+    "https://web.mit.edu/kerberos/krb5-latest/doc/basic/ccache_def.html",
+    "https://web.mit.edu/kerberos/krb5-latest/doc/user/user_commands/klist.html",
+    "https://github.com/Teradata/python-driver/blob/5762e99d5af6173e0cb0359154f6aa86cd8ee86f/samples/TJEncryptPassword.py"
+  ],
+  "tests": [
+    "Reviewed pinned teradatasql20.0.0.76 TLS,logon and stored-password settings plus encryption sample",
+    "Exercised three option branches:no password for browser/Kerberos;VERIFY-FULL retained;stored expression names two file paths",
+    "Invalid mode and missing stored user rejected",
+    "Python snippets parse; helper matches executed file",
+    "Eight-node ten-edge Mermaid structurally checked",
+    "1280x720 social image visually inspected"
+  ],
+  "limitations": [
+    "No TLS handshake,OIDC login,Kerberos exchange or stored-password decryption",
+    "klist command source-reviewed only;no credential cache inspected",
+    "No renewal,rotation or database authorization test",
+    "Mermaid not rendered"
+  ]
+}

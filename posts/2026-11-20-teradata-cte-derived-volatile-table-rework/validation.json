@@ -1,0 +1,27 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-21",
+  "runtimeTestsPerformed": false,
+  "sources": [
+    "https://docs.teradata.com/r/Enterprise_IntelliFlex_VMware/SQL-Data-Manipulation-Language/SELECT-Statements/WITH-Modifier/WITH-Modifier-Examples/Example-Common-Table-Expression",
+    "https://docs.teradata.com/r/Enterprise_IntelliFlex_VMware/SQL-Data-Definition-Language-Detailed-Topics/CREATE-TABLE-Options/CREATE-TABLE-Table-Kind-Clause/Volatile-Tables",
+    "https://docs.teradata.com/r/Lake-Working-with-SQL/SQL-Reference/SQL-Request-and-Transaction-Processing/Query-Rewrite-Statistics-and-Optimization/Examples-Query-Rewrites/View-Folding?contentId=PWX0OgRZbVnhrCsYhssG1A",
+    "https://docs.teradata.com/r/Lake-Working-with-SQL/SQL-Commands/SQL-Data-Definition-Language/Table-Statements/CREATE-TABLE-and-CREATE-TABLE-AS/CREATE-TABLE-and-CREATE-TABLE-AS-Syntax-Elements?contentId=KMpKq9ztWUaqbqOG6epGYw",
+    "https://docs.teradata.com/r/Enterprise_IntelliFlex_VMware/SQL-Data-Definition-Language-Syntax-and-Examples/Table-Statements/CREATE-TABLE-and-CREATE-TABLE-AS/Syntax-Elements/AS_clause/WITH-DATA",
+    "https://docs.teradata.com/r/Enterprise_IntelliFlex_VMware/Database-Design/Database-Level-Capacity-Planning-Considerations/Sizing-Spool-Space"
+  ],
+  "tests": [
+    "Reviewed official CTE,derived-table folding,volatile scope,WITHDATA and commit-preservation syntax",
+    "SQLite fixture verified CTE/derived results identical:customer1=110,customer3=150",
+    "All SQL blocks match companion file",
+    "Six-node six-edge Mermaid structurally checked",
+    "1280x720 social image visually inspected"
+  ],
+  "limitations": [
+    "No Teradata parser,optimizer or volatileDDL execution",
+    "No connection-pool or transaction-mode test",
+    "No materialization/spool/performance measurement",
+    "SQLite checks query semantics only",
+    "Mermaid not rendered"
+  ]
+}

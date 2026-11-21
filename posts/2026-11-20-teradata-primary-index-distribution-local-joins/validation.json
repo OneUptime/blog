@@ -1,0 +1,28 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-21",
+  "runtimeTestsPerformed": false,
+  "sources": [
+    "https://docs.teradata.com/r/Enterprise_IntelliFlex_VMware/Database-Administration/Working-with-Tables-and-Views-Application-DBAs/Choosing-a-Primary-Index/Relationship-of-Primary-Indexes-Primary-Keys-and-Foreign-Keys",
+    "https://docs.teradata.com/r/Enterprise_IntelliFlex_VMware/Database-Design/Primary-Index-Primary-AMP-Index-and-NoPI-Objects/Performance-Considerations-for-Primary-Indexes",
+    "https://docs.teradata.com/r/Enterprise_IntelliFlex_VMware/Database-Administration/Working-with-Tables-and-Views-Application-DBAs/Choosing-a-Primary-Index/Guidelines-for-Choosing-Primary-Index-Columns",
+    "https://docs.teradata.com/r/Enterprise_IntelliFlex_VMware/SQL-Data-Definition-Language-Syntax-and-Examples/Index-Statements/CREATE-JOIN-INDEX/Examples/Example-Creating-a-Unique-Join-Index",
+    "https://docs.teradata.com/r/Enterprise_IntelliFlex_VMware/Database-Design/Indexes-and-Maps/Primary-Indexes-and-Primary-AMP-Indexes",
+    "https://docs.teradata.com/r/Enterprise_IntelliFlex_VMware/Database-Administration/Working-with-Tables-and-Views-Application-DBAs/Creating-Tables/Considerations-for-Defining-Tables",
+    "https://docs.teradata.com/r/Enterprise_IntelliFlex_VMware/Database-Design/Indexes-and-Maps/Maps",
+    "https://docs.teradata.com/r/Enterprise_IntelliFlex_VMware/SQL-Data-Definition-Language-Syntax-and-Examples/Map-Statements/CREATE-MAP?contentId=zp9bJOIOasifct0shXAejQ"
+  ],
+  "tests": [
+    "Source-reviewed PI/UPI/NUPI semantics,map/colocation guidance and table syntax",
+    "Compared both staging definitions: identical columns with explicitly differentPI and uniqueness semantics",
+    "Article SQL matches companion file",
+    "Eight-node seven-edge Mermaid structurally checked",
+    "1280x720 social image visually inspected"
+  ],
+  "limitations": [
+    "No Teradata parser,DDL,load,hash placement or join execution",
+    "No candidate benchmark or integrity-mechanism implementation",
+    "Minimal staging definitions inherit reviewed defaults;not production replacementDDL",
+    "Mermaid not rendered"
+  ]
+}

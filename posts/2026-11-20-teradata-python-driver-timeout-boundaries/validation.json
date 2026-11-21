@@ -1,0 +1,26 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-21",
+  "runtimeTestsPerformed": true,
+  "sources": [
+    "https://github.com/Teradata/python-driver/blob/5762e99d5af6173e0cb0359154f6aa86cd8ee86f/README.md#connection-parameters",
+    "https://github.com/Teradata/python-driver/blob/5762e99d5af6173e0cb0359154f6aa86cd8ee86f/README.md#request-scope-function-escape-clauses",
+    "https://docs.teradata.com/r/Enterprise_IntelliFlex_VMware/Database-Utilities/Query-Session-qrysessn/Query-Session-States",
+    "https://docs.teradata.com/r/Teradata-Query-Service-Installation-Configuration-and-Upgrade-Guide-for-Customers/February-2022/Configuring-Query-Service/Service-Configuration/Adding-Teradata-Systems",
+    "https://docs.teradata.com/r/Enterprise_IntelliFlex_Lake_VMware/Basic-Teradata-Query-Reference-20.00/Starting-and-Exiting-BTEQ/Starting-a-BTEQ-Session/Command-Line-Options/Restrictions-Options",
+    "https://docs.teradata.com/r/Enterprise_IntelliFlex_VMware/Database-Utilities/Gateway-Control-gtwcontrol/Syntax-Elements"
+  ],
+  "tests": [
+    "Source-reviewed teradatasql20.0.0.76 timeout units/defaults,request override and TLS parameter names",
+    "Local timing helper tests verified return value,success/error labels and exception propagation",
+    "Python snippets parsed and helper matches companion file",
+    "Seven-node six-edge Mermaid structurally checked",
+    "1280x720 social image visually inspected"
+  ],
+  "limitations": [
+    "No TCP,TLS,logon,request,fetch or idle timeout reproduced",
+    "Connection example not executed against a server",
+    "No pool recovery,cancellation or uncertain-commit test",
+    "Mermaid not rendered"
+  ]
+}

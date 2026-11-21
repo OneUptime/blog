@@ -1,0 +1,26 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-21",
+  "runtimeTestsPerformed": false,
+  "sources": [
+    "https://docs.teradata.com/r/Enterprise_IntelliFlex_VMware/Database-Administration/Working-with-Tables-and-Views-Application-DBAs/Choosing-a-Primary-Index/Guidelines-for-Choosing-Primary-Index-Columns",
+    "https://docs.teradata.com/r/Enterprise_IntelliFlex_VMware/SQL-Request-and-Transaction-Processing/Join-Planning-and-Optimization/Join-Strategies-and-Methods",
+    "https://docs.teradata.com/r/Enterprise_IntelliFlex_VMware/Database-Administration/Managing-Space-Operational-DBAs/Finding-and-Fixing-Skewed-Tables-by-Querying-the-TableSizeV-View",
+    "https://docs.teradata.com/r/Enterprise_IntelliFlex_VMware/Data-Dictionary/Views-Reference/TableSizeV-X",
+    "https://docs.teradata.com/r/Enterprise_IntelliFlex_VMware/SQL-Functions-Expressions-and-Predicates/Hash-Related-Functions/HASHAMP/Examples/Example-HASHAMP-with-an-Expression-and-a-Contiguous-Map",
+    "https://docs.teradata.com/r/Enterprise_IntelliFlex_VMware/SQL-Functions-Expressions-and-Predicates/Hash-Related-Functions/HASHAMP/HASHAMP-Function-Syntax"
+  ],
+  "tests": [
+    "Reviewed17.20 HASHAMP contiguous-map syntax and PI guidance;20.00 TableSizeV definitions",
+    "SQLite synthetic aggregation verified100rows/21keys with80rows on the hot value",
+    "SQL blocks matched companion file",
+    "Eight-node eight-edge Mermaid structurally checked",
+    "1280x720 social image visually inspected"
+  ],
+  "limitations": [
+    "No live Teradata execution or hash-function simulation",
+    "No table-map,EXPLAIN,join-strategy or performance test",
+    "Join strategy official page available through indexed extract; direct fetch returned404",
+    "Mermaid not rendered"
+  ]
+}
