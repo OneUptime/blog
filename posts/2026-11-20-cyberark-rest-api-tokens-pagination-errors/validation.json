@@ -1,0 +1,26 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-21",
+  "runtimeTestsPerformed": true,
+  "sources": [
+    "https://docs.cyberark.com/pam-self-hosted/latest/en/content/sdk/cyberark%20authentication%20-%20logon_v10.htm",
+    "https://github.com/cyberark/epv-api-scripts/blob/b75e88768143fbfeb065aa7d47afe4e0c30ec3e1/Get%20Accounts/Get-Accounts.ps1",
+    "https://docs.cyberark.com/pam-self-hosted/latest/en/content/sdk/getaccounts.htm",
+    "https://www.rfc-editor.org/rfc/rfc9110.html#name-status-codes",
+    "https://knowledgebase.paloaltonetworks.com/KCSArticleDetail?id=kA1hj0000000rNrCAI&lang=en_US",
+    "https://www.rfc-editor.org/rfc/rfc6585.html#section-4",
+    "https://www.rfc-editor.org/rfc/rfc9110.html#name-retry-after"
+  ],
+  "tests": [
+    "Eleven executed Python pagination fixtures: two pages, empty result, loop, foreign origin, wrong path, HTTP, duplicate ID, malformed page, malformed link, page budget and missing ID",
+    "Official second-generation authentication/account API and pinned PowerShell token/logoff handling reviewed",
+    "Eight-node ten-edge Mermaid structurally reviewed",
+    "Generated 1280x720 social image visually reviewed"
+  ],
+  "limitations": [
+    "No live PVWA authentication, paging, rate-limit response or mutation",
+    "Injected fetch_json transport is a required caller implementation, not included or network-tested",
+    "Retry and session recovery are design guidance, not executed integration tests",
+    "Mermaid not rendered"
+  ]
+}

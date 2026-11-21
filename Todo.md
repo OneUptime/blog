@@ -1866,15 +1866,35 @@ Research: [OneUptime air-gapped alerting](https://oneuptime.com/enterprise/air-g
 
     Completed: [Article](posts/2026-11-20-repair-cyberark-component-credential-files/README.md) (20 November 2026).
 10. How to Fix CyberArk PVWA “Failed to Contact Domain” Errors During LDAPS Integration
+
+    Completed: [Article](posts/2026-11-20-cyberark-pvwa-ldaps-failed-contact-domain/README.md) (20 November 2026).
 11. How to Upgrade CyberArk PAM Self-Hosted in the Correct Component Order with a Tested Rollback
+
+    Completed: [Article](posts/2026-11-20-upgrade-cyberark-pam-component-order-rollback/README.md) (20 November 2026).
 12. How to Test CyberArk DR Vault Failover Without Losing Password Operations or PSM Recordings
+
+    Completed: [Article](posts/2026-11-20-test-cyberark-dr-vault-failover/README.md) (20 November 2026).
 13. How to Bulk-Onboard CyberArk Accounts Idempotently with the PVWA REST API
+
+    Completed: [Article](posts/2026-11-20-bulk-onboard-cyberark-accounts-idempotently/README.md) (20 November 2026).
 14. How to Manage CyberArk Safes and Membership Permissions as Code with the REST API
+
+    Completed: [Article](posts/2026-11-20-cyberark-safes-membership-permissions-as-code/README.md) (20 November 2026).
 15. How to Handle CyberArk REST API Tokens, Pagination, and 401/403/409/429 Errors Safely
+
+    Completed: [Article](posts/2026-11-20-cyberark-rest-api-tokens-pagination-errors/README.md) (20 November 2026).
 16. How to Fix CyberArk Account PATCH Requests That Return 200 but Do Not Update `secretManagement`
+
+    Completed: [Article](posts/2026-11-20-cyberark-account-patch-secretmanagement-not-updating/README.md) (20 November 2026).
 17. How to Retrieve Application Secrets from CyberArk Without Creating a Secret Zero
+
+    Completed: [Article](posts/2026-11-20-retrieve-cyberark-application-secrets-without-secret-zero/README.md) (20 November 2026).
 18. How to Rotate CyberArk Dual Accounts Without Downtime During Application Cutover
+
+    Completed: [Article](posts/2026-11-20-rotate-cyberark-dual-accounts-application-cutover/README.md) (20 November 2026).
 19. How to Deploy CyberArk Secrets Provider for Kubernetes with Least-Privilege Conjur Policy and RBAC
+
+    Completed: [Article](posts/2026-11-20-deploy-cyberark-secrets-provider-kubernetes-least-privilege/README.md) (20 November 2026).
 20. How to Troubleshoot CyberArk Conjur Kubernetes Authentication: TLS, CSR, ServiceAccount, and Token Volume Failures
 
 ## Multus

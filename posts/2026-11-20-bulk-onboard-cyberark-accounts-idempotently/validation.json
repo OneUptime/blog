@@ -1,0 +1,24 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-21",
+  "runtimeTestsPerformed": true,
+  "sources": [
+    "https://github.com/cyberark/epv-api-scripts/blob/b75e88768143fbfeb065aa7d47afe4e0c30ec3e1/Get%20Accounts/Get-Accounts.ps1",
+    "https://github.com/cyberark/epv-api-scripts/blob/b75e88768143fbfeb065aa7d47afe4e0c30ec3e1/Account%20Onboard%20Utility/Accounts_Onboard_Utility.ps1",
+    "https://github.com/cyberark/epv-api-scripts/blob/b75e88768143fbfeb065aa7d47afe4e0c30ec3e1/Account%20Onboard%20Utility/README.md"
+  ],
+  "tests": [
+    "Original Python planner executed: absent, exact, same-name conflict, alternate-name target conflict, ambiguous matches and missing fields",
+    "Pinned official script parsed with PowerShell 7.5.4; extracted Get-Account function tested with two simulated REST pages and exact-name filtering",
+    "Article PowerShell invocation parsed; source switch names and CSV mapping reviewed at b75e88768143fbfeb065aa7d47afe4e0c30ec3e1",
+    "Eight-node eight-edge Mermaid structurally reviewed",
+    "1280x720 social image visually reviewed"
+  ],
+  "limitations": [
+    "No live PVWA login, inventory retrieval or account write",
+    "Mocked pagination tests do not establish server-side API or authentication compatibility",
+    "Planner assumes complete authorized inventory and does not implement distributed locking or secret reconciliation",
+    "No full utility execution; DisableAutoUpdate is a documented parameter but no active auto-update implementation was found in pinned script",
+    "Mermaid not rendered"
+  ]
+}

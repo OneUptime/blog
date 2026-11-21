@@ -1,0 +1,26 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-21",
+  "runtimeTestsPerformed": true,
+  "sources": [
+    "https://community.cyberark.com/s/article/Running-a-Disaster-Recovery-Exercise-for-CyberArk-PAM-A-Comprehensive-Guide",
+    "https://learn.microsoft.com/en-us/powershell/module/microsoft.powershell.utility/select-string?view=powershell-7.5",
+    "https://docs.cyberark.com/pam-self-hosted/latest/en/content/pasimp/initiating%20a%20predefined%20dr%20failover.htm",
+    "https://knowledgebase.paloaltonetworks.com/KCSArticleDetail?id=kA1hj00000013TnCAI&lang=en_US",
+    "https://docs.cyberark.com/pam-self-hosted/latest/en/content/pas%20inst/optional-psm-in-a-vault-disaster-recovery-site.htm",
+    "https://docs.cyberark.com/pam-self-hosted/latest/en/content/pasimp/initiating-dr-failback-to-production-vault.htm"
+  ],
+  "tests": [
+    "PowerShell example parsed and executed against synthetic PADR.ini fixture using PowerShell 7.5.4",
+    "Four intended settings selected; commented setting and synthetic secret excluded",
+    "Reviewed predefined failover, failback, CPM redirection and active-recording limitations against official references",
+    "Seven-node six-edge Mermaid structurally reviewed",
+    "1280x720 generated image visually reviewed"
+  ],
+  "limitations": [
+    "No live CyberArk DR exercise, replication, password change or recording playback performed",
+    "Fixture checks extraction only, not PADR configuration validity or service health",
+    "Described acceptance protocol has not been executed against a product deployment",
+    "Mermaid not rendered"
+  ]
+}

@@ -1,0 +1,24 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-21",
+  "runtimeTestsPerformed": true,
+  "sources": [
+    "https://github.com/cyberark/epv-api-scripts/blob/b75e88768143fbfeb065aa7d47afe4e0c30ec3e1/Safe%20Management/Safe-Management.ps1",
+    "https://github.com/cyberark/epv-api-scripts/blob/b75e88768143fbfeb065aa7d47afe4e0c30ec3e1/Safe%20Management/README.md",
+    "https://github.com/cyberark/epv-api-scripts/blob/b75e88768143fbfeb065aa7d47afe4e0c30ec3e1/Safe%20Management/safe-members-sample.csv",
+    "https://docs.cyberark.com/pam-self-hosted/latest/en/content/webservices/update%20safe%20member.htm"
+  ],
+  "tests": [
+    "Executed seven local CSV preflight cases: valid, blank, typo, invalid level, incomplete identity, duplicate and empty",
+    "Parsed both PowerShell blocks with PowerShell 7.5.4",
+    "Reviewed script 2.2.6 member update body, expiry handling, predefined-user filtering and CSV mapping at pinned commit",
+    "Eight-node seven-edge Mermaid structurally reviewed",
+    "1280x720 social image visually reviewed"
+  ],
+  "limitations": [
+    "No live CyberArk authentication, Safe inventory or membership mutation",
+    "CSV checker validates shape and values, not authorization, full inventory or effective directory access",
+    "No expiry preservation or API compatibility execution tests",
+    "Mermaid not rendered"
+  ]
+}

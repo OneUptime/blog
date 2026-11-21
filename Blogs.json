@@ -830601,5 +830601,115 @@
       "Troubleshooting"
     ],
     "post": "2026-11-20-repair-cyberark-component-credential-files"
+  },
+  {
+    "title": "Fix CyberArk PVWA Domain Connection Errors with LDAPS",
+    "description": "Diagnose PVWA domain connection failures by checking both server paths, LDAPS certificates, bind credentials, and every configured domain controller.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "CyberArk",
+      "LDAP",
+      "Troubleshooting"
+    ],
+    "post": "2026-11-20-cyberark-pvwa-ldaps-failed-contact-domain"
+  },
+  {
+    "title": "Upgrade CyberArk PAM in Order and Rehearse the Rollback",
+    "description": "Plan a CyberArk PAM 15.2 upgrade with explicit component dependencies, verified packages, functional gates, and a rollback rehearsal that preserves current state.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "CyberArk",
+      "Disaster Recovery",
+      "Security"
+    ],
+    "post": "2026-11-20-upgrade-cyberark-pam-component-order-rollback"
+  },
+  {
+    "title": "Test CyberArk DR Failover and Verify Passwords and Recordings",
+    "description": "Design a controlled CyberArk DR exercise with replication gates, explicit CPM ownership, recording checks, and a failback that preserves changes made at DR.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "CyberArk",
+      "Disaster Recovery",
+      "Testing"
+    ],
+    "post": "2026-11-20-test-cyberark-dr-vault-failover"
+  },
+  {
+    "title": "Bulk-Onboard CyberArk Accounts with Safe, Repeatable Runs",
+    "description": "Make CyberArk account onboarding repeatable with exact identity checks, paginated inventory, conflict detection, a pinned utility, and recovery from uncertain writes.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "CyberArk",
+      "REST API",
+      "Automation"
+    ],
+    "post": "2026-11-20-bulk-onboard-cyberark-accounts-idempotently"
+  },
+  {
+    "title": "Manage CyberArk Safes and Membership Permissions as Code",
+    "description": "Build a reviewable CyberArk Safe permission workflow with explicit ownership, complete permission records, controlled updates, and read-back verification.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "CyberArk",
+      "Access Control",
+      "Automation"
+    ],
+    "post": "2026-11-20-cyberark-safes-membership-permissions-as-code"
+  },
+  {
+    "title": "Handle CyberArk API Tokens, Pagination, and Errors Safely",
+    "description": "Design CyberArk API clients that protect session tokens, finish paginated reads, and handle authentication, conflicts, and throttling without unsafe retries.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "CyberArk",
+      "REST API",
+      "Troubleshooting"
+    ],
+    "post": "2026-11-20-cyberark-rest-api-tokens-pagination-errors"
+  },
+  {
+    "title": "Fix CyberArk PATCH Requests That Leave Secret Management Unchanged",
+    "description": "Diagnose successful CyberArk account PATCH responses that leave secretManagement unchanged using typed payloads, exact account IDs, and independent read-back checks.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "CyberArk",
+      "REST API",
+      "Troubleshooting"
+    ],
+    "post": "2026-11-20-cyberark-account-patch-secretmanagement-not-updating"
+  },
+  {
+    "title": "Retrieve CyberArk Application Secrets Without a Secret Zero",
+    "description": "Replace embedded Vault passwords with an approved application identity, using CyberArk Credential Provider or Windows-authenticated CCP retrieval.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "CyberArk",
+      "Security",
+      "Access Control"
+    ],
+    "post": "2026-11-20-retrieve-cyberark-application-secrets-without-secret-zero"
+  },
+  {
+    "title": "Rotate CyberArk Dual Accounts Without Breaking Application Cutover",
+    "description": "Plan CyberArk dual-account cutover around the active credential pair, provider caches, application refresh, and a measured grace period.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "CyberArk",
+      "Security",
+      "Reliability"
+    ],
+    "post": "2026-11-20-rotate-cyberark-dual-accounts-application-cutover"
+  },
+  {
+    "title": "Deploy CyberArk Secrets Provider with Narrow Conjur and Kubernetes Access",
+    "description": "Deploy a source-pinned CyberArk Secrets Provider Job that reads one Conjur variable and updates one Kubernetes Secret with explicitly scoped permissions.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "CyberArk",
+      "Kubernetes",
+      "RBAC"
+    ],
+    "post": "2026-11-20-deploy-cyberark-secrets-provider-kubernetes-least-privilege"
   }
 ]

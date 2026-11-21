@@ -1,0 +1,27 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-21",
+  "runtimeTestsPerformed": true,
+  "sources": [
+    "https://github.com/cyberark/Idira-Partner-Integration-Docs/blob/4dec83637ab47d0eee710eacd1f2de8375f40ff8/docs/secrets-management/credential-provider/development-guide.md",
+    "https://github.com/cyberark/Idira-Partner-Integration-Docs/blob/4dec83637ab47d0eee710eacd1f2de8375f40ff8/docs/secrets-management/central-credential-provider/development-guide.md",
+    "https://docs.cyberark.com/credential-providers/latest/en/content/cp%20and%20ascp/authentication-methods-for-ccp.htm",
+    "https://docs.cyberark.com/credential-providers/latest/en/content/ccp/provisioning-privileged-application-accounts.htm",
+    "https://docs.cyberark.com/credential-providers/latest/en/content/ccp/calling-the-web-service-using-rest_post.htm",
+    "https://learn.microsoft.com/en-us/powershell/module/microsoft.powershell.utility/invoke-restmethod?view=powershell-7.5"
+  ],
+  "tests": [
+    "PowerShell 7.5.4 syntax check and six mocked retrieval/guard cases passed",
+    "Mock asserted default credentials, POST, HTTP1.1, zero redirects and selector body; successful case emitted no secret output",
+    "Official CP/CCP guide1.3 pinned at 4dec83637ab47d0eee710eacd1f2de8375f40ff8; product authentication and POST docs reviewed",
+    "Six-node seven-edge Mermaid structurally reviewed",
+    "1280x720 social image visually reviewed"
+  ],
+  "limitations": [
+    "No Windows domain authentication, IIS configuration, CCP retrieval, certificate verification or database connection executed",
+    "Fixture replaces Invoke-RestMethod; tests establish local control flow, not live authorization",
+    "No provider installation, rotation, identity denial or outage test",
+    "Managed string reference removal is not guaranteed memory erasure",
+    "Mermaid not rendered"
+  ]
+}

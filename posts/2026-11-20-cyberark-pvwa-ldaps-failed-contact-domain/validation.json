@@ -1,0 +1,25 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-21",
+  "runtimeTestsPerformed": false,
+  "sources": [
+    "https://knowledgebase.paloaltonetworks.com/KCSArticleDetail?id=kA1hj000000149jCAA&lang=en_US",
+    "https://learn.microsoft.com/en-us/powershell/module/nettcpip/test-netconnection?view=windowsserver2025-ps",
+    "https://docs.cyberark.com/pam-self-hosted/latest/en/content/pas%20inst/configuring-transparent-user-management.htm",
+    "https://learn.microsoft.com/en-us/troubleshoot/windows-server/active-directory/enable-ldap-over-ssl-3rd-certification-authority",
+    "https://learn.microsoft.com/en-us/troubleshoot/windows-server/active-directory/ldap-over-ssl-connection-issues",
+    "https://docs.cyberark.com/pam-self-hosted/latest/en/content/landing%20pages/lpldapintegration.htm"
+  ],
+  "tests": [
+    "Two PowerShell snippets parsed using PowerShell 7.5.4",
+    "Official CyberArk configuration and troubleshooting references reviewed for both source paths, trust and all-host validation",
+    "Microsoft certificate and LDAPS diagnostic requirements reviewed; certutil network effects disclosed",
+    "Seven-node six-edge Mermaid structurally reviewed",
+    "1280x720 social image visually reviewed"
+  ],
+  "limitations": [
+    "No Windows NetTCPIP, certutil or Ldp.exe execution",
+    "No live directory bind, CyberArk configuration, certificate import or firewall change",
+    "Mermaid not rendered"
+  ]
+}

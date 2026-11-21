@@ -1,0 +1,28 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-21",
+  "runtimeTestsPerformed": true,
+  "sources": [
+    "https://docs.cyberark.com/pam-self-hosted/latest/en/content/pas%20inst/considerations-before-upgrading.htm",
+    "https://docs.cyberark.com/pam-self-hosted/15.2/en/content/pas%20sysreq/compatibility_component_versions.htm",
+    "https://knowledgebase.paloaltonetworks.com/KCSArticleDetail?id=kA1hj0000000rp7CAA&lang=en_US",
+    "https://learn.microsoft.com/en-us/powershell/module/microsoft.powershell.utility/get-filehash?view=powershell-7.5",
+    "https://live.paloaltonetworks.com/t5/pam-self-hosted-articles/how-to-roll-back-if-upgrade-fails-on-pvwa-cpm-psm/ta-p/1428074",
+    "https://docs.cyberark.com/pam-self-hosted/latest/en/content/pas%20inst/pvwa-upgrade.htm",
+    "https://docs.cyberark.com/pam-self-hosted/latest/en/content/pas%20inst/upgrading-the-psm.htm"
+  ],
+  "tests": [
+    "PowerShell snippet parsed with PowerShell 7.5.4",
+    "Executed digest guard against synthetic package fixture: match accepted, invalid placeholder, hash mismatch and absent file rejected",
+    "Reviewed 15.2 version-pinned compatibility, ordered dependencies and supported upgrade hops",
+    "Reviewed component rollback caveats, PVConfiguration preservation, PVWA and PSM upgrade requirements",
+    "Seven-node six-edge Mermaid structurally reviewed",
+    "1280x720 social image visually reviewed"
+  ],
+  "limitations": [
+    "No CyberArk installer, real package authentication, upgrade or rollback performed",
+    "Local fixture test establishes hash guard behavior only",
+    "Rehearsal steps are a proposed protocol and not a report of completed product testing",
+    "Mermaid not rendered"
+  ]
+}

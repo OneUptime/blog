@@ -1,0 +1,25 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-21",
+  "runtimeTestsPerformed": true,
+  "sources": [
+    "https://docs.cyberark.com/credential-providers/latest/en/content/cp%20and%20ascp/cv_managing-dual-accounts.htm",
+    "https://docs.cyberark.com/credential-providers/latest/en/content/cp%20and%20ascp/cv_automatic_dual_account.htm",
+    "https://docs.cyberark.com/credential-providers/latest/en/content/ccp/calling-the-web-service-using-rest_post.htm",
+    "https://github.com/cyberark/Idira-Partner-Integration-Docs/blob/4dec83637ab47d0eee710eacd1f2de8375f40ff8/docs/secrets-management/central-credential-provider/development-guide.md"
+  ],
+  "tests": [
+    "Parsed JSON query and checked exact virtual-account selector",
+    "Executed credential-pair success, repr exclusion, immutability and six invalid-response cases",
+    "Compared detailed role-switch/grace/password-change order with official documentation",
+    "Five-participant six-message Mermaid sequence structurally reviewed",
+    "1280x720 social image visually inspected"
+  ],
+  "limitations": [
+    "No live CPM rotation, CCP query, provider-cache refresh or database cutover",
+    "Dataclass tests do not prove synchronized application updates or secret erasure",
+    "Timing example is illustrative, not measured production guidance",
+    "No zero-downtime guarantee; staging protocol must be run for the deployment",
+    "Mermaid not rendered"
+  ]
+}

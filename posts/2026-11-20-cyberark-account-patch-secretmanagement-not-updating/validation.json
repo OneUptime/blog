@@ -1,0 +1,26 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-21",
+  "runtimeTestsPerformed": true,
+  "sources": [
+    "https://docs.cyberark.com/pam-self-hosted/latest/en/content/sdk/updateaccount%20v10.htm",
+    "https://learn.microsoft.com/en-us/powershell/module/microsoft.powershell.core/about/about_booleans?view=powershell-7.5",
+    "https://github.com/cyberark/epv-api-scripts/blob/b75e88768143fbfeb065aa7d47afe4e0c30ec3e1/Account%20Onboard%20Utility/Accounts_Onboard_Utility.ps1",
+    "https://github.com/cyberark/epv-api-scripts/blob/b75e88768143fbfeb065aa7d47afe4e0c30ec3e1/Safe%20Management/README.md",
+    "https://knowledgebase.paloaltonetworks.com/KCSArticleDetail?id=kA1hj0000000oclCAA&lang=en_US"
+  ],
+  "tests": [
+    "Executed exact PowerShell 7.5.4 array serialization example; confirmed Boolean true in JSON",
+    "Parsed both PowerShell snippets",
+    "Nine Python postcondition fixtures passed; JSON example parsed with true Boolean",
+    "Seven-node six-edge Mermaid structurally checked",
+    "1280x720 social image visually inspected"
+  ],
+  "limitations": [
+    "No live PVWA PATCH, account GET, CPM assignment or password-management operation",
+    "Safe report invocation syntax-only; no credentials used",
+    "Older vendor defect explicitly scoped to pre-11.2 issue and HTTP 500 symptom",
+    "Missing CPM treated as configuration check, not a universally proven cause of HTTP 200 no-change responses",
+    "Mermaid not rendered"
+  ]
+}

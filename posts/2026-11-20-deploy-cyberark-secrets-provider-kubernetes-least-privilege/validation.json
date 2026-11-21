@@ -1,0 +1,35 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-21",
+  "runtimeTestsPerformed": false,
+  "sources": [
+    "https://github.com/cyberark/secrets-provider-for-k8s/blob/v1.11.1/helm/secrets-provider/values.yaml",
+    "https://github.com/cyberark/secrets-provider-for-k8s/blob/v1.11.1/deploy/policy/templates/conjur-authn.template.sh.yml",
+    "https://kubernetes.io/docs/tasks/configure-pod-container/configure-service-account/",
+    "https://github.com/cyberark/secrets-provider-for-k8s/blob/v1.11.1/deploy/policy/templates/conjur-secrets.template.sh.yml",
+    "https://github.com/cyberark/secrets-provider-for-k8s/blob/v1.11.1/pkg/secrets/k8s_secrets_storage/provide_conjur_secrets.go",
+    "https://github.com/cyberark/secrets-provider-for-k8s/blob/v1.11.1/pkg/secrets/clients/k8s/k8s_secrets_client.go",
+    "https://kubernetes.io/docs/reference/access-authn-authz/rbac/",
+    "https://helm.sh/docs/helm/helm_dependency_build/",
+    "https://helm.sh/docs/helm/helm_template/",
+    "https://kubernetes.io/docs/reference/kubectl/generated/kubectl_apply/",
+    "https://kubernetes.io/docs/reference/kubectl/generated/kubectl_auth/kubectl_auth_can-i/"
+  ],
+  "tests": [
+    "Fetched official v1.11.1 source at 7c137f495e7e9ec5bebc12c849fc2b64460e254c",
+    "Helm3.12.3 dependency build from Chart.lock, template and lint passed with exact article values",
+    "Parsed rendered Job and asserted pinned image, ServiceAccount, explicit Secret list, retry settings and audience-limited token",
+    "Parsed access manifests; asserted get/update only for payments-db and matching RoleBinding",
+    "Parsed tagged Conjur policy structure without executing a Conjur policy load",
+    "Six-node six-edge Mermaid structurally checked",
+    "1280x720 social image visually reviewed"
+  ],
+  "limitations": [
+    "No cluster server dry-run, apply, impersonation authorization query or Secret update executed",
+    "No live Conjur JWT authentication, effective permission or secret retrieval test",
+    "Existing configured authenticator, mapped host, variable and connection ConfigMap are explicit prerequisites",
+    "YAML parsing is not Conjur semantic validation; Helm rendering is not Kubernetes API validation",
+    "Image tag sourced from release; no container pull or runtime execution",
+    "Mermaid not rendered"
+  ]
+}
