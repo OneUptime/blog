@@ -1,0 +1,25 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-21",
+  "runtimeTestsPerformed": true,
+  "sources": [
+    "https://github.com/kubernetes-sigs/kubebuilder/blob/v4.9.0/pkg/plugins/golang/v4/webhook.go#L139",
+    "https://github.com/kubernetes-sigs/kubebuilder/blob/v4.9.0/pkg/config/v3/config.go#L188",
+    "https://github.com/kubernetes-sigs/kubebuilder/blob/v4.9.0/pkg/plugins/golang/v4/webhook.go#L166",
+    "https://book.kubebuilder.io/reference/project-config.html",
+    "https://github.com/kubernetes-sigs/kubebuilder/releases/tag/v4.9.0"
+  ],
+  "tests": [
+    "Official Kubebuilder4.9.0 darwin arm64 SHA256 matched release asset digest 67793c43d93fa353a697f8b1453fd6c7629f8a2fb4c1013a78cc452c646ae05e",
+    "Temporary go/v4 custom platform API scaffolded; removing only resource entry reproduced exact missing-API error",
+    "Restoring original PROJECT entry allowed validating webhook scaffolding; make generate and go build ./... passed with Go1.25.0",
+    "Article PROJECT fragment matches original generated resource metadata; shell syntax passed",
+    "Five-node four-edge Mermaid structurally reviewed;1280x720 social image visually reviewed"
+  ],
+  "limitations": [
+    "No live Kubernetes admission, certificate or webhook connectivity test",
+    "Generated validation is a scaffold, not implemented business validation",
+    "Behavior pinned to CLI4.9.0; built-in/external API handling differs",
+    "Mermaid not rendered"
+  ]
+}

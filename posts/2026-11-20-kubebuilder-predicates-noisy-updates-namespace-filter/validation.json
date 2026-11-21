@@ -1,0 +1,21 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-21",
+  "runtimeTestsPerformed": true,
+  "sources": [
+    "https://github.com/kubernetes-sigs/controller-runtime/blob/v0.22.4/pkg/predicate/predicate.go",
+    "https://github.com/kubernetes-sigs/controller-runtime/blob/v0.22.4/pkg/builder/controller.go#L224"
+  ],
+  "tests": [
+    "Exact predicate compiled and tested using controller-runtime0.22.4 Go1.25.0",
+    "Tests cover unchanged/resource-version/annotation updates, data and binary changes, opt-in/out, deletion timestamp, namespace exclusions, lifecycle and nil events",
+    "Exact setup fragment compiled with supplied surrounding stub reconciler and mapper",
+    "Six-node five-edge Mermaid structurally reviewed;1280x720 social image visually reviewed"
+  ],
+  "limitations": [
+    "Setup compilation uses stub mapper/reconciler and does not start a manager",
+    "No live informer, RBAC, namespace cache or reconciliation-count test",
+    "Excluded map is fixed startup configuration; dynamic changes not implemented",
+    "Mermaid not rendered"
+  ]
+}

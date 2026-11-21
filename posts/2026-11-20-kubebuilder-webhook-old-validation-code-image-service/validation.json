@@ -1,0 +1,22 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-21",
+  "runtimeTestsPerformed": true,
+  "sources": [
+    "https://kubernetes.io/docs/reference/access-authn-authz/extensible-admission-controllers/",
+    "https://kubernetes.io/docs/concepts/workloads/controllers/deployment/#updating-a-deployment",
+    "https://kubernetes.io/docs/concepts/containers/images/#image-pull-policy",
+    "https://kubernetes.io/docs/concepts/services-networking/endpoint-slices/"
+  ],
+  "tests": [
+    "Exact jq1.6 image inventory tested with reordered sidecar/manager status and a Pod lacking container status",
+    "Exact EndpointSlice query tested across two slices with ready and terminating backend identities preserved",
+    "Shell syntax passed; official image, Deployment, EndpointSlice and admission behavior reviewed",
+    "Six-node five-edge Mermaid structurally reviewed;1280x720 social image visually reviewed"
+  ],
+  "limitations": [
+    "No live cluster, image build, registry identity comparison, rollout or webhook request test",
+    "Fixture parsing cannot establish actual Service routing or network eligibility",
+    "Mermaid not rendered"
+  ]
+}

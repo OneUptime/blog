@@ -829609,5 +829609,115 @@
       "Troubleshooting"
     ],
     "post": "2026-11-20-higher-priority-preemption-victims-lower-priority-pods-survive"
+  },
+  {
+    "title": "Test Kubernetes 1.36 Workload-Aware Preemption with PodGroups",
+    "description": "Build a bounded Kubernetes 1.36 PodGroup preemption rehearsal, verify gang admission and victim behavior, and distinguish group policy from ordinary pod preemption.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Kubernetes",
+      "Scheduling",
+      "Testing"
+    ],
+    "post": "2026-11-20-kubernetes-136-workload-aware-preemption-podgroups"
+  },
+  {
+    "title": "Watch Unowned ConfigMaps with Kubebuilder Map Functions",
+    "description": "Map shared ConfigMap changes to the Deployments that reference them, using a cache index, namespace-safe lookups, and controller-runtime watch handlers.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Kubernetes",
+      "Kubebuilder",
+      "Go"
+    ],
+    "post": "2026-11-20-kubebuilder-watch-unowned-reference-map-function"
+  },
+  {
+    "title": "Watch an External CRD Without Importing Its Go Types",
+    "description": "Use unstructured objects to watch an external Kubernetes API, set its exact GVK, read status safely, and diagnose discovery, permissions, and cache failures.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Kubernetes",
+      "Kubebuilder",
+      "Go"
+    ],
+    "post": "2026-11-20-kubebuilder-watch-external-crd-unstructured"
+  },
+  {
+    "title": "Model Kubebuilder State Transitions Instead of Triggering Events",
+    "description": "Design reconciliation that survives coalesced events and restarts by reading current state, persisting progress, and using stable identities for external work.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Kubernetes",
+      "Kubebuilder",
+      "Go"
+    ],
+    "post": "2026-11-20-kubebuilder-reconcile-events-state-transitions"
+  },
+  {
+    "title": "Stop Status Updates from Creating Kubebuilder Reconcile Loops",
+    "description": "Break status-driven reconcile loops with stable conditions, meaningful change detection, a status subresource, and carefully scoped event filtering.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Kubernetes",
+      "Kubebuilder",
+      "Go"
+    ],
+    "post": "2026-11-20-kubebuilder-stop-status-update-reconcile-loop"
+  },
+  {
+    "title": "Filter Kubebuilder Events Without Losing Required Updates",
+    "description": "Filter noisy ConfigMap events and excluded namespaces while preserving data changes, opt-in transitions, and deletion signals in Kubebuilder controllers.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Kubernetes",
+      "Kubebuilder",
+      "Go"
+    ],
+    "post": "2026-11-20-kubebuilder-predicates-noisy-updates-namespace-filter"
+  },
+  {
+    "title": "Trace Kubebuilder Forbidden Watches from Markers to Live RBAC",
+    "description": "Diagnose forbidden controller watches by tracing the service account, generated role, rendered binding, and actual namespace scope before changing permissions.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Kubernetes",
+      "Kubebuilder",
+      "RBAC"
+    ],
+    "post": "2026-11-20-kubebuilder-forbidden-watch-rbac-deployed-role"
+  },
+  {
+    "title": "Repair Kubebuilder's Missing API Entry Before Creating a Webhook",
+    "description": "Diagnose the previously created API error by matching webhook flags to PROJECT metadata, restoring the correct resource entry, and checking the generated scaffold.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Kubernetes",
+      "Kubebuilder",
+      "Troubleshooting"
+    ],
+    "post": "2026-11-20-kubebuilder-webhook-previously-created-api-project-file"
+  },
+  {
+    "title": "Route Kubebuilder Status Webhooks Without Duplicate Validation",
+    "description": "Give status updates a dedicated validation route, generate precise admission rules, and distinguish duplicate webhook matching from separate API requests.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Kubernetes",
+      "Kubebuilder",
+      "Admission Webhook"
+    ],
+    "post": "2026-11-20-kubebuilder-status-subresource-webhook-routing"
+  },
+  {
+    "title": "Find Why a Redeployed Kubebuilder Webhook Still Runs Old Code",
+    "description": "Trace admission requests through webhook configuration, Service endpoints, running image identities, and rollout state to locate stale validation behavior.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Kubernetes",
+      "Kubebuilder",
+      "Troubleshooting"
+    ],
+    "post": "2026-11-20-kubebuilder-webhook-old-validation-code-image-service"
   }
 ]

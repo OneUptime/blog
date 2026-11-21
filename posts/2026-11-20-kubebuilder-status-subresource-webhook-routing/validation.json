@@ -1,0 +1,24 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-21",
+  "runtimeTestsPerformed": true,
+  "sources": [
+    "https://kubernetes.io/docs/reference/access-authn-authz/extensible-admission-controllers/#matching-requests-rules",
+    "https://book.kubebuilder.io/reference/markers/webhook",
+    "https://github.com/kubernetes-sigs/controller-runtime/blob/v0.22.4/pkg/webhook/server.go#L171",
+    "https://github.com/kubernetes-sigs/controller-runtime/blob/v0.22.4/pkg/webhook/admission/webhook.go"
+  ],
+  "tests": [
+    "Exact status handler compiled with controller-runtime0.22.4 and Go1.25.0",
+    "Six payload cases and three incorrect routes tested; local HTTP AdmissionReview exchange preserved UID and allowed expected request",
+    "controller-gen0.19.0 generated two distinct root/status rules and service paths; operations, Exact matching, Fail policy and None side effects verified",
+    "Generated ValidatingWebhookConfiguration passed Kubernetes1.34.0 OpenAPI; shell syntax passed",
+    "Six-node four-edge Mermaid structurally reviewed;1280x720 social image visually reviewed"
+  ],
+  "limitations": [
+    "No API-server rule matching, real CRD admission, TLS, Service or network test",
+    "Root validator is existing project responsibility; only status handler implemented here",
+    "Policy checks observed generation range only, not complete status authorization or business validation",
+    "Mermaid not rendered"
+  ]
+}

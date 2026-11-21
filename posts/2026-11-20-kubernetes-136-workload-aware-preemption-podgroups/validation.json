@@ -1,0 +1,26 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-21",
+  "runtimeTestsPerformed": true,
+  "sources": [
+    "https://v1-36.docs.kubernetes.io/docs/concepts/workloads/workload-api/disruption-and-priority/",
+    "https://github.com/kubernetes/kubernetes/blob/v1.36.0/pkg/features/kube_features.go",
+    "https://github.com/kubernetes/kubernetes/blob/v1.36.0/pkg/scheduler/apis/config/v1/default_plugins.go",
+    "https://v1-36.docs.kubernetes.io/docs/concepts/workloads/podgroup-api/",
+    "https://v1-36.docs.kubernetes.io/docs/concepts/workloads/podgroup-api/lifecycle/",
+    "https://v1-36.docs.kubernetes.io/docs/concepts/scheduling-eviction/workload-aware-preemption/",
+    "https://github.com/kubernetes/kubernetes/blob/v1.36.0/api/openapi-spec/swagger.json"
+  ],
+  "tests": [
+    "Executed exact Python fixture generator in temporary directory",
+    "Eight generated PriorityClass/PodGroup/Pod objects passed Kubernetes1.36.0 OpenAPI schema validation",
+    "Membership references, class agreement, minCount and one-member initial stage checked",
+    "Shell syntax passed; six-node five-edge Mermaid structurally reviewed; social image visually reviewed"
+  ],
+  "limitations": [
+    "No API-server admission or feature-gate runtime tested",
+    "No live gang scheduling, cross-node preemption or container execution",
+    "Schema validation cannot prove scheduling behavior or capacity assumptions",
+    "Mermaid not rendered"
+  ]
+}

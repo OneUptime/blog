@@ -1,0 +1,23 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-21",
+  "runtimeTestsPerformed": true,
+  "sources": [
+    "https://kubernetes.io/docs/reference/access-authn-authz/rbac/",
+    "https://book.kubebuilder.io/reference/markers/rbac",
+    "https://kubernetes.io/docs/reference/kubectl/generated/kubectl_auth/kubectl_auth_can-i/",
+    "https://github.com/kubernetes-sigs/controller-tools/blob/v0.19.0/go.mod"
+  ],
+  "tests": [
+    "Executed controller-gen0.19.0 using Go1.25.0 against exact marker block",
+    "Observed attached function comment produced no role; standalone package-level block generated role",
+    "Generated three exact read-only rules checked and ClusterRole passed Kubernetes1.34.0 OpenAPI schema",
+    "Exact jq binding query tested with matching/wrong-namespace/wrong-kind/empty-subject fixtures; shell syntax passed",
+    "Six-node five-edge Mermaid structurally reviewed;1280x720 social image visually reviewed"
+  ],
+  "limitations": [
+    "No live authorization, service-account impersonation, informer startup or RBAC deployment",
+    "Project-specific Kustomize rendering not executed",
+    "Mermaid not rendered"
+  ]
+}

@@ -1,0 +1,22 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-21",
+  "runtimeTestsPerformed": true,
+  "sources": [
+    "https://github.com/cert-manager/cert-manager/blob/v1.18.2/deploy/crds/crd-certificates.yaml",
+    "https://book.kubebuilder.io/reference/watching-resources",
+    "https://github.com/kubernetes-sigs/controller-runtime/blob/v0.22.4/pkg/client/client.go"
+  ],
+  "tests": [
+    "Exact article observer compiled and tested with controller-runtime0.22.4 and Go1.25.0",
+    "Six status parsing cases: missing, Ready True/False, Issuing only, malformed list and non-string status",
+    "Fake-client Reconcile checked existing Certificate and NotFound without external API type imports",
+    "Shell syntax passed; five-node four-edge Mermaid structurally reviewed;1280x720 social image visually reviewed"
+  ],
+  "limitations": [
+    "No real cert-manager, API-server discovery, RBAC or informer startup test",
+    "Fake-client harness registers generic unstructured GVK types; no external generated Go types",
+    "Reported Ready is not independent certificate verification or observed-generation validation",
+    "Mermaid not rendered"
+  ]
+}

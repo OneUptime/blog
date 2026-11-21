@@ -1,0 +1,23 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-21",
+  "runtimeTestsPerformed": true,
+  "sources": [
+    "https://github.com/kubernetes-sigs/controller-runtime/blob/v0.22.4/go.mod",
+    "https://book-v3.book.kubebuilder.io/reference/watching-resources/externally-managed",
+    "https://github.com/kubernetes-sigs/controller-runtime/blob/v0.22.4/pkg/client/interfaces.go#L195",
+    "https://github.com/kubernetes-sigs/controller-runtime/blob/v0.22.4/pkg/handler/enqueue_mapped.go"
+  ],
+  "tests": [
+    "Exact article Go watch implementation compiled with controller-runtime0.22.4 Kubernetes libraries0.34.1 Go1.25.0",
+    "Fake-client indexed lookup verified two matching dependents, namespace isolation, unrelated reference exclusion and duplicate-volume extraction",
+    "Real mapped event handler Update and Delete exercised with workqueue; update deduplication checked",
+    "Six-node six-edge Mermaid structurally reviewed;1280x720 social image visually reviewed"
+  ],
+  "limitations": [
+    "Reconcile provided as compile-only test stub; no rollout implementation tested",
+    "Fake client does not test real API server, RBAC, cache synchronization or watch startup",
+    "No live controller manager or Kubernetes cluster",
+    "Mermaid not rendered"
+  ]
+}

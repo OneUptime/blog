@@ -1,0 +1,22 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-21",
+  "runtimeTestsPerformed": true,
+  "sources": [
+    "https://github.com/kubernetes-sigs/controller-runtime/blob/v0.22.4/pkg/reconcile/reconcile.go#L57",
+    "https://github.com/kubernetes-sigs/controller-runtime/blob/v0.22.4/FAQ.md",
+    "https://github.com/kubernetes-sigs/controller-runtime/blob/v0.22.4/pkg/reconcile/reconcile.go#L110"
+  ],
+  "tests": [
+    "Exact Go operation-key helper compiled and tested using Go1.25.0",
+    "Repeated-input stability, UID/generation/dependency changes, key length and incomplete-input rejection passed",
+    "controller-runtime0.22.4 Request, retry behavior and FAQ reviewed",
+    "Seven-node six-edge Mermaid structurally reviewed;1280x720 social image visually reviewed"
+  ],
+  "limitations": [
+    "No complete controller, status patch, API conflict or remote-service test",
+    "Helper tests do not establish distributed idempotency or exactly-once guarantees",
+    "External service and SyncTask are explicitly hypothetical application contracts",
+    "Mermaid not rendered"
+  ]
+}

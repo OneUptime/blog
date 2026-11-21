@@ -1582,17 +1582,37 @@ Research: [OneUptime air-gapped alerting](https://oneuptime.com/enterprise/air-g
     Completed: [Article](posts/2026-11-20-higher-priority-preemption-victims-lower-priority-pods-survive/README.md) (20 November 2026).
 20. Testing Kubernetes 1.36 Workload-Aware Preemption for Gang-Scheduled PodGroups
 
+    Completed: [Article](posts/2026-11-20-kubernetes-136-workload-aware-preemption-podgroups/README.md) (20 November 2026).
+
 ## Kubebuilder
 
 1. How to Watch a Referenced Resource You Do Not Own in Kubebuilder with `EnqueueRequestsFromMapFunc`
+
+    Completed: [Article](posts/2026-11-20-kubebuilder-watch-unowned-reference-map-function/README.md) (20 November 2026).
 2. How to Watch an External CRD in Kubebuilder Without Importing Its Go Types
+
+    Completed: [Article](posts/2026-11-20-kubebuilder-watch-external-crd-unstructured/README.md) (20 November 2026).
 3. Why Kubebuilder Cannot Tell You Which Event Triggered Reconcile—and How to Model State Transitions Instead
+
+    Completed: [Article](posts/2026-11-20-kubebuilder-reconcile-events-state-transitions/README.md) (20 November 2026).
 4. How to Stop Status Updates from Retriggering an Endless Kubebuilder Reconcile Loop
+
+    Completed: [Article](posts/2026-11-20-kubebuilder-stop-status-update-reconcile-loop/README.md) (20 November 2026).
 5. How to Filter Noisy Updates and Excluded Namespaces with Kubebuilder Predicates
+
+    Completed: [Article](posts/2026-11-20-kubebuilder-predicates-noisy-updates-namespace-filter/README.md) (20 November 2026).
 6. Debugging Kubebuilder `Forbidden` Watch Errors: From RBAC Markers to the Deployed ClusterRole
+
+    Completed: [Article](posts/2026-11-20-kubebuilder-forbidden-watch-rbac-deployed-role/README.md) (20 November 2026).
 7. How to Fix `kubebuilder create webhook requires a previously created API` by Repairing the PROJECT File
+
+    Completed: [Article](posts/2026-11-20-kubebuilder-webhook-previously-created-api-project-file/README.md) (20 November 2026).
 8. How to Configure a Kubebuilder Webhook for the `/status` Subresource Without Double-Handling Admission Requests
+
+    Completed: [Article](posts/2026-11-20-kubebuilder-status-subresource-webhook-routing/README.md) (20 November 2026).
 9. Why a Redeployed Kubebuilder Webhook Still Uses Old Validation Code: Image, Service, and Webhook Checks
+
+    Completed: [Article](posts/2026-11-20-kubebuilder-webhook-old-validation-code-image-service/README.md) (20 November 2026).
 10. How to Enforce Immutable CRD Fields in Kubebuilder with `ValidateUpdate`
 11. How to Test Kubebuilder Validation Markers When the Fake Client Does Not Run API-Server Validation
 12. Fixing `multiple hubs defined for group-kind` in Kubebuilder Conversion Webhooks
