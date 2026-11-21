@@ -1,0 +1,25 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-21",
+  "runtimeTestsPerformed": false,
+  "sources": [
+    "https://ydb.tech/docs/en/faq/errors",
+    "https://ydb.tech/docs/en/concepts/transactions",
+    "https://github.com/ydb-platform/ydb/blob/26.2.1.16/ydb/docs/en/core/yql/reference/syntax/create_table/index.md",
+    "https://ydb.tech/docs/en/concepts/query_execution/secondary_indexes",
+    "https://ydb.tech/docs/en/dev/secondary-indexes",
+    "https://ydb.tech/docs/en/reference/ydb-sdk/ydb-status-codes"
+  ],
+  "tests": [
+    "Reviewed YDB optimistic transaction semantics, conflict FAQ, primary/secondary index behavior and26.2.1.16 CREATE TABLE source",
+    "SQLite adapted fixture with101 rows: broad warehouse query returned100; point query returned one identical selected SKU/value",
+    "Eight-node seven-edge Mermaid structurally checked",
+    "1280x720 social image visually inspected"
+  ],
+  "limitations": [
+    "No YDB DDL/query execution, plan, read-set or conflict-rate test",
+    "SQLite adaptation removes YQL DECLARE lines and uses SQLite column types; checks selected data semantics only",
+    "No inventory reservation implementation or concurrency correctness proof",
+    "Mermaid not rendered"
+  ]
+}

@@ -1,0 +1,27 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-21",
+  "runtimeTestsPerformed": true,
+  "sources": [
+    "https://ydb.tech/docs/en/faq/sdk",
+    "https://github.com/ydb-platform/ydb-cpp-sdk/blob/v3.27.0/include/ydb-cpp-sdk/client/driver/driver.h",
+    "https://grpc.io/docs/guides/cancellation/",
+    "https://github.com/ydb-platform/ydb-cpp-sdk/blob/v3.27.0/include/ydb-cpp-sdk/client/query/client.h",
+    "https://github.com/ydb-platform/ydb-cpp-sdk/blob/v3.27.0/include/ydb-cpp-sdk/client/query/query.h",
+    "https://github.com/ydb-platform/ydb-cpp-sdk/blob/v3.27.0/include/ydb-cpp-sdk/client/types/request_settings.h",
+    "https://man7.org/linux/man-pages/man7/signal-safety.7.html"
+  ],
+  "tests": [
+    "Compiled lifecycle_test.cpp with Apple clang C++17 -Wall -Wextra -Werror and executed successfully",
+    "Fake-driver normal and exceptional paths verified client destruction before Stop(true), return code and exception preservation",
+    "Reviewed SDKv3.27.0 driver, query client/query settings/request settings at c1ac575384dbe84e39b8bfeb59e19342b94883f6",
+    "Shell syntax and seven-node six-edge Mermaid structure checked",
+    "1280x720 social image visually inspected"
+  ],
+  "limitations": [
+    "SDK integration fragment was source-reviewed, not compiled or linked against complete YDB SDK",
+    "Lifecycle test uses fake driver and does not exercise gRPC threads or database operations",
+    "No shutdown failure reproduced, live query, signal integration or deadline benchmark",
+    "Mermaid not rendered"
+  ]
+}

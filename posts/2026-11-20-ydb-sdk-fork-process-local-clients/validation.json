@@ -1,0 +1,26 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-21",
+  "runtimeTestsPerformed": true,
+  "sources": [
+    "https://man7.org/linux/man-pages/man2/fork.2.html",
+    "https://ydb.tech/docs/en/faq/sdk",
+    "https://docs.python.org/3.14/library/multiprocessing.html",
+    "https://docs.python.org/3.14/library/concurrent.futures.html#processpoolexecutor",
+    "https://github.com/ydb-platform/ydb-python-sdk/blob/3.35.0/ydb/driver.py",
+    "https://github.com/grpc/grpc/blob/v1.85.0/doc/fork_support.md"
+  ],
+  "tests": [
+    "Executed spawn_probe.py default mode under CPython3.14.10: both results came from spawned child PIDs distinct from parent, database_contacted false",
+    "Reviewed SDK3.35.0 driver constructor/pool APIs and gRPCv1.85.0 fork-support document",
+    "Python AST and all bash snippets syntax checked",
+    "Seven-node six-edge Mermaid structurally checked",
+    "1280x720 social image visually inspected"
+  ],
+  "limitations": [
+    "Connected --connect mode source-reviewed only, no YDB query or credential/TLS verification executed",
+    "Did not reproduce unsafe fork behavior or test a prefork web framework",
+    "Default mode proves process setup only, not SDK integration or total shutdown deadline",
+    "Mermaid not rendered"
+  ]
+}

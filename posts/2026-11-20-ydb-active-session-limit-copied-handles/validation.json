@@ -1,0 +1,24 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-21",
+  "runtimeTestsPerformed": true,
+  "sources": [
+    "https://ydb.tech/docs/en/faq/sdk",
+    "https://github.com/ydb-platform/ydb-cpp-sdk/blob/v3.27.0/include/ydb-cpp-sdk/client/query/client.h",
+    "https://github.com/ydb-platform/ydb-cpp-sdk/blob/v3.27.0/src/client/query/client.cpp",
+    "https://github.com/ydb-platform/ydb-cpp-sdk/blob/v3.27.0/src/client/impl/session/kqp_session_common.cpp"
+  ],
+  "tests": [
+    "Compiled ownership_model.cpp with Apple clang C++17 -Wall -Wextra -Werror and executed successfully",
+    "Model verifies acquisition-result retention, callback capture retention after invocation, and release after final owner destruction",
+    "Reviewed SDKv3.27.0 TSession/TCreateSessionResult declarations, GetSession return-by-value implementation, smart deleter and acquired/idle counters",
+    "Shell syntax and eight-node eight-edge Mermaid structure checked",
+    "1280x720 social image visually inspected"
+  ],
+  "limitations": [
+    "Ownership model uses standard shared pointers, not YDB session machinery",
+    "SDK scoped query fragment source-reviewed only; no full SDK compilation or database execution",
+    "No session-limit incident reproduced and no actual counters sampled",
+    "Mermaid not rendered"
+  ]
+}

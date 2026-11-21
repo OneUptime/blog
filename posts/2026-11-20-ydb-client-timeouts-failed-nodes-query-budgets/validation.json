@@ -1,0 +1,28 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-21",
+  "runtimeTestsPerformed": false,
+  "sources": [
+    "https://ydb.tech/docs/en/faq/sdk",
+    "https://grpc.io/docs/guides/deadlines/",
+    "https://github.com/ydb-platform/ydb-cpp-sdk/blob/v3.27.0/include/ydb-cpp-sdk/client/retry/retry.h",
+    "https://github.com/ydb-platform/ydb-cpp-sdk/blob/v3.27.0/include/ydb-cpp-sdk/client/types/request_settings.h",
+    "https://github.com/ydb-platform/ydb-cpp-sdk/blob/v3.27.0/src/client/impl/internal/retry/retry.h",
+    "https://github.com/ydb-platform/ydb-cpp-sdk/blob/v3.27.0/src/client/query/client.cpp",
+    "https://grpc.io/docs/guides/keepalive/",
+    "https://ydb.tech/docs/en/reference/ydb-sdk/ydb-status-codes"
+  ],
+  "tests": [
+    "Reviewed C++ SDKv3.27.0 retry settings, Query client methods and request settings against bounded_read.cpp",
+    "Traced MaxTimeout deadline creation, session acquisition deadline propagation and session query TryUpdateDeadline in tagged source",
+    "Verified C++ namespaces and fluent setting names against declarations",
+    "Seven-node seven-edge Mermaid structurally checked",
+    "1280x720 social image visually inspected"
+  ],
+  "limitations": [
+    "C++ SDK example not compiled or linked",
+    "No database query, failed-node/network simulation or latency measurement performed",
+    "Timeout values are illustrative staging budgets, not benchmark recommendations",
+    "Mermaid not rendered"
+  ]
+}

@@ -1,0 +1,24 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-21",
+  "runtimeTestsPerformed": true,
+  "sources": [
+    "https://ydb.tech/docs/en/recipes/ydb-sdk/session-pool-limit",
+    "https://github.com/ydb-platform/ydb-python-sdk/blob/3.35.0/ydb/query/pool.py",
+    "https://ydb.tech/docs/en/recipes/ydb-sdk/retry",
+    "https://ydb.tech/docs/en/reference/ydb-sdk/observability/metrics/opentelemetry"
+  ],
+  "tests": [
+    "Executed real SDK3.35.0 QuerySessionPool with mocked session creation/metrics: lazy creation, reuse, exhausted checkout and stop cleanup passed",
+    "Admission capacity rejection and release after exception passed",
+    "Probe retry settings and constructor capacity validation checked",
+    "Seven-node seven-edge Mermaid structurally checked",
+    "1280x720 social image visually inspected"
+  ],
+  "limitations": [
+    "No YDB connection, query execution, serverless deployment or load test",
+    "Pool behavior tests simulate session objects and do not validate network/session establishment",
+    "Sizing numbers are illustrative calculations, not benchmarks",
+    "Mermaid not rendered"
+  ]
+}

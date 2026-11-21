@@ -1,0 +1,30 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-21",
+  "runtimeTestsPerformed": false,
+  "sources": [
+    "https://ydb.tech/docs/en/concepts/backup",
+    "https://ydb.tech/docs/en/reference/ydb-cli/export-import/tools-dump",
+    "https://ydb.tech/docs/en/reference/ydb-cli/export-import/tools-restore",
+    "https://ydb.tech/docs/en/reference/ydb-cli/export-import/export-s3",
+    "https://ydb.tech/docs/en/reference/ydb-cli/export-import/import-s3",
+    "https://github.com/ydb-platform/ydb/blob/26.2.1.16/ydb/docs/en/core/yql/reference/syntax/create-backup-collection.md",
+    "https://github.com/ydb-platform/ydb/blob/26.2.1.16/ydb/docs/en/core/yql/reference/syntax/backup.md",
+    "https://ydb.tech/docs/en/recipes/backup-collections/exporting-to-external-storage",
+    "https://github.com/ydb-platform/ydb/blob/26.2.1.16/ydb/docs/en/core/yql/reference/syntax/restore-backup-collection.md"
+  ],
+  "tests": [
+    "Ran actual CLI2.35.0 help for tools dump/restore, export/import s3 and operation get",
+    "Confirmed item aliases src/dst in detailed CLI help and restore dry-run versus replace semantics",
+    "Reviewed backup collection, BACKUP and RESTORE against YDB26.2.1.16 documentation source",
+    "All shell snippets passed bash -n",
+    "Six-node seven-edge Mermaid structurally checked",
+    "1280x720 social image visually inspected"
+  ],
+  "limitations": [
+    "No live dump, export, import, collection creation or restore performed",
+    "No data correctness, throughput or recovery duration measured",
+    "Server feature availability and chain import/path mapping require staging rehearsal",
+    "Mermaid not rendered"
+  ]
+}

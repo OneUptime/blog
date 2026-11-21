@@ -1,0 +1,31 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-21",
+  "runtimeTestsPerformed": false,
+  "sources": [
+    "https://ydb.tech/docs/en/devops/deployment-options/kubernetes/initial-deployment",
+    "https://github.com/ydb-platform/ydb-kubernetes-operator/blob/0.8.0/samples/storage-block-4-2.yaml",
+    "https://github.com/ydb-platform/ydb-kubernetes-operator/blob/0.8.0/internal/resources/storage_statefulset.go",
+    "https://kubernetes.io/docs/concepts/storage/persistent-volumes/#raw-block-volume-support",
+    "https://github.com/ydb-platform/ydb-kubernetes-operator/blob/0.8.0/internal/resources/security_context.go",
+    "https://kubernetes.io/docs/concepts/security/pod-security-standards/",
+    "https://kubernetes.io/docs/tasks/configure-pod-container/security-context/",
+    "https://github.com/ydb-platform/ydb-kubernetes-operator/blob/0.8.0/samples/database.yaml",
+    "https://ydb.tech/docs/en/reference/configuration/domains_config"
+  ],
+  "tests": [
+    "Reviewed Operator0.8.0 tagged source f09e83139db5c740b6850d99c0e4a0bf7a825f80: security context merge, volume devices, resource fields and sample pool mappings",
+    "PyYAML6.0.3 parsed article excerpt and official tagged Storage/Database samples",
+    "Local consistency checker accepted sample device/pool configuration and rejected changed pool kind and filesystem volume mode",
+    "All bash snippets passed bash -n",
+    "Seven-node six-edge Mermaid structurally checked",
+    "1280x720 social image visually inspected"
+  ],
+  "limitations": [
+    "No Kubernetes cluster, API dry run, Operator rendering or live deployment tested",
+    "No raw disk opened or PDisk/storage allocation tested",
+    "Sample checks are targeted relationship checks, not complete CRD schema or admission validation",
+    "Historical sample server tag is explicitly not recommended as a current production version",
+    "Mermaid not rendered"
+  ]
+}

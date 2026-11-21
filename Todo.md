@@ -2245,15 +2245,35 @@ Research: [OneUptime air-gapped alerting](https://oneuptime.com/enterprise/air-g
 
     Completed: [Article](posts/2026-11-20-read-ydb-query-plan-scans-fanout-indexes/README.md) (20 November 2026).
 16. Retry YDB Transactions Correctly: Whole-Transaction Retries, Idempotency, and Commit Ambiguity
+
+    Completed: [Article](posts/2026-11-20-ydb-transaction-retries-idempotency-commit-ambiguity/README.md) (20 November 2026).
 18. Size and Tune YDB SDK Session Pools for Serverless Cold Starts and Overload
+
+    Completed: [Article](posts/2026-11-20-ydb-session-pools-serverless-cold-starts-overload/README.md) (20 November 2026).
 19. Back Up and Restore YDB with Local Dumps, S3 Export, and Incremental Backup Collections
+
+    Completed: [Article](posts/2026-11-20-ydb-backup-local-dumps-s3-incremental-collections/README.md) (20 November 2026).
 20. Deploy YDB on Kubernetes Without PDisk Permission and Storage-Pool Failures
+
+    Completed: [Article](posts/2026-11-20-ydb-kubernetes-pdisk-permissions-storage-pools/README.md) (20 November 2026).
 21. How to Shut Down the YDB SDK Cleanly Without gRPC Teardown Crashes
+
+    Completed: [Article](posts/2026-11-20-ydb-sdk-clean-shutdown-grpc-teardown/README.md) (20 November 2026).
 22. How to Avoid YDB SDK Breakage When Your Application Uses `fork()`
+
+    Completed: [Article](posts/2026-11-20-ydb-sdk-fork-process-local-clients/README.md) (20 November 2026).
 23. How to Fix YDB “Active Sessions Limit Exceeded” Caused by Copied Session Handles
+
+    Completed: [Article](posts/2026-11-20-ydb-active-session-limit-copied-handles/README.md) (20 November 2026).
 25. How to Set YDB Client Timeouts So Failed Nodes Do Not Stall Queries
+
+    Completed: [Article](posts/2026-11-20-ydb-client-timeouts-failed-nodes-query-budgets/README.md) (20 November 2026).
 26. How to Run Parallel YDB C++ Queries Without “Pending Previous Query Completion”
+
+    Completed: [Article](posts/2026-11-20-parallel-ydb-cpp-queries-separate-sessions/README.md) (20 November 2026).
 27. How to Reduce YDB “Transaction Locks Invalidated” Errors by Trimming Read Sets and Hot-Row Contention
+
+    Completed: [Article](posts/2026-11-20-ydb-transaction-locks-invalidated-read-sets-hot-rows/README.md) (20 November 2026).
 28. How to Prevent YDB’s “Exceeded Maximum Allowed Number of Active Transactions” Error
 29. How to Fix YDB “Datashard: Reply Size Limit Exceeded” on Large Reads and Joins
 30. How to Fix YDB “Datashard Program Size Limit Exceeded” During Batch Writes

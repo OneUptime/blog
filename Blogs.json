@@ -831926,5 +831926,119 @@
       "Troubleshooting"
     ],
     "post": "2026-11-20-read-ydb-query-plan-scans-fanout-indexes"
+  },
+  {
+    "title": "Retry YDB Transactions Without Duplicating Committed Work",
+    "description": "Retry complete YDB transactions, recognize uncertain commit outcomes, and use a stable request record to avoid duplicating accepted operations.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Database",
+      "Python",
+      "Troubleshooting"
+    ],
+    "post": "2026-11-20-ydb-transaction-retries-idempotency-commit-ambiguity"
+  },
+  {
+    "title": "Size YDB Session Pools for Cold Starts and Overload",
+    "description": "Set YDB session limits from measured concurrency, reuse pools across warm requests, and separate cold-start delays from queueing and database overload.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Database",
+      "Python",
+      "Performance"
+    ],
+    "post": "2026-11-20-ydb-session-pools-serverless-cold-starts-overload"
+  },
+  {
+    "title": "Back Up YDB with Local Dumps, S3, and Incremental Collections",
+    "description": "Choose a YDB backup method, preserve consistent snapshots and incremental chains, and rehearse recovery into an isolated destination before an incident.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Database",
+      "Backup",
+      "Disaster Recovery"
+    ],
+    "post": "2026-11-20-ydb-backup-local-dumps-s3-incremental-collections"
+  },
+  {
+    "title": "Deploy YDB on Kubernetes: Fix PDisk and Storage-Pool Failures",
+    "description": "Trace YDB Kubernetes failures from PVC binding and raw-device access to matching storage-pool kinds, using pinned Operator source and safe inspections.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Kubernetes",
+      "Database",
+      "Storage",
+      "Troubleshooting"
+    ],
+    "post": "2026-11-20-ydb-kubernetes-pdisk-permissions-storage-pools"
+  },
+  {
+    "title": "Shut Down the YDB C++ SDK Before gRPC Teardown",
+    "description": "Give YDB C++ clients an explicit lifetime, drain application work before stopping the driver, and test normal and exceptional shutdown paths.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "C++",
+      "Database",
+      "Troubleshooting"
+    ],
+    "post": "2026-11-20-ydb-sdk-clean-shutdown-grpc-teardown"
+  },
+  {
+    "title": "Avoid YDB SDK Failures When Starting Child Processes",
+    "description": "Keep YDB drivers and session pools local to each process, avoid inheriting live gRPC state through fork, and test an explicit spawn-based worker pattern.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Python",
+      "Database",
+      "Troubleshooting"
+    ],
+    "post": "2026-11-20-ydb-sdk-fork-process-local-clients"
+  },
+  {
+    "title": "Fix YDB Session-Limit Errors Caused by Retained C++ Handles",
+    "description": "Find copied YDB C++ session handles retained by acquisition results, callbacks, and containers, then release ownership without merely raising pool limits.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "C++",
+      "Database",
+      "Troubleshooting"
+    ],
+    "post": "2026-11-20-ydb-active-session-limit-copied-handles"
+  },
+  {
+    "title": "Set YDB Client Timeouts That Bound Failed-Node Delays",
+    "description": "Bound YDB query attempts, session acquisition, and retries separately so failed nodes cannot consume an application's entire response budget.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Database",
+      "C++",
+      "Performance",
+      "Troubleshooting"
+    ],
+    "post": "2026-11-20-ydb-client-timeouts-failed-nodes-query-budgets"
+  },
+  {
+    "title": "Run Parallel YDB C++ Queries on Separate Sessions",
+    "description": "Fix YDB pending-query errors by giving overlapping operations separate sessions, preserving transaction boundaries, and collecting every launched result.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "C++",
+      "Database",
+      "Performance",
+      "Troubleshooting"
+    ],
+    "post": "2026-11-20-parallel-ydb-cpp-queries-separate-sessions"
+  },
+  {
+    "title": "Reduce YDB Transaction Conflicts from Broad Reads and Hot Rows",
+    "description": "Reduce YDB transaction-lock invalidations by narrowing necessary reads, shortening transaction lifetimes, and controlling contention on shared rows.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Database",
+      "SQL",
+      "Performance",
+      "Troubleshooting"
+    ],
+    "post": "2026-11-20-ydb-transaction-locks-invalidated-read-sets-hot-rows"
   }
 ]

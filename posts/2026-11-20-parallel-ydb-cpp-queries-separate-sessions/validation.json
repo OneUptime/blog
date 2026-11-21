@@ -1,0 +1,24 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-21",
+  "runtimeTestsPerformed": true,
+  "sources": [
+    "https://ydb.tech/docs/en/faq/errors",
+    "https://github.com/ydb-platform/ydb-cpp-sdk/blob/v3.27.0/src/client/query/client.cpp",
+    "https://github.com/ydb-platform/ydb-cpp-sdk/blob/v3.27.0/include/ydb-cpp-sdk/client/query/client.h",
+    "https://ydb.tech/docs/en/recipes/ydb-sdk/session-pool-limit"
+  ],
+  "tests": [
+    "Compiled drain_test.cpp with Apple clang C++17 -Wall -Wextra -Werror and ran successfully",
+    "Deferred-future tests collected both results for success, failed status and first-result exception",
+    "Reviewed SDKv3.27.0 session acquisition, shared handle semantics and query submission signatures",
+    "Shell syntax and seven-node seven-edge Mermaid structure checked",
+    "1280x720 social image visually inspected"
+  ],
+  "limitations": [
+    "SDK integration file source-reviewed only, not built or executed against YDB",
+    "Completion test uses deferred standard-library futures and does not test parallel scheduling",
+    "No live pending-query failure, distinct YDB session IDs or throughput benchmark",
+    "Mermaid not rendered"
+  ]
+}

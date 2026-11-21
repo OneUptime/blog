@@ -1,0 +1,25 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-21",
+  "runtimeTestsPerformed": true,
+  "sources": [
+    "https://ydb.tech/docs/en/reference/ydb-sdk/ydb-status-codes",
+    "https://ydb.tech/docs/en/concepts/query_execution/execution_process",
+    "https://github.com/ydb-platform/ydb-python-sdk/blob/3.35.0/ydb/query/transaction.py",
+    "https://github.com/ydb-platform/ydb-python-sdk/blob/3.35.0/ydb/query/session.py",
+    "https://github.com/ydb-platform/ydb-python-sdk/blob/3.35.0/ydb/query/pool.py",
+    "https://github.com/ydb-platform/ydb-python-sdk/blob/3.35.0/ydb/_errors.py"
+  ],
+  "tests": [
+    "Python helper parsed and executed with YDB SDK3.35.0 retry implementation and simulated session/transaction objects",
+    "Normal success, aborted first attempt, lost reply after insert, identical replay, conflicting payload and exhausted retry budget passed",
+    "Persistent aborts made four total attempts for max_retries3",
+    "Eight-node nine-edge Mermaid structurally checked",
+    "1280x720 social image visually inspected"
+  ],
+  "limitations": [
+    "No live YDB connection, SQL execution, concurrent transaction or network interruption test",
+    "Simulated transactions do not prove server isolation or conflict behavior",
+    "Mermaid not rendered"
+  ]
+}
