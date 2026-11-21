@@ -1,0 +1,26 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-21",
+  "runtimeTestsPerformed": false,
+  "sources": [
+    "https://etcd.io/docs/v3.6/faq/#what-is-failure-tolerance",
+    "https://kubernetes.io/docs/tasks/run-application/configure-pdb/",
+    "https://github.com/kubernetes/kubernetes/blob/v1.34.0/pkg/scheduler/framework/plugins/defaultpreemption/default_preemption.go",
+    "https://kubernetes.io/docs/concepts/policy/resource-quotas/#resource-quota-per-priorityclass",
+    "https://kubernetes.io/docs/concepts/scheduling-eviction/assign-pod-node/#inter-pod-affinity-and-anti-affinity",
+    "https://kubernetes.io/docs/concepts/workloads/controllers/statefulset/",
+    "https://github.com/kubernetes/kubernetes/blob/v1.34.0/api/openapi-spec/swagger.json",
+    "https://github.com/kubernetes/apimachinery/blob/v0.34.0/pkg/util/intstr/intstr.go"
+  ],
+  "tests": [
+    "PDB validated with official Kubernetes1.34.0 OpenAPI definitions and documented IntOrString format support; minimum remains integer2",
+    "Shell syntax passed; selector and three/five-voter majority arithmetic reviewed",
+    "Reviewed PDB limits, priority victim eligibility and application-health distinction",
+    "Six-node/five-edge Mermaid structurally checked;1280x720 social image visually reviewed"
+  ],
+  "limitations": [
+    "Generic JSON Schema initially rejected integer minAvailable because OpenAPI2 represents IntOrString as string+custom format; checker now interprets that official format",
+    "No live quorum, eviction, preemption, database recovery or placement test",
+    "Mermaid not rendered"
+  ]
+}

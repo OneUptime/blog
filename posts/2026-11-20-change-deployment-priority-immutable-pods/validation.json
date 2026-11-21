@@ -1,0 +1,23 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-21",
+  "runtimeTestsPerformed": true,
+  "sources": [
+    "https://github.com/kubernetes/kubernetes/blob/v1.34.0/plugin/pkg/admission/priority/admission.go",
+    "https://github.com/kubernetes/kubernetes/blob/v1.34.0/pkg/apis/core/validation/validation.go",
+    "https://kubernetes.io/docs/concepts/workloads/controllers/deployment/#rolling-update-deployment",
+    "https://kubernetes.io/docs/reference/kubectl/generated/kubectl_rollout/kubectl_rollout_undo/",
+    "https://github.com/kubernetes/kubernetes/blob/v1.34.0/api/openapi-spec/swagger.json"
+  ],
+  "tests": [
+    "kubectl1.34 executed exact JSON merge patch locally against Deployment fixture; replicas, image and container list preserved",
+    "Patched Deployment validated against Kubernetes1.34.0 schema with documented IntOrString support",
+    "Shell syntax and source review passed; six-node/five-edge Mermaid structurally checked",
+    "1280x720 social image visually reviewed"
+  ],
+  "limitations": [
+    "kubectl ran with --local=true; no cluster contacted",
+    "No live rollout, priority mutation attempt, preemption, readiness or rollback tested",
+    "Schema validation does not establish rollout capacity or availability; diagram not rendered"
+  ]
+}

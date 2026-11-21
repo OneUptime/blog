@@ -1,0 +1,22 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-21",
+  "runtimeTestsPerformed": false,
+  "sources": [
+    "https://github.com/kubernetes/autoscaler/blob/cluster-autoscaler-1.34.0/cluster-autoscaler/FAQ.md#how-can-i-configure-overprovisioning-with-cluster-autoscaler",
+    "https://kubernetes.io/docs/concepts/scheduling-eviction/pod-priority-preemption/#graceful-termination-of-preemption-victims",
+    "https://github.com/kubernetes/autoscaler/blob/cluster-autoscaler-1.34.0/cluster-autoscaler/core/utils/expendable.go",
+    "https://github.com/kubernetes/kubernetes/blob/v1.34.0/build/pause/Makefile"
+  ],
+  "tests": [
+    "PriorityClass and Deployment validated against Kubernetes1.34.0 OpenAPI; references and reserve requests checked",
+    "Shell examples passed bash syntax checks",
+    "Official registry resolved pause3.10.1 digest sha256:278fb9dbcca9518083ad1e11276933a2e96f23de604a3a08cc3c80002767d24c",
+    "Six-node five-edge Mermaid structurally reviewed;1280x720 image visually reviewed"
+  ],
+  "limitations": [
+    "No live API admission, image execution, scheduler preemption or autoscaler refill test",
+    "No latency or cost measurements; version tag is not immutable",
+    "Mermaid not rendered"
+  ]
+}

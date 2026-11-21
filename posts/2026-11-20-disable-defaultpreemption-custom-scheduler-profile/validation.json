@@ -1,0 +1,23 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-21",
+  "runtimeTestsPerformed": true,
+  "sources": [
+    "https://kubernetes.io/docs/reference/scheduling/config/#multiple-profiles",
+    "https://github.com/kubernetes/kubernetes/blob/v1.34.0/pkg/scheduler/apis/config/v1/default_plugins.go",
+    "https://kubernetes.io/docs/reference/scheduling/config/#plugins-that-apply-to-multiple-extension-points",
+    "https://github.com/kubernetes/kube-scheduler/blob/v0.34.0/config/v1/types.go",
+    "https://github.com/kubernetes/kubernetes/blob/v1.34.0/api/openapi-spec/swagger.json"
+  ],
+  "tests": [
+    "Strict JSON decoding into kube-scheduler/config/v1 v0.34.0 types succeeded; two profile names and isolated multipoint disable verified",
+    "Pod YAML validated against Kubernetes1.34.0 OpenAPI; shell syntax passed",
+    "Reviewed tagged default plugin multipoint registration and documented extension-point precedence",
+    "Six-node/four-edge Mermaid structurally checked;1280x720 image visually reviewed"
+  ],
+  "limitations": [
+    "Runtime check is typed decoding only, not scheduler defaulting, semantic validation or startup",
+    "No cluster API, plugin initialization, live contention or victim selection tested",
+    "Diagram not rendered"
+  ]
+}

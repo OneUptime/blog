@@ -829499,5 +829499,115 @@
       "Reliability"
     ],
     "post": "2026-11-20-kubernetes-jobs-preemption-checkpoints-retries"
+  },
+  {
+    "title": "Protect Stateful Quorums When Preemption Can Violate a PDB",
+    "description": "Protect quorum-based services with reviewed priorities, failure-domain placement, recovery headroom, and application health checks beyond disruption budgets.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Kubernetes",
+      "High Availability",
+      "StatefulSet"
+    ],
+    "post": "2026-11-20-stateful-quorum-preemption-pdb-best-effort"
+  },
+  {
+    "title": "Restrict Tenant Pod Priority with Admission Policy and Quotas",
+    "description": "Allow only reviewed tenant PriorityClasses, cap their resource usage, and test the policy boundary without disrupting cluster-critical workloads.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Kubernetes",
+      "Security",
+      "Resource Management"
+    ],
+    "post": "2026-11-20-tenant-priority-admission-policy-quotas"
+  },
+  {
+    "title": "Roll Out a New Default PriorityClass Without Hidden Changes",
+    "description": "Plan a globalDefault PriorityClass change by separating existing Pods from new admissions, checking implicit templates, and controlling the non-atomic switch.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Kubernetes",
+      "Scheduling",
+      "Change Management"
+    ],
+    "post": "2026-11-20-rollout-globaldefault-priorityclass-existing-pods"
+  },
+  {
+    "title": "Change Deployment Priority Through a Controlled Pod Rollout",
+    "description": "Change a Deployment's PriorityClass through its Pod template, plan surge capacity, and verify new Pod priorities without assuming existing Pods mutate in place.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Kubernetes",
+      "Deployment",
+      "Change Management"
+    ],
+    "post": "2026-11-20-change-deployment-priority-immutable-pods"
+  },
+  {
+    "title": "Should Cluster Autoscaler Add Capacity Before Pod Preemption?",
+    "description": "Understand why scheduler preemption can precede node scale-up, inspect autoscaler eligibility, and choose between waiting for capacity and maintaining headroom.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Kubernetes",
+      "Cluster Autoscaler",
+      "Scheduling"
+    ],
+    "post": "2026-11-20-cluster-autoscaler-preemption-capacity-race"
+  },
+  {
+    "title": "Why High-Priority Non-Preempting Pods Can Wait Behind Others",
+    "description": "Understand scheduler backoff, distinguish queue priority from capacity reservation, and investigate why lower-priority Pods can start before non-preempting work.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Kubernetes",
+      "Scheduling",
+      "Troubleshooting"
+    ],
+    "post": "2026-11-20-nonpreempting-high-priority-pod-scheduler-backoff"
+  },
+  {
+    "title": "Disable Preemption in One Kubernetes Scheduler Profile",
+    "description": "Add a scheduler profile without DefaultPreemption, preserve the default profile, and verify routing and plugin behavior before moving workloads.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Kubernetes",
+      "Scheduling",
+      "Configuration"
+    ],
+    "post": "2026-11-20-disable-defaultpreemption-custom-scheduler-profile"
+  },
+  {
+    "title": "Reserve Burst Capacity with Low-Priority Pause Pods",
+    "description": "Keep Kubernetes capacity ready for bursts with expendable pause pods, correctly sized requests, priority boundaries, and a measurable refill process.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Kubernetes",
+      "Cluster Autoscaler",
+      "Scheduling"
+    ],
+    "post": "2026-11-20-reserve-burst-capacity-low-priority-pause-pods"
+  },
+  {
+    "title": "How Kubernetes Chooses Preemption Victims Across Candidate Nodes",
+    "description": "Follow Kubernetes preemption from per-node victim selection to ordered tie-breakers, with worked examples and commands for gathering useful evidence.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Kubernetes",
+      "Scheduling",
+      "Troubleshooting"
+    ],
+    "post": "2026-11-20-kubernetes-preemption-victim-selection-multiple-nodes"
+  },
+  {
+    "title": "Why Lower-Priority Pods Can Survive Kubernetes Preemption",
+    "description": "Explain seemingly inverted Kubernetes preemption decisions by checking node feasibility, resource shape, disruption budgets, and the actual preemptor.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Kubernetes",
+      "Scheduling",
+      "Troubleshooting"
+    ],
+    "post": "2026-11-20-higher-priority-preemption-victims-lower-priority-pods-survive"
   }
 ]

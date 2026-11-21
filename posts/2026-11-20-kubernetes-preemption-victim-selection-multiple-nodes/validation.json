@@ -1,0 +1,22 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-21",
+  "runtimeTestsPerformed": true,
+  "sources": [
+    "https://github.com/kubernetes/kubernetes/blob/v1.34.0/pkg/scheduler/framework/plugins/defaultpreemption/default_preemption.go",
+    "https://github.com/kubernetes/kubernetes/blob/v1.34.0/pkg/scheduler/framework/plugins/defaultpreemption/default_preemption.go#L216",
+    "https://github.com/kubernetes/kubernetes/blob/v1.34.0/pkg/scheduler/framework/preemption/preemption.go#L611",
+    "https://github.com/kubernetes/kubernetes/blob/v1.34.0/pkg/scheduler/util/utils.go#L59"
+  ],
+  "tests": [
+    "Executed exact Python arithmetic snippet: adjusted totals and selected node assertions passed",
+    "Shell syntax checks passed",
+    "Reviewed Kubernetes1.34.0 candidate selection, reprieve order, default scoring and highest-priority timestamp helper",
+    "Seven-node six-edge Mermaid structure and social image visually reviewed"
+  ],
+  "limitations": [
+    "Python test covers arithmetic only, not Kubernetes execution",
+    "No live candidate sampling, PDB accounting, scheduler or cluster test",
+    "Mermaid not rendered"
+  ]
+}

@@ -1,0 +1,22 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-21",
+  "runtimeTestsPerformed": true,
+  "sources": [
+    "https://kubernetes.io/docs/concepts/scheduling-eviction/pod-priority-preemption/#non-preempting-priorityclass",
+    "https://github.com/kubernetes/kubernetes/blob/v1.34.0/pkg/scheduler/backend/queue/scheduling_queue.go",
+    "https://kubernetes.io/docs/concepts/scheduling-eviction/scheduling-framework/#queueinghint",
+    "https://github.com/kubernetes/kubernetes/blob/v1.34.0/pkg/scheduler/apis/config/v1/defaults.go",
+    "https://kubernetes.io/docs/reference/scheduling/config/"
+  ],
+  "tests": [
+    "Exact jq extraction executed against pending, assigned and absent-condition fixtures; shell syntax passed",
+    "Reviewed Kubernetes1.34.0 scheduling queue structure and one-second/ten-second configuration defaults",
+    "Five-node/six-edge Mermaid structurally checked;1280x720 image visually reviewed"
+  ],
+  "limitations": [
+    "Runtime check covers extraction only; no scheduler queue or timing experiment",
+    "Timeline is illustrative and does not establish an exact retry deadline",
+    "Diagram not rendered"
+  ]
+}

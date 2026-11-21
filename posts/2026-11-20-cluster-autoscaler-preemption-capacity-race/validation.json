@@ -1,0 +1,25 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-21",
+  "runtimeTestsPerformed": true,
+  "sources": [
+    "https://github.com/kubernetes/autoscaler/blob/cluster-autoscaler-1.34.0/cluster-autoscaler/FAQ.md#how-does-cluster-autoscaler-work-with-pod-priority-and-preemption",
+    "https://github.com/kubernetes/autoscaler/blob/cluster-autoscaler-1.34.0/cluster-autoscaler/core/utils/expendable.go",
+    "https://github.com/kubernetes/autoscaler/blob/cluster-autoscaler-1.34.0/cluster-autoscaler/config/flags/flags.go",
+    "https://kubernetes.io/docs/concepts/scheduling-eviction/pod-priority-preemption/#non-preempting-priorityclass",
+    "https://github.com/kubernetes/autoscaler/blob/cluster-autoscaler-1.34.0/cluster-autoscaler/FAQ.md#how-can-i-configure-overprovisioning-with-cluster-autoscaler",
+    "https://github.com/kubernetes/autoscaler/blob/cluster-autoscaler-1.34.0/cluster-autoscaler/go.mod",
+    "https://github.com/kubernetes/kubernetes/blob/v1.34.0/api/openapi-spec/swagger.json"
+  ],
+  "tests": [
+    "Executed unchanged tagged autoscaler expendable.go filter in isolated Go module with api0.34.1 and klog2.130.1 matching upstream dependencies",
+    "Five input classifications passed: below cutoff, equal cutoff, existing nominated node, missing nominated node, absent priority",
+    "PriorityClass validated against Kubernetes1.34.0 OpenAPI; shell syntax checked; flag defaults source-reviewed",
+    "Seven-node/seven-edge Mermaid structurally checked;1280x720 image visually reviewed"
+  ],
+  "limitations": [
+    "Only isolated filter functions executed, not full autoscaler or scheduler",
+    "No provider provisioning, managed-service settings, cloud quotas or end-to-end timing tested",
+    "Diagram not rendered"
+  ]
+}

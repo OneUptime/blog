@@ -1551,15 +1551,35 @@ Research: [OneUptime air-gapped alerting](https://oneuptime.com/enterprise/air-g
 
     Completed: [Article](posts/2026-11-20-kubernetes-jobs-preemption-checkpoints-retries/README.md) (20 November 2026).
 10. Protecting Stateful Quorums from Preemption When PDB Enforcement Is Only Best Effort
+
+    Completed: [Article](posts/2026-11-20-stateful-quorum-preemption-pdb-best-effort/README.md) (20 November 2026).
 11. Preventing Tenants from Claiming Cluster-Critical Priority with Admission Policy and PriorityClass-Scoped Quotas
+
+    Completed: [Article](posts/2026-11-20-tenant-priority-admission-policy-quotas/README.md) (20 November 2026).
 12. Rolling Out a New `globalDefault` PriorityClass Without Surprising Existing Pods
+
+    Completed: [Article](posts/2026-11-20-rollout-globaldefault-priorityclass-existing-pods/README.md) (20 November 2026).
 13. Changing a Deployment’s Priority Safely When Pod Priority Is Immutable
+
+    Completed: [Article](posts/2026-11-20-change-deployment-priority-immutable-pods/README.md) (20 November 2026).
 14. Should Cluster Autoscaler Add a Node Before Kubernetes Preempts Pods? Controlling the Race
+
+    Completed: [Article](posts/2026-11-20-cluster-autoscaler-preemption-capacity-race/README.md) (20 November 2026).
 15. Why a Non-Preempting High-Priority Pod Can Still Lose Its Place During Scheduler Backoff
+
+    Completed: [Article](posts/2026-11-20-nonpreempting-high-priority-pod-scheduler-backoff/README.md) (20 November 2026).
 16. Disabling `DefaultPreemption` in a Custom Scheduler Profile Without Changing the Default Scheduler
+
+    Completed: [Article](posts/2026-11-20-disable-defaultpreemption-custom-scheduler-profile/README.md) (20 November 2026).
 17. Reserving Burst Capacity with Low-Priority Pause Pods That Yield to Production Workloads
+
+    Completed: [Article](posts/2026-11-20-reserve-burst-capacity-low-priority-pause-pods/README.md) (20 November 2026).
 18. How Kubernetes Selects Preemption Victims When Several Nodes Could Fit the Preemptor
+
+    Completed: [Article](posts/2026-11-20-kubernetes-preemption-victim-selection-multiple-nodes/README.md) (20 November 2026).
 19. Why Kubernetes Sometimes Preempts Higher-Priority Victims While Lower-Priority Pods Keep Running
+
+    Completed: [Article](posts/2026-11-20-higher-priority-preemption-victims-lower-priority-pods-survive/README.md) (20 November 2026).
 20. Testing Kubernetes 1.36 Workload-Aware Preemption for Gang-Scheduled PodGroups
 
 ## Kubebuilder

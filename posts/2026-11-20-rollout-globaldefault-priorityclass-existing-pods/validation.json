@@ -1,0 +1,23 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-21",
+  "runtimeTestsPerformed": true,
+  "sources": [
+    "https://kubernetes.io/docs/concepts/scheduling-eviction/pod-priority-preemption/#notes-about-podpriority-and-existing-clusters",
+    "https://github.com/kubernetes/kubernetes/blob/v1.34.0/plugin/pkg/admission/priority/admission.go",
+    "https://github.com/kubernetes/kubernetes/blob/v1.34.0/api/openapi-spec/swagger.json"
+  ],
+  "tests": [
+    "PriorityClass YAML validated against Kubernetes1.34.0 OpenAPI with globalDefault initially false",
+    "Exact jq template filter executed with explicit, empty and omitted class fixtures",
+    "Patch JSON parsed and shell syntax passed",
+    "Reviewed admission default resolution, second-default rejection and no-default zero fallback",
+    "Six-node/six-edge Mermaid structurally checked;1280x720 social image visually reviewed"
+  ],
+  "limitations": [
+    "No live admission, rollout, priority-class patch or default switch performed",
+    "Dynamic template filter covers Deployments only",
+    "Race-created multiple defaults and cache timing are not tested; article does not claim atomic switching",
+    "Diagram not rendered"
+  ]
+}

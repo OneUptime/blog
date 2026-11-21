@@ -1,0 +1,23 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-21",
+  "runtimeTestsPerformed": true,
+  "sources": [
+    "https://github.com/kubernetes/kubernetes/blob/v1.34.0/plugin/pkg/admission/priority/admission.go",
+    "https://kubernetes.io/docs/reference/access-authn-authz/validating-admission-policy/",
+    "https://kubernetes.io/docs/concepts/policy/resource-quotas/#resource-quota-per-priorityclass",
+    "https://github.com/kubernetes/kubernetes/blob/v1.34.0/api/openapi-spec/swagger.json"
+  ],
+  "tests": [
+    "Three manifests validated against official Kubernetes1.34.0 OpenAPI schemas; shell syntax passed",
+    "cel-go0.26.0 compiled both expressions and evaluated seven dynamic-object cases: approved classes, forbidden class, reserved class, exceeded ceiling, negative priority, absent fields",
+    "Reviewed priority admission source; corrected explanation to account for globalDefault filling an omitted class before validation",
+    "Five-node/five-edge Mermaid structurally checked;1280x720 image visually reviewed"
+  ],
+  "limitations": [
+    "CEL tested with dynamic objects, not API server typed admission environment or admission chain",
+    "No live namespace matching, RBAC boundary or quota accounting tested",
+    "Policy evaluates resolved class; it cannot tell omitted input from an approved default supplied by admission",
+    "Diagram not rendered"
+  ]
+}

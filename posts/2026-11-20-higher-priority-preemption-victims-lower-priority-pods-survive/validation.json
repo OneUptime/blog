@@ -1,0 +1,23 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-21",
+  "runtimeTestsPerformed": true,
+  "sources": [
+    "https://kubernetes.io/docs/concepts/scheduling-eviction/assign-pod-node/#nodeselector",
+    "https://kubernetes.io/docs/concepts/scheduling-eviction/taint-and-toleration/",
+    "https://github.com/kubernetes/kubernetes/blob/v1.34.0/pkg/scheduler/framework/plugins/defaultpreemption/default_preemption.go#L216",
+    "https://github.com/kubernetes/kubernetes/blob/v1.34.0/pkg/scheduler/framework/preemption/preemption.go#L611",
+    "https://kubernetes.io/docs/concepts/scheduling-eviction/pod-priority-preemption/#limitations-of-preemption"
+  ],
+  "tests": [
+    "Exact jq1.6 filter executed on three fixtures: ordering, UID preservation and defaults passed",
+    "All shell blocks passed bash syntax",
+    "Tagged1.34.0 default victim eligibility, reprieve and node preference logic reviewed",
+    "Six-node five-edge Mermaid structurally reviewed;1280x720 social image visually reviewed"
+  ],
+  "limitations": [
+    "No live cluster, scheduler or workload preemption test",
+    "Examples illustrate assumed resource shapes, not measured incident results",
+    "Mermaid not rendered"
+  ]
+}
