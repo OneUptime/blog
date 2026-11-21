@@ -1207,17 +1207,37 @@ Research: [OneUptime air-gapped alerting](https://oneuptime.com/enterprise/air-g
     Completed: [Article](posts/2026-11-20-browser-nats-websockets-tls-origin-controls/README.md) (20 November 2026).
 20. How to Diagnose NATS Cluster and JetStream Health with `/varz`, `/connz`, `/routez`, and `/jsz`
 
+    Completed: [Article](posts/2026-11-20-diagnose-nats-cluster-jetstream-varz-connz-routez-jsz/README.md) (20 November 2026).
+
 ## Artifact Management
 
 1. How to Organize Hosted, Proxy, and Virtual Artifact Repositories by Format, Team, and Trust Boundary
+
+    Completed: [Article](posts/2026-11-20-organize-artifact-repositories-format-team-trust-boundary/README.md) (20 November 2026).
 2. How to Publish Generic Build Artifacts with Immutable Versions, Checksums, and Searchable Metadata
+
+    Completed: [Article](posts/2026-11-20-publish-generic-artifacts-immutable-versions-checksums-metadata/README.md) (20 November 2026).
 3. How to Version CI Artifacts with SemVer, Pre-Release Labels, and Commit Digests Without Overwriting Builds
+
+    Completed: [Article](posts/2026-11-20-version-ci-artifacts-semver-prerelease-commit-digests/README.md) (20 November 2026).
 4. How to Enforce Artifact Immutability for Maven Coordinates, Package Versions, and Container Tags
+
+    Completed: [Article](posts/2026-11-20-enforce-artifact-immutability-maven-packages-container-tags/README.md) (20 November 2026).
 5. How to Detect an Accidental Artifact Rebuild Between Test and Production Using Digests and Provenance
+
+    Completed: [Article](posts/2026-11-20-detect-artifact-rebuild-test-production-digests-provenance/README.md) (20 November 2026).
 6. How to Promote Container Images Safely: Retag by Digest, Copy Between Repositories, or Change Release Metadata?
+
+    Completed: [Article](posts/2026-11-20-promote-container-images-digest-copy-release-metadata/README.md) (20 November 2026).
 7. How to Design Artifact Retention Rules That Preserve Deployed Releases, Rollback Targets, and Audit Evidence
+
+    Completed: [Article](posts/2026-11-20-artifact-retention-deployed-releases-rollback-audit-evidence/README.md) (20 November 2026).
 8. How to Reclaim Nexus or Artifactory Disk Space Safely with Product-Specific Cleanup and Compaction
+
+    Completed: [Article](posts/2026-11-20-reclaim-nexus-artifactory-disk-cleanup-compaction/README.md) (20 November 2026).
 9. How to Find Artifacts Still Used in Production Before a Cleanup Job Deletes Them
+
+    Completed: [Article](posts/2026-11-20-find-production-artifacts-before-cleanup/README.md) (20 November 2026).
 10. How to Proxy Maven Central, npm, PyPI, and Docker Hub Without Letting Cache Expiry Break Reproducible Builds
 11. How to Prevent Dependency Confusion with Private Namespace Routing, Upstream Allow-Lists, and Repository Order
 12. How to Debug 401 and 403 Errors When Maven, npm, pip, or Docker Publishes to an Artifact Repository

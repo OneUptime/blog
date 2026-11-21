@@ -1,0 +1,29 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-21",
+  "runtimeTestsPerformed": true,
+  "infrastructureDeploymentPerformed": false,
+  "localServerTestPerformed": true,
+  "versions": {
+    "nats-server": "2.11.4",
+    "nats-py": "2.10.0",
+    "jq": "1.6"
+  },
+  "sources": [
+    "https://docs.nats.io/learn/monitoring/monitoring-endpoints",
+    "https://github.com/nats-io/nats-server/blob/v2.11.4/server/monitor.go",
+    "https://docs.nats.io/learn/monitoring/jetstream-health"
+  ],
+  "tests": [
+    "Started three owned loopback NATS nodes with distinct stores, route ports and monitoring ports; created three-replica stream and consumer.",
+    "Waited for stream-info replicas current; read varz/connz/routez/jsz/healthz on all3 nodes; two distinct peers per node and metadata leader observed.",
+    "All exact shell snippets ran with curl and jq against local endpoint; source fields and shape checked.",
+    "Filtered consumer pending1 + ack_pending1 vs last_seq3 - ack_floor0 reproduced incorrect sequence-difference backlog.",
+    "Six-edge Mermaid structure checked; social image generated and visually inspected."
+  ],
+  "limitations": [
+    "No partition, disk failure, production load, authentication, TLS or remote proxy tested.",
+    "Follower snapshots can differ from leader view; lab did not assert every snapshot identical.",
+    "Mermaid not graphically rendered; all owned processes and temporary stores cleaned up."
+  ]
+}

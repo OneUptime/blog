@@ -1,0 +1,26 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-21",
+  "runtimeTestsPerformed": false,
+  "localCodeTestsPerformed": true,
+  "sources": [
+    "https://kubernetes.io/docs/reference/kubectl/generated/kubectl_get/",
+    "https://github.com/kubernetes/api/blob/v0.34.0/core/v1/types.go",
+    "https://v1-34.docs.kubernetes.io/docs/concepts/workloads/controllers/deployment/",
+    "https://v1-34.docs.kubernetes.io/docs/concepts/workloads/controllers/cron-jobs/",
+    "https://kubernetes.io/docs/concepts/containers/images/"
+  ],
+  "tests": [
+    "Exact published Python3.9.6 extractor fixture tests: normal/init/ephemeral containers and statuses, missing imageID, scaled-zero Deployment, suspended CronJob",
+    "Incomplete pagination and unknown kind rejected",
+    "Published shell passed bash syntax; kubectl flags reviewed against official docs",
+    "Mermaid7edges structurally reviewed",
+    "1280x720 social image visually reviewed: complete readable title"
+  ],
+  "limitations": [
+    "No Kubernetes API requests or cluster deployment",
+    "No live permissions, complete inventory discovery or repository cleanup tested",
+    "Runtime imageIDs intentionally not normalized",
+    "Mermaid not rendered"
+  ]
+}

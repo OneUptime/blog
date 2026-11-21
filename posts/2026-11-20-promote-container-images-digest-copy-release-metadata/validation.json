@@ -1,0 +1,26 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-21",
+  "runtimeTestsPerformed": true,
+  "infrastructureDeploymentPerformed": false,
+  "sources": [
+    "https://github.com/opencontainers/image-spec/blob/v1.1.1/image-index.md",
+    "https://github.com/google/go-containerregistry/blob/v0.20.3/pkg/authn/README.md",
+    "https://github.com/google/go-containerregistry/blob/v0.20.3/cmd/crane/doc/crane_tag.md",
+    "https://github.com/google/go-containerregistry/blob/v0.20.3/pkg/crane/copy.go",
+    "https://github.com/opencontainers/distribution-spec/blob/v1.1.1/spec.md"
+  ],
+  "tests": [
+    "Official crane0.20.3 Darwin arm64 archive checksum matched release checksums",
+    "Two owned loopback registries: same-repository tag and cross-registry full-index copy preserve digest",
+    "Both synthetic platform child manifests, configurations and layers fetched from destination",
+    "Explicit linux/amd64 selection changes top-level digest",
+    "Published shell blocks pass bash -n; Mermaid structure checked (8 edges)",
+    "Social image visually reviewed: readable complete title, 1280x720"
+  ],
+  "limitations": [
+    "Synthetic images were not executed",
+    "No production registry, HTTPS, auth, immutability, signatures/referrers or deployment tested",
+    "Mermaid structurally checked, not rendered"
+  ]
+}

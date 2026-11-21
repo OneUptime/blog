@@ -828248,5 +828248,126 @@
       "Security"
     ],
     "post": "2026-11-20-browser-nats-websockets-tls-origin-controls"
+  },
+  {
+    "title": "Diagnose NATS and JetStream Health with Four Monitoring Endpoints",
+    "description": "Use varz, connz, routez, and jsz together to distinguish connection pressure, missing peers, replication problems, and consumer backlog without misleading counts.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "NATS",
+      "Monitoring",
+      "Observability",
+      "Troubleshooting"
+    ],
+    "post": "2026-11-20-diagnose-nats-cluster-jetstream-varz-connz-routez-jsz"
+  },
+  {
+    "title": "Organize Artifact Repositories by Format, Team, and Trust",
+    "description": "Design hosted, proxy, and aggregate artifact repositories with explicit publishing targets, stable read endpoints, clear ownership, and enforceable trust boundaries.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Artifact Management",
+      "Artifact Repository",
+      "DevOps",
+      "Security"
+    ],
+    "post": "2026-11-20-organize-artifact-repositories-format-team-trust-boundary"
+  },
+  {
+    "title": "Publish Immutable Generic Artifacts with Checksums and Metadata",
+    "description": "Publish a versioned generic artifact with SHA-256 verification and searchable properties, while separating immutable storage policy from upload-script checks.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Artifact Management",
+      "Artifact Repository",
+      "CI/CD",
+      "Security"
+    ],
+    "post": "2026-11-20-publish-generic-artifacts-immutable-versions-checksums-metadata"
+  },
+  {
+    "title": "Version CI Artifacts with SemVer Without Overwriting Builds",
+    "description": "Give CI builds unique prerelease versions, distinguish source commits from artifact digests, and handle reruns and release promotion without replacing published bytes.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Artifact Management",
+      "CI/CD",
+      "Versioning",
+      "DevOps"
+    ],
+    "post": "2026-11-20-version-ci-artifacts-semver-prerelease-commit-digests"
+  },
+  {
+    "title": "Enforce Immutability for Maven, Packages, and Container Tags",
+    "description": "Match immutability controls to Maven releases, package versions, and container tags, then verify denied replacement and preserved artifact identity in staging.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Artifact Management",
+      "Maven",
+      "npm",
+      "Docker",
+      "Security"
+    ],
+    "post": "2026-11-20-enforce-artifact-immutability-maven-packages-container-tags"
+  },
+  {
+    "title": "Detect Artifact Rebuilds Between Test and Production",
+    "description": "Compare tested and production-candidate bytes, bind them to verified provenance, and distinguish changed outputs from a different build that produced identical content.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Artifact Management",
+      "CI/CD",
+      "Security",
+      "Software Supply Chain"
+    ],
+    "post": "2026-11-20-detect-artifact-rebuild-test-production-digests-provenance"
+  },
+  {
+    "title": "Promote Container Images by Digest Without Rebuilding Them",
+    "description": "Choose between retagging, copying repositories, and updating release metadata while preserving tested image digests and deployment evidence.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Artifact Management",
+      "Docker",
+      "CI/CD",
+      "Software Supply Chain"
+    ],
+    "post": "2026-11-20-promote-container-images-digest-copy-release-metadata"
+  },
+  {
+    "title": "Retain Artifacts for Deployed Releases, Rollback, and Audit Evidence",
+    "description": "Design retention around active deployments, rollback targets, and their evidence, then review deletion candidates without trusting age alone.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Artifact Management",
+      "Artifact Repository",
+      "CI/CD",
+      "Disaster Recovery"
+    ],
+    "post": "2026-11-20-artifact-retention-deployed-releases-rollback-audit-evidence"
+  },
+  {
+    "title": "Reclaim Nexus and Artifactory Disk Space Safely",
+    "description": "Separate logical cleanup from physical reclamation, follow Nexus and Artifactory workflows, and verify space savings without deleting storage files.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Artifact Management",
+      "Artifact Repository",
+      "Storage",
+      "DevOps"
+    ],
+    "post": "2026-11-20-reclaim-nexus-artifactory-disk-cleanup-compaction"
+  },
+  {
+    "title": "Find Production Artifacts Before a Cleanup Job Deletes Them",
+    "description": "Build an evidence-based artifact inventory from running workloads, desired configuration, and release records before approving repository cleanup.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Artifact Management",
+      "Kubernetes",
+      "CI/CD",
+      "Disaster Recovery"
+    ],
+    "post": "2026-11-20-find-production-artifacts-before-cleanup"
   }
 ]

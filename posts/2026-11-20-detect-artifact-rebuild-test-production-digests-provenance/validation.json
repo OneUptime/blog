@@ -1,0 +1,30 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-21",
+  "runtimeTestsPerformed": false,
+  "infrastructureDeploymentPerformed": false,
+  "localCodeTestsPerformed": true,
+  "versions": {
+    "Python": "3.9.6",
+    "in-toto Statement": "v1",
+    "SLSA specification": "1.2",
+    "SLSA predicate": "https://slsa.dev/provenance/v1"
+  },
+  "sources": [
+    "https://github.com/in-toto/attestation/blob/main/spec/v1/statement.md",
+    "https://slsa.dev/spec/v1.2/build-provenance",
+    "https://docs.sigstore.dev/cosign/verifying/attestation/",
+    "https://slsa.dev/spec/v1.2/verifying-artifacts"
+  ],
+  "tests": [
+    "Exact published comparison program accepted matching artifact bytes and selected provenance fields.",
+    "Changed candidate bytes, equal bytes/new invocation, missing invocation, empty builder, wrong statement/predicate types, duplicate or missing named subject and subject digest mismatch rejected.",
+    "Eight-edge Mermaid structure checked; social image generated and visually reviewed."
+  ],
+  "limitations": [
+    "Fixtures synthetic and unsigned; no cryptographic signature, certificate identity, transparency-log, CI, registry or deployment verification.",
+    "Comparison requires already-verified statements and agreed subject naming; not full SLSA schema/policy validation.",
+    "Digest equality cannot distinguish copying from byte-identical rebuild with retained original provenance.",
+    "Mermaid not graphically rendered."
+  ]
+}

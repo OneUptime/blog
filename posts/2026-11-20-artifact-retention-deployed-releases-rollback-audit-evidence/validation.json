@@ -1,0 +1,23 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-21",
+  "runtimeTestsPerformed": false,
+  "localCodeTestsPerformed": true,
+  "sources": [
+    "https://goharbor.io/docs/2.14.0/working-with-projects/working-with-images/create-tag-retention-rules/",
+    "https://help.sonatype.com/en/cleanup-policies.html",
+    "https://docs.jfrog.com/administration/docs/cleanup-policies"
+  ],
+  "tests": [
+    "Published Python matches tested helper; Python3.9.6 tests passed for shared dependencies, cycles, missing roots/dependencies, duplicate IDs and invalid eligibility",
+    "Published JSON fixture parsed and executed with expected protected and candidate lists",
+    "Mermaid structural review:9edges",
+    "1280x720 social image visually reviewed; complete readable title"
+  ],
+  "limitations": [
+    "No repository cleanup executed",
+    "No inventory discovery, policy enforcement, race coordination or recovery tested",
+    "Input graph completeness is external prerequisite",
+    "Mermaid not rendered"
+  ]
+}

@@ -1,0 +1,30 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-21",
+  "runtimeTestsPerformed": false,
+  "infrastructureDeploymentPerformed": false,
+  "localCodeTestsPerformed": true,
+  "versions": {
+    "curl": "8.7.1",
+    "Python": "3.9.6"
+  },
+  "sources": [
+    "https://docs.jfrog.com/administration/docs/permissions",
+    "https://docs.jfrog.com/artifactory/reference/deployartifact",
+    "https://docs.jfrog.com/artifactory/docs/jfrog-properties",
+    "https://curl.se/docs/manpage.html",
+    "https://docs.jfrog.com/artifactory/reference/searchProperty"
+  ],
+  "tests": [
+    "Exact published Python manifest and shell commands ran against owned loopback HTTP fixture with synthetic credential.",
+    "Fixture inspected upload bytes, SHA256 header, matrix properties and URL-encoded property-search query.",
+    "Downloaded bytes matched; deliberate HTTP403 stopped script; altered download failed digest check; malformed version and commit rejected.",
+    "Five-edge diagram structure and shell syntax checked; social image generated and visually reviewed."
+  ],
+  "limitations": [
+    "HTTP fixture is not Artifactory; no vendor server release, authorization enforcement, property indexing, server-side overwrite behavior or production TLS tested.",
+    "Fake fixture credential was confined to temporary mode0600 config; all temporary files/server cleaned up.",
+    "No claim of complete Semantic Versioning validation, signatures or immutable archival storage.",
+    "Mermaid not graphically rendered."
+  ]
+}

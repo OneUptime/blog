@@ -1,0 +1,33 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-21",
+  "runtimeTestsPerformed": false,
+  "infrastructureDeploymentPerformed": false,
+  "localCodeTestsPerformed": true,
+  "versions": {
+    "curl": "8.7.1",
+    "Python": "3.9.6",
+    "OCI Distribution Specification": "1.1.1",
+    "Harbor documentation": "2.14-series; patched2.14.5 advisory noted"
+  },
+  "sources": [
+    "https://maven.apache.org/repositories/artifacts.html",
+    "https://help.sonatype.com/en/configurable-repository-fields.html",
+    "https://docs.jfrog.com/administration/docs/permissions",
+    "https://docs.npmjs.com/policies/unpublish/",
+    "https://goharbor.io/docs/2.14.0/working-with-projects/working-with-images/create-tag-immutability-rules/",
+    "https://github.com/goharbor/harbor/security/advisories/GHSA-27f2-qg57-2gwg",
+    "https://github.com/opencontainers/distribution-spec/blob/v1.1.1/spec.md"
+  ],
+  "tests": [
+    "Exact published read-only shell script ran against controlled loopback HTTP fixture.",
+    "Manifest URL and Accept types checked; exact bytes matched expected digest; changed bytes, HTTP404 and malformed digest failed.",
+    "Five-edge Mermaid structure and shell syntax checked; generated social image visually reviewed."
+  ],
+  "limitations": [
+    "No Nexus, Artifactory, npm registry or Harbor policy enforcement, deployment, deletion, race or replacement test executed.",
+    "Fixture proves client observation checks, not server-side immutability or image-layer/signature validation.",
+    "Harbor advisory was source-reviewed; no patched server binary tested.",
+    "Mermaid not graphically rendered."
+  ]
+}

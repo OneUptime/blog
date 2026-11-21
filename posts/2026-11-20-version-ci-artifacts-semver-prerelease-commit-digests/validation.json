@@ -1,0 +1,27 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-21",
+  "runtimeTestsPerformed": false,
+  "infrastructureDeploymentPerformed": false,
+  "localCodeTestsPerformed": true,
+  "versions": {
+    "Node.js": "24.1.0",
+    "semver": "7.7.2"
+  },
+  "sources": [
+    "https://semver.org/spec/v2.0.0.html",
+    "https://github.com/npm/node-semver/blob/v7.7.2/README.md",
+    "https://docs.github.com/en/actions/reference/workflows-and-actions/variables"
+  ],
+  "tests": [
+    "Exact published generator executed using pinned semver; local environment invocation used actual checked-out commit.",
+    "Distinct run attempts, numeric rc ordering, stable precedence, build-metadata equal precedence and default stable-range prerelease exclusion verified.",
+    "Full40/64-character commit IDs accepted; nine invalid base/run/attempt/commit cases rejected.",
+    "Seven-edge Mermaid structure checked; generated social image visually reviewed."
+  ],
+  "limitations": [
+    "No package registry upload, CI provider execution, container-tag compatibility or server-side immutability test.",
+    "Policy is scoped to a pipeline identity namespace and requires distinct matrix output coordinates.",
+    "Mermaid not graphically rendered."
+  ]
+}

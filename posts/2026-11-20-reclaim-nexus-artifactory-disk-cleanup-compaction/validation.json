@@ -1,0 +1,26 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-21",
+  "runtimeTestsPerformed": false,
+  "localCodeTestsPerformed": true,
+  "sources": [
+    "https://help.sonatype.com/en/cleanup-policies.html",
+    "https://help.sonatype.com/en/tasks.html",
+    "https://help.sonatype.com/en/repository-manager-concepts.html",
+    "https://docs.jfrog.com/administration/docs/regular-maintenance-operations",
+    "https://docs.jfrog.com/artifactory/docs/trash-can",
+    "https://docs.jfrog.com/artifactory/reference/getstoragesummaryinfo",
+    "https://docs.jfrog.com/artifactory/reference/refreshStorageSummaryInfo"
+  ],
+  "tests": [
+    "Exact shell with curl8.7.1 against temporary loopback HTTP fixture: expected path and synthetic auth, successful JSON, HTTP403 failure, malformed JSON failure",
+    "bash syntax checking",
+    "Mermaid structural review:8edges",
+    "1280x720 social image visually reviewed; title readable and complete"
+  ],
+  "limitations": [
+    "No Nexus or Artifactory deployment/cleanup/compaction/GC",
+    "No live authenticated HTTPS API or storage backend tested",
+    "Mermaid not rendered"
+  ]
+}
