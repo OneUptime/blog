@@ -831041,5 +831041,115 @@
       "Networking"
     ],
     "post": "2026-11-20-vlan-access-trunk-ports-multus-ovs-cni"
+  },
+  {
+    "title": "Schedule Multus Pods on Nodes with the Required OVS Bridge",
+    "description": "Use OVS bridge resources to constrain Multus Pod placement, verify scheduler decisions, and separate bridge presence from working VLANs, uplinks, and application connectivity.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Multus",
+      "Kubernetes",
+      "Networking"
+    ],
+    "post": "2026-11-20-schedule-multus-pods-required-ovs-bridge"
+  },
+  {
+    "title": "Fix Architecture Mismatches in Multus Delegated CNI Binaries",
+    "description": "Trace Multus exec format errors to the exact delegated binary, compare its operating system and CPU architecture with the node, and repair installation artifacts safely.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Multus",
+      "Kubernetes",
+      "Troubleshooting"
+    ],
+    "post": "2026-11-20-fix-multus-delegated-cni-binary-architecture"
+  },
+  {
+    "title": "Resolve Multus Plugin Not Found Errors on K3s",
+    "description": "Align K3s CNI binary paths, Multus configuration, and installer mounts to resolve plugin lookup failures without replacing the primary network or deleting allocation state.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Multus",
+      "Kubernetes",
+      "Troubleshooting"
+    ],
+    "post": "2026-11-20-multus-plugin-not-found-k3s-cni-paths"
+  },
+  {
+    "title": "Evaluate a Single Macvlan Primary Interface for Multus Pods",
+    "description": "Assess whether macvlan can serve as a Pod's only primary network by checking cluster routing, Services, DNS, node access, address allocation, and policy enforcement.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Multus",
+      "Kubernetes",
+      "Networking"
+    ],
+    "post": "2026-11-20-evaluate-single-macvlan-primary-interface-multus"
+  },
+  {
+    "title": "Apply Pod Network Sysctls with Multus and Tuning CNI",
+    "description": "Chain the tuning CNI plugin after a Multus network attachment, restrict allowed sysctls, verify interface-specific settings, and understand what cleanup does not restore.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Multus",
+      "Kubernetes",
+      "Networking"
+    ],
+    "post": "2026-11-20-pod-network-sysctls-multus-tuning-cni"
+  },
+  {
+    "title": "Prepare Host Bridges and VLANs Before Multus Workloads",
+    "description": "Prepare a dedicated host VLAN and Linux bridge, verify the external path, and gate Multus workload placement on persistent node network configuration.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Multus",
+      "Kubernetes",
+      "Networking"
+    ],
+    "post": "2026-11-20-prepare-host-bridges-vlans-multus-workloads"
+  },
+  {
+    "title": "Avoid Macvlan and IPvlan Parent Conflicts in Multus",
+    "description": "Identify macvlan and ipvlan attachments sharing a parent, distinguish kernel ownership conflicts from IP conflicts, and migrate workloads without deleting active network devices.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Multus",
+      "Kubernetes",
+      "Troubleshooting"
+    ],
+    "post": "2026-11-20-avoid-macvlan-ipvlan-parent-conflicts-multus"
+  },
+  {
+    "title": "Add Default Multus Networks While Excluding System Namespaces",
+    "description": "Configure automatic Multus secondary attachments with explicit namespace exclusions, preserve the primary network, and verify rollout behavior without confusing defaults with access control.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Multus",
+      "Kubernetes",
+      "Networking"
+    ],
+    "post": "2026-11-20-multus-default-secondary-network-exclude-system-namespaces"
+  },
+  {
+    "title": "Give a Multus Pod a Dedicated NIC with Host-Device CNI",
+    "description": "Move a dedicated kernel-managed NIC into one Multus Pod, verify device identity and addressing, and plan exclusive ownership, scheduling, and cleanup before rollout.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Multus",
+      "Kubernetes",
+      "Networking"
+    ],
+    "post": "2026-11-20-dedicated-host-nic-multus-host-device-cni"
+  },
+  {
+    "title": "Expose Coturn Relay Ports Through a Dedicated Multus Network",
+    "description": "Bind Coturn listeners and relay allocations to a Multus address, align firewall and NAT port mappings, and verify real relayed traffic instead of only a successful TURN connection.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Multus",
+      "Kubernetes",
+      "Networking"
+    ],
+    "post": "2026-11-20-coturn-relay-ports-dedicated-multus-network"
   }
 ]

@@ -1,0 +1,28 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-21",
+  "runtimeTestsPerformed": false,
+  "sources": [
+    "https://github.com/k8snetworkplumbingwg/multus-cni/blob/v4.3.1/docs/configuration.md",
+    "https://man7.org/linux/man-pages/man1/file.1.html",
+    "https://sourceware.org/binutils/docs/binutils/readelf.html",
+    "https://man7.org/linux/man-pages/man2/execve.2.html",
+    "https://github.com/containernetworking/plugins/releases/tag/v1.8.0",
+    "https://go.dev/doc/install/source#environment",
+    "https://github.com/containernetworking/cni/blob/v1.3.0/SPEC.md"
+  ],
+  "tests": [
+    "Downloaded official CNI plugins v1.8.0 Linux AMD64 and ARM64 archives and checked SHA256 against release checksum files",
+    "Extracted macvlan and host-local bytes without executing; verified ELF64 machine headers 62 and 183 and inspected with local file command",
+    "All Bash snippets passed bash -n",
+    "Six-node seven-edge Mermaid structurally reviewed",
+    "Generated 1280x720 image visually inspected; title legible and unclipped"
+  ],
+  "limitations": [
+    "No Linux executable invocation or VERSION command execution; local host is macOS",
+    "No Kubernetes, CNI ADD/DEL or network tests",
+    "Checksums verified, no signature verification",
+    "readelf commands source-reviewed, not executed locally",
+    "Mermaid not rendered"
+  ]
+}

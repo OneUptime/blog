@@ -1,0 +1,26 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-21",
+  "runtimeTestsPerformed": true,
+  "sources": [
+    "https://www.kernel.org/doc/html/latest/networking/ip-sysctl.html",
+    "https://www.cni.dev/plugins/current/meta/tuning/",
+    "https://github.com/containernetworking/plugins/blob/v1.8.0/plugins/meta/tuning/tuning.go",
+    "https://www.cni.dev/plugins/current/main/macvlan/",
+    "https://cni.dev/plugins/current/ipam/static/",
+    "https://kubernetes.io/docs/tasks/administer-cluster/sysctl-cluster/"
+  ],
+  "tests": [
+    "Parsed NAD, annotation and embedded chain JSON; asserted plugin order, string value and interface selection",
+    "Go1.25 regexp executed six positive/negative cases against the exact article allowlist",
+    "Shell snippets passed bash -n",
+    "Reviewed CNI plugins1.8.0 allowlist validation before substitution and absence of sysctls in DEL backup",
+    "Seven-node six-edge Mermaid structurally checked",
+    "Generated 1280x720 social image visually inspected; title fits"
+  ],
+  "limitations": [
+    "Runtime execution limited to Go regex cases; no Linux sysctl writes, CNI invocation or cluster traffic",
+    "Static IP example is limited to one reserved staging Pod",
+    "Mermaid not rendered"
+  ]
+}

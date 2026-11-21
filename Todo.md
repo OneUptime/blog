@@ -1990,15 +1990,35 @@ Research: [OneUptime air-gapped alerting](https://oneuptime.com/enterprise/air-g
 
     Completed: [Article](posts/2026-11-20-vlan-access-trunk-ports-multus-ovs-cni/README.md) (20 November 2026).
 30. How to Schedule Multus Pods Only on Nodes with the Required OVS Bridge
+
+    Completed: [Article](posts/2026-11-20-schedule-multus-pods-required-ovs-bridge/README.md) (20 November 2026).
 31. How to Fix CPU Architecture Mismatches in Multus Delegated CNI Binaries
+
+    Completed: [Article](posts/2026-11-20-fix-multus-delegated-cni-binary-architecture/README.md) (20 November 2026).
 32. How to Resolve Multus Plugin Not Found Errors Caused by K3s CNI Paths
+
+    Completed: [Article](posts/2026-11-20-multus-plugin-not-found-k3s-cni-paths/README.md) (20 November 2026).
 33. How to Evaluate a Single Macvlan Primary Interface for Multus Pods
+
+    Completed: [Article](posts/2026-11-20-evaluate-single-macvlan-primary-interface-multus/README.md) (20 November 2026).
 34. How to Apply Pod Network Sysctls Through Multus and the Tuning CNI Plugin
+
+    Completed: [Article](posts/2026-11-20-pod-network-sysctls-multus-tuning-cni/README.md) (20 November 2026).
 35. How to Prepare Host Bridges and VLAN Interfaces Before Scheduling Multus Workloads
+
+    Completed: [Article](posts/2026-11-20-prepare-host-bridges-vlans-multus-workloads/README.md) (20 November 2026).
 36. How to Avoid Macvlan and IPvlan Parent-Interface Conflicts in Multus
+
+    Completed: [Article](posts/2026-11-20-avoid-macvlan-ipvlan-parent-conflicts-multus/README.md) (20 November 2026).
 37. How to Attach a Default Secondary Network to Multus Pods While Excluding System Namespaces
+
+    Completed: [Article](posts/2026-11-20-multus-default-secondary-network-exclude-system-namespaces/README.md) (20 November 2026).
 38. How to Pass a Dedicated Host NIC into a Multus Pod with the Host-Device CNI Plugin
+
+    Completed: [Article](posts/2026-11-20-dedicated-host-nic-multus-host-device-cni/README.md) (20 November 2026).
 39. How to Expose Coturn Relay Ports Through a Dedicated Multus Network
+
+    Completed: [Article](posts/2026-11-20-coturn-relay-ports-dedicated-multus-network/README.md) (20 November 2026).
 40. How to Make Home Assistant mDNS Discovery Work Across a Multus LAN Interface
 
 ## NGINX

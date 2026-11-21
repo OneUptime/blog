@@ -1,0 +1,26 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-21",
+  "runtimeTestsPerformed": false,
+  "sources": [
+    "https://docs.k3s.io/networking/multus-ipams",
+    "https://github.com/containernetworking/cni/blob/v1.3.0/SPEC.md",
+    "https://github.com/k8snetworkplumbingwg/multus-cni/blob/v4.3.1/docs/configuration.md",
+    "https://github.com/rancher/rke2-charts",
+    "https://docs.k3s.io/advanced#configuring-containerd",
+    "https://rke2-charts.rancher.io/assets/rke2-multus/rke2-multus-4.3.203.tgz"
+  ],
+  "tests": [
+    "Helm3.12.3 template of official chart4.3.203 succeeded",
+    "Parsed rendered YAML and asserted ConfigMap binDir, hostPath, installer mount, and main container argument agreement",
+    "All Bash examples passed bash -n",
+    "Seven-node six-edge Mermaid structurally checked",
+    "Generated 1280x720 image visually reviewed; no clipped title"
+  ],
+  "limitations": [
+    "Helm lint failed on upstream Chart.yaml apiVersion v1 with type field; no chart files modified to hide this",
+    "No Kubernetes API, K3s installation, CNI or traffic tests",
+    "Example intentionally thin; not a thick-to-thin migration procedure",
+    "Mermaid not rendered"
+  ]
+}

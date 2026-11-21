@@ -1,0 +1,28 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-21",
+  "runtimeTestsPerformed": false,
+  "sources": [
+    "https://kubernetes.io/docs/concepts/services-networking/",
+    "https://github.com/k8snetworkplumbingwg/multus-cni/blob/v4.3.1/docs/configuration.md",
+    "https://github.com/k8snetworkplumbingwg/multus-cni/blob/v4.3.1/docs/how-to-use.md",
+    "https://www.cni.dev/plugins/current/main/macvlan/",
+    "https://docs.docker.com/engine/network/drivers/macvlan/",
+    "https://man7.org/linux/man-pages/man8/ip-route.8.html",
+    "https://kubernetes.io/docs/tasks/administer-cluster/dns-debugging-resolution/",
+    "https://kubernetes.io/docs/concepts/services-networking/network-policies/"
+  ],
+  "tests": [
+    "Parsed primary-selection YAML fragment and checked exact v4.3.1 annotation",
+    "Reviewed primary versus secondary selection and first delegate Pod-IP behavior in Multus documentation",
+    "Shell examples passed bash -n",
+    "Seven-node six-edge Mermaid structurally reviewed",
+    "Generated social image visually inspected at 1280x720; unclipped title"
+  ],
+  "limitations": [
+    "No live macvlan primary migration, routing, DNS, Service or policy tests",
+    "Selection fragment assumes an existing complete reviewed alternative primary network",
+    "No full installation manifest is offered",
+    "Mermaid not rendered"
+  ]
+}

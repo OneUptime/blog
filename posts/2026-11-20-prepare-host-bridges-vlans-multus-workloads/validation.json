@@ -1,0 +1,27 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-21",
+  "runtimeTestsPerformed": false,
+  "sources": [
+    "https://www.cni.dev/plugins/current/main/bridge/",
+    "https://www.cni.dev/plugins/current/main/vlan/",
+    "https://man7.org/linux/man-pages/man8/ip-link.8.html",
+    "https://man7.org/linux/man-pages/man8/bridge.8.html",
+    "https://github.com/containernetworking/plugins/blob/v1.8.0/plugins/main/bridge/bridge.go",
+    "https://kubernetes.io/docs/concepts/scheduling-eviction/assign-pod-node/",
+    "https://www.freedesktop.org/software/systemd/man/latest/systemd.network.html"
+  ],
+  "tests": [
+    "Parsed YAML and embedded CNI JSON; checked bridge-name match, L2 IPAM and explicit scheduling selector",
+    "Bash creation and inspection snippets passed bash -n",
+    "Reviewed iproute2 link creation and membership commands and CNI plugins1.8.0 bridge L2 behavior",
+    "Eight-node eight-edge Mermaid structurally reviewed",
+    "Generated1280x720 social image visually inspected; title unclipped"
+  ],
+  "limitations": [
+    "No host networking changes, Linux traffic, Kubernetes scheduling or reboot tests",
+    "Creation commands are transient staging example, not persistent or idempotent provisioning",
+    "Layer-two NAD deliberately does not allocate addresses",
+    "Mermaid not rendered"
+  ]
+}

@@ -1,0 +1,28 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-21",
+  "runtimeTestsPerformed": false,
+  "sources": [
+    "https://www.rfc-editor.org/rfc/rfc8656.html",
+    "https://www.cni.dev/plugins/current/main/macvlan/",
+    "https://cni.dev/plugins/current/ipam/static/",
+    "https://github.com/k8snetworkplumbingwg/multus-cni/blob/v4.3.1/docs/how-to-use.md",
+    "https://github.com/coturn/coturn/blob/4.19.2/examples/etc/turnserver.conf",
+    "https://github.com/coturn/coturn/blob/4.19.2/man/man1/turnserver.1",
+    "https://man7.org/linux/man-pages/man8/ip-route.8.html"
+  ],
+  "tests": [
+    "Parsed YAML and embedded JSON; checked secondary address and attachment agreement",
+    "Matched every Coturn networking directive to official4.19.2 sample configuration",
+    "Asserted local listener/relay/NAT-private address agreement and inclusive100-port range",
+    "Shell snippets passed bash -n",
+    "Eight-node six-edge Mermaid structurally reviewed, including one bidirectional edge",
+    "Generated1280x720 image visually inspected; title fully visible"
+  ],
+  "limitations": [
+    "No Coturn process or parser execution, TURN allocation, TLS handshake or media traffic tests",
+    "Networking fragment requires existing authenticated server configuration, certificates and secrets",
+    "Static address limited to one instance; external routing/firewall/NAT not applied",
+    "Mermaid not rendered"
+  ]
+}

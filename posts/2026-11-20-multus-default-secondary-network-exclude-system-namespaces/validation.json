@@ -1,0 +1,23 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-21",
+  "runtimeTestsPerformed": false,
+  "sources": [
+    "https://github.com/k8snetworkplumbingwg/multus-cni/blob/v4.3.1/docs/configuration.md",
+    "https://github.com/k8snetworkplumbingwg/multus-cni/blob/v4.3.1/pkg/types/conf.go",
+    "https://github.com/k8snetworkplumbingwg/multus-cni/blob/v4.3.1/pkg/k8sclient/k8sclient.go"
+  ],
+  "tests": [
+    "Parsed JSON and asserted correct array types, explicit kube-system exclusion, lookup namespace and absence of conflicting delegates",
+    "Reviewed Multus4.3.1 GetDefaultNetworks and exact namespace comparison/default initialization",
+    "Shell snippets passed bash -n",
+    "Seven-node seven-edge Mermaid structurally reviewed",
+    "Generated1280x720 image visually inspected; complete title legible"
+  ],
+  "limitations": [
+    "No live Multus configuration rollout, CNI attachment, IPAM or network tests",
+    "Fragment requires existing primary configuration and reviewed NAD",
+    "Exclusions are selection behavior, not authorization guarantees",
+    "Mermaid not rendered"
+  ]
+}
