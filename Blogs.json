@@ -828934,18 +828934,6 @@
     "post": "2026-11-20-rotate-registry-storage-credentials"
   },
   {
-    "title": "How to Load Prometheus Rule Files and Reload Them Without Restarting the Server",
-    "description": "Load Prometheus recording and alerting rules, validate the files seen by the server, and verify a runtime reload without restarting Prometheus.",
-    "authorGitHubUsername": "nawazdhandala",
-    "tags": [
-      "Prometheus",
-      "Monitoring",
-      "Alerting"
-    ],
-    "post": "2026-11-21-load-prometheus-rules-reload-without-restart",
-    "readmePath": "posts/2026-11-21-load-prometheus-rules-reload-without-restart/README.md"
-  },
-  {
     "title": "Fail Over Registries Without Stale Tags or Missing Digests",
     "description": "Verify release identity and complete image content before registry failover, control writes during cutover, and rehearse recovery without cached layers.",
     "authorGitHubUsername": "nawazdhandala",
@@ -830821,5 +830809,50 @@
       "Networking"
     ],
     "post": "2026-11-20-multus-custom-interface-mac-ip-requests"
+  },
+  {
+    "title": "Read and Validate Multus Network-Status Annotations",
+    "description": "Parse Multus network-status safely, match the intended attachment and interface, and distinguish reported CNI results from live connectivity and routing.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Multus",
+      "Kubernetes",
+      "Troubleshooting"
+    ],
+    "post": "2026-11-20-read-validate-multus-network-status-annotation"
+  },
+  {
+    "title": "Run the CNI DHCP Daemon for Multus and Diagnose Missing Leases",
+    "description": "Configure the CNI DHCP daemon used by Multus delegates, verify its socket and namespace access, and trace missing offers, acknowledgments, and renewals.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Multus",
+      "Kubernetes",
+      "DHCP"
+    ],
+    "post": "2026-11-20-multus-dhcp-daemon-missing-leases"
+  },
+  {
+    "title": "Keep Multus Secondary Interfaces When Cilium Is the Primary CNI",
+    "description": "Preserve Multus configuration alongside Cilium, verify the primary-delegate path, and test secondary interfaces across fresh Pods and controlled agent restarts.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Cilium",
+      "Multus",
+      "Kubernetes"
+    ],
+    "post": "2026-11-20-cilium-primary-cni-multus-secondary-interfaces"
+  },
+  {
+    "title": "How to Load Prometheus Rule Files and Reload Them Without Restarting the Server",
+    "description": "Load Prometheus recording and alerting rules, validate the files seen by the server, and verify a runtime reload without restarting Prometheus.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Prometheus",
+      "Monitoring",
+      "Alerting"
+    ],
+    "post": "2026-11-21-load-prometheus-rules-reload-without-restart",
+    "readmePath": "posts/2026-11-21-load-prometheus-rules-reload-without-restart/README.md"
   }
 ]

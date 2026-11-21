@@ -1,0 +1,27 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-21",
+  "runtimeTestsPerformed": false,
+  "sources": [
+    "https://github.com/k8snetworkplumbingwg/multus-cni/blob/v4.3.1/docs/configuration.md",
+    "https://github.com/cilium/cilium/blob/v1.18.17/install/kubernetes/cilium/values.yaml",
+    "https://docs.rke2.io/networking/multus_sriov",
+    "https://github.com/cilium/cilium/blob/v1.18.17/install/kubernetes/cilium/templates/cilium-configmap.yaml",
+    "https://github.com/k8snetworkplumbingwg/multus-cni/blob/v4.3.1/docs/how-to-use.md"
+  ],
+  "tests": [
+    "Downloaded upstream Cilium chart1.18.17 and rendered with Helm3.12.3 using cni.exclusive=false",
+    "Helm lint passed",
+    "Parsed rendered manifests and asserted cni-exclusive=false and expected normal CNI writing path in cilium-config",
+    "Parsed article YAML and nested annotation JSON; shell syntax passed",
+    "Reviewed RKE2 documented version-specific exception",
+    "Eight-node seven-edge Mermaid structurally reviewed",
+    "Generated 1280x720 image visually inspected"
+  ],
+  "limitations": [
+    "No Kubernetes installation, live Cilium/Multus agent, node file changes or traffic tests",
+    "Render used minimal override plus chart defaults, not any production cluster values",
+    "Pinned examples are not a live-tested compatibility certification",
+    "Mermaid not rendered"
+  ]
+}

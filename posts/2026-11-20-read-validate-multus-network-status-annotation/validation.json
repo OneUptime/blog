@@ -1,0 +1,25 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-21",
+  "runtimeTestsPerformed": true,
+  "sources": [
+    "https://github.com/k8snetworkplumbingwg/multus-cni/blob/v4.3.1/pkg/multus/multus.go",
+    "https://github.com/k8snetworkplumbingwg/multus-cni/blob/v4.3.1/pkg/k8sclient/k8sclient.go",
+    "https://kubernetes.io/docs/reference/kubectl/jsonpath/",
+    "https://github.com/k8snetworkplumbingwg/network-attachment-definition-client/blob/v1.7.6/pkg/apis/k8s.cni.cncf.io/v1/types.go",
+    "https://github.com/k8snetworkplumbingwg/network-attachment-definition-client/blob/v1.7.6/pkg/utils/net-attach-def.go"
+  ],
+  "tests": [
+    "Ten executed Python fixtures: valid IPv4, dual-stack, missing annotation, non-array, ambiguous match, wrong subnet, wrong interface, string ips, CIDR instead of address, empty ips",
+    "Sample JSON parsed and all shell blocks passed bash -n",
+    "Reviewed Multus v4.3.1 collection/update and network-attachment-definition-client v1.7.6 status conversion/schema",
+    "Six-node five-edge Mermaid structurally reviewed",
+    "Generated 1280x720 social image visually inspected"
+  ],
+  "limitations": [
+    "No live Kubernetes, annotation update, interface, routing or connectivity tests",
+    "Helper validates one expected reported attachment and at least one IPv4 in an approved subnet, not every address or full schema",
+    "Annotation is not continuous network health or resolver verification",
+    "Mermaid not rendered"
+  ]
+}

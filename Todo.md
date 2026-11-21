@@ -1929,8 +1929,14 @@ Research: [OneUptime air-gapped alerting](https://oneuptime.com/enterprise/air-g
 
     Completed: [Article](posts/2026-11-20-multus-custom-interface-mac-ip-requests/README.md) (20 November 2026).
 10. How to Read and Validate the Multus network-status Annotation for Multi-Network Pods
+
+    Completed: [Article](posts/2026-11-20-read-validate-multus-network-status-annotation/README.md) (20 November 2026).
 11. How to Run the Multus DHCP Daemon and Troubleshoot Pods That Never Receive a Lease
+
+    Completed: [Article](posts/2026-11-20-multus-dhcp-daemon-missing-leases/README.md) (20 November 2026).
 12. How to Combine Cilium as the Primary CNI with Multus Without Losing Secondary Interfaces
+
+    Completed: [Article](posts/2026-11-20-cilium-primary-cni-multus-secondary-interfaces/README.md) (20 November 2026).
 13. How to Enforce NetworkPolicy on Multus Secondary Interfaces: Capabilities and Gaps
 14. How to Configure Source-Based Routing for Multus Pods with Two Default Gateways
 15. How to Diagnose MTU Mismatches Across Multus, VLAN, and Overlay Interfaces Before They Cause Silent Packet Loss
