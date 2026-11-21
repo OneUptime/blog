@@ -1,0 +1,27 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-21",
+  "runtimeTestsPerformed": false,
+  "sources": [
+    "https://docs.openvswitch.org/en/latest/faq/vlan/",
+    "https://github.com/k8snetworkplumbingwg/ovs-cni/blob/v0.40.0/docs/cni-plugin.md",
+    "https://www.openvswitch.org/support/dist-docs/ovs-vsctl.8.txt",
+    "https://cni.dev/plugins/current/ipam/static/",
+    "https://github.com/k8snetworkplumbingwg/multus-cni/blob/v4.3.1/docs/how-to-use.md",
+    "https://github.com/k8snetworkplumbingwg/ovs-cni/blob/v0.40.0/pkg/common/common.go",
+    "https://github.com/k8snetworkplumbingwg/ovs-cni/blob/v0.40.0/pkg/veth/plugin.go",
+    "https://www.openvswitch.org/support/dist-docs/ovs-vswitchd.conf.db.5.txt"
+  ],
+  "tests": [
+    "Parsed three YAML examples and embedded JSON; asserted access/trunk exclusivity, IPAM placement and attachment name agreement",
+    "Shell commands passed bash -n",
+    "Reviewed OVS CNI v0.40.0 port selection and optional IPAM implementation",
+    "Seven-node six-edge Mermaid structurally checked",
+    "Generated 1280x720 social image visually inspected; title fits without clipping"
+  ],
+  "limitations": [
+    "No Kubernetes deployment, OVS database query, Linux interface or network traffic test",
+    "Static address example is limited to one staging Pod",
+    "Mermaid not rendered"
+  ]
+}

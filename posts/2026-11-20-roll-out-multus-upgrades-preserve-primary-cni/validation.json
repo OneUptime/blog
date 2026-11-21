@@ -1,0 +1,28 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-21",
+  "runtimeTestsPerformed": false,
+  "sources": [
+    "https://www.github.com/nawazdhandala",
+    "https://github.com/k8snetworkplumbingwg/multus-cni/blob/v4.3.1/deployments/multus-daemonset-thick.yml",
+    "https://github.com/k8snetworkplumbingwg/multus-cni/blob/v4.3.1/pkg/server/config/manager.go",
+    "https://kubernetes.io/docs/reference/kubectl/generated/kubectl_diff/",
+    "https://kubernetes.io/docs/reference/kubectl/generated/kubectl_apply/",
+    "https://kubernetes.io/docs/tasks/manage-daemon/update-daemon-set/",
+    "https://github.com/k8snetworkplumbingwg/multus-cni/blob/v4.3.1/pkg/multus/multus.go",
+    "https://kubernetes.io/docs/reference/kubectl/generated/kubectl_rollout/kubectl_rollout_status/"
+  ],
+  "tests": [
+    "Parsed rollout fragment and checked integer maxUnavailable1/maxSurge0",
+    "Shell snippets passed bash -n",
+    "Reviewed Multus4.3.1 primary configuration selection and saved delegate DEL behavior",
+    "Seven-node eight-edge Mermaid structurally reviewed",
+    "Generated social image visually inspected"
+  ],
+  "limitations": [
+    "No live upgrade, API dry-run, DaemonSet rollout or network lifecycle tests",
+    "Rollout fragment is not a complete install manifest and requires deployment-owner support",
+    "No universal version or rollback compatibility guarantee",
+    "Mermaid not rendered"
+  ]
+}

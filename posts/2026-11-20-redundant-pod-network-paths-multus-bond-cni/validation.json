@@ -1,0 +1,27 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-21",
+  "runtimeTestsPerformed": false,
+  "sources": [
+    "https://www.github.com/nawazdhandala",
+    "https://github.com/k8snetworkplumbingwg/bond-cni/blob/709b4a474cc543eba3652da2d0206c35620bd82a/README.md",
+    "https://github.com/k8snetworkplumbingwg/bond-cni/blob/709b4a474cc543eba3652da2d0206c35620bd82a/bond/bond.go",
+    "https://docs.kernel.org/networking/bonding.html",
+    "https://www.cni.dev/plugins/current/ipam/static/",
+    "https://kubernetes.io/docs/concepts/extend-kubernetes/compute-storage-net/device-plugins/"
+  ],
+  "tests": [
+    "Parsed NAD/Pod YAML and embedded JSON",
+    "Asserted string miimon, linksInContainer, ordered member names, bond attachment and two matching device requests/limits",
+    "Checked static address syntax and shell syntax",
+    "Reviewed Bond CNI709b4a474cc543eba3652da2d0206c35620bd82a parser and Linux bonding monitoring behavior",
+    "Seven-node seven-edge Mermaid structurally reviewed",
+    "Generated social image visually inspected"
+  ],
+  "limitations": [
+    "No Linux bond, VF allocation, switch or failover tests",
+    "Member network definitions and independent hardware pools are explicit prerequisites",
+    "Single reserved static staging address; no production allocator deployment",
+    "Mermaid not rendered"
+  ]
+}

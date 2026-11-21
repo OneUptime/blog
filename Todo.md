@@ -1960,15 +1960,35 @@ Research: [OneUptime air-gapped alerting](https://oneuptime.com/enterprise/air-g
     Completed: [Article](posts/2026-11-20-chain-sriov-multus-device-plugin-resource-matching/README.md) (20 November 2026).
 20. How to Roll Out Multus Upgrades Without Breaking Existing Pods or the Primary CNI
 
+    Completed: [Article](posts/2026-11-20-roll-out-multus-upgrades-preserve-primary-cni/README.md) (20 November 2026).
+
 21. How to Receive External Multicast Traffic Through a Multus Secondary Network
+
+    Completed: [Article](posts/2026-11-20-receive-external-multicast-multus-secondary-network/README.md) (20 November 2026).
 22. How to Connect Multus Macvlan Pods to Services on Their Own Kubernetes Node
+
+    Completed: [Article](posts/2026-11-20-connect-multus-macvlan-pods-own-node-services/README.md) (20 November 2026).
 23. How to Debug a Multus Pod That Responds to Ping but Refuses TCP Connections
+
+    Completed: [Article](posts/2026-11-20-multus-pod-ping-works-tcp-connection-refused/README.md) (20 November 2026).
 24. How to Design Service Discovery for Multus Secondary IP Addresses
+
+    Completed: [Article](posts/2026-11-20-service-discovery-multus-secondary-ip-addresses/README.md) (20 November 2026).
 25. How to Hot-Plug a Network into a Running Pod with the Multus Dynamic Networks Controller
+
+    Completed: [Article](posts/2026-11-20-hot-plug-running-pod-multus-dynamic-networks-controller/README.md) (20 November 2026).
 26. How to Diagnose Multus Interfaces That Do Not Appear Inside Kata Containers
+
+    Completed: [Article](posts/2026-11-20-diagnose-multus-interfaces-missing-kata-containers/README.md) (20 November 2026).
 27. How to Build Redundant Pod Network Paths with Multus and Bond CNI
+
+    Completed: [Article](posts/2026-11-20-redundant-pod-network-paths-multus-bond-cni/README.md) (20 November 2026).
 28. How to Diagnose Bond CNI Link Not Found Errors After a Containerd Upgrade
+
+    Completed: [Article](posts/2026-11-20-bond-cni-link-not-found-containerd-upgrade/README.md) (20 November 2026).
 29. How to Configure VLAN Access and Trunk Ports with Multus and OVS CNI
+
+    Completed: [Article](posts/2026-11-20-vlan-access-trunk-ports-multus-ovs-cni/README.md) (20 November 2026).
 30. How to Schedule Multus Pods Only on Nodes with the Required OVS Bridge
 31. How to Fix CPU Architecture Mismatches in Multus Delegated CNI Binaries
 32. How to Resolve Multus Plugin Not Found Errors Caused by K3s CNI Paths

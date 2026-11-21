@@ -1,0 +1,27 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-21",
+  "runtimeTestsPerformed": false,
+  "sources": [
+    "https://www.github.com/nawazdhandala",
+    "https://kubernetes.io/docs/concepts/services-networking/service/#services-without-selectors",
+    "https://github.com/k8snetworkplumbingwg/network-attachment-definition-client/blob/v1.7.6/pkg/apis/k8s.cni.cncf.io/v1/types.go",
+    "https://kubernetes.io/docs/concepts/services-networking/endpoint-slices/",
+    "https://kubernetes.io/docs/reference/kubectl/generated/kubectl_apply/",
+    "https://kubernetes.io/docs/concepts/services-networking/dns-pod-service/",
+    "https://raw.githubusercontent.com/kubernetes/kubernetes/v1.34.0/api/openapi-spec/swagger.json"
+  ],
+  "tests": [
+    "Parsed Service and EndpointSlice YAML and checked against Kubernetes1.34.0 OpenAPI definitions, interpreting int-or-string as integer or string",
+    "Asserted no selector, headless setting, same namespace, matching service label/port names/ports and IPv4 endpoint",
+    "Shell examples passed bash -n",
+    "Eight-node seven-edge Mermaid structurally reviewed",
+    "Generated social image visually inspected"
+  ],
+  "limitations": [
+    "No API admission, DNS lookup, reconciliation controller or connectivity tests",
+    "Static ready condition and endpoint require manual lifecycle ownership in staging",
+    "OpenAPI check is not API-server validation; Kubernetes IntOrString extension interpreted locally",
+    "Mermaid not rendered"
+  ]
+}

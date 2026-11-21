@@ -1,0 +1,27 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-21",
+  "runtimeTestsPerformed": false,
+  "sources": [
+    "https://www.github.com/nawazdhandala",
+    "https://github.com/k8snetworkplumbingwg/bond-cni/blob/709b4a474cc543eba3652da2d0206c35620bd82a/bond/bond.go",
+    "https://github.com/k8snetworkplumbingwg/bond-cni/blob/709b4a474cc543eba3652da2d0206c35620bd82a/README.md",
+    "https://kubernetes.io/docs/tasks/debug/debug-cluster/crictl/",
+    "https://man7.org/linux/man-pages/man1/nsenter.1.html",
+    "https://github.com/containerd/containerd/blob/v2.1.5/docs/cri/config.md"
+  ],
+  "tests": [
+    "Reviewed pinned Bond CNI namespace and link lookup implementation",
+    "Reviewed containerd2.1.5 CRI config section and bin_dirs migration documentation",
+    "Parsed JSON fragments and asserted ordered interface-name agreement",
+    "All shell examples passed bash -n",
+    "Seven-node six-edge Mermaid structurally reviewed",
+    "Generated social image visually inspected"
+  ],
+  "limitations": [
+    "No runtime upgrade, Linux namespace, CNI invocation or traffic tests",
+    "No universal containerd regression asserted",
+    "Configuration fragments are diagnostic comparisons rather than complete install manifests",
+    "Mermaid not rendered"
+  ]
+}

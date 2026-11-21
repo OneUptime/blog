@@ -1,0 +1,30 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-21",
+  "runtimeTestsPerformed": true,
+  "sources": [
+    "https://www.github.com/nawazdhandala",
+    "https://www.rfc-editor.org/rfc/rfc2365",
+    "https://www.rfc-editor.org/rfc/rfc4541",
+    "https://docs.kernel.org/networking/ipvlan.html",
+    "https://www.cni.dev/plugins/current/main/macvlan/",
+    "https://man7.org/linux/man-pages/man8/ip-maddress.8.html",
+    "https://man7.org/linux/man-pages/man7/ip.7.html",
+    "https://docs.python.org/3/library/socket.html",
+    "https://github.com/the-tcpdump-group/tcpdump/blob/tcpdump-4.99.5/tcpdump.1.in"
+  ],
+  "tests": [
+    "Python receiver compiled and seven mocked cases passed: zero/three/ten packets, usage, nonmulticast group, privileged port, unspecified local address",
+    "Verified socket bind, eight-byte membership encoding, closure and bounded receive count under mocks",
+    "Offline Ethernet tcpdump filter compiled with Apple tcpdump4.99.1/libpcap1.10.1",
+    "Shell examples passed bash -n",
+    "Six-node six-edge Mermaid structurally reviewed",
+    "Generated social image visually inspected"
+  ],
+  "limitations": [
+    "No live socket join, multicast traffic, Linux interface or Kubernetes test",
+    "Mocked calls verify control flow only, not OS multicast behavior",
+    "Receiver is IPv4 any-source diagnostic, not source authentication or production filtering",
+    "Mermaid not rendered"
+  ]
+}

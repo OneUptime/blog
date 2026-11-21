@@ -1,0 +1,26 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-21",
+  "runtimeTestsPerformed": false,
+  "sources": [
+    "https://www.github.com/nawazdhandala",
+    "https://github.com/kata-containers/kata-containers/blob/3.29.0/docs/design/architecture/networking.md",
+    "https://kubernetes.io/docs/concepts/containers/runtime-class/",
+    "https://kubernetes.io/docs/tasks/debug/debug-cluster/crictl/",
+    "https://man7.org/linux/man-pages/man1/nsenter.1.html",
+    "https://github.com/kata-containers/kata-containers/blob/3.29.0/src/runtime/virtcontainers/network_linux.go"
+  ],
+  "tests": [
+    "Reviewed Kata3.29.0 networking architecture and Go-runtime endpoint classification/address-clearing source",
+    "Reviewed RuntimeClass handler semantics and crictl/nsenter documentation",
+    "All shell examples passed bash -n",
+    "Seven-node six-edge Mermaid structurally reviewed",
+    "Generated social image visually inspected"
+  ],
+  "limitations": [
+    "No Kata VM, hypervisor, Linux namespace or Kubernetes tests",
+    "Go-runtime source is explicitly scoped; Rust runtime and vendor builds may differ",
+    "No blanket delegate or hot-plug compatibility claim",
+    "Mermaid not rendered"
+  ]
+}
