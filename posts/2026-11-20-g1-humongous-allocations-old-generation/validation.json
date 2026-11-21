@@ -1,0 +1,27 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-21",
+  "runtimeTestsPerformed": true,
+  "sources": [
+    "https://docs.oracle.com/en/java/javase/17/gctuning/garbage-first-g1-garbage-collector1.html",
+    "https://raw.githubusercontent.com/openjdk/jdk17u/jdk-17.0.16%2B8/src/hotspot/share/gc/g1/g1CollectedHeap.hpp",
+    "https://docs.oracle.com/en/java/javase/17/docs/specs/man/java.html",
+    "https://docs.oracle.com/en/java/javase/17/docs/specs/man/jfr.html",
+    "https://raw.githubusercontent.com/openjdk/jdk17u/jdk-17.0.16%2B8/src/hotspot/share/jfr/metadata/metadata.xml",
+    "https://docs.oracle.com/en/java/javase/17/gctuning/garbage-first-garbage-collector-tuning.html"
+  ],
+  "tests": [
+    "Compiled companion Java lab on Zulu OpenJDK17.0.16+8",
+    "Ran1000 replacements with eight retained700KiB payloads in large and chunked modes, G1 heap64MiB",
+    "Large mode max observed humongous regions59; chunked mode0; startup region1MiB",
+    "Profile JFR recorded60 allocation samples; jfr summary/print succeeded and stack identifies BufferLab.main large allocation",
+    "Seven-node seven-edge Mermaid structurally checked",
+    "1280x720 image visually reviewed"
+  ],
+  "limitations": [
+    "Large run included JFR while chunked run did not; no comparative performance claim",
+    "No production fragmentation failure, sustained service latency, heap dump or region-size trial",
+    "Allocation sample weight is not exact single-object size",
+    "Mermaid not rendered"
+  ]
+}

@@ -1,0 +1,25 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-21",
+  "runtimeTestsPerformed": true,
+  "sources": [
+    "https://docs.oracle.com/en/java/javase/17/gctuning/garbage-first-g1-garbage-collector1.html",
+    "https://docs.oracle.com/en/java/javase/17/docs/specs/man/java.html",
+    "https://docs.oracle.com/en/java/javase/17/gctuning/garbage-first-garbage-collector-tuning.html",
+    "https://docs.oracle.com/en/java/javase/17/docs/specs/man/jcmd.html"
+  ],
+  "tests": [
+    "Zulu OpenJDK17.0.16+8 G1 bounded allocation ring850x64KiB over10000 allocations",
+    "Actual logging selectors/decorators accepted with lab paths",
+    "64MiB run:265 evacuation-failure event IDs and137 FullGC IDs;128MiB:22/9;256MiB:2/1",
+    "Companion counter correctly classified pressure log and separate zero-event allocation log; Full start/end IDs deduplicated",
+    "Seven-node six-edge Mermaid structurally reviewed",
+    "1280x720 image visually inspected"
+  ],
+  "limitations": [
+    "One run per heap size, no performance benchmark or general sizing recommendation",
+    "No production/container/CPU-throttle/heap-dump or IHOP tuning tests",
+    "Parser scopes one JVM lifetime and JDK17 wording",
+    "Mermaid not rendered"
+  ]
+}

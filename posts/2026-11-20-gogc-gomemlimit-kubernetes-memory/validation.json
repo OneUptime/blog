@@ -1,0 +1,26 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-21",
+  "runtimeTestsPerformed": true,
+  "sources": [
+    "https://go.dev/doc/gc-guide",
+    "https://pkg.go.dev/runtime/debug@go1.25.0#SetMemoryLimit",
+    "https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/",
+    "https://pkg.go.dev/runtime/metrics@go1.25.0"
+  ],
+  "tests": [
+    "Go1.25.0 macOS ARM64 compiled included main.go",
+    "Three bounded runs100/off,200/off,200/64MiB completed with observed13,7,23 GC cycles",
+    "Runtime metrics confirmed configured values and67108864-byte constrained limit",
+    "Parsed YAML container fragment and checked memory/environment string values",
+    "Eight-node seven-edge Mermaid structurally checked",
+    "1280x720 social image visually inspected"
+  ],
+  "limitations": [
+    "No Kubernetes API validation, deployment or Linux cgroup enforcement tested",
+    "No request benchmark or canary",
+    "Single-run cycle counts are illustrative, not performance predictions",
+    "Placeholder application image is not a runnable supplied service",
+    "Mermaid not rendered"
+  ]
+}

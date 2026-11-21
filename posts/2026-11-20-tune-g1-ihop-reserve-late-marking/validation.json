@@ -1,0 +1,25 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-21",
+  "runtimeTestsPerformed": true,
+  "sources": [
+    "https://docs.oracle.com/en/java/javase/17/gctuning/garbage-first-garbage-collector-tuning.html",
+    "https://docs.oracle.com/en/java/javase/17/docs/specs/man/java.html",
+    "https://raw.githubusercontent.com/openjdk/jdk17u/jdk-17.0.16%2B8/src/hotspot/share/gc/g1/g1IHOPControl.cpp",
+    "https://docs.oracle.com/en/java/javase/17/gctuning/garbage-first-g1-garbage-collector1.html"
+  ],
+  "tests": [
+    "Actual Zulu OpenJDK17.0.16+8 PrintFlagsFinal showed adaptive=true reserve10 initial45",
+    "G1 bounded128MiB lab reserve20 retained adaptive logs,23 failure IDs/9 FullGC IDs",
+    "Separate static30 run disabled adaptive logs and emitted30.00 threshold,23 failure IDs/8 FullGC IDs",
+    "Reviewed initial basic45.00/adaptive52.94 differing denominator with same threshold",
+    "Seven-node six-edge Mermaid structurally reviewed",
+    "1280x720 social image visually inspected"
+  ],
+  "limitations": [
+    "Single runs verify behavior, not comparative performance",
+    "No sustained adaptive warm-up, CPU-quota, production or request-latency study",
+    "Neither intervention eliminated lab pressure",
+    "Mermaid not rendered"
+  ]
+}

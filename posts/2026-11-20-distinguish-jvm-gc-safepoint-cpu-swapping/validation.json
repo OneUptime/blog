@@ -1,0 +1,28 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-21",
+  "runtimeTestsPerformed": true,
+  "sources": [
+    "https://docs.oracle.com/en/java/javase/17/docs/specs/man/java.html",
+    "https://raw.githubusercontent.com/openjdk/jdk17u/jdk-17.0.16%2B8/src/hotspot/share/runtime/safepoint.cpp",
+    "https://docs.oracle.com/en/java/javase/17/docs/specs/man/jcmd.html",
+    "https://docs.oracle.com/en/java/javase/17/gctuning/garbage-first-garbage-collector-tuning.html",
+    "https://docs.kernel.org/admin-guide/cgroup-v2.html",
+    "https://docs.kernel.org/filesystems/proc.html",
+    "https://man7.org/linux/man-pages/man5/proc_vmstat.5.html",
+    "https://docs.kernel.org/accounting/psi.html"
+  ],
+  "tests": [
+    "Actual Zulu17.0.16+8 sleeping lab process and one jcmd Thread.print produced PrintThreads/PrintJNI/FindDeadlocks safepoint logs",
+    "Asserted PrintThreads present and no Pause Young records",
+    "Logging selector/decorators accepted; own lab process terminated after capture",
+    "Six-node five-edge Mermaid structurally checked",
+    "1280x720 image visually inspected"
+  ],
+  "limitations": [
+    "macOS JVM test; Linux cgroup/proc/PSI commands source-reviewed only",
+    "No induced CPU starvation, throttling, swap, real request latency or production process",
+    "Rotation settings accepted, rollover not forced",
+    "Mermaid not rendered"
+  ]
+}

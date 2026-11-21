@@ -2119,15 +2119,35 @@ Research: [OneUptime air-gapped alerting](https://oneuptime.com/enterprise/air-g
 
     Completed: [Article](posts/2026-11-20-jvm-gc-logs-stop-the-world-p99-latency/README.md) (20 November 2026).
 2. How to Diagnose G1 “to-space exhausted” Events Before They Become Full GCs
+
+    Completed: [Article](posts/2026-11-20-diagnose-g1-to-space-exhausted-full-gc/README.md) (20 November 2026).
 3. How to Find and Reduce G1 Humongous Allocations That Fragment the Old Generation
+
+    Completed: [Article](posts/2026-11-20-g1-humongous-allocations-old-generation/README.md) (20 November 2026).
 4. How to Tune G1 IHOP and G1ReservePercent When Concurrent Marking Finishes Too Late
+
+    Completed: [Article](posts/2026-11-20-tune-g1-ihop-reserve-late-marking/README.md) (20 November 2026).
 5. How to Distinguish a JVM GC Pause from a Safepoint, CPU Starvation, or Host Swapping
+
+    Completed: [Article](posts/2026-11-20-distinguish-jvm-gc-safepoint-cpu-swapping/README.md) (20 November 2026).
 6. How to Migrate a Latency-Sensitive JVM Service from G1 to Generational ZGC and Benchmark the Tradeoff
+
+    Completed: [Article](posts/2026-11-20-migrate-g1-generational-zgc-benchmark/README.md) (20 November 2026).
 7. How to Stop System.gc() from Triggering Full JVM Collections Without Breaking Direct-Buffer Cleanup
+
+    Completed: [Article](posts/2026-11-20-system-gc-full-collections-direct-buffer-cleanup/README.md) (20 November 2026).
 8. How to Investigate Long G1 Reference-Processing Pauses Caused by Weak, Soft, and Phantom References
+
+    Completed: [Article](posts/2026-11-20-g1-reference-processing-pauses/README.md) (20 November 2026).
 9. How to Set GOGC and GOMEMLIMIT Together for a Go Service Running Under a Kubernetes Memory Limit
+
+    Completed: [Article](posts/2026-11-20-gogc-gomemlimit-kubernetes-memory/README.md) (20 November 2026).
 10. How to Diagnose Go GC Thrashing When GOMEMLIMIT Is Below the Live Heap
+
+    Completed: [Article](posts/2026-11-20-go-gc-thrashing-gomemlimit-live-heap/README.md) (20 November 2026).
 11. How to Explain High Go RSS When pprof Shows a Small Heap: Scavenging, Stacks, and cgo
+
+    Completed: [Article](posts/2026-11-20-go-high-rss-small-pprof-heap/README.md) (20 November 2026).
 12. How to Diagnose Go GC Assist Latency with Runtime Traces and GC Limiter Metrics
 13. How to Capture a .NET GC Dump in Production While Minimizing OOM and Long Gen 2 Pause Risk
 14. How to Diagnose .NET Large Object Heap Fragmentation with dotnet-counters, dotnet-trace, and gcdump

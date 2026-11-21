@@ -1,0 +1,27 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-21",
+  "runtimeTestsPerformed": true,
+  "sources": [
+    "https://pkg.go.dev/runtime/pprof@go1.25.0",
+    "https://go.dev/doc/diagnostics",
+    "https://pkg.go.dev/runtime/metrics@go1.25.0",
+    "https://pkg.go.dev/runtime/debug@go1.25.0#FreeOSMemory",
+    "https://www.kernel.org/doc/html/latest/filesystems/proc.html",
+    "https://pkg.go.dev/runtime/debug@go1.25.0#SetMemoryLimit"
+  ],
+  "tests": [
+    "Built and ran included lab on Go1.25.0 macOS ARM64",
+    "Touched128MiB slice; afterGC objects177064bytes and free134356992bytes; afterFreeOSMemory released137404416bytes",
+    "Created heap.pprof and successfully inspected with matching binary and explicit inuse_space sample",
+    "Nine-node ten-edge Mermaid structurally reviewed",
+    "1280x720 social image visually inspected"
+  ],
+  "limitations": [
+    "No Linux RSS, proc files, native allocator or cgo leak test",
+    "No Kubernetes memory accounting experiment",
+    "Heap profile is sampled and not equal to exact runtime memory counters",
+    "Forced cleanup lab is not production optimization advice",
+    "Mermaid not rendered"
+  ]
+}

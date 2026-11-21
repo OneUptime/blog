@@ -831482,5 +831482,115 @@
       "Monitoring"
     ],
     "post": "2026-11-20-jvm-gc-logs-stop-the-world-p99-latency"
+  },
+  {
+    "title": "Diagnose G1 To-Space Exhaustion Before Repeated Full GC",
+    "description": "Investigate G1 evacuation failures using collection timelines, retained heap and marking progress, then choose a measured response instead of copying JVM flags.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Java",
+      "Garbage Collection",
+      "Troubleshooting"
+    ],
+    "post": "2026-11-20-diagnose-g1-to-space-exhausted-full-gc"
+  },
+  {
+    "title": "Find and Reduce G1 Humongous Allocations",
+    "description": "Identify large G1 allocations with region logs and Flight Recorder, distinguish allocation pressure from retention, and test smaller buffers before changing region size.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Java",
+      "Garbage Collection",
+      "Performance"
+    ],
+    "post": "2026-11-20-g1-humongous-allocations-old-generation"
+  },
+  {
+    "title": "Tune G1 IHOP and Reserve When Marking Starts Too Late",
+    "description": "Read adaptive IHOP evidence, distinguish reserve tuning from a fixed marking threshold, and test changes without assuming they solve an undersized heap.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Java",
+      "Garbage Collection",
+      "Performance"
+    ],
+    "post": "2026-11-20-tune-g1-ihop-reserve-late-marking"
+  },
+  {
+    "title": "Distinguish JVM GC Pauses from Safepoints, CPU and Swap Delays",
+    "description": "Separate GC work, safepoint coordination, CPU throttling and swapping with matching JVM and host evidence before changing collector settings.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Java",
+      "Garbage Collection",
+      "Troubleshooting"
+    ],
+    "post": "2026-11-20-distinguish-jvm-gc-safepoint-cpu-swapping"
+  },
+  {
+    "title": "Migrate from G1 to Generational ZGC and Measure the Tradeoff",
+    "description": "Compare G1 and Generational ZGC with the same JVM, workload and resource budget, then use request latency and capacity evidence to plan a safe rollout.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Java",
+      "Garbage Collection",
+      "Performance"
+    ],
+    "post": "2026-11-20-migrate-g1-generational-zgc-benchmark"
+  },
+  {
+    "title": "Avoid System.gc() Full Collections Without Breaking Direct Buffers",
+    "description": "Diagnose explicit G1 collections, compare concurrent and disabled explicit GC, and reproduce the direct-buffer cleanup risk before changing JVM flags.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Java",
+      "Garbage Collection",
+      "Troubleshooting"
+    ],
+    "post": "2026-11-20-system-gc-full-collections-direct-buffer-cleanup"
+  },
+  {
+    "title": "Investigate G1 Pauses from Weak, Soft and Phantom References",
+    "description": "Identify G1 reference-processing costs, separate GC work from cleanup queues, and test reference-heavy workloads before changing parallel-processing flags.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Java",
+      "Garbage Collection",
+      "Troubleshooting"
+    ],
+    "post": "2026-11-20-g1-reference-processing-pauses"
+  },
+  {
+    "title": "Set GOGC and GOMEMLIMIT for Kubernetes Memory Budgets",
+    "description": "Give Go a realistic memory budget below the container limit, then tune GOGC with runtime metrics and representative load instead of relying on one percentage.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Go",
+      "Kubernetes",
+      "Garbage Collection"
+    ],
+    "post": "2026-11-20-gogc-gomemlimit-kubernetes-memory"
+  },
+  {
+    "title": "Diagnose Go GC Thrashing When GOMEMLIMIT Is Too Low",
+    "description": "Recognize an impossible Go memory budget using live-heap, heap-goal and GC metrics, then recover useful work without blindly raising container risk.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Go",
+      "Garbage Collection",
+      "Troubleshooting"
+    ],
+    "post": "2026-11-20-go-gc-thrashing-gomemlimit-live-heap"
+  },
+  {
+    "title": "Explain High Go RSS When pprof Shows a Small Heap",
+    "description": "Reconcile Go heap profiles with resident memory by checking free heap pages, stacks, mappings and native allocations before diagnosing a leak.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Go",
+      "Garbage Collection",
+      "Troubleshooting"
+    ],
+    "post": "2026-11-20-go-high-rss-small-pprof-heap"
   }
 ]

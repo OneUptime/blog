@@ -1,0 +1,28 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-21",
+  "runtimeTestsPerformed": true,
+  "sources": [
+    "https://docs.oracle.com/en/java/javase/21/docs/api/java.base/java/lang/ref/package-summary.html",
+    "https://docs.oracle.com/en/java/javase/21/docs/api/java.base/java/lang/ref/Cleaner.html",
+    "https://docs.oracle.com/en/java/javase/21/docs/specs/man/java.html",
+    "https://docs.oracle.com/en/java/javase/21/docs/api/java.base/java/lang/ref/ReferenceQueue.html",
+    "https://docs.oracle.com/en/java/javase/21/gctuning/garbage-first-garbage-collector-tuning.html"
+  ],
+  "tests": [
+    "Compiled ReferenceLab.java under Zulu21.0.13.1+2 macOS ARM64",
+    "Weak and phantom modes each drained100000; soft mode drained0 in bounded runs",
+    "Verified weak discovered/processed counts and reference phase timing in logs",
+    "Separate serial-processing weak run completed; rotated logging launch syntax executed",
+    "PrintFlagsFinal showed parallel processing enabled; experimental unlock exposed ReferencesPerThread1000",
+    "Eight-node seven-edge Mermaid structurally checked",
+    "1280x720 social image visually inspected"
+  ],
+  "limitations": [
+    "No long production pause or throughput benchmark reproduced",
+    "Single explicit FullGC lab is not young/mixed latency validation",
+    "Queue counts are observed timing-dependent results",
+    "No heap dump, framework cleanup or container throttling test",
+    "Mermaid not rendered"
+  ]
+}

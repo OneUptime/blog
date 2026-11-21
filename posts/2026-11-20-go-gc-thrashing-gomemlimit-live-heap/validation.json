@@ -1,0 +1,26 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-21",
+  "runtimeTestsPerformed": true,
+  "sources": [
+    "https://pkg.go.dev/runtime/debug@go1.25.0#SetMemoryLimit",
+    "https://pkg.go.dev/runtime/metrics@go1.25.0",
+    "https://pkg.go.dev/runtime@go1.25.0",
+    "https://go.dev/doc/gc-guide"
+  ],
+  "tests": [
+    "Compiled included lab with Go1.25.0 macOS ARM64",
+    "Separate approximately3s runs with32MiB and96MiB limits, GOGC100 GOMAXPROCS2",
+    "Observed327136/2250355 iterations and20549/4246 cycles; constrained goal equaled live heap",
+    "Verified limiter last-enabled remained0 in both runs; article does not claim activation",
+    "Seven-node seven-edge Mermaid structurally reviewed",
+    "1280x720 social image visually inspected"
+  ],
+  "limitations": [
+    "Single short synthetic runs are not service benchmark predictions",
+    "Pointer-free data does not model all scanning workloads",
+    "No Linux cgroup, CPU-quota, Kubernetes or production rollout tests",
+    "No limiter activation reproduced",
+    "Mermaid not rendered"
+  ]
+}

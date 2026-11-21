@@ -1,0 +1,25 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-21",
+  "runtimeTestsPerformed": true,
+  "sources": [
+    "https://docs.oracle.com/en/java/javase/21/docs/api/java.base/java/lang/System.html#gc(",
+    "https://docs.oracle.com/en/java/javase/21/docs/specs/man/java.html",
+    "https://raw.githubusercontent.com/openjdk/jdk21u/jdk-21.0.13%2B8/src/java.base/share/classes/java/nio/Bits.java",
+    "https://docs.oracle.com/en/java/javase/21/docs/api/java.management/java/lang/management/BufferPoolMXBean.html"
+  ],
+  "tests": [
+    "Compiled included DirectLab.java with Zulu21.0.13.1+2 macOS ARM64",
+    "Six separate G1 runs: explicit/direct modes each default, concurrent and disabled",
+    "Explicit mode default FullGC; concurrent mode concurrent-start and marking; disabled no explicit collection",
+    "Direct mode default/concurrent completed40; disabled failed after8 with8MiB capacity limit",
+    "Nine-node ten-edge Mermaid structurally reviewed",
+    "1280x720 social image visually inspected"
+  ],
+  "limitations": [
+    "Single-process synthetic behavior test, not service latency benchmark",
+    "Direct failure timing depends on runtime and allocation activity",
+    "No framework buffer lifecycle, production canary or Linux container testing",
+    "Mermaid not rendered"
+  ]
+}

@@ -1,0 +1,26 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-21",
+  "runtimeTestsPerformed": true,
+  "sources": [
+    "https://raw.githubusercontent.com/openjdk/jdk21u/jdk-21.0.13%2B8/src/hotspot/share/gc/shared/gc_globals.hpp",
+    "https://docs.oracle.com/en/java/javase/23/gctuning/z-garbage-collector.html",
+    "https://docs.oracle.com/en/java/javase/24/gctuning/z-garbage-collector.html",
+    "https://docs.oracle.com/en/java/javase/21/docs/specs/man/java.html",
+    "https://grafana.com/docs/k6/latest/using-k6/scenarios/concepts/open-vs-closed/"
+  ],
+  "tests": [
+    "Azul CA archive SHA256 matched official package metadata; Zulu21.0.13.1+2 macOS ARM64",
+    "PrintFlagsFinal verified UseZGC and ZGenerational true",
+    "Compiled AllocationSmoke.java and completed separate G1 and Generational ZGC runs with256MiB heap and unified logs",
+    "Eight-node nine-edge Mermaid structurally reviewed",
+    "1280x720 social image visually inspected"
+  ],
+  "limitations": [
+    "No service HTTP latency or throughput benchmark",
+    "No production Linux container CPU quota or memory-limit experiment",
+    "JDK23/24 behavior documentation reviewed, not executed",
+    "Smoke timings do not establish relative performance",
+    "Mermaid not rendered"
+  ]
+}
