@@ -1,0 +1,28 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-21",
+  "runtimeTestsPerformed": false,
+  "localCodeTestsPerformed": true,
+  "sources": [
+    "https://www.postgresql.org/docs/17/backup-file.html",
+    "https://docs.aws.amazon.com/AmazonS3/latest/userguide/versioning-workflows.html",
+    "https://docs.aws.amazon.com/AmazonS3/latest/userguide/object-lock.html",
+    "https://github.com/juicedata/juicefs/blob/v1.4.2/docs/en/guide/cache.md#client-write-cache",
+    "https://github.com/juicedata/juicefs/blob/v1.4.2/cmd/umount.go",
+    "https://github.com/juicedata/juicefs/blob/v1.4.2/docs/en/administration/metadata_dump_load.md",
+    "https://docs.python.org/3/library/hashlib.html"
+  ],
+  "tests": [
+    "Exact Python manifest example run under Python3.9.6 with synthetic multi-chunk input",
+    "SHA256 matched independent digest; status candidate and absent evidence preserved",
+    "Second run failed with FileExistsError and original manifest remained unchanged",
+    "Bash syntax and seven-node/six-edge Mermaid structure checked",
+    "1280x720 social image visually reviewed"
+  ],
+  "limitations": [
+    "No application quiescence, FUSE unmount/flush or live metadata export in this article test",
+    "No S3 version retention, object copy or restore validation",
+    "Synthetic checksum input was not a real metadata dump",
+    "Mermaid not rendered"
+  ]
+}

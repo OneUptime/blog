@@ -1,0 +1,31 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-21",
+  "runtimeTestsPerformed": false,
+  "localCodeTestsPerformed": true,
+  "sources": [
+    "https://github.com/juicedata/juicefs/blob/v1.4.2/docs/en/administration/mount_at_boot.md",
+    "https://github.com/systemd/systemd/blob/v257/docs/NETWORK_ONLINE.md",
+    "https://github.com/juicedata/juicefs/blob/v1.4.2/docs/en/reference/how_to_set_up_metadata_engine.md",
+    "https://man7.org/linux/man-pages/man1/mountpoint.1.html",
+    "https://github.com/coreutils/coreutils/blob/v9.7/src/timeout.c",
+    "https://www.freedesktop.org/software/systemd/man/257/systemd.service.html",
+    "https://www.freedesktop.org/software/systemd/man/257/systemd.unit.html",
+    "https://www.freedesktop.org/software/systemd/man/257/systemd-analyze.html",
+    "https://www.freedesktop.org/software/systemd/man/257/systemctl.html",
+    "https://www.freedesktop.org/software/systemd/man/257/journalctl.html",
+    "https://github.com/juicedata/juicefs/blob/v1.4.2/docs/en/administration/troubleshooting.md#unmount-error"
+  ],
+  "tests": [
+    "JuiceFS1.4.2 mount and umount help checked with official binary",
+    "Shell syntax passed; exact readiness helper exercised with mocked mounted/readable, unmounted and timed-out read results",
+    "Unit sections and critical ordering/foreground properties structurally checked; not systemd-analyze verification",
+    "Mermaid six nodes and five edges structurally checked",
+    "1280x720 generated social image visually reviewed; no clipping"
+  ],
+  "limitations": [
+    "No Linux systemd, FUSE, boot, shutdown or stale mount runtime test",
+    "Helper command stubs test control flow only, not real mountpoint/stat/timeout behavior",
+    "Mermaid not rendered"
+  ]
+}

@@ -828944,5 +828944,115 @@
     ],
     "post": "2026-11-21-load-prometheus-rules-reload-without-restart",
     "readmePath": "posts/2026-11-21-load-prometheus-rules-reload-without-restart/README.md"
+  },
+  {
+    "title": "Fail Over Registries Without Stale Tags or Missing Digests",
+    "description": "Verify release identity and complete image content before registry failover, control writes during cutover, and rehearse recovery without cached layers.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Container Registry",
+      "Disaster Recovery",
+      "High Availability"
+    ],
+    "post": "2026-11-20-container-registry-failover-stale-tags-missing-digests"
+  },
+  {
+    "title": "Choose a JuiceFS Metadata Engine for Your Workload",
+    "description": "Compare Redis, MySQL, PostgreSQL, TiKV, and etcd for JuiceFS metadata using workload shape, durability, capacity, and recovery requirements.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "JuiceFS",
+      "Storage",
+      "Database"
+    ],
+    "post": "2026-11-20-choose-juicefs-metadata-engine"
+  },
+  {
+    "title": "Format JuiceFS for S3-Compatible Storage with Verified TLS",
+    "description": "Verify S3 endpoint style, region, credentials, and TLS before creating a JuiceFS volume, with a version-pinned and explicitly scoped formatting example.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "JuiceFS",
+      "S3",
+      "TLS"
+    ],
+    "post": "2026-11-20-format-juicefs-s3-compatible-storage"
+  },
+  {
+    "title": "Mount JuiceFS at Boot with systemd and Explicit Readiness Checks",
+    "description": "Supervise a foreground JuiceFS mount, wait for usable filesystem access, and investigate stale mounts without starting duplicate daemons or forcing cleanup.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "JuiceFS",
+      "Systemd",
+      "Linux"
+    ],
+    "post": "2026-11-20-mount-juicefs-boot-systemd"
+  },
+  {
+    "title": "Diagnose JuiceFS Mount Hangs with Foreground Logs and Bounded Probes",
+    "description": "Separate a missing JuiceFS mount from slow metadata or object storage, capture useful client evidence, and reproduce safely with foreground debug logs.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "JuiceFS",
+      "Linux",
+      "Troubleshooting"
+    ],
+    "post": "2026-11-20-debug-juicefs-hanging-disappearing-mount"
+  },
+  {
+    "title": "Recover JuiceFS After Redis Loss Using a Retained Metadata Backup",
+    "description": "Recover JuiceFS metadata into an empty replacement database, preserve the original objects, and validate the recovery point before allowing writers back.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "JuiceFS",
+      "Redis",
+      "Disaster Recovery"
+    ],
+    "post": "2026-11-20-recover-juicefs-redis-loss-metadata-backups"
+  },
+  {
+    "title": "Create an Application-Consistent JuiceFS Backup with a Recovery Manifest",
+    "description": "Coordinate application shutdown, drain pending JuiceFS uploads, retain matching objects, and record a verifiable recovery set rather than only a metadata dump.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "JuiceFS",
+      "Backup",
+      "Disaster Recovery"
+    ],
+    "post": "2026-11-20-application-consistent-juicefs-backup"
+  },
+  {
+    "title": "Migrate JuiceFS Metadata from Redis to MySQL with a Controlled Cutover",
+    "description": "Export JuiceFS metadata from Redis, load an empty MySQL database, verify volume identity, and define the point beyond which switching back would lose changes.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "JuiceFS",
+      "Redis",
+      "MySQL"
+    ],
+    "post": "2026-11-20-migrate-juicefs-metadata-redis-mysql"
+  },
+  {
+    "title": "Size and Place JuiceFS Local Cache Without Crowding Out the Host",
+    "description": "Choose a cache device and capacity for JuiceFS, understand free-space limits, and measure repeated reads without confusing disk cache with memory or write staging.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "JuiceFS",
+      "Storage",
+      "Performance"
+    ],
+    "post": "2026-11-20-size-place-juicefs-local-cache"
+  },
+  {
+    "title": "Evaluate JuiceFS Writeback for Small Files Without Losing Staged Data",
+    "description": "Understand how JuiceFS writeback changes durability, measure both acknowledgment and upload completion, and protect staging data during shutdown and failures.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "JuiceFS",
+      "Performance",
+      "Data Integrity"
+    ],
+    "post": "2026-11-20-juicefs-writeback-small-files-staging-risk"
   }
 ]

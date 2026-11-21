@@ -1396,17 +1396,37 @@ Research: [OneUptime air-gapped alerting](https://oneuptime.com/enterprise/air-g
     Completed: [Article](posts/2026-11-20-rotate-registry-storage-credentials/README.md) (20 November 2026).
 20. Failing Over Between Container Registries Without Serving Stale Tags or Missing Digests
 
+    Completed: [Article](posts/2026-11-20-container-registry-failover-stale-tags-missing-digests/README.md) (20 November 2026).
+
 ## JuiceFS
 
 1. Choosing a JuiceFS Metadata Engine: Redis, MySQL, PostgreSQL, TiKV, or etcd
+
+    Completed: [Article](posts/2026-11-20-choose-juicefs-metadata-engine/README.md) (20 November 2026).
 2. Formatting JuiceFS for S3-Compatible Storage: Bucket Endpoint, TLS, and Credential Checks
+
+    Completed: [Article](posts/2026-11-20-format-juicefs-s3-compatible-storage/README.md) (20 November 2026).
 3. Mounting JuiceFS at Boot with systemd: Network Readiness, FUSE, and Stale Daemon Cleanup
+
+    Completed: [Article](posts/2026-11-20-mount-juicefs-boot-systemd/README.md) (20 November 2026).
 4. JuiceFS Mount Hangs or Disappears: Debugging with `--foreground`, `--verbose`, and Client Logs
+
+    Completed: [Article](posts/2026-11-20-debug-juicefs-hanging-disappearing-mount/README.md) (20 November 2026).
 5. Recovering JuiceFS After Redis Loss: Restoring Automatic Metadata Backups Without Orphaning Data
+
+    Completed: [Article](posts/2026-11-20-recover-juicefs-redis-loss-metadata-backups/README.md) (20 November 2026).
 6. Creating an Application-Consistent JuiceFS Backup: Quiescing Writes, Dumping Metadata, and Protecting Objects
+
+    Completed: [Article](posts/2026-11-20-application-consistent-juicefs-backup/README.md) (20 November 2026).
 7. Migrating JuiceFS Metadata from Redis to MySQL with `dump` and `load`
+
+    Completed: [Article](posts/2026-11-20-migrate-juicefs-metadata-redis-mysql/README.md) (20 November 2026).
 8. Sizing and Placing JuiceFS Local Cache: `cache-dir`, `cache-size`, and `free-space-ratio`
+
+    Completed: [Article](posts/2026-11-20-size-place-juicefs-local-cache/README.md) (20 November 2026).
 9. JuiceFS `--writeback` for Small Files: When It Helps and How Staging Data Gets Lost
+
+    Completed: [Article](posts/2026-11-20-juicefs-writeback-small-files-staging-risk/README.md) (20 November 2026).
 10. Warming JuiceFS Cache Before a Job Without Causing Prefetch Read Amplification
 11. When JuiceFS Cache Slows Sequential Reads: Using `--cache-partial-only` Correctly
 12. Fixing JuiceFS `flush timeout` and Slow Uploads to Object Storage

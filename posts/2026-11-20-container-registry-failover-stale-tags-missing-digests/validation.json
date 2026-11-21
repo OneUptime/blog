@@ -1,0 +1,24 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-21",
+  "runtimeTestsPerformed": true,
+  "runtimeTestScope": "Owned anonymous loopback registry fixtures",
+  "localCodeTestsPerformed": true,
+  "sources": [
+    "https://github.com/google/go-containerregistry/blob/v0.20.6/cmd/crane/doc/crane_digest.md",
+    "https://github.com/google/go-containerregistry/blob/v0.20.6/cmd/crane/cmd/validate.go",
+    "https://github.com/opencontainers/distribution-spec/blob/v1.1.1/spec.md#listing-referrers",
+    "https://github.com/containerd/containerd/blob/v2.1.5/docs/hosts.md"
+  ],
+  "tests": [
+    "crane0.20.6 full index validation passed on copied AMD64/ARM64 image with source offline",
+    "Stale secondary tag detected independently while original pinned content remained valid",
+    "HTTP fixture hid one required layer and full validation failed",
+    "Bash syntax and six Mermaid edges structurally checked;1280x720 image visually reviewed"
+  ],
+  "limitations": [
+    "No live DNS routing, production TLS/authentication, containerd mirror, associated artifact verification or application execution tested",
+    "No production writer fencing/failback performed",
+    "Mermaid not rendered"
+  ]
+}

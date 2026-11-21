@@ -1,0 +1,26 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-21",
+  "runtimeTestsPerformed": false,
+  "localCodeTestsPerformed": true,
+  "sources": [
+    "https://github.com/juicedata/juicefs/blob/v1.4.2/docs/en/guide/cache.md#client-write-cache",
+    "https://github.com/juicedata/juicefs/blob/v1.4.2/pkg/chunk/cached_store.go",
+    "https://github.com/juicedata/juicefs/blob/v1.4.2/cmd/mount.go",
+    "https://docs.python.org/3/library/os.html#os.fsync",
+    "https://github.com/juicedata/juicefs/blob/v1.4.2/cmd/umount.go",
+    "https://github.com/juicedata/juicefs/blob/v1.4.2/docs/en/administration/troubleshooting.md#io-error-object-storage"
+  ],
+  "tests": [
+    "Exact Python probe rejected ordinary directory as absent mount without creating files",
+    "With only mount predicate mocked and path replaced, probe created100 unique4KiB files, fsynced them and emitted100 matchingSHA256 hashes",
+    "JuiceFS1.4.2 writeback/mount/umount flags checked against help and source",
+    "Shell syntax and six-node/five-edge Mermaid checked",
+    "1280x720 generated social image visually reviewed"
+  ],
+  "limitations": [
+    "Local probe used ordinary macOS filesystem, not JuiceFS",
+    "No writeback speedup, remote upload, cross-client read, FUSE or data-loss experiment",
+    "Mermaid not rendered"
+  ]
+}

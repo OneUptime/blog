@@ -1,0 +1,27 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-21",
+  "runtimeTestsPerformed": false,
+  "localCodeTestsPerformed": true,
+  "sources": [
+    "https://github.com/juicedata/juicefs/blob/v1.4.2/cmd/mount.go",
+    "https://github.com/juicedata/juicefs/blob/v1.4.2/docs/en/guide/cache.md#client-read-cache",
+    "https://github.com/juicedata/juicefs/blob/v1.4.2/pkg/chunk/disk_cache.go",
+    "https://github.com/juicedata/juicefs/blob/v1.4.2/docs/en/reference/how_to_set_up_metadata_engine.md",
+    "https://docs.python.org/3/library/os.html#os.statvfs",
+    "https://github.com/juicedata/juicefs/blob/v1.4.2/docs/en/administration/monitoring.md"
+  ],
+  "tests": [
+    "Python3.9.6 budget example produced250GiB",
+    "Exact statvfs example with temporary path substitution ran and created no files",
+    "JuiceFS1.4.2 mount options verified against binary help and source; multi-directory division source-reviewed",
+    "Shell syntax and five-node/four-edge diagram checked",
+    "1280x720 social image visually reviewed"
+  ],
+  "limitations": [
+    "Filesystem probe ran on local macOS, not target Linux cache device",
+    "No FUSE mount, eviction, disk filling or performance test",
+    "Planning arithmetic is not a client allocation simulation",
+    "Mermaid not rendered"
+  ]
+}
