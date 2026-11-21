@@ -829940,5 +829940,115 @@
       "Troubleshooting"
     ],
     "post": "2026-11-20-fix-hugetlb-mmap-sigbus-page-fault-backing"
+  },
+  {
+    "title": "Request Non-Default Huge Page Sizes with mmap and shmget",
+    "description": "Select explicit HugeTLB page sizes with MAP_HUGE and SHM_HUGE flags, check the matching pool, and use a scoped C probe with correct mapping cleanup.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Linux",
+      "HugePages",
+      "C"
+    ],
+    "post": "2026-11-20-nondefault-huge-page-sizes-mmap-shmget"
+  },
+  {
+    "title": "Explain THP Allocation Stalls with Compaction Counters and Policy",
+    "description": "Correlate THP fault activity, direct compaction, memory pressure, and defrag policy to investigate allocation latency without confusing counters with timings.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Linux",
+      "HugePages",
+      "Performance"
+    ],
+    "post": "2026-11-20-thp-allocation-stalls-compaction-defrag-policy"
+  },
+  {
+    "title": "Why MADV_HUGEPAGE Does Not Collapse Your Mapping",
+    "description": "Diagnose missing THP collapse by checking advice, aligned ranges, populated pages, process policy, and khugepaged progress before changing scan settings.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Linux",
+      "HugePages",
+      "Troubleshooting"
+    ],
+    "post": "2026-11-20-madv-hugepage-not-collapsing-khugepaged-diagnostics"
+  },
+  {
+    "title": "Use MADV_COLLAPSE and Multi-Size THP with the Right Policy",
+    "description": "Separate automatic multi-size THP policy from explicit MADV_COLLAPSE requests, inspect inherited settings, and measure bounded collapse attempts safely.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Linux",
+      "HugePages",
+      "Performance"
+    ],
+    "post": "2026-11-20-madv-collapse-multi-size-thp-never-policy"
+  },
+  {
+    "title": "Fix Pending Kubernetes Pods After Adding Huge Pages",
+    "description": "Trace huge-page scheduling failures from host pools through kubelet capacity reporting, existing requests, and placement constraints before changing a Pod.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Kubernetes",
+      "HugePages",
+      "Troubleshooting"
+    ],
+    "post": "2026-11-20-kubernetes-pending-pod-after-adding-huge-pages"
+  },
+  {
+    "title": "Debug Huge-Page ENOMEM and SIGBUS Inside Kubernetes Pods",
+    "description": "Diagnose huge-page allocation failures inside Pods by checking the failing call, container limits, parent cgroups, mount size, and eligible NUMA nodes.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Kubernetes",
+      "HugePages",
+      "Troubleshooting"
+    ],
+    "post": "2026-11-20-kubernetes-hugepage-enomem-sigbus-free-host-pool"
+  },
+  {
+    "title": "Use Kubernetes Huge Pages with mmap, shmget, and Two Sizes",
+    "description": "Configure explicit huge-page sizes in Kubernetes and compare file-backed mmap with System V SHM_HUGETLB, including group permissions and cleanup.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Kubernetes",
+      "HugePages",
+      "Linux"
+    ],
+    "post": "2026-11-20-kubernetes-hugetlbfs-mmap-shmget-multiple-page-sizes"
+  },
+  {
+    "title": "Enforce Kubernetes Huge-Page Quotas and Container Limits",
+    "description": "Combine namespace ResourceQuota with explicit container huge-page limits, test admission failures, and verify runtime enforcement without confusing the layers.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Kubernetes",
+      "HugePages",
+      "Resource Management"
+    ],
+    "post": "2026-11-20-kubernetes-hugepage-resourcequota-container-limits"
+  },
+  {
+    "title": "Fix DPDK No Free Hugepages Warnings by Checking the Right Pool",
+    "description": "Diagnose DPDK huge-page warnings by matching the reported size and NUMA node to available pools, visible mounts, launch settings, and service permissions.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "DPDK",
+      "HugePages",
+      "Troubleshooting"
+    ],
+    "post": "2026-11-20-dpdk-no-free-hugepages-page-size-numa-mounts"
+  },
+  {
+    "title": "Size DPDK Huge Pages Per NUMA Socket Without Wasting Memory",
+    "description": "Build a per-node DPDK memory budget from object footprints and overhead, round it to page sizes, and align reservation with EAL preallocation and limits.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "DPDK",
+      "HugePages",
+      "Performance"
+    ],
+    "post": "2026-11-20-size-dpdk-hugepages-per-numa-socket"
   }
 ]

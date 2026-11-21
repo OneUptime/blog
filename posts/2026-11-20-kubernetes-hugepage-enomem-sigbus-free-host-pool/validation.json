@@ -1,0 +1,30 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-21",
+  "runtimeTestsPerformed": true,
+  "sources": [
+    "https://man7.org/linux/man-pages/man2/mmap.2.html",
+    "https://raw.githubusercontent.com/kubernetes/website/release-1.34/content/en/docs/tasks/manage-hugepages/scheduling-hugepages.md",
+    "https://man7.org/linux/man-pages/man8/findmnt.8.html",
+    "https://man7.org/linux/man-pages/man7/cgroup_namespaces.7.html",
+    "https://raw.githubusercontent.com/torvalds/linux/v6.12/mm/hugetlb_cgroup.c",
+    "https://www.kernel.org/doc/html/v6.12/admin-guide/cgroup-v2.html#hugetlb",
+    "https://www.kernel.org/doc/html/v6.12/admin-guide/cgroup-v1/hugetlb.html",
+    "https://man7.org/linux/man-pages/man5/proc_pid_status.5.html",
+    "https://www.kernel.org/doc/html/v6.12/admin-guide/cgroup-v2.html#mounting",
+    "https://man7.org/linux/man-pages/man2/shmget.2.html"
+  ],
+  "tests": [
+    "Read-only Python helper executed with synthetic leaf/parent/root, restrictive parent max, multiline events and absent controls",
+    "Outside-root directory rejected; exact article helper matches tested source",
+    "jq selected intended container from synthetic two-container Pod; all shell blocks passed bash -n",
+    "Six-node five-edge Mermaid structurally reviewed",
+    "1280x720 image visually inspected with complete readable title",
+    "Official Kubernetes1.34 and Linux6.12 HugeTLB, cgroup, namespace and memory-accounting docs reviewed"
+  ],
+  "limitations": [
+    "Runtime testing only synthetic filesystem and JSON inspection",
+    "No live Pod, HugeTLB allocation, cgroup charge, NUMA policy, mount inspection or SIGBUS reproduction",
+    "Mermaid not rendered"
+  ]
+}

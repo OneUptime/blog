@@ -1,0 +1,28 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-21",
+  "runtimeTestsPerformed": true,
+  "sources": [
+    "https://raw.githubusercontent.com/kubernetes/website/release-1.34/content/en/docs/tasks/debug/debug-application/debug-pods.md",
+    "https://raw.githubusercontent.com/kubernetes/website/release-1.34/content/en/docs/tasks/manage-hugepages/scheduling-hugepages.md",
+    "https://www.kernel.org/doc/html/v6.12/admin-guide/mm/hugetlbpage.html",
+    "https://kubernetes.io/docs/tasks/administer-cluster/safely-drain-node/",
+    "https://raw.githubusercontent.com/kubernetes/kubernetes/v1.34.0/pkg/scheduler/framework/plugins/noderesources/fit.go",
+    "https://raw.githubusercontent.com/kubernetes/website/release-1.34/content/en/docs/concepts/scheduling-eviction/assign-pod-node.md",
+    "https://raw.githubusercontent.com/kubernetes/website/release-1.34/content/en/docs/tasks/administer-cluster/memory-manager.md"
+  ],
+  "tests": [
+    "jq Node-resource filter executed against synthetic capacity/allocatable data, preserving missing allocatable and excluding CPU",
+    "Pod inspection jq filter executed against synthetic Pod with absent initContainers",
+    "Resource fragment parsed with PyYAML and equal huge-page request/limit asserted",
+    "512 pages * 2MiB = 1GiB and 1GiB - 768MiB = 256MiB scheduling headroom checked",
+    "Shell blocks passed bash -n; seven-node six-edge Mermaid structurally reviewed",
+    "1280x720 social image visually inspected with complete title",
+    "Kubernetes 1.34 huge-page reporting documentation and v1.34.0 scheduler resource-fit source reviewed"
+  ],
+  "limitations": [
+    "No Kubernetes API validation or live Pod scheduling, kubelet restart, node modification or HugeTLB allocation",
+    "JSON execution uses synthetic data; YAML parsing does not establish admission or scheduling",
+    "Mermaid not rendered"
+  ]
+}

@@ -1,0 +1,25 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-21",
+  "runtimeTestsPerformed": false,
+  "sources": [
+    "https://man7.org/linux/man-pages/man2/madvise.2.html",
+    "https://man7.org/linux/man-pages/man5/proc_pid_smaps.5.html",
+    "https://www.kernel.org/doc/html/v6.12/admin-guide/mm/transhuge.html",
+    "https://man7.org/linux/man-pages/man2/mmap.2.html",
+    "https://man7.org/linux/man-pages/man2/PR_SET_THP_DISABLE.2const.html",
+    "https://www.kernel.org/doc/html/v6.12/admin-guide/mm/transhuge.html#khugepaged-controls",
+    "https://raw.githubusercontent.com/torvalds/linux/v6.12/mm/khugepaged.c"
+  ],
+  "tests": [
+    "Exact article C example compiled to Linux x86-64 ELF object with Clang and musl 1.2.5 headers using -Wall -Wextra -Werror",
+    "Alignment bounds and 8192 base pages / 16 PMD ranges checked",
+    "All shell blocks passed bash -n; seven-node six-edge Mermaid structurally checked",
+    "1280x720 image visually inspected: complete readable title",
+    "Linux 6.12 THP and khugepaged source plus manual interfaces reviewed"
+  ],
+  "limitations": [
+    "No Linux linking or execution, background collapse, scan timing, cgroup or performance tests",
+    "Mermaid structure checked; not rendered"
+  ]
+}

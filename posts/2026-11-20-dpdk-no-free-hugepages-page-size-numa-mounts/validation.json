@@ -1,0 +1,28 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-21",
+  "runtimeTestsPerformed": true,
+  "sources": [
+    "https://raw.githubusercontent.com/DPDK/dpdk/v24.11/lib/eal/linux/eal_hugepage_info.c",
+    "https://raw.githubusercontent.com/DPDK/dpdk/v24.11/usertools/dpdk-hugepages.py",
+    "https://www.kernel.org/doc/html/v6.12/admin-guide/mm/hugetlbpage.html",
+    "https://raw.githubusercontent.com/DPDK/dpdk/v24.11/doc/guides/linux_gsg/linux_eal_parameters.rst",
+    "https://man7.org/linux/man-pages/man8/findmnt.8.html",
+    "https://doc.dpdk.org/guides-24.11/linux_gsg/sys_reqs.html",
+    "https://doc.dpdk.org/guides-24.11/linux_gsg/enable_func.html",
+    "https://man7.org/linux/man-pages/man5/proc_pid_limits.5.html",
+    "https://raw.githubusercontent.com/DPDK/dpdk/v24.11/doc/guides/prog_guide/env_abstraction_layer.rst"
+  ],
+  "tests": [
+    "Python pool reader executed on synthetic NUMA node/size trees: node0 zero-free2MiB, node1 partially free2MiB, separate1GiB row",
+    "Official DPDK v24.11 dpdk-hugepages.py --help executed; source checked for show and destructive setup distinction",
+    "Tagged EAL source checked for exact warning trigger, global availability logic and parameter definitions",
+    "Article helper matches tested source; shell blocks passed bash -n",
+    "Six-node five-edge Mermaid structurally reviewed;1280x720 image visually inspected"
+  ],
+  "limitations": [
+    "No DPDK build/application, Linux pool inspection, allocation, mount or permission change",
+    "No device binding, throughput or latency test; synthetic filesystem and CLI help only",
+    "Mermaid not rendered"
+  ]
+}

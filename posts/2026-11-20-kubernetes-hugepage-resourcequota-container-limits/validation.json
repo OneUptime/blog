@@ -1,0 +1,24 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-21",
+  "runtimeTestsPerformed": true,
+  "sources": [
+    "https://raw.githubusercontent.com/kubernetes/website/release-1.34/content/en/docs/concepts/policy/resource-quotas.md",
+    "https://raw.githubusercontent.com/kubernetes/kubernetes/v1.34.0/pkg/quota/v1/evaluator/core/pods.go",
+    "https://raw.githubusercontent.com/kubernetes/website/release-1.34/content/en/docs/tasks/manage-hugepages/scheduling-hugepages.md",
+    "https://raw.githubusercontent.com/kubernetes/kubernetes/v1.34.0/pkg/kubelet/kuberuntime/kuberuntime_container_linux.go",
+    "https://www.kernel.org/doc/html/v6.12/admin-guide/cgroup-v2.html#hugetlb"
+  ],
+  "tests": [
+    "Actual local Kubernetes1.34.0 API/etcd admission test: quota128Mi, two64Mi Pods accepted, third Forbidden exceeded quota, status.used128Mi asserted",
+    "Quota status initialized by test harness because envtest has no quota controller; documented limitation",
+    "Article quota and Pod YAML byte-identical to API-tested manifests; shell snippets passed bash -n",
+    "Kubelet v1.34.0 hugepage limit propagation and quota evaluator source reviewed",
+    "Six-node five-edge Mermaid structurally checked;1280x720 image visually inspected"
+  ],
+  "limitations": [
+    "No quota reconciliation controller, scheduler, kubelet or container runtime in local test",
+    "No Linux cgroup enforcement, HugeTLB allocation or image pull; image is replacement placeholder",
+    "Mermaid not rendered"
+  ]
+}

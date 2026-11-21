@@ -1,0 +1,33 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-21",
+  "runtimeTestsPerformed": false,
+  "sources": [
+    "https://man7.org/linux/man-pages/man2/mmap.2.html",
+    "https://raw.githubusercontent.com/torvalds/linux/v6.12/include/uapi/asm-generic/hugetlb_encode.h",
+    "https://www.kernel.org/doc/html/v6.12/admin-guide/mm/hugetlbpage.html",
+    "https://man7.org/linux/man-pages/man2/shmget.2.html",
+    "https://raw.githubusercontent.com/torvalds/linux/v6.12/include/uapi/linux/shm.h",
+    "https://man7.org/linux/man-pages/man2/shmctl.2.html",
+    "https://man7.org/linux/man-pages/man2/shmat.2.html",
+    "https://man7.org/linux/man-pages/man5/proc_pid_smaps.5.html",
+    "https://man7.org/linux/man-pages/man7/numa.7.html",
+    "https://musl.libc.org/releases/musl-1.2.5.tar.gz"
+  ],
+  "tests": [
+    "Exact published C compiled with AppleClang targetx86_64-linux-musl -std=c11 -Wall -Wextra -Werror against official musl1.2.5 headers; ELF64 relocatable object produced",
+    "Linux6.12 UAPI HugeTLB encoding and SHM selectors source-reviewed; mmap/shmget/shmat/shmdt/shmctl semantics checked",
+    "Shell blocks passed bash -n; exact article C matches compiled source",
+    "Seven-node seven-edge Mermaid structurally reviewed",
+    "1280x720 social image visually inspected; title and branding fit"
+  ],
+  "limitations": [
+    "Object compilation only:no Linux link or execution",
+    "No allocation, IPC lifecycle, fault-time behavior, privileges or cgroup tests",
+    "Header archive downloaded from official HTTPS source; no signature verification",
+    "Mermaid not rendered"
+  ],
+  "artifacts": {
+    "muslArchiveSha256": "a9a118bbe84d8764da0ea0d28b3ab3fae8477fc7e4085d90102b8596fc7c75e4"
+  }
+}

@@ -1,0 +1,27 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-21",
+  "runtimeTestsPerformed": true,
+  "sources": [
+    "https://www.kernel.org/doc/html/v6.12/admin-guide/mm/transhuge.html",
+    "https://raw.githubusercontent.com/torvalds/linux/v6.12/mm/khugepaged.c",
+    "https://raw.githubusercontent.com/torvalds/linux/v6.12/include/linux/huge_mm.h",
+    "https://man7.org/linux/man-pages/man2/madvise.2.html",
+    "https://man7.org/linux/man-pages/man2/PR_SET_THP_DISABLE.2const.html",
+    "https://raw.githubusercontent.com/torvalds/linux/v6.12/include/uapi/asm-generic/mman-common.h",
+    "https://man7.org/linux/man-pages/man2/clock_gettime.2.html",
+    "https://raw.githubusercontent.com/torvalds/linux/v6.12/fs/proc/task_mmu.c"
+  ],
+  "tests": [
+    "Policy reader executed on synthetic per-size controls: explicit always/never, inherit under top-level never, malformed bracket selection rejected",
+    "C helper compiled to Linux x86-64 ELF object using Clang and musl 1.2.5 headers, -Wall -Wextra -Werror",
+    "Article Python and C blocks match tested/compiled sources; shell syntax checks passed",
+    "Linux 6.12 explicit collapse PMD sizing, errors and eligibility source reviewed",
+    "Six-node six-edge Mermaid structurally checked; 1280x720 image visually reviewed with full title"
+  ],
+  "limitations": [
+    "Only policy-parser execution; no Linux MADV_COLLAPSE, memory backing, cgroup, policy changes or latency measurements",
+    "C compilation only, no linking or runtime; host is macOS",
+    "Mermaid not rendered"
+  ]
+}

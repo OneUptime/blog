@@ -1,0 +1,26 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-21",
+  "runtimeTestsPerformed": true,
+  "sources": [
+    "https://raw.githubusercontent.com/torvalds/linux/v6.12/mm/page_alloc.c",
+    "https://www.kernel.org/doc/html/v6.12/admin-guide/mm/transhuge.html",
+    "https://www.kernel.org/doc/html/v6.12/admin-guide/sysctl/vm.html#compaction-proactiveness",
+    "https://www.kernel.org/doc/html/v6.12/admin-guide/mm/transhuge.html#monitoring-usage",
+    "https://www.kernel.org/doc/html/v6.12/accounting/psi.html",
+    "https://raw.githubusercontent.com/torvalds/linux/v6.12/include/trace/events/compaction.h",
+    "https://man7.org/linux/man-pages/man2/madvise.2.html"
+  ],
+  "tests": [
+    "Python delta helper executed on synthetic vmstat snapshots;positive40/8 deltas, missing counters and decreasing counter handled",
+    "Article helper byte-identical to tested source; shell blocks passed bash -n",
+    "Linux6.12 page_alloc.c direct compaction counter placement checked; official THP policy, VM compaction, PSI and tracepoint docs reviewed",
+    "Seven-node six-edge Mermaid structurally reviewed",
+    "1280x720 image visually inspected with complete title"
+  ],
+  "limitations": [
+    "No Linux allocation, compaction, policy mutation, PSI collection or latency benchmark",
+    "Synthetic delta parsing only; counts do not measure durations or identify a task",
+    "No tracing session; Mermaid not rendered"
+  ]
+}

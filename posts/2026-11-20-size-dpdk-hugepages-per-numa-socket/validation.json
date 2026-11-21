@@ -1,0 +1,28 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-21",
+  "runtimeTestsPerformed": true,
+  "sources": [
+    "https://raw.githubusercontent.com/torvalds/linux/v6.12/Documentation/ABI/stable/sysfs-devices-node",
+    "https://raw.githubusercontent.com/DPDK/dpdk/v24.11/doc/guides/prog_guide/mbuf_lib.rst",
+    "https://raw.githubusercontent.com/DPDK/dpdk/v24.11/doc/guides/prog_guide/mempool_lib.rst",
+    "https://raw.githubusercontent.com/DPDK/dpdk/v24.11/lib/mempool/rte_mempool.h",
+    "https://raw.githubusercontent.com/DPDK/dpdk/v24.11/doc/guides/prog_guide/env_abstraction_layer.rst",
+    "https://raw.githubusercontent.com/DPDK/dpdk/v24.11/doc/guides/linux_gsg/linux_eal_parameters.rst",
+    "https://raw.githubusercontent.com/DPDK/dpdk/v24.11/usertools/dpdk-hugepages.py",
+    "https://www.kernel.org/doc/html/v6.12/admin-guide/mm/hugetlbpage.html"
+  ],
+  "tests": [
+    "Budget helper executed: node0 base1024MiB budget1280MiB 640x2MiB or2x1GiB; node1 base512MiB budget640MiB 320x2MiB or1x1GiB",
+    "Invalid zero object size rejected",
+    "Official DPDK v24.11 try_reserve_huge_pages executed against ordinary temporary files:1280M->640 pages,640M->320 pages;3M with2MiB pages rejected",
+    "Tagged mempool, mbuf, EAL and reservation-helper sources reviewed",
+    "Article JSON/Python match tested files; shell syntax passed",
+    "Six-node five-edge Mermaid structurally reviewed;1280x720 image visually inspected"
+  ],
+  "limitations": [
+    "No Linux pool mutation, NUMA placement, DPDK build/application or performance measurement",
+    "Example object footprint, overhead and margin are hypothetical inputs, not measured defaults",
+    "Helper reservation tests used regular files, not sysfs; Mermaid not rendered"
+  ]
+}

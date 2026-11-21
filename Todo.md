@@ -1677,15 +1677,35 @@ Research: [OneUptime air-gapped alerting](https://oneuptime.com/enterprise/air-g
 
     Completed: [Article](posts/2026-11-20-fix-hugetlb-mmap-sigbus-page-fault-backing/README.md) (20 November 2026).
 10. How to Request Non-Default Huge Page Sizes with `MAP_HUGE_*` for `mmap` and `SHM_HUGE_*` for `shmget`
+
+    Completed: [Article](posts/2026-11-20-nondefault-huge-page-sizes-mmap-shmget/README.md) (20 November 2026).
 11. How to Explain THP Allocation Stalls with `compact_stall`, `thp_fault_alloc`, and the Defrag Policy
+
+    Completed: [Article](posts/2026-11-20-thp-allocation-stalls-compaction-defrag-policy/README.md) (20 November 2026).
 12. Why `MADV_HUGEPAGE` Does Not Collapse Your Mapping: Alignment, Fragmentation, and `khugepaged` Diagnostics
+
+    Completed: [Article](posts/2026-11-20-madv-hugepage-not-collapsing-khugepaged-diagnostics/README.md) (20 November 2026).
 13. How to Use `MADV_COLLAPSE` and Multi-Size THP Without Assuming `never` Disables Every Collapse
+
+    Completed: [Article](posts/2026-11-20-madv-collapse-multi-size-thp-never-policy/README.md) (20 November 2026).
 14. How to Fix a Kubernetes Pod Stuck Pending After Huge Pages Were Added to the Node
+
+    Completed: [Article](posts/2026-11-20-kubernetes-pending-pod-after-adding-huge-pages/README.md) (20 November 2026).
 15. How to Debug Huge Page ENOMEM or SIGBUS Inside a Kubernetes Pod When the Host Pool Is Free
+
+    Completed: [Article](posts/2026-11-20-kubernetes-hugepage-enomem-sigbus-free-host-pool/README.md) (20 November 2026).
 16. How to Use Kubernetes Huge Pages with hugetlbfs `mmap`, `SHM_HUGETLB` `shmget`, and Multiple Page Sizes
+
+    Completed: [Article](posts/2026-11-20-kubernetes-hugetlbfs-mmap-shmget-multiple-page-sizes/README.md) (20 November 2026).
 17. How to Enforce Huge Page Capacity with Kubernetes ResourceQuota and Per-Container cgroup Limits
+
+    Completed: [Article](posts/2026-11-20-kubernetes-hugepage-resourcequota-container-limits/README.md) (20 November 2026).
 18. How to Fix DPDK `No Free Hugepages Reported` by Checking Page Size, NUMA, Mounts, and Permissions
+
+    Completed: [Article](posts/2026-11-20-dpdk-no-free-hugepages-page-size-numa-mounts/README.md) (20 November 2026).
 19. How to Size DPDK Huge Pages Per NUMA Socket Without Reserving Unusable Memory
+
+    Completed: [Article](posts/2026-11-20-size-dpdk-hugepages-per-numa-socket/README.md) (20 November 2026).
 20. Why a Huge-Page-Backed KVM Guest Will Not Start: NUMA Cell Capacity, Memlock, and Libvirt XML Checks
 
 ## DB2
