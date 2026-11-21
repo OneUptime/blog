@@ -1,0 +1,33 @@
+# Validation review
+
+Reviewed the Db2 LUW 11.5 live-activity to cached-section workflow, including explicit single-member scope and separate static-package inspection.
+
+## Checks
+
+- Two shell examples passed bash -n; four SQL blocks extracted for source review; section-explain call has ten arguments including five output markers
+- Monitor fields, identity correlation, static-package options and exact explain timestamp selection reviewed against official IBM documentation
+- Seven-node seven-edge Mermaid structurally checked
+- 1280x720 social image visually reviewed without clipping
+
+## Limitations
+
+- No Db2 runtime: SQL, explain table creation, cached-section capture and formatter commands not executed
+- Executable ID and report identifiers are explicit replacement placeholders; SQL was not parsed by a Db2 engine
+- Detailed EXPLAIN_FROM_SECTION parameter reference available at IBM 11.1 URL, cross-checked with the IBM 11.5 performance-guide example; direct IBM pages sometimes returned 403
+- Mermaid not rendered
+
+## Sources
+
+- https://www.ibm.com/docs/en/db2/11.5.x?topic=mv-mon-current-sql-retrieve-key-metrics-all-activities-all-members
+- https://www.ibm.com/docs/en/db2/11.5.x?topic=routines-mon-get-activity-return-list-activities
+- https://www.ibm.com/docs/en/db2/11.5.x?topic=parameters-mon-act-metrics-monitoring-activity-metrics
+- https://www.ibm.com/docs/en/db2/11.5.x?topic=sql-explain-tables
+- https://www.ibm.com/docs/en/db2/11.5.x?topic=gcsei-example-investigating-query-performance-using-explain-information-obtained-from-section
+- https://www.ibm.com/docs/en/db2/11.1?topic=er-explain-from-section-procedure-explain-statement-using-package-cache-package-cache-event-monitor-information
+- https://public.dhe.ibm.com/ps/products/db2/info/vr115/pdf/en_US/db2_commands_115.pdf
+- https://www.ibm.com/docs/en/db2/11.5.x?topic=commands-db2expln-sql-xquery-explain
+- https://www.ibm.com/docs/en/db2/11.5.x?topic=facility-guidelines-capturing-section-explain-information
+
+## Repository checks
+
+The repository validator passed for this post in an isolated fixture with its catalog entry, author list, tag allowlist, and social image. Shell examples, if present, passed bash syntax checking. The full existing catalog was not revalidated.

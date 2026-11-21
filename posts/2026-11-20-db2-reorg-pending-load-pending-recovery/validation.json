@@ -1,0 +1,24 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-21",
+  "runtimeTestsPerformed": false,
+  "sources": [
+    "https://www.ibm.com/docs/en/db2/11.5.x?topic=messages-sql0000-0999",
+    "https://www.ibm.com/docs/en/db2/11.5.x?topic=commands-load-query",
+    "https://www.ibm.com/docs/en/db2/11.5.x?topic=aracp-admin-get-tab-info-retrieve-table-size-state-information",
+    "https://www.ibm.com/docs/en/db2/11.5.x?topic=commands-reorg-table",
+    "https://www.ibm.com/docs/en/db2/11.5.x?topic=loads-restarting-interrupted-load-operation",
+    "https://www.ibm.com/docs/en/db2/11.5.x?topic=commands-load",
+    "https://www.ibm.com/docs/en/db2/11.5.x?topic=statements-set-integrity"
+  ],
+  "tests": [
+    "Two shell examples passed bash -n",
+    "SQL fields and recovery commands reviewed against official Db2 documentation",
+    "Seven-node eight-edge Mermaid structurally checked",
+    "1280x720 social image visually reviewed without clipping"
+  ],
+  "limitations": [
+    "No Db2 runtime: no load, reorganization, integrity processing or data recovery executed",
+    "SQL review is not engine parsing; Mermaid was not rendered"
+  ]
+}

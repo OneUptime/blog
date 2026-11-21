@@ -1,0 +1,28 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-21",
+  "runtimeTestsPerformed": false,
+  "sources": [
+    "https://www.ibm.com/docs/en/ias?topic=functions-mon-get-utility-get-utilities-running-database",
+    "https://www.ibm.com/docs/en/db2/11.5.x?topic=monitoring-request-information-using-table-functions",
+    "https://www.ibm.com/docs/de/db2/11.5.x?topic=commands-list-utilities",
+    "https://www.ibm.com/docs/en/db2/11.5.x?topic=commands-db2pd-monitor-troubleshoot-db2-engine-activities",
+    "https://www.ibm.com/docs/en/db2/11.5.x?topic=barstats-example-output-backup-performance-monitoring",
+    "https://www.ibm.com/docs/en/db2/11.5.x?topic=barstats-example-output-restore-performance-monitoring",
+    "https://www.ibm.com/docs/en/db2/11.5.x?topic=reorganization-monitoring-index",
+    "https://public.dhe.ibm.com/ps/products/db2/info/vr115/pdf/en_US/db2_perf_tune_115.pdf",
+    "https://www.ibm.com/docs/en/db2/11.5.x?topic=backup-restore-statistics"
+  ],
+  "tests": [
+    "Three shell blocks passed bash -n",
+    "SQL field names reviewed against IBM MON_GET_UTILITY reference",
+    "Seven-node seven-edge Mermaid structurally checked",
+    "Rate arithmetic checked:6GiB in120seconds equals51.2MiB/s",
+    "1280x720 generated social image visually reviewed without clipping"
+  ],
+  "limitations": [
+    "No Db2 instance: SQL and db2pd commands not executed; no utility performance or completion observed",
+    "Exact MON_GET_UTILITY fields checked against official IBM IAS reference alongside Db211.5 routine listing; LIST UTILITIES checked in German11.5 documentation",
+    "SQL review is not engine parsing; Mermaid not rendered"
+  ]
+}

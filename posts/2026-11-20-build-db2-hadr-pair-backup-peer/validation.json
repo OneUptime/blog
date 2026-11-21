@@ -1,0 +1,29 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-21",
+  "runtimeTestsPerformed": false,
+  "sources": [
+    "https://www.ibm.com/docs/en/db2/11.5.x?topic=parameters-hadr-local-svc-hadr-local-service-name",
+    "https://www.ibm.com/docs/en/db2/11.5.x?topic=support-restrictions",
+    "https://www.ibm.com/docs/en/db2/11.5.x?topic=availability-initializing-hadr",
+    "https://www.ibm.com/docs/en/db2/11.5.x?topic=commands-backup-database",
+    "https://www.ibm.com/docs/en/db2/11.5.x?topic=commands-start-hadr",
+    "https://www.ibm.com/docs/en/db2/11.5.x?topic=hadr-database-configuration",
+    "https://www.ibm.com/docs/en/db2/11.5.x?topic=dcp-hadr-syncmode-hadr-synchronization-mode-log-writes-in-peer-state",
+    "https://www.ibm.com/docs/en/db2/11.5.x?topic=management-hadr-commands",
+    "https://www.ibm.com/docs/en/db2/11.5.x?topic=mmr-mon-get-hadr-get-high-availability-disaster-recovery-hadr-monitoring-information",
+    "https://www.ibm.com/docs/en/db2/11.5.x?topic=commands-db2pd-monitor-troubleshoot-db2-engine-activities",
+    "https://www.ibm.com/docs/en/db2/11.5.x?topic=management-determining-hadr-standby-database-state"
+  ],
+  "tests": [
+    "HADR initialization, reciprocal target lists, standby recovery state, startup ordering and monitoring fields checked against IBM Db2 11.5 documentation",
+    "Seven shell blocks passed bash -n; parsed both configuration blocks and asserted reciprocal hosts, services, target lists and matching SYNC mode",
+    "Five-node five-edge Mermaid structurally checked",
+    "1280x720 social image visually reviewed without clipping"
+  ],
+  "limitations": [
+    "No Db2 runtime: no backup, restore, HADR connection, startup, catchup, peer state or takeover test",
+    "Configuration assertions check example consistency, not host reachability or actual database acceptance",
+    "Mermaid not rendered"
+  ]
+}

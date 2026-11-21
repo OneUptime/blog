@@ -1740,15 +1740,35 @@ Research: [OneUptime air-gapped alerting](https://oneuptime.com/enterprise/air-g
 
     Completed: [Article](posts/2026-11-20-db2-point-in-time-recovery-restart-backup/README.md) (20 November 2026).
 10. How to Build a Db2 HADR Pair from Backup to `PEER` State
+
+    Completed: [Article](posts/2026-11-20-build-db2-hadr-pair-backup-peer/README.md) (20 November 2026).
 11. How to Diagnose Db2 HADR Stuck in `REMOTE_CATCHUP` or `DISCONNECTED` with `MON_GET_HADR`
+
+    Completed: [Article](posts/2026-11-20-db2-hadr-remote-catchup-disconnected-mon-get-hadr/README.md) (20 November 2026).
 12. Planned Db2 HADR Takeover vs `BY FORCE`: How to Switch Roles Without Split-Brain
+
+    Completed: [Article](posts/2026-11-20-db2-planned-hadr-takeover-by-force-split-brain/README.md) (20 November 2026).
 13. How to Apply Db2 Fix Packs with an HADR Rolling Update and Controlled Role Switch
+
+    Completed: [Article](posts/2026-11-20-db2-hadr-fix-pack-rolling-update/README.md) (20 November 2026).
 14. How to Find and Explain Long-Running Db2 SQL with Monitor Functions, `db2expln`, and `db2exfmt`
+
+    Completed: [Article](posts/2026-11-20-find-explain-long-running-db2-sql/README.md) (20 November 2026).
 15. How to Collect Db2 RUNSTATS for Skewed Columns and Refresh Cached Access Plans Safely
+
+    Completed: [Article](posts/2026-11-20-db2-runstats-skewed-columns-cached-plans/README.md) (20 November 2026).
 16. When to Run Db2 REORG, RUNSTATS, REBIND, and Package-Cache Flushes—and in What Order
+
+    Completed: [Article](posts/2026-11-20-db2-reorg-runstats-rebind-cache-maintenance-order/README.md) (20 November 2026).
 17. Why Db2 Disk Space Does Not Shrink After DELETE and REORG—and How to Reclaim the Tablespace
+
+    Completed: [Article](posts/2026-11-20-db2-disk-space-delete-reorg-reclaim-tablespace/README.md) (20 November 2026).
 18. How to Recover a Db2 Table from REORG-Pending or LOAD-Pending State Without Guesswork
+
+    Completed: [Article](posts/2026-11-20-db2-reorg-pending-load-pending-recovery/README.md) (20 November 2026).
 19. How to Monitor Db2 BACKUP, RESTORE, REORG, and RUNSTATS Progress with `MON_GET_UTILITY`
+
+    Completed: [Article](posts/2026-11-20-monitor-db2-utility-progress/README.md) (20 November 2026).
 20. How to Configure Db2 JDBC TLS and Diagnose Truststore, Hostname, and Protocol Failures
 
 ## Kube-bench

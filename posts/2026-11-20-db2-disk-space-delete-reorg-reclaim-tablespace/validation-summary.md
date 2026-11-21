@@ -1,0 +1,33 @@
+# Validation review
+
+Reviewed a Db2 LUW 11.5 storage-reclamation workflow with changes restricted to an eligible permanent automatic-storage tablespace. Internal reuse and filesystem reduction are distinguished.
+
+## Checks
+
+- Four SQL examples extracted and reviewed against IBM MON_GET_TABLESPACE, extent movement and ALTER TABLESPACE documentation
+- Reviewed automatic versus nonautomatic DMS, immutable reclaimable-storage attribute, REDUCE versus LOWER HIGH WATER MARK and non-rollback semantics
+- Illustrative percentage arithmetic checked: 200 GiB reduced by25 percent gives nominal150 GiB
+- Seven-node six-edge Mermaid structurally checked
+- 1280x720 social image visually reviewed without clipping
+
+## Limitations
+
+- No Db2 runtime: no SQL execution, extent movement, container reduction, cancellation or filesystem saving measured
+- DMS two-step procedure cited from official IBM11.1; extent fields cross-checked against indexed IBM11.5 Japanese reference where English/direct fetch was unavailable
+- SQL source review is not engine parsing; Mermaid not rendered
+
+## Sources
+
+- https://public.dhe.ibm.com/ps/products/db2/info/vr115/pdf/en_US/db2_perf_tune_115.pdf
+- https://www.ibm.com/docs/en/db2/11.5.x?topic=management-reclaimable-storage
+- https://www.ibm.com/docs/en/db2/11.5.x?topic=routines-mon-get-tablespace-get-table-space-metrics
+- https://www.ibm.com/docs/en/db2/11.5.x?topic=spaces-converting-table-use-automatic-storage
+- https://www.ibm.com/docs/en/db2/11.5.x?topic=commands-reorg-table
+- https://www.ibm.com/docs/en/db2/11.5.x?topic=aasts-reclaiming-unused-storage-in-automatic-storage-table-spaces
+- https://www.ibm.com/docs/en/db2/11.5.x?topic=statements-alter-tablespace
+- https://www.ibm.com/docs/en/db2/11.5.x?topic=mmr-mon-get-extent-movement-status-get-extent-movement-progress
+- https://www.ibm.com/docs/en/db2/11.1?topic=spaces-reclaiming-unused-storage-in-dms-table
+
+## Repository checks
+
+The repository validator passed for this post in an isolated fixture with its catalog entry, author list, tag allowlist, and social image. Shell examples, if present, passed bash syntax checking. The full existing catalog was not revalidated.

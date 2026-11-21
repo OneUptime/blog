@@ -830160,5 +830160,115 @@
       "Backup"
     ],
     "post": "2026-11-20-db2-point-in-time-recovery-restart-backup"
+  },
+  {
+    "title": "Build a Db2 HADR Pair from Backup to PEER State",
+    "description": "Initialize a Db2 HADR standby from backup, configure reciprocal endpoints, start the pair safely, and verify PEER state with monitoring evidence.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Database",
+      "SQL",
+      "High Availability"
+    ],
+    "post": "2026-11-20-build-db2-hadr-pair-backup-peer"
+  },
+  {
+    "title": "Diagnose Db2 HADR Stuck in REMOTE_CATCHUP or DISCONNECTED",
+    "description": "Use Db2 HADR snapshots to separate connection failures, log shipping delays, and slow replay before changing configuration or rebuilding a standby.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Database",
+      "SQL",
+      "Troubleshooting"
+    ],
+    "post": "2026-11-20-db2-hadr-remote-catchup-disconnected-mon-get-hadr"
+  },
+  {
+    "title": "Planned Db2 HADR Takeover vs BY FORCE: Avoiding Split-Brain",
+    "description": "Choose the correct Db2 HADR takeover path, verify database roles, fence an unavailable primary, and restore application traffic without creating dual primaries.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Database",
+      "High Availability",
+      "Troubleshooting"
+    ],
+    "post": "2026-11-20-db2-planned-hadr-takeover-by-force-split-brain"
+  },
+  {
+    "title": "Apply Db2 Fix Packs with an HADR Rolling Update",
+    "description": "Update a Db2 HADR pair standby first, verify code levels, switch roles deliberately, and restore replication before declaring the fix pack rollout complete.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Database",
+      "High Availability",
+      "Maintenance"
+    ],
+    "post": "2026-11-20-db2-hadr-fix-pack-rolling-update"
+  },
+  {
+    "title": "Find and Explain Long-Running Db2 SQL Without Losing Its Plan",
+    "description": "Identify a live Db2 SQL activity, preserve its executable identity, and use db2expln or db2exfmt to investigate the right access plan before tuning.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Database",
+      "SQL",
+      "Performance"
+    ],
+    "post": "2026-11-20-find-explain-long-running-db2-sql"
+  },
+  {
+    "title": "Db2 RUNSTATS for Skewed Columns and Safer Plan Refreshes",
+    "description": "Collect targeted Db2 distribution statistics, verify frequent values and quantiles, and refresh affected access plans without a routine database-wide cache flush.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Database",
+      "SQL",
+      "Performance"
+    ],
+    "post": "2026-11-20-db2-runstats-skewed-columns-cached-plans"
+  },
+  {
+    "title": "Order Db2 REORG, RUNSTATS, REBIND, and Cache Maintenance",
+    "description": "Choose Db2 maintenance by its purpose, finish physical changes before final statistics, and refresh only the plans that need attention.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Database",
+      "Performance",
+      "Maintenance"
+    ],
+    "post": "2026-11-20-db2-reorg-runstats-rebind-cache-maintenance-order"
+  },
+  {
+    "title": "Why Db2 Disk Space Stays Large After DELETE and REORG",
+    "description": "Separate reusable table space from filesystem savings, inspect Db2 reclaimability and high water marks, and choose a measured tablespace reduction.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Database",
+      "Storage",
+      "Troubleshooting"
+    ],
+    "post": "2026-11-20-db2-disk-space-delete-reorg-reclaim-tablespace"
+  },
+  {
+    "title": "Recover Db2 REORG-Pending and LOAD-Pending Tables Safely",
+    "description": "Identify the exact Db2 table state, distinguish required reorganization from interrupted loads, and choose recovery without accidentally replacing data.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Database",
+      "Troubleshooting",
+      "Recovery"
+    ],
+    "post": "2026-11-20-db2-reorg-pending-load-pending-recovery"
+  },
+  {
+    "title": "Monitor Db2 Utilities Without Misreading Their Progress",
+    "description": "Track Db2 backup, restore, reorganization, and statistics collection with MON_GET_UTILITY and utility-specific evidence, without inventing completion estimates.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Database",
+      "Monitoring",
+      "Troubleshooting"
+    ],
+    "post": "2026-11-20-monitor-db2-utility-progress"
   }
 ]
