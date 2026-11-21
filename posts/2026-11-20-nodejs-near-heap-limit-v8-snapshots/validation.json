@@ -1,0 +1,26 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-21",
+  "runtimeTestsPerformed": true,
+  "sources": [
+    "https://nodejs.org/download/release/v24.11.0/docs/api/cli.html#--heapsnapshot-near-heap-limitmax_count",
+    "https://nodejs.org/download/release/v24.11.0/docs/api/v8.html#v8writeheapsnapshotfilenameoptions",
+    "https://nodejs.org/download/release/v24.11.0/docs/api/process.html#processmemoryusage",
+    "https://nodejs.org/en/learn/diagnostics/memory/using-heap-snapshot"
+  ],
+  "tests": [
+    "Ran included deliberate-retention script using Node24.11.0 macOS ARM64,32MiB old-space,one near-limit snapshot,custom diagnostic directory",
+    "Snapshot4553973bytes parsed as JSON;52821nodes and lab marker found",
+    "Process subsequently aborted with fatalJavaScript heapOOM;core dumps disabled",
+    "Article JavaScript identical to executed script; Node artifact parse also executed",
+    "Eight-node seven-edge Mermaid structurally checked",
+    "1280x720 social image visually inspected"
+  ],
+  "limitations": [
+    "No container OOM or native-memory exhaustion test",
+    "No DevTools interactive analysis or retaining-path inspection performed",
+    "No production latency or snapshot-memory-overhead benchmark",
+    "No worker snapshot test",
+    "Mermaid not rendered"
+  ]
+}

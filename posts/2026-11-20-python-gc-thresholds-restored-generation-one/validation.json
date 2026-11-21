@@ -1,0 +1,26 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-21",
+  "runtimeTestsPerformed": true,
+  "sources": [
+    "https://docs.python.org/3.14/library/gc.html",
+    "https://github.com/python/cpython/blob/v3.14.10/Python/gc.c",
+    "https://github.com/python/cpython/blob/v3.14.10/InternalDocs/garbage_collector.md",
+    "https://docs.python.org/3.14/library/sysconfig.html"
+  ],
+  "tests": [
+    "Executed probe on CPython3.14.10 macOS ARM64 GIL-enabled build",
+    "Default2000/10/10 and threshold0=1000,4000: collections44/4/0,86/7/0,22/2/0 respectively",
+    "Separate cleanup counts4193,16373,4137; short runtimes about20ms not a performance conclusion",
+    "Article code equals executed script",
+    "Eight-node nine-edge Mermaid structurally checked",
+    "1280x720 image visually inspected"
+  ],
+  "limitations": [
+    "No free-threaded runtime test",
+    "No production workload, latency percentiles, RSS or long-running collection study",
+    "No per-object promotion trace",
+    "No old-release execution comparison",
+    "Mermaid not rendered"
+  ]
+}

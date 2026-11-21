@@ -1,0 +1,28 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-21",
+  "runtimeTestsPerformed": true,
+  "sources": [
+    "https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/",
+    "https://learn.microsoft.com/en-us/dotnet/core/runtime-config/garbage-collector",
+    "https://learn.microsoft.com/en-us/dotnet/api/system.gcmemoryinfo.highmemoryloadthresholdbytes?view=net-10.0",
+    "https://raw.githubusercontent.com/dotnet/runtime/v10.0.0/src/coreclr/gc/gcconfig.h",
+    "https://learn.microsoft.com/en-us/dotnet/api/system.gc.getconfigurationvariables?view=net-10.0",
+    "https://learn.microsoft.com/en-us/dotnet/api/system.gcmemoryinfo.totalavailablememorybytes?view=net-10.0"
+  ],
+  "tests": [
+    "Built net10.0 probe with SDK10.0.404 and JSON runtime template",
+    "Separate .NET10.0.15 macOS ARM64 JSON-only/environment-only runs reported419430400byte hard limit and80 high-memory percent",
+    "Verified TotalAvailableMemoryBytes419430400 and host pressure threshold54975581388",
+    "Checked decimal/hex equivalence and generated configuration",
+    "Eight-node seven-edge Mermaid structurally reviewed",
+    "1280x720 image visually inspected"
+  ],
+  "limitations": [
+    "No cgroup/container limit detection or enforcement tested",
+    "No percentage-limit execution or per-heap configuration test",
+    "No OOM, peak-memory, CPU or request-latency measurement",
+    "Probe forcesGC for lab information only",
+    "Mermaid not rendered"
+  ]
+}

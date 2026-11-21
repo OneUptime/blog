@@ -1,0 +1,26 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-21",
+  "runtimeTestsPerformed": true,
+  "sources": [
+    "https://learn.microsoft.com/en-us/dotnet/api/system.gc.allocatearray?view=net-10.0",
+    "https://devblogs.microsoft.com/dotnet/internals-of-the-poh/",
+    "https://learn.microsoft.com/en-us/dotnet/core/diagnostics/built-in-metrics-runtime",
+    "https://learn.microsoft.com/en-us/dotnet/api/system.net.sockets.socket.receiveasync?view=net-10.0",
+    "https://learn.microsoft.com/en-us/dotnet/api/system.buffers.arraypool-1.return?view=net-10.0"
+  ],
+  "tests": [
+    "Built included net10.0 project with nullable enabled on .NET10.0.15 macOS ARM64",
+    "Loopback sockets transferred3byte payload through bounded pooled receive helper",
+    "Cancellation before slot acquisition and while receive pending completed; shared slot count restored",
+    "Seven-node seven-edge Mermaid structurally reviewed",
+    "1280x720 social image visually inspected"
+  ],
+  "limitations": [
+    "No high-throughput or production POH-memory comparison",
+    "No custom pinned pool or native integration tested",
+    "Shared ArrayPool retained capacity not measured",
+    "Cancellation tests verify functional path and slots, not exhaustive race coverage",
+    "Mermaid not rendered"
+  ]
+}

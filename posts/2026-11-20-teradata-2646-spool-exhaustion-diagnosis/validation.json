@@ -1,0 +1,27 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-21",
+  "runtimeTestsPerformed": false,
+  "sources": [
+    "https://docs.teradata.com/r/Teradata-VantageCloud-Lake-Analytics-Database-Messages/Database-Messages/2646",
+    "https://docs.teradata.com/r/Enterprise_IntelliFlex_VMware/Database-Design/Database-Level-Capacity-Planning-Considerations/Sizing-Spool-Space",
+    "https://docs.teradata.com/r/Enterprise_IntelliFlex_VMware/Database-Administration/Working-with-Users-Roles-and-Profiles-Operational-DBAs/Creating-User-Profiles/Creating-Profiles",
+    "https://docs.teradata.com/r/Enterprise_IntelliFlex_VMware/Data-Dictionary/Views-Reference/DiskSpaceV-X",
+    "https://docs.teradata.com/r/Enterprise_IntelliFlex_VMware/Database-Administration/Managing-Space-Operational-DBAs/Global-Space-Accounting",
+    "https://docs.teradata.com/r/Lake-Working-with-SQL/SQL-Commands/SQL-Data-Manipulation-Language/Query-and-Workload-Analysis-Statements/EXPLAIN-Request-Modifier",
+    "https://docs.teradata.com/r/Enterprise_IntelliFlex_VMware/SQL-Request-and-Transaction-Processing/Interpreting-EXPLAIN-Output/EXPLAIN-Confidence-Levels"
+  ],
+  "tests": [
+    "Source-reviewed DatabaseEngine20.00 DiskSpaceV columns and Vantage17.20 administration concepts",
+    "Executed SQL subset against SQLite synthetic dictionary-shaped fixture:90/10/10/10 yields120/90/30/3;zeros yield null ratio",
+    "Article SQL blocks equal companion file",
+    "Nine-node ten-edge Mermaid structurally checked",
+    "1280x720 social image visually inspected"
+  ],
+  "limitations": [
+    "No Teradata database, permissions,EXPLAIN or workload execution tested",
+    "SQLite fixture checks arithmetic only,not Teradata dialect/schema/enforcement",
+    "No live spool pressure or statistics change",
+    "Mermaid not rendered"
+  ]
+}

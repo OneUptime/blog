@@ -1,0 +1,30 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-21",
+  "runtimeTestsPerformed": true,
+  "sources": [
+    "https://learn.microsoft.com/en-us/dotnet/core/runtime-config/garbage-collector#large-object-heap-threshold",
+    "https://learn.microsoft.com/en-us/dotnet/core/diagnostics/diagnostics-in-containers",
+    "https://raw.githubusercontent.com/dotnet/diagnostics/ad724c4b85e7ae775e42f393c6e95a7557a57954/src/Tools/dotnet-counters/Program.cs",
+    "https://learn.microsoft.com/en-us/dotnet/core/diagnostics/built-in-metrics-runtime",
+    "https://learn.microsoft.com/en-us/dotnet/core/diagnostics/dotnet-trace",
+    "https://learn.microsoft.com/en-us/dotnet/core/diagnostics/dotnet-gcdump",
+    "https://learn.microsoft.com/en-us/dotnet/api/system.runtime.gcsettings.largeobjectheapcompactionmode?view=net-10.0"
+  ],
+  "tests": [
+    "Built companion lab with SDK10.0.404/runtime10.0.15 macOS ARM64",
+    "Installed counters/trace10.0.750501; gcdump same version reused",
+    "Separate10s counters and gc-verbose trace captures succeeded",
+    "CSV LOH size16780824 and fragmentation8391424 verified",
+    "Separate gcdump report identified32 large arrays; lossy-buffer warning retained",
+    "Eight-node eight-edge Mermaid structurally checked",
+    "1280x720 image visually inspected"
+  ],
+  "limitations": [
+    "No interactive trace analysis or exact allocation-event census",
+    "No large-heap production, OOM, Linux/Windows container or latency study",
+    "No compaction comparison performed",
+    "NuGet package installation skipped signature verification",
+    "Mermaid not rendered"
+  ]
+}

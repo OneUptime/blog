@@ -2149,18 +2149,38 @@ Research: [OneUptime air-gapped alerting](https://oneuptime.com/enterprise/air-g
 
     Completed: [Article](posts/2026-11-20-go-high-rss-small-pprof-heap/README.md) (20 November 2026).
 12. How to Diagnose Go GC Assist Latency with Runtime Traces and GC Limiter Metrics
+
+    Completed: [Article](posts/2026-11-20-go-gc-assist-latency-runtime-traces/README.md) (20 November 2026).
 13. How to Capture a .NET GC Dump in Production While Minimizing OOM and Long Gen 2 Pause Risk
+
+    Completed: [Article](posts/2026-11-20-dotnet-gcdump-production-memory-pause-risk/README.md) (20 November 2026).
 14. How to Diagnose .NET Large Object Heap Fragmentation with dotnet-counters, dotnet-trace, and gcdump
+
+    Completed: [Article](posts/2026-11-20-dotnet-large-object-heap-fragmentation/README.md) (20 November 2026).
 15. How to Reduce .NET Pinned Object Heap Pressure in High-Throughput Socket Services
+
+    Completed: [Article](posts/2026-11-20-dotnet-pinned-object-heap-socket-buffers/README.md) (20 November 2026).
 16. How to Choose Server GC vs Workstation GC for .NET Services in CPU-Limited Containers
+
+    Completed: [Article](posts/2026-11-20-dotnet-server-workstation-gc-cpu-limits/README.md) (20 November 2026).
 17. How to Tune .NET High-Memory Thresholds and Heap Hard Limits Inside Containers
+
+    Completed: [Article](posts/2026-11-20-dotnet-container-heap-hard-limit-high-memory/README.md) (20 November 2026).
 18. How to Debug Python Reference Cycles with gc.DEBUG_SAVEALL Without Mistaking Collectable Objects for Leaks
+
+    Completed: [Article](posts/2026-11-20-python-debug-saveall-reference-cycles/README.md) (20 November 2026).
 19. How to Tune CPython’s Cyclic GC Thresholds After Python 3.14.5 Restored Generation 1
+
+    Completed: [Article](posts/2026-11-20-python-gc-thresholds-restored-generation-one/README.md) (20 November 2026).
 20. How to Capture Near-Heap-Limit V8 Snapshots Before Node.js Crashes from OOM
+
+    Completed: [Article](posts/2026-11-20-nodejs-near-heap-limit-v8-snapshots/README.md) (20 November 2026).
 
 ## Teradata
 
 1. Teradata Error 2646: Diagnose Spool Exhaustion Before Adding More Space
+
+    Completed: [Article](posts/2026-11-20-teradata-2646-spool-exhaustion-diagnosis/README.md) (20 November 2026).
 2. Find and Fix AMP Skew in Teradata: Primary Indexes, Redistribution, and Hot Values
 3. Read a Teradata `EXPLAIN` Plan: All-AMP Scans, Redistributes, Duplicates, and Confidence
 4. Collect Teradata Statistics That the Optimizer Can Actually Use

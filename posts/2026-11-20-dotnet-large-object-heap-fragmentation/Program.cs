@@ -1,0 +1,11 @@
+using System.Runtime;
+var blocks = new byte[64][];
+for (int i = 0; i < blocks.Length; i++) blocks[i] = new byte[256 * 1024];
+for (int i = 0; i < blocks.Length; i += 2) blocks[i] = null!;
+GC.Collect(2, GCCollectionMode.Forced, blocking: true, compacting: false);
+Console.WriteLine($"ready pid={Environment.ProcessId}");
+Console.WriteLine($"fragmented bytes={GC.GetGCMemoryInfo().FragmentedBytes}");
+await Task.Delay(TimeSpan.FromSeconds(8));
+GC.Collect(2, GCCollectionMode.Forced, blocking: true, compacting: false);
+await Task.Delay(TimeSpan.FromSeconds(8));
+GC.KeepAlive(blocks);

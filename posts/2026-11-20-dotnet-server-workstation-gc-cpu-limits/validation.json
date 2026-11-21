@@ -1,0 +1,28 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-21",
+  "runtimeTestsPerformed": true,
+  "sources": [
+    "https://learn.microsoft.com/en-us/dotnet/standard/garbage-collection/workstation-server-gc",
+    "https://learn.microsoft.com/en-us/dotnet/api/system.runtime.gcsettings.isservergc?view=net-10.0",
+    "https://learn.microsoft.com/en-us/dotnet/api/system.environment.processorcount?view=net-10.0",
+    "https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/",
+    "https://learn.microsoft.com/en-us/dotnet/core/runtime-config/garbage-collector",
+    "https://learn.microsoft.com/en-us/dotnet/core/compatibility/core-libraries/6.0/environment-processorcount-on-windows",
+    "https://learn.microsoft.com/en-us/dotnet/core/runtime-config/garbage-collector#dynamic-adaptation-to-application-sizes-datas"
+  ],
+  "tests": [
+    "Built companion net10.0 probe with ServerGarbageCollection=false and true into separate outputs",
+    "Inspected generated System.GC.Server booleans",
+    "Ran both variants with DOTNET_PROCESSOR_COUNT1 and2 on .NET10.0.15 macOS ARM64",
+    "Server-requested processor1 reported IsServerGCfalse; processor2 true; workstation bothfalse",
+    "Seven-node seven-edge Mermaid structurally reviewed",
+    "1280x720 image visually inspected"
+  ],
+  "limitations": [
+    "Processor override is not Linux cgroup or CPU quota emulation",
+    "No service throughput/latency or DATAS adaptation measurement",
+    "No Kubernetes deployment or production canary",
+    "Mermaid not rendered"
+  ]
+}

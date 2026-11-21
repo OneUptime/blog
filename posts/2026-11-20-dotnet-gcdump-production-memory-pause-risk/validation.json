@@ -1,0 +1,30 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-21",
+  "runtimeTestsPerformed": true,
+  "sources": [
+    "https://learn.microsoft.com/en-us/dotnet/core/diagnostics/dotnet-gcdump",
+    "https://learn.microsoft.com/en-us/dotnet/core/diagnostics/diagnostics-in-containers",
+    "https://www.nuget.org/packages/dotnet-gcdump/10.0.750501",
+    "https://learn.microsoft.com/en-us/dotnet/core/tools/dotnet-tool-install",
+    "https://learn.microsoft.com/en-us/dotnet/core/diagnostics/diagnostic-port",
+    "https://raw.githubusercontent.com/dotnet/diagnostics/ad724c4b85e7ae775e42f393c6e95a7557a57954/src/Tools/dotnet-gcdump/CommandLine/CollectCommandHandler.cs",
+    "https://raw.githubusercontent.com/dotnet/diagnostics/ad724c4b85e7ae775e42f393c6e95a7557a57954/src/Tools/dotnet-gcdump/DotNetHeapDump/EventPipeDotNetHeapDumper.cs"
+  ],
+  "tests": [
+    "SDK10.0.404 archive SHA512 matched official release metadata; runtime10.0.15 macOS ARM64",
+    "Installed dotnet-gcdump10.0.750501 with allow-roll-forward and checked version/help",
+    "Built companion net10.0 lab and captured its retained16MiB arrays",
+    "Capture succeeded with37640-byte artifact; saved-file report identified16 large byte arrays and16867924 heap bytes",
+    "Observed .NET10 lossy-buffer fallback warning and documented limitation",
+    "Eight-node seven-edge Mermaid structurally reviewed",
+    "1280x720 social image visually inspected"
+  ],
+  "limitations": [
+    "No production, Linux sidecar, memory-constrained container or large-heap test",
+    "No pause-duration or peak-memory overhead measurement",
+    "No guarantee large captures are complete",
+    "SDK checksum verified; NuGet installation reported skipping package signature verification",
+    "Mermaid not rendered"
+  ]
+}

@@ -831592,5 +831592,115 @@
       "Troubleshooting"
     ],
     "post": "2026-11-20-go-high-rss-small-pprof-heap"
+  },
+  {
+    "title": "Diagnose Go GC Assist Latency with Runtime Traces",
+    "description": "Connect slow allocation paths to GC mark assists using annotated execution traces, then interpret assist CPU and limiter metrics without confusing them with pause time.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Go",
+      "Garbage Collection",
+      "Performance"
+    ],
+    "post": "2026-11-20-go-gc-assist-latency-runtime-traces"
+  },
+  {
+    "title": "Capture a .NET GC Dump with Less Memory and Pause Risk",
+    "description": "Plan a bounded dotnet-gcdump capture with target-process memory headroom, a drained replica and artifact checks instead of treating collection as passive monitoring.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      ".NET",
+      "Garbage Collection",
+      "Troubleshooting"
+    ],
+    "post": "2026-11-20-dotnet-gcdump-production-memory-pause-risk"
+  },
+  {
+    "title": "Diagnose .NET Large Object Heap Fragmentation",
+    "description": "Combine generation-specific counters, a bounded GC trace and a managed heap dump to distinguish LOH fragmentation from retained large objects and allocation churn.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      ".NET",
+      "Garbage Collection",
+      "Performance"
+    ],
+    "post": "2026-11-20-dotnet-large-object-heap-fragmentation"
+  },
+  {
+    "title": "Reduce .NET Pinned Object Heap Pressure in Socket Services",
+    "description": "Bound socket-buffer ownership and concurrent receives, distinguish POH allocations from temporary pins, and preserve buffer lifetimes through asynchronous completion.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      ".NET",
+      "Garbage Collection",
+      "Performance"
+    ],
+    "post": "2026-11-20-dotnet-pinned-object-heap-socket-buffers"
+  },
+  {
+    "title": "Choose .NET Server or Workstation GC Under CPU Limits",
+    "description": "Verify the active GC mode and visible processors, then compare server and workstation GC under the service's actual CPU quota, memory budget and workload.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      ".NET",
+      "Garbage Collection",
+      "Kubernetes"
+    ],
+    "post": "2026-11-20-dotnet-server-workstation-gc-cpu-limits"
+  },
+  {
+    "title": "Tune .NET Heap Limits and High-Memory Thresholds in Containers",
+    "description": "Separate the container limit, GC heap budget and high-memory trigger, verify decimal versus hexadecimal settings, and test headroom before changing production limits.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      ".NET",
+      "Garbage Collection",
+      "Kubernetes"
+    ],
+    "post": "2026-11-20-dotnet-container-heap-hard-limit-high-memory"
+  },
+  {
+    "title": "Debug Python Reference Cycles Without Creating a False Leak",
+    "description": "Use gc.DEBUG_SAVEALL in an isolated Python reproduction, distinguish retained evidence from leaks, and clean up inspection references before measuring again.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Python",
+      "Garbage Collection",
+      "Troubleshooting"
+    ],
+    "post": "2026-11-20-python-debug-saveall-reference-cycles"
+  },
+  {
+    "title": "Tune Python GC Thresholds After Generation 1 Returned",
+    "description": "Recheck CPython GC settings after Python 3.14.5, measure all three generations, and compare threshold changes without confusing collection counts with performance.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Python",
+      "Garbage Collection",
+      "Performance"
+    ],
+    "post": "2026-11-20-python-gc-thresholds-restored-generation-one"
+  },
+  {
+    "title": "Capture Node.js Heap Snapshots Before a V8 Memory Crash",
+    "description": "Capture a bounded near-heap-limit snapshot, preserve it after a Node.js crash, and distinguish JavaScript heap exhaustion from container and native-memory failures.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Node.js",
+      "Garbage Collection",
+      "Troubleshooting"
+    ],
+    "post": "2026-11-20-nodejs-near-heap-limit-v8-snapshots"
+  },
+  {
+    "title": "Diagnose Teradata Error 2646 Before Adding Spool Space",
+    "description": "Diagnose Teradata spool exhaustion using per-AMP usage, profile limits, concurrent queries and plan evidence before deciding whether more space is the right fix.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Database",
+      "SQL",
+      "Troubleshooting"
+    ],
+    "post": "2026-11-20-teradata-2646-spool-exhaustion-diagnosis"
   }
 ]

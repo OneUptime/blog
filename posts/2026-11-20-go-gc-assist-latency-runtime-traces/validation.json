@@ -1,0 +1,27 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-21",
+  "runtimeTestsPerformed": true,
+  "sources": [
+    "https://go.dev/doc/gc-guide",
+    "https://pkg.go.dev/runtime/metrics@go1.25.0",
+    "https://pkg.go.dev/runtime/trace@go1.25.0",
+    "https://raw.githubusercontent.com/golang/go/go1.25.0/src/cmd/trace/main.go"
+  ],
+  "tests": [
+    "Built included annotated lab with Go1.25.0 macOS ARM64",
+    "Bounded trace produced allocation-batch task, allocate region, GC mark assist ranges and assist wait states",
+    "Corrected debug inspection to source-verified -d=parsed after numeric mode rejected",
+    "Generated scheduler pprof and read it with go tool pprof",
+    "Observed assist CPU0.052710 and limiter0; no limiter activation claimed",
+    "Eight-node seven-edge Mermaid structurally reviewed",
+    "1280x720 image visually inspected"
+  ],
+  "limitations": [
+    "No production HTTP latency benchmark or intervention comparison",
+    "No interactive trace browser inspection; timeline command source-reviewed",
+    "Annotation integration snippet uses reader application placeholders",
+    "Tracing overhead not quantified",
+    "Mermaid not rendered"
+  ]
+}
