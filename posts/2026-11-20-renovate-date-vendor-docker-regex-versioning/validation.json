@@ -1,0 +1,26 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-21",
+  "runtimeTestsPerformed": true,
+  "sources": [
+    "https://docs.renovatebot.com/modules/versioning/docker/",
+    "https://docs.renovatebot.com/modules/versioning/regex/",
+    "https://github.com/renovatebot/renovate/blob/44.257.6/lib/modules/versioning/regex/index.ts",
+    "https://docs.renovatebot.com/config-validation/",
+    "https://github.com/renovatebot/renovate/blob/44.257.6/package.json"
+  ],
+  "tests": [
+    "Renovate44.257.6 installed isolated; Node24.11.0 official Darwin archive SHA256 verified",
+    "Actual RegExpVersioningApi tested9 candidate parsing/compatibility/ordering cases including r9/r10, day/month/year rollover, older date, wrong vendor, wrong OS, latest and prerelease suffix",
+    "Confirmed malformed calendar date2026.99.99 passes grammar; article discloses no calendar validation",
+    "Article JSON equals tested configuration; pinned config-validator --strict exited0",
+    "Six-node six-edge Mermaid structurally reviewed",
+    "1280x720 social image visually reviewed"
+  ],
+  "limitations": [
+    "Native RE2 unavailable; Renovate used JavaScript RegExp fallback and validator emitted warning; native regex engine not tested",
+    "No live registry lookup, extraction, hosted run, repository write or pull request",
+    "Fictional vendor tag contract; not a claim about a real publisher",
+    "Mermaid not rendered"
+  ]
+}

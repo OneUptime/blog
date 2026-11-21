@@ -1,0 +1,27 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-21",
+  "runtimeTestsPerformed": true,
+  "sources": [
+    "https://docs.github.com/en/rest/using-the-rest-api/rate-limits-for-the-rest-api",
+    "https://docs.renovatebot.com/self-hosted-configuration/#repositories",
+    "https://github.com/renovatebot/renovate/blob/44.257.6/lib/util/http/rate-limits.ts",
+    "https://github.com/renovatebot/renovate/blob/44.257.6/lib/util/http/queue.ts",
+    "https://docs.renovatebot.com/configuration-options/#vulnerabilityalerts",
+    "https://docs.github.com/en/rest/using-the-rest-api/best-practices-for-using-the-rest-api"
+  ],
+  "tests": [
+    "Python helper assigned 10000 synthetic names exactly once across eight shards",
+    "Duplicate normalized name, URL input and invalid count rejected",
+    "Actual Renovate44.257.6 HTTP resolver yields concurrency2 and throttle1000ms for intended host; unrelated host unaffected",
+    "Exact administrative CommonJS config passed strict validator on Node24.11.0",
+    "Seven-node eight-edge Mermaid structurally checked",
+    "1280x720 social image visually reviewed"
+  ],
+  "limitations": [
+    "No API traffic, real PRs, distributed limiter or production throughput benchmark",
+    "Known native RE2 fallback warning",
+    "Hash balances counts not repository cost",
+    "Mermaid not rendered"
+  ]
+}

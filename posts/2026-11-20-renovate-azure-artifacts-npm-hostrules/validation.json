@@ -1,0 +1,26 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-21",
+  "runtimeTestsPerformed": true,
+  "sources": [
+    "https://learn.microsoft.com/en-us/azure/devops/artifacts/npm/npmrc?tabs=other&view=azure-devops",
+    "https://docs.npmjs.com/cli/v11/configuring-npm/npmrc/",
+    "https://docs.renovatebot.com/getting-started/private-packages/#add-hostrule-to-self-hosted-config",
+    "https://github.com/renovatebot/renovate/blob/44.257.6/lib/modules/manager/npm/post-update/rules.ts",
+    "https://docs.renovatebot.com/modules/platform/azure/",
+    "https://learn.microsoft.com/en-us/azure/devops/artifacts/feeds/feed-permissions?view=azure-devops"
+  ],
+  "tests": [
+    "Actual Renovate44.257.6 host-rule matching with synthetic credential: intended npm feed matches; other feed/project/npmjs and docker host type do not",
+    "Actual npm artifact helper produces feed-scoped username/_password with single base64 encoding of synthetic raw password; secret not printed",
+    "Exact article CommonJS config passed pinned strict validator on Node24.11.0",
+    "Seven-node seven-edge Mermaid structurally reviewed",
+    "1280x720 social image visually reviewed"
+  ],
+  "limitations": [
+    "Native RE2 unavailable; known RegExp fallback warning during config validation",
+    "No real PAT, Azure request, feed permission check, private package install, lockfile update or PR",
+    "Additional sibling download URL scopes require inspection against actual feed",
+    "Mermaid not rendered"
+  ]
+}

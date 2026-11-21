@@ -1,0 +1,26 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-21",
+  "runtimeTestsPerformed": true,
+  "sources": [
+    "https://docs.renovatebot.com/self-hosted-configuration/#cachedir",
+    "https://github.com/renovatebot/renovate/blob/44.257.6/lib/modules/manager/npm/post-update/index.ts",
+    "https://docs.npmjs.com/cli/v11/commands/npm-cache/",
+    "https://docs.github.com/en/actions/reference/workflows-and-actions/dependency-caching"
+  ],
+  "tests": [
+    "Actual Renovate44.257.6 local repository-cache save/load roundtrip through fresh instance",
+    "Different repository fingerprint rejected cached marker",
+    "Actual ensureCacheDir npm resolves cacheDir/others/npm",
+    "npm11.6.1 cache verify passed on isolated empty cache; zero entries explicitly acknowledged",
+    "Exact JSON passed strict validator on Node24.11.0",
+    "Six-node six-edge Mermaid structurally checked",
+    "1280x720 social image visually inspected"
+  ],
+  "limitations": [
+    "No hosted CI restore/upload, private package download, concurrency or performance benchmark",
+    "Native RE2 fallback warning",
+    "Repository cache marker synthetic; no real extraction",
+    "Mermaid not rendered"
+  ]
+}

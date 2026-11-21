@@ -1,0 +1,22 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-21",
+  "runtimeTestsPerformed": true,
+  "sources": [
+    "https://docs.renovatebot.com/configuration-options/#vulnerabilityalerts",
+    "https://github.com/renovatebot/renovate/blob/44.257.6/lib/util/minimum-release-age.ts",
+    "https://docs.renovatebot.com/key-concepts/minimum-release-age/",
+    "https://docs.npmjs.com/cli/v11/using-npm/config/#before"
+  ],
+  "tests": [
+    "Eight actual Renovate44.257.6 helper assertions: young/old/no timestamp, optional timestamp, synthetic security override young/missing, package-manager max and security zero",
+    "Exact JSON passed strict validator on Node24.11.0",
+    "Eight-node eight-edge Mermaid structurally checked",
+    "1280x720 social image visually reviewed"
+  ],
+  "limitations": [
+    "Native RE2 unavailable, RegExp fallback warning",
+    "No real registry lookup, alert ingestion, package-manager execution, lockfile generation or PR",
+    "Mermaid not rendered"
+  ]
+}

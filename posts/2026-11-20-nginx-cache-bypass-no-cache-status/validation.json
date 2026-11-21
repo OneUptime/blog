@@ -1,0 +1,22 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-21",
+  "runtimeTestsPerformed": true,
+  "sources": [
+    "https://nginx.org/en/docs/http/ngx_http_proxy_module.html#proxy_cache_bypass",
+    "https://nginx.org/en/docs/http/ngx_http_upstream_module.html#var_upstream_cache_status",
+    "https://nginx.org/en/docs/http/ngx_http_map_module.html",
+    "https://nginx.org/en/docs/http/ngx_http_log_module.html#log_format"
+  ],
+  "tests": [
+    "NGINX1.30.7 fixture: normal MISS/HIT; no-store repeated MISS and incrementing origin counter; bypass then HIT; no-store on existing entry HIT; both bypass/no-store then ordinary MISS; private response repeated MISS",
+    "Exact article config with local cache path passed nginx -t",
+    "Eight-node eight-edge Mermaid structurally reviewed",
+    "1280x720 social image visually reviewed"
+  ],
+  "limitations": [
+    "Single-worker loopback HTTP fixture; runtime cache key used URI for isolated same-origin paths while article includes scheme/host",
+    "No concurrency, expiry, revalidation, stale behavior, CDN/browser or production tests",
+    "Mermaid not rendered"
+  ]
+}

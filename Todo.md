@@ -2084,20 +2084,40 @@ Research: [OneUptime air-gapped alerting](https://oneuptime.com/enterprise/air-g
     Completed: [Article](posts/2026-11-20-nginx-njs-jwt-rotating-jwks-cache/README.md) (20 November 2026).
 20. How to Debug NGINX Cache Bypass and No-Cache Decisions with $upstream_cache_status
 
+    Completed: [Article](posts/2026-11-20-nginx-cache-bypass-no-cache-status/README.md) (20 November 2026).
+
 ## Renovate
 
 7. How to Handle Date-Based and Vendor-Suffixed Docker Tags with Renovate Regex Versioning
+
+    Completed: [Article](posts/2026-11-20-renovate-date-vendor-docker-regex-versioning/README.md) (20 November 2026).
 8. How to Pin Docker Images by Tag and Digest with Renovate Without Switching Image Variants
+
+    Completed: [Article](posts/2026-11-20-renovate-docker-tag-digest-image-variants/README.md) (20 November 2026).
 9. How to Authenticate Self-Hosted Renovate to Azure Artifacts npm Registries with hostRules
+
+    Completed: [Article](posts/2026-11-20-renovate-azure-artifacts-npm-hostrules/README.md) (20 November 2026).
 10. How to Configure Renovate for Private Go Modules on GitHub or GitLab Without Leaking Tokens
+
+    Completed: [Article](posts/2026-11-20-renovate-private-go-modules-github-gitlab/README.md) (20 November 2026).
 13. How to Gate Major Renovate Updates Through the Dependency Dashboard While Shipping Security Fixes Immediately
+
+    Completed: [Article](posts/2026-11-20-renovate-major-dashboard-approval-security-fixes/README.md) (20 November 2026).
 14. How to Delay Renovate PRs Until a Release Has Aged Without Blocking Vulnerability Remediation
+
+    Completed: [Article](posts/2026-11-20-renovate-release-age-security-remediation/README.md) (20 November 2026).
 19. How to Persist Renovate Repository and Package-Manager Caches Across Ephemeral CI Runs
+
+    Completed: [Article](posts/2026-11-20-persist-renovate-caches-ephemeral-ci/README.md) (20 November 2026).
 20. How to Scale Self-Hosted Renovate Across Thousands of Repositories Without Hitting API or PR Rate Limits
+
+    Completed: [Article](posts/2026-11-20-scale-renovate-repositories-api-pr-limits/README.md) (20 November 2026).
 
 ## Garbage Collection
 
 1. How to Read Unified JVM GC Logs and Correlate Stop-the-World Pauses with p99 Latency
+
+    Completed: [Article](posts/2026-11-20-jvm-gc-logs-stop-the-world-p99-latency/README.md) (20 November 2026).
 2. How to Diagnose G1 “to-space exhausted” Events Before They Become Full GCs
 3. How to Find and Reduce G1 Humongous Allocations That Fragment the Old Generation
 4. How to Tune G1 IHOP and G1ReservePercent When Concurrent Marking Finishes Too Late

@@ -1,0 +1,25 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-21",
+  "runtimeTestsPerformed": true,
+  "sources": [
+    "https://docs.renovatebot.com/key-concepts/dashboard/",
+    "https://docs.renovatebot.com/configuration-options/#vulnerabilityalerts",
+    "https://docs.github.com/en/code-security/dependabot/dependabot-alerts/about-dependabot-alerts",
+    "https://github.com/renovatebot/renovate/blob/44.257.6/lib/workers/repository/process/vulnerabilities.ts",
+    "https://docs.renovatebot.com/key-concepts/automerge/"
+  ],
+  "tests": [
+    "Exact JSON passed Renovate44.257.6 strict validation on Node24.11.0",
+    "Actual defaults/merge/package-rule helpers: routine major approval true, minor/patch false; all automerge false",
+    "Source-shaped forced vulnerability override bypasses major approval and retains immediate PR creation and automerge false",
+    "Eight-node nine-edge Mermaid structurally reviewed",
+    "1280x720 social image visually reviewed"
+  ],
+  "limitations": [
+    "Native RE2 unavailable; validator used RegExp fallback",
+    "No live GitHub alerts, dashboard checkbox interaction, branch/PR creation or deployment",
+    "Security candidate supplied synthetically; ingestion not tested",
+    "Mermaid not rendered"
+  ]
+}

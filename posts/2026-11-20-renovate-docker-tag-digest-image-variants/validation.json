@@ -1,0 +1,26 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-21",
+  "runtimeTestsPerformed": true,
+  "sources": [
+    "https://docs.docker.com/reference/cli/docker/image/pull/#pull-an-image-by-digest-immutable-identifier",
+    "https://docs.renovatebot.com/docker/#digest-pinning",
+    "https://docs.renovatebot.com/modules/versioning/docker/",
+    "https://docs.docker.com/build/building/multi-platform/#difference-between-single-platform-and-multi-platform-images",
+    "https://docs.docker.com/reference/cli/docker/buildx/imagetools/inspect/",
+    "https://github.com/renovatebot/renovate/blob/44.257.6/lib/modules/manager/dockerfile/extract.ts"
+  ],
+  "tests": [
+    "Renovate44.257.6 Dockerfile extractor on synthetic tag-only and tag+64hex digest references preserved package/tag/digest fields",
+    "Actual Docker versioning API seven compatibility cases: same suffix patch/minor/major true; alternate distro, nonslim, another distro release and precision change false",
+    "Exact article JSON passed pinned config-validator --strict on Node24.11.0 with RE2 fallback warning",
+    "Seven-node six-edge Mermaid structurally reviewed",
+    "1280x720 social image visually reviewed"
+  ],
+  "limitations": [
+    "Native RE2 unavailable; JavaScript RegExp fallback used",
+    "No registry authentication/lookup, digest resolution, image pull, build, platform selection or PR run",
+    "Synthetic image and digest; Buildx inspect command source reviewed only",
+    "Mermaid not rendered"
+  ]
+}

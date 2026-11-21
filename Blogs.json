@@ -831372,5 +831372,115 @@
       "Security"
     ],
     "post": "2026-11-20-nginx-njs-jwt-rotating-jwks-cache"
+  },
+  {
+    "title": "Debug NGINX Cache Bypass and No-Cache Decisions",
+    "description": "Explain repeated MISS and BYPASS responses by separating cache reads from cache writes, logging decision inputs, and testing a controlled origin.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Nginx",
+      "Caching",
+      "Troubleshooting"
+    ],
+    "post": "2026-11-20-nginx-cache-bypass-no-cache-status"
+  },
+  {
+    "title": "Handle Date and Vendor Docker Tags with Renovate Regex Versioning",
+    "description": "Teach Renovate to order calendar-based image tags and vendor rebuilds while keeping incompatible image variants on separate update paths.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Renovate",
+      "Docker",
+      "DevOps"
+    ],
+    "post": "2026-11-20-renovate-date-vendor-docker-regex-versioning"
+  },
+  {
+    "title": "Pin Docker Tags and Digests with Renovate Without Variant Changes",
+    "description": "Keep readable image tags and immutable digests together, preserve suffix compatibility, and review digest updates separately from image migrations.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Renovate",
+      "Docker",
+      "DevOps"
+    ],
+    "post": "2026-11-20-renovate-docker-tag-digest-image-variants"
+  },
+  {
+    "title": "Authenticate Renovate to Azure Artifacts npm with hostRules",
+    "description": "Configure feed-specific credentials for self-hosted Renovate, distinguish raw PATs from npm encoding, and test lookup and lockfile authentication separately.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Renovate",
+      "Azure",
+      "npm"
+    ],
+    "post": "2026-11-20-renovate-azure-artifacts-npm-hostrules"
+  },
+  {
+    "title": "Configure Renovate for Private Go Modules Without Exposing Tokens",
+    "description": "Separate Go module discovery from Git downloads, scope GitHub and GitLab credentials, and keep private dependency tokens out of repository configuration.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Renovate",
+      "Go",
+      "Security"
+    ],
+    "post": "2026-11-20-renovate-private-go-modules-github-gitlab"
+  },
+  {
+    "title": "Gate Renovate Major Updates Without Delaying Security Fixes",
+    "description": "Require dashboard approval for routine major upgrades while letting recognized vulnerability fixes create pull requests without that extra gate.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Renovate",
+      "Security",
+      "DevOps"
+    ],
+    "post": "2026-11-20-renovate-major-dashboard-approval-security-fixes"
+  },
+  {
+    "title": "Delay Renovate Releases Without Blocking Vulnerability Fixes",
+    "description": "Add a release-age waiting period for routine Renovate updates, handle missing timestamps, and diagnose security fixes blocked during lockfile generation.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Renovate",
+      "Security",
+      "DevOps"
+    ],
+    "post": "2026-11-20-renovate-release-age-security-remediation"
+  },
+  {
+    "title": "Persist Renovate Caches Across Ephemeral CI Runs",
+    "description": "Keep Renovate extraction and package caches between disposable CI jobs, separate them from checkouts, and verify that restored data is useful and safe.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Renovate",
+      "Caching",
+      "DevOps"
+    ],
+    "post": "2026-11-20-persist-renovate-caches-ephemeral-ci"
+  },
+  {
+    "title": "Scale Renovate Across Repositories Within API and PR Limits",
+    "description": "Divide Renovate repository ownership, budget API requests separately from pull requests, and roll out workers without multiplying load unexpectedly.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Renovate",
+      "DevOps",
+      "GitHub"
+    ],
+    "post": "2026-11-20-scale-renovate-repositories-api-pr-limits"
+  },
+  {
+    "title": "Correlate JVM GC Pauses with p99 Request Latency",
+    "description": "Read unified G1 garbage-collection logs, avoid double-counting pause events, and compare them with per-instance latency before blaming GC for slow requests.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Java",
+      "Garbage Collection",
+      "Monitoring"
+    ],
+    "post": "2026-11-20-jvm-gc-logs-stop-the-world-p99-latency"
   }
 ]

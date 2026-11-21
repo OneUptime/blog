@@ -1,0 +1,26 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-21",
+  "runtimeTestsPerformed": true,
+  "sources": [
+    "https://docs.renovatebot.com/modules/manager/gomod/",
+    "https://go.dev/ref/mod#private-modules",
+    "https://docs.renovatebot.com/getting-started/private-packages/",
+    "https://github.com/renovatebot/renovate/blob/44.257.6/lib/util/git/auth.ts",
+    "https://docs.renovatebot.com/golang/#private-go-modules-hosted-on-gitlab",
+    "https://docs.gitlab.com/user/project/use_project_as_go_package/"
+  ],
+  "tests": [
+    "Actual Renovate44.257.6 HTTP host matching: intended GitHub organization/API paths match; sibling and similarly named paths excluded",
+    "Actual Git environment generation observed slash removal and broader prefix matching; documented limitation",
+    "Actual GitLab Basic host rule matching with synthetic password; unrelated host excluded",
+    "Exact CommonJS configuration passed strict validator on Node24.11.0",
+    "Seven-node six-edge Mermaid structurally reviewed",
+    "1280x720 social image visually reviewed"
+  ],
+  "limitations": [
+    "No real hosting credentials, remote discovery, private downloads, container mounts or PRs",
+    "Native RE2 unavailable; JavaScript RegExp fallback warning",
+    "Mermaid not rendered"
+  ]
+}

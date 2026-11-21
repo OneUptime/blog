@@ -1,0 +1,26 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-21",
+  "runtimeTestsPerformed": true,
+  "sources": [
+    "https://docs.oracle.com/en/java/javase/17/gctuning/garbage-first-g1-garbage-collector1.html",
+    "https://docs.oracle.com/en/java/javase/17/docs/specs/man/java.html",
+    "https://prometheus.io/docs/prometheus/latest/querying/functions/#histogram_quantile",
+    "https://prometheus.io/docs/practices/histograms/",
+    "https://docs.oracle.com/en/java/javase/17/gctuning/garbage-first-garbage-collector-tuning.html"
+  ],
+  "tests": [
+    "Zulu OpenJDK17.0.16+8 local allocation lab with G1 and exact article logging options (lab path substituted)",
+    "Python parser extracted15 real G1 summaries uniquely, excluding start/phase/CPU/safepoint entries",
+    "Prometheus3.7.3 promtool check rules accepted classic histogram p99 query",
+    "Six-node five-edge Mermaid structurally reviewed",
+    "1280x720 social image visually inspected"
+  ],
+  "limitations": [
+    "No HTTP service, real p99 dataset, trace join or causal latency benchmark",
+    "64MB lab heap is not production sizing guidance",
+    "Rotation settings accepted but rollover not forced",
+    "Parser scoped to specified JDK17 G1 layout",
+    "Mermaid not rendered"
+  ]
+}
