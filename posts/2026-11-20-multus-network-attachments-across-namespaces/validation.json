@@ -1,0 +1,27 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-21",
+  "runtimeTestsPerformed": false,
+  "sources": [
+    "https://github.com/k8snetworkplumbingwg/multus-cni/blob/v4.3.1/docs/how-to-use.md",
+    "https://github.com/k8snetworkplumbingwg/multus-cni/blob/v4.3.1/pkg/k8sclient/k8sclient.go",
+    "https://github.com/k8snetworkplumbingwg/multus-cni/blob/v4.3.1/docs/configuration.md",
+    "https://github.com/k8snetworkplumbingwg/multus-cni/blob/v4.3.1/pkg/types/conf.go",
+    "https://kubernetes.io/docs/reference/access-authn-authz/rbac/",
+    "https://kubernetes.io/docs/reference/access-authn-authz/validating-admission-policy/"
+  ],
+  "tests": [
+    "Parsed two YAML fragments and embedded annotation JSON",
+    "Checked config boolean/string types and explicit shared namespace",
+    "Checked read-only Role exact resourceName and get verb",
+    "Reviewed Multus v4.3.1 namespace check and default global namespace loader",
+    "Seven-node six-edge Mermaid structurally reviewed",
+    "Generated 1280x720 image visually inspected"
+  ],
+  "limitations": [
+    "No live Kubernetes RBAC, admission, CNI attachment or negative security tests",
+    "No complete admission policy implementation supplied; selective sharing requires an independently tested admission mechanism",
+    "Examples are fragments and a standalone Role, not a complete deployment",
+    "Mermaid not rendered"
+  ]
+}

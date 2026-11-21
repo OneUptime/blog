@@ -1,0 +1,28 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-21",
+  "runtimeTestsPerformed": false,
+  "sources": [
+    "https://www.cni.dev/plugins/current/main/macvlan/",
+    "https://www.freedesktop.org/software/systemd/man/latest/systemd.link.html",
+    "https://github.com/k8snetworkplumbingwg/multus-cni/blob/v4.3.1/docs/how-to-use.md",
+    "https://github.com/k8snetworkplumbingwg/multus-cni/blob/v4.3.1/docs/configuration.md",
+    "https://github.com/k8snetworkplumbingwg/whereabouts/blob/v0.9.4/README.md",
+    "https://kubernetes.io/docs/concepts/scheduling-eviction/assign-pod-node/"
+  ],
+  "tests": [
+    "Parsed two YAML fragments and local delegate JSON",
+    "Verified empty NAD name matches CNI name and readiness selector is a string",
+    "Rendered two parent-name substitutions while preserving logical network name",
+    "All shell blocks passed bash -n",
+    "Reviewed Multus v4.3.1 file-backed NAD lookup and confDir documentation",
+    "Six-node six-edge Mermaid structurally reviewed",
+    "1280x720 social image visually inspected"
+  ],
+  "limitations": [
+    "No node configuration, filesystem mounts, interface renaming, CNI execution or scheduling tests",
+    "Whereabouts and node preparation are explicit prerequisites, not installed by examples",
+    "JSON substitution checks are not CNI runtime validation",
+    "Mermaid not rendered"
+  ]
+}

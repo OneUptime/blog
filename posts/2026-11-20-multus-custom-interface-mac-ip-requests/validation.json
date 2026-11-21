@@ -1,0 +1,29 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-21",
+  "runtimeTestsPerformed": true,
+  "sources": [
+    "https://github.com/k8snetworkplumbingwg/multus-cni/blob/v4.3.1/pkg/types/types.go",
+    "https://github.com/k8snetworkplumbingwg/multus-cni/blob/v4.3.1/pkg/types/conf.go",
+    "https://www.cni.dev/docs/conventions/",
+    "https://www.cni.dev/plugins/current/ipam/static/",
+    "https://github.com/containernetworking/plugins/blob/v1.8.0/plugins/main/macvlan/macvlan.go",
+    "https://github.com/containernetworking/plugins/blob/v1.8.0/plugins/ipam/static/main.go",
+    "https://github.com/k8snetworkplumbingwg/multus-cni/blob/v4.3.1/docs/how-to-use.md"
+  ],
+  "tests": [
+    "Built official CNI plugins v1.8.0 static IPAM locally with Go1.25.0",
+    "Executed static IPAM ADD with runtimeConfig.ips: requested CIDR returned; malformed request rejected",
+    "Parsed both YAML fragments and nested JSON; verified NAD/name linkage, capability booleans, valid CIDR, short interface and locally administered unicast MAC",
+    "Shell block passed bash -n",
+    "Reviewed Multus v4.3.1 forwarding and CNI plugins v1.8.0 macvlan/static source",
+    "Seven-node seven-edge Mermaid structurally reviewed",
+    "1280x720 image visually inspected"
+  ],
+  "limitations": [
+    "Component test only: no Linux interface, MAC assignment, Multus CNI chain or Kubernetes attachment execution",
+    "No actual address reservation, upstream connectivity or admission tests",
+    "Static IPAM is not a cluster-wide reservation allocator",
+    "Mermaid not rendered"
+  ]
+}

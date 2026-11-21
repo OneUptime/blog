@@ -1,0 +1,28 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-21",
+  "runtimeTestsPerformed": true,
+  "sources": [
+    "https://man7.org/linux/man-pages/man8/ip-route.8.html",
+    "https://github.com/containernetworking/plugins/blob/v1.8.0/plugins/main/macvlan/macvlan.go",
+    "https://man7.org/linux/man-pages/man8/ip-link.8.html",
+    "https://www.cni.dev/plugins/current/main/macvlan/",
+    "https://www.cni.dev/plugins/current/ipam/host-local/",
+    "https://man7.org/linux/man-pages/man8/ip-neighbour.8.html",
+    "https://github.com/the-tcpdump-group/tcpdump/blob/tcpdump-4.99.5/tcpdump.1.in"
+  ],
+  "tests": [
+    "All shell blocks passed bash -n",
+    "ARP host filter compiled offline against an empty Ethernet PCAP using Apple tcpdump4.99.1/libpcap1.10.1",
+    "Reviewed tcpdump4.99.5 official option manual and CNI plugins1.8.0 macvlan source",
+    "Reviewed iproute2 link, route and neighbor-state documentation",
+    "Six-node five-edge Mermaid structurally reviewed",
+    "1280x720 social image visually inspected"
+  ],
+  "limitations": [
+    "No live packet capture, Kubernetes cluster, Linux network setup or switch tests",
+    "Filter compilation establishes syntax for Ethernet, not capture visibility or fault location",
+    "IPv4 shared-L2 scope; routed, cloud and IPv6 designs require separate assessment",
+    "Mermaid not rendered"
+  ]
+}

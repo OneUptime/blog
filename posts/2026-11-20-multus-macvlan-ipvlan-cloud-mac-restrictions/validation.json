@@ -1,0 +1,31 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-21",
+  "runtimeTestsPerformed": false,
+  "sources": [
+    "https://www.cni.dev/plugins/current/main/macvlan/",
+    "https://www.cni.dev/plugins/current/main/ipvlan/",
+    "https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/using-eni.html",
+    "https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/managing-network-interface-ip-addresses.html",
+    "https://docs.kernel.org/networking/ipvlan.html",
+    "https://github.com/containernetworking/plugins/blob/v1.8.0/plugins/main/ipvlan/ipvlan.go",
+    "https://www.cni.dev/plugins/current/ipam/static/",
+    "https://docs.docker.com/engine/network/drivers/macvlan/",
+    "https://docs.docker.com/engine/network/drivers/ipvlan/"
+  ],
+  "tests": [
+    "Parsed NAD YAML and embedded CNI JSON",
+    "Checked explicit ipvlan l2, one static IP, valid CIDR and absence of routes",
+    "Shell block passed bash -n",
+    "CNI plugins v1.8.0 ipvlan mode parser reviewed at 0e648479e11c2c6d9109b14fc0c9ac64c677861b",
+    "Reviewed official CNI, Linux kernel, AWS and Docker driver documentation",
+    "Seven-node six-edge Mermaid structurally reviewed",
+    "1280x720 generated social image visually inspected"
+  ],
+  "limitations": [
+    "No Linux ipvlan/macvlan runtime, cloud registration, CNI invocation or packet tests",
+    "Single-Pod static-address example is not a production allocator or cloud-provider support claim",
+    "Docker references describe driver behavior, not Multus installation",
+    "Mermaid not rendered"
+  ]
+}

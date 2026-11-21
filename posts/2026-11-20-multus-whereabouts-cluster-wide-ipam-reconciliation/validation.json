@@ -1,0 +1,27 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-21",
+  "runtimeTestsPerformed": false,
+  "sources": [
+    "https://github.com/k8snetworkplumbingwg/whereabouts/blob/v0.9.4/README.md",
+    "https://github.com/k8snetworkplumbingwg/whereabouts/blob/v0.9.4/doc/crds/reconciler-deployment.yaml",
+    "https://github.com/k8snetworkplumbingwg/whereabouts/blob/v0.9.4/deployment/whereabouts-chart/values.yaml",
+    "https://github.com/k8snetworkplumbingwg/whereabouts/blob/v0.9.4/doc/crds/whereabouts.cni.cncf.io_ippools.yaml",
+    "https://github.com/k8snetworkplumbingwg/whereabouts/blob/v0.9.4/pkg/storage/kubernetes/ipam.go",
+    "https://github.com/k8snetworkplumbingwg/whereabouts/blob/v0.9.4/pkg/reconciler/iploop.go"
+  ],
+  "tests": [
+    "Parsed NAD YAML and embedded CNI JSON",
+    "Validated range boundaries and exclusion with Python ipaddress; twenty candidate addresses",
+    "Shell examples passed bash -n",
+    "Reviewed tagged v0.9.4 allocation, CRD, reconciler and manifest sources at 3a262bd0cd873e13d9b379342f8251b852a89b8f",
+    "Eight-node seven-edge Mermaid structurally reviewed",
+    "Generated 1280x720 social image visually inspected"
+  ],
+  "limitations": [
+    "No live Whereabouts allocation, Kubernetes API, reconciliation, node fencing or packet tests",
+    "No chart installation or image execution; reference manifests contain version drift described explicitly",
+    "Local arithmetic is not execution of the Whereabouts allocator",
+    "Mermaid not rendered"
+  ]
+}

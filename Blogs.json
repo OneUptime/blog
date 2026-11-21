@@ -830711,5 +830711,115 @@
       "RBAC"
     ],
     "post": "2026-11-20-deploy-cyberark-secrets-provider-kubernetes-least-privilege"
+  },
+  {
+    "title": "Troubleshoot Conjur Kubernetes Authentication Step by Step",
+    "description": "Separate Conjur TLS, certificate requests, Kubernetes identity, and token-volume failures with a staged diagnosis that preserves secret confidentiality.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "CyberArk",
+      "Kubernetes",
+      "Troubleshooting"
+    ],
+    "post": "2026-11-20-troubleshoot-conjur-kubernetes-authentication"
+  },
+  {
+    "title": "Debug Multus Secondary-Network Failures in ContainerCreating Pods",
+    "description": "Trace a Multus sandbox failure from Pod events to its network attachment, delegated plugin, node prerequisites, and IP address allocation.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Multus",
+      "Kubernetes",
+      "Troubleshooting"
+    ],
+    "post": "2026-11-20-debug-multus-secondary-network-containercreating"
+  },
+  {
+    "title": "Keep Cluster DNS Working with a Multus Secondary Default Route",
+    "description": "Move a Pod's default route to a Multus attachment while preserving the primary paths needed for cluster DNS, Services, and application dependencies.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Multus",
+      "Kubernetes",
+      "DNS"
+    ],
+    "post": "2026-11-20-multus-secondary-default-route-cluster-dns"
+  },
+  {
+    "title": "Allocate Multus IPs with Whereabouts and Reconcile Stale Leases",
+    "description": "Use Whereabouts for shared secondary-network address allocation, inspect allocation records, and investigate stale or duplicate addresses without deleting active leases.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Multus",
+      "Kubernetes",
+      "Networking"
+    ],
+    "post": "2026-11-20-multus-whereabouts-cluster-wide-ipam-reconciliation"
+  },
+  {
+    "title": "Share Multus Network Attachments Across Namespaces Safely",
+    "description": "Reference shared Multus networks explicitly, understand namespace isolation and global exceptions, and separate NAD ownership from workload attachment permission.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Multus",
+      "Kubernetes",
+      "Security"
+    ],
+    "post": "2026-11-20-multus-network-attachments-across-namespaces"
+  },
+  {
+    "title": "Choose Macvlan or IPvlan for Multus on Restricted Cloud Networks",
+    "description": "Compare macvlan and ipvlan by MAC behavior, cloud IP ownership, routing, and application requirements before changing a Multus secondary network.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Multus",
+      "Kubernetes",
+      "Networking"
+    ],
+    "post": "2026-11-20-multus-macvlan-ipvlan-cloud-mac-restrictions"
+  },
+  {
+    "title": "Recover Multus After a Reboot When the Shim Cannot Find the Pod",
+    "description": "Diagnose post-reboot Multus Pod lookup failures by comparing Pod identity, node-local daemon state, API access, and runtime sandbox evidence before recovery.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Multus",
+      "Kubernetes",
+      "Troubleshooting"
+    ],
+    "post": "2026-11-20-multus-shim-pod-not-found-node-reboot"
+  },
+  {
+    "title": "Debug Multus Macvlan Traffic That Fails Between Nodes",
+    "description": "Trace a same-node-only macvlan failure through interface selection, address allocation, neighbor discovery, VLANs, and upstream MAC restrictions.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Multus",
+      "Kubernetes",
+      "Troubleshooting"
+    ],
+    "post": "2026-11-20-multus-macvlan-same-node-cross-node-failure"
+  },
+  {
+    "title": "Configure Multus Delegates When Node Interface Names Differ",
+    "description": "Map one logical Multus network to different node interfaces using managed local delegate files or explicit node-pool attachments and scheduling constraints.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Multus",
+      "Kubernetes",
+      "Networking"
+    ],
+    "post": "2026-11-20-multus-delegates-different-node-interface-names"
+  },
+  {
+    "title": "Request Custom Interface Names, MACs, and IPs in Multus",
+    "description": "Request a named secondary interface and specific MAC and IP addresses, then verify capability forwarding and support in the selected CNI and IPAM plugins.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Multus",
+      "Kubernetes",
+      "Networking"
+    ],
+    "post": "2026-11-20-multus-custom-interface-mac-ip-requests"
   }
 ]

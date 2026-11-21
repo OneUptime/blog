@@ -1897,17 +1897,37 @@ Research: [OneUptime air-gapped alerting](https://oneuptime.com/enterprise/air-g
     Completed: [Article](posts/2026-11-20-deploy-cyberark-secrets-provider-kubernetes-least-privilege/README.md) (20 November 2026).
 20. How to Troubleshoot CyberArk Conjur Kubernetes Authentication: TLS, CSR, ServiceAccount, and Token Volume Failures
 
+    Completed: [Article](posts/2026-11-20-troubleshoot-conjur-kubernetes-authentication/README.md) (20 November 2026).
+
 ## Multus
 
 1. How to Debug a Pod Stuck in ContainerCreating After Multus Fails to Add a Secondary Network
+
+    Completed: [Article](posts/2026-11-20-debug-multus-secondary-network-containercreating/README.md) (20 November 2026).
 2. How to Set a Multus Secondary Interface as the Pod’s Default Route Without Breaking Cluster DNS
+
+    Completed: [Article](posts/2026-11-20-multus-secondary-default-route-cluster-dns/README.md) (20 November 2026).
 3. How to Allocate Cluster-Wide Multus IPs with Whereabouts and Reconcile Stale or Duplicate Leases
+
+    Completed: [Article](posts/2026-11-20-multus-whereabouts-cluster-wide-ipam-reconciliation/README.md) (20 November 2026).
 4. How to Attach NetworkAttachmentDefinitions Across Namespaces Safely in Multus
+
+    Completed: [Article](posts/2026-11-20-multus-network-attachments-across-namespaces/README.md) (20 November 2026).
 5. How to Choose Macvlan vs IPvlan for Multus on Clouds That Reject Multiple MAC Addresses
+
+    Completed: [Article](posts/2026-11-20-multus-macvlan-ipvlan-cloud-mac-restrictions/README.md) (20 November 2026).
 6. How to Restore Multus Networking After a Node Reboot When multus-shim Cannot Find the Pod
+
+    Completed: [Article](posts/2026-11-20-multus-shim-pod-not-found-node-reboot/README.md) (20 November 2026).
 7. How to Diagnose Multus Macvlan Pods That Communicate on One Node but Not Across Nodes
+
+    Completed: [Article](posts/2026-11-20-multus-macvlan-same-node-cross-node-failure/README.md) (20 November 2026).
 8. How to Configure Delegated CNIs for Multus Nodes with Different Host Interface Names
+
+    Completed: [Article](posts/2026-11-20-multus-delegates-different-node-interface-names/README.md) (20 November 2026).
 9. How to Request Custom Interface Names, MAC Addresses, and IPs in Multus—and Verify Delegated CNI Support
+
+    Completed: [Article](posts/2026-11-20-multus-custom-interface-mac-ip-requests/README.md) (20 November 2026).
 10. How to Read and Validate the Multus network-status Annotation for Multi-Network Pods
 11. How to Run the Multus DHCP Daemon and Troubleshoot Pods That Never Receive a Lease
 12. How to Combine Cilium as the Primary CNI with Multus Without Losing Secondary Interfaces

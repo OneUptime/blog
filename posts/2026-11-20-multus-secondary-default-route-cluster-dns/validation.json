@@ -1,0 +1,26 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-21",
+  "runtimeTestsPerformed": false,
+  "sources": [
+    "https://kubernetes.io/docs/concepts/services-networking/dns-pod-service/",
+    "https://kubernetes.io/docs/tasks/administer-cluster/nodelocaldns/",
+    "https://github.com/k8snetworkplumbingwg/multus-cni/blob/v4.3.1/docs/how-to-use.md",
+    "https://github.com/k8snetworkplumbingwg/multus-cni/blob/v4.3.1/pkg/multus/multus.go",
+    "https://man7.org/linux/man-pages/man8/ip-route.8.html",
+    "https://www.cni.dev/plugins/current/meta/sbr/"
+  ],
+  "tests": [
+    "YAML metadata fragment parsed with PyYAML; embedded JSON annotation and gateway address checked",
+    "All Bash blocks passed bash -n",
+    "Multus v4.3.1 default-route documentation and gateway handling source inspected",
+    "Eight-node seven-edge Mermaid structurally reviewed",
+    "1280x720 social image visually inspected"
+  ],
+  "limitations": [
+    "No live Pod network setup, route modification, DNS or traffic tests",
+    "Primary CNI behavior and IPv6 require deployment-specific assessment",
+    "Diagnostic route example requires verified primary gateway and approved namespace-scoped administration; not a persistent configuration",
+    "Mermaid not rendered"
+  ]
+}

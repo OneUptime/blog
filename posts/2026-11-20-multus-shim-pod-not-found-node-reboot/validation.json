@@ -1,0 +1,28 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-21",
+  "runtimeTestsPerformed": false,
+  "sources": [
+    "https://github.com/k8snetworkplumbingwg/multus-cni/issues/1361",
+    "https://kubernetes.io/docs/concepts/workloads/pods/pod-lifecycle/",
+    "https://github.com/k8snetworkplumbingwg/multus-cni/blob/v4.3.1/deployments/multus-daemonset-thick.yml",
+    "https://github.com/k8snetworkplumbingwg/multus-cni/blob/v4.3.1/pkg/server/server.go",
+    "https://github.com/k8snetworkplumbingwg/multus-cni/blob/v4.3.1/pkg/multus/multus.go",
+    "https://kubernetes.io/docs/tasks/debug/debug-cluster/crictl/",
+    "https://kubernetes.io/docs/reference/kubectl/generated/kubectl_logs/"
+  ],
+  "tests": [
+    "All shell blocks passed bash -n",
+    "Reviewed Multus v4.3.1 daemon informer filtering, startup synchronization, UID checks, live-query fallback and missing-Pod ADD handling",
+    "Verified upstream deployment labels, container and node-name injection",
+    "Reviewed Kubernetes Pod lifecycle and crictl inspection documentation",
+    "Eight-node seven-edge Mermaid structurally reviewed",
+    "1280x720 social image visually inspected"
+  ],
+  "limitations": [
+    "No live reboot, API/informer, runtime sandbox, CNI or network tests",
+    "Historical issue is a symptom reference, not a proven root cause or universal workaround",
+    "Read-only command examples require correct context, node and runtime configuration",
+    "Mermaid not rendered"
+  ]
+}
