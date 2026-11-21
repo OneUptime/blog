@@ -830050,5 +830050,115 @@
       "Performance"
     ],
     "post": "2026-11-20-size-dpdk-hugepages-per-numa-socket"
+  },
+  {
+    "title": "Fix KVM Huge-Page Startup Failures: NUMA, Memlock, and XML",
+    "description": "Trace huge-page-backed KVM startup failures through guest-to-host NUMA mappings, per-node page capacity, memory locking, and libvirt XML validation.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "KVM",
+      "HugePages",
+      "Troubleshooting"
+    ],
+    "post": "2026-11-20-kvm-hugepage-guest-startup-numa-memlock-libvirt"
+  },
+  {
+    "title": "Diagnose Db2 SQL0964C by Finding the Oldest Log-Holding Transaction",
+    "description": "Find the transaction retaining Db2 active log space, correlate its handle with connection and unit-of-work details, and plan recovery without guessing.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Database",
+      "SQL",
+      "Troubleshooting"
+    ],
+    "post": "2026-11-20-db2-sql0964c-oldest-transaction-active-log"
+  },
+  {
+    "title": "Distinguish Db2 Deadlocks from Lock Timeouts with SQL0911N",
+    "description": "Decode Db2 SQL0911N reason codes, capture locking events, and distinguish a deadlock cycle from a lock timeout before changing application behavior.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Database",
+      "SQL",
+      "Troubleshooting"
+    ],
+    "post": "2026-11-20-db2-deadlock-lock-timeout-sql0911n-event-monitors"
+  },
+  {
+    "title": "Find the Db2 Session and SQL Behind a Table Lock Wait",
+    "description": "Trace a Db2 lock wait to its object, holding session, and current SQL while handling remote members, idle transactions, and incomplete evidence correctly.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Database",
+      "SQL",
+      "Troubleshooting"
+    ],
+    "post": "2026-11-20-db2-blocking-session-sql-mon-get-appl-lockwait"
+  },
+  {
+    "title": "Take and Validate an Online Db2 Backup with INCLUDE LOGS",
+    "description": "Create an online Db2 backup with recovery logs, validate every image piece with db2ckbkp, and distinguish image checks from a proven recovery rehearsal.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Database",
+      "SQL",
+      "Backup"
+    ],
+    "post": "2026-11-20-db2-online-backup-include-logs-db2ckbkp"
+  },
+  {
+    "title": "Restore a Db2 Online Backup with LOGTARGET and an Overflow Log Path",
+    "description": "Extract included Db2 backup logs, point rollforward at the right directory, verify recovery progress, and finalize only after reaching the intended target.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Database",
+      "SQL",
+      "Backup"
+    ],
+    "post": "2026-11-20-db2-restore-logtarget-overflow-log-path"
+  },
+  {
+    "title": "Identify the Db2 Archive Logs Your Backup Needs Before Transfer",
+    "description": "Build a Db2 recovery-log inventory from backup history, included logs, and the intended recovery target, then validate the package before moving it off-host.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Database",
+      "SQL",
+      "Backup"
+    ],
+    "post": "2026-11-20-db2-backup-required-archive-logs-off-host"
+  },
+  {
+    "title": "Redirect a Db2 Restore to New Paths with a Generated CLP Script",
+    "description": "Generate and review a Db2 redirected-restore script, map storage groups and containers to new paths, and verify placement before accepting recovery.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Database",
+      "SQL",
+      "Backup"
+    ],
+    "post": "2026-11-20-db2-redirected-restore-generated-clp-storage-paths"
+  },
+  {
+    "title": "Clone Db2 Under a New Database Name Without Overwriting the Source",
+    "description": "Restore a Db2 backup into a separately named clone with dedicated storage and logs, then review inherited settings before allowing test traffic.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Database",
+      "SQL",
+      "Backup"
+    ],
+    "post": "2026-11-20-clone-db2-database-new-name-preserve-source"
+  },
+  {
+    "title": "Db2 Point-in-Time Recovery: When to Restart from the Backup",
+    "description": "Choose a valid Db2 recovery timestamp, inspect rollforward progress before completion, and recognize target changes that require restoring the backup again.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Database",
+      "SQL",
+      "Backup"
+    ],
+    "post": "2026-11-20-db2-point-in-time-recovery-restart-backup"
   }
 ]

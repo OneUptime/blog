@@ -1,0 +1,26 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-21",
+  "runtimeTestsPerformed": false,
+  "sources": [
+    "https://www.ibm.com/docs/en/db2/11.5.x?topic=monitoring-locking-using-table-functions",
+    "https://www.ibm.com/docs/en/db2/11.5.x?topic=clp-options",
+    "https://www.ibm.com/docs/en/db2/11.1.0?topic=mpf-mon-get-appl-lockwait-table-function-get-information-about-locks-which-application-is-waiting",
+    "https://www.ibm.com/docs/en/db2/11.5.x?topic=mmr-mon-get-locks-table-function-list-all-locks-in-currently-connected-database",
+    "https://www.ibm.com/docs/en/db2/11.1.0?topic=mpf-mon-format-lock-name-format-internal-lock-name-return-details",
+    "https://www.ibm.com/docs/en/db2/11.5.x?topic=reference-h",
+    "https://www.ibm.com/docs/en/db2/11.5.x?topic=mv-mon-lockwaits-retrieve-metrics-applications-that-are-waiting-obtain-locks",
+    "https://www.ibm.com/docs/en/db2/11.5.x?topic=functions-mon-get-connection-get-connection-metrics"
+  ],
+  "tests": [
+    "Routine columns, member arguments, lock-status meanings, formatter name/value output and current-SQL caveat reviewed against IBM documentation",
+    "SQL snippets extracted for review; XML lock-name search element parsed and value consistency checked",
+    "Shell snippet passed bash -n; six-node five-edge Mermaid structurally checked",
+    "Generated 1280x720 social image visually reviewed without clipped text"
+  ],
+  "limitations": [
+    "No Db2 server or CLP: SQL not parser-validated or executed; no lock contention or remote member tested",
+    "Some 11.5 direct documentation pages returned HTTP403; indexed IBM 11.5 references and accessible IBM 11.1 interface pages were reviewed",
+    "Mermaid not rendered"
+  ]
+}

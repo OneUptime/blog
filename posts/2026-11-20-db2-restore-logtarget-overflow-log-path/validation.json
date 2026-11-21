@@ -1,0 +1,24 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-21",
+  "runtimeTestsPerformed": false,
+  "sources": [
+    "https://www.ibm.com/docs/en/db2/11.5.x?topic=commands-restore-database",
+    "https://www.ibm.com/docs/en/db2/11.5.x?topic=management-including-log-files-backup-image",
+    "https://www.ibm.com/docs/en/db2/11.5.x?topic=logging-advanced-log-space-management",
+    "https://www.ibm.com/docs/en/db2/11.5.x?topic=commands-rollforward-database",
+    "https://www.ibm.com/docs/en/db2/11.5.x?topic=parameters-overflowlogpath-overflow-log-path",
+    "https://www.ibm.com/docs/en/db2/11.5.x?topic=SSEPGG_11.5.0%2Fcom.ibm.db2.luw.messages.adm.doc%2Fadm0000-adm5999.htm"
+  ],
+  "tests": [
+    "Restore LOGTARGET/NEWLOGPATH and rollforward end-of-backup, overflow path, NORETRIEVE, status and STOP reviewed against official Db2 11.5 references",
+    "Four shell blocks passed bash -n; shell examples extracted for review",
+    "Seven-node seven-edge Mermaid structurally checked; extraction and active paths separated consistently",
+    "1280x720 social image visually reviewed with readable unclipped title"
+  ],
+  "limitations": [
+    "No Db2 instance or backup images available; no restore, log extraction or rollforward executed",
+    "Example requires isolated single-partition destination, unused target name and independently verified exclusive storage paths",
+    "Mermaid structure checked, not rendered"
+  ]
+}

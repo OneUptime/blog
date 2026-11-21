@@ -1,0 +1,25 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-21",
+  "runtimeTestsPerformed": false,
+  "sources": [
+    "https://www.ibm.com/docs/en/db2/11.5.x?topic=commands-restore-database",
+    "https://www.ibm.com/docs/en/db2/11.5.x?topic=commands-list-database-directory",
+    "https://www.ibm.com/docs/en/db2/11.5.x?topic=databases-implications-restoring",
+    "https://www.ibm.com/docs/en/db2/11.5.x?topic=restore-restoring-data",
+    "https://www.ibm.com/support/pages/node/254147",
+    "https://www.ibm.com/docs/en/db2/11.5.x?topic=commands-rollforward-database",
+    "https://www.ibm.com/docs/en/db2/11.5.x?topic=statements-connect-type-1"
+  ],
+  "tests": [
+    "Restore INTO, automatic-storage ON/DBPATH ON, separate log paths, catalog inspection and CURRENT SERVER checked against IBM Db2 11.5 documentation",
+    "Inherited archive/HADR settings and possible archive activity at STOP reviewed against IBM guidance",
+    "All seven shell blocks passed bash -n; seven-node six-edge Mermaid structurally checked",
+    "Final regenerated 1280x720 image visually reviewed without clipping"
+  ],
+  "limitations": [
+    "No Db2 runtime: no clone, SQL identity query, recovery or source preservation test performed",
+    "Command scoped to isolated single-partition automatic-storage destination; manual or separately placed groups need redirected restore",
+    "Mermaid not rendered"
+  ]
+}

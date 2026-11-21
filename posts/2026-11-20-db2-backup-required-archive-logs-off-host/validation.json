@@ -1,0 +1,26 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-21",
+  "runtimeTestsPerformed": false,
+  "sources": [
+    "https://www.ibm.com/docs/en/db2/11.5.x?topic=logging-archive",
+    "https://www.ibm.com/docs/en/db2/11.5.x?topic=views-db-history-history-file",
+    "https://www.ibm.com/docs/en/db2/11.5.x?topic=commands-list-history",
+    "https://www.ibm.com/docs/en/db2/11.5.x?topic=management-including-log-files-backup-image",
+    "https://www.ibm.com/docs/en/db2/11.5.x?topic=commands-restore-database",
+    "https://www.ibm.com/docs/en/db2/11.5.x?topic=commands-db2ckbkp-check-backup",
+    "https://www.ibm.com/docs/en/db2/11.5.x?topic=tools-db2cklog",
+    "https://www.ibm.com/docs/en/db2/11.5.x?topic=commands-rollforward-database"
+  ],
+  "tests": [
+    "DB_HISTORY columns and operation filter, archive-history partition scope, LOGS extraction limitation and db2cklog numeric range reviewed against IBM Db2 11.5 documentation",
+    "Four shell snippets passed bash -n; SQL extracted for documentation review",
+    "Seven-node six-edge Mermaid structurally checked",
+    "1280x720 social image visually reviewed without clipping"
+  ],
+  "limitations": [
+    "No Db2 runtime, history query, log extraction, db2cklog invocation or recovery rehearsal performed",
+    "History-associated log boundaries are not asserted to be an exact later point-in-time recovery inventory",
+    "Mermaid not rendered"
+  ]
+}

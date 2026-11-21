@@ -1,0 +1,30 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-21",
+  "runtimeTestsPerformed": false,
+  "sources": [
+    "https://www.ibm.com/docs/en/db2/11.5.x?topic=servers-troubleshooting-full-transaction-log-error",
+    "https://www.ibm.com/support/pages/db2-how-solve-transaction-log-databases-full-sql0964c",
+    "https://www.ibm.com/docs/en/db2/11.5.x?topic=clp-options",
+    "https://www.ibm.com/docs/en/db2/11.1.0?topic=mpf-mon-get-transaction-log-table-function-get-log-information",
+    "https://www.ibm.com/docs/en/db2/11.5.x?topic=reference-t",
+    "https://www.ibm.com/docs/en/db2/11.5.x?topic=routines-mon-get-connection-get-connection-metrics",
+    "https://www.ibm.com/docs/en/db2/11.5.x?topic=mmr-mon-get-unit-work-get-unit-work-metrics",
+    "https://www.ibm.com/docs/en/db2/11.5.x?topic=reference-u",
+    "https://www.ibm.com/docs/en/db2/11.5.x?topic=commands-db2pd-monitor-troubleshoot-db2-engine-activities",
+    "https://www.ibm.com/docs/en/db2/11.5.x?topic=tools-db2pd",
+    "https://www.ibm.com/docs/en/db2/11.5.x?topic=parameters-num-log-span-number-log-span",
+    "https://www.ibm.com/docs/en/db2/11.5.x?topic=logging-advanced-log-space-management"
+  ],
+  "tests": [
+    "SQL blocks match reviewed diagnostic files; routine arguments and selected columns checked against IBM documentation",
+    "Three shell snippets passed bash -n",
+    "Five-node four-edge Mermaid structurally checked",
+    "Generated 1280x720 social image visually reviewed: readable title and no clipping"
+  ],
+  "limitations": [
+    "No Db2 server or CLP installed: SQL and db2pd commands not executed",
+    "No log exhaustion, application termination, rollback or recovery reproduced",
+    "Mermaid structure checked, not rendered"
+  ]
+}

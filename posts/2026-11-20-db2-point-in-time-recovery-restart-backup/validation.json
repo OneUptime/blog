@@ -1,0 +1,24 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-21",
+  "runtimeTestsPerformed": false,
+  "sources": [
+    "https://www.ibm.com/docs/en/db2/11.5.x?topic=logging-archive",
+    "https://www.ibm.com/docs/en/db2/11.5.x?topic=commands-rollforward-database",
+    "https://www.ibm.com/docs/en/db2/11.5.x?topic=parameters-overflowlogpath-overflow-log-path",
+    "https://www.ibm.com/docs/en/db2/11.5.x?topic=tools-db2cklog",
+    "https://www.ibm.com/docs/en/db2/11.5.x?topic=restore-restoring-data",
+    "https://www.ibm.com/docs/en/db2/11.5.x?topic=data-rolling-forward-changes-in-table-space"
+  ],
+  "tests": [
+    "PIT timestamp/time-zone syntax, online-backup boundary, increasing continuation timestamps, end-of-logs-to-PIT restriction and STOP/CANCEL meanings reviewed against Db2 11.5 documentation",
+    "Three shell blocks passed bash -n; examples extracted for review",
+    "Seven-node eight-edge Mermaid decision graph structurally checked",
+    "Generated 1280x720 social image visually reviewed without clipping"
+  ],
+  "limitations": [
+    "No Db2 server or image: no PIT replay, failure, state transition or data recovery test performed",
+    "Example assumes fresh isolated whole-database single-partition restore and complete staged log inputs",
+    "Mermaid not rendered"
+  ]
+}

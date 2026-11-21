@@ -1,0 +1,27 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-21",
+  "runtimeTestsPerformed": false,
+  "sources": [
+    "https://www.ibm.com/docs/en/db2/11.5.x?topic=logging-archive",
+    "https://www.ibm.com/docs/en/db2/11.5.x?topic=commands-backup-database",
+    "https://www.ibm.com/docs/en/db2/11.5.x?topic=commands-get-database-configuration",
+    "https://www.ibm.com/docs/en/db2/11.5.x?topic=parameters-backup-pending-backup-pending-indicator",
+    "https://www.ibm.com/docs/en/db2/11.5.x?topic=variables-miscellaneous",
+    "https://www.ibm.com/docs/en/db2/11.5.x?topic=commands-list-history",
+    "https://www.ibm.com/docs/en/db2/11.5.x?topic=commands-db2ckbkp-check-backup",
+    "https://www.ibm.com/docs/en/db2/11.5.x?topic=management-including-log-files-backup-image",
+    "https://www.ibm.com/docs/en/db2/11.5.x?topic=logging-advanced-log-space-management"
+  ],
+  "tests": [
+    "Backup options, archive-logging requirement, history scope, complete-image validation and uppercase-H versus lowercase-h reviewed against IBM Db2 11.5 references",
+    "All four shell blocks passed bash -n; snippets extracted to local review files",
+    "Seven-node six-edge Mermaid checked structurally",
+    "1280x720 social image visually reviewed without clipping"
+  ],
+  "limitations": [
+    "No Db2 runtime, database, backup image, db2ckbkp execution, transfer or recovery test available",
+    "Example deliberately limited to a conventional full single-partition online disk backup; filenames and directory are placeholders",
+    "Image structural validation does not establish successful restore; Mermaid not rendered"
+  ]
+}

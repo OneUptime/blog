@@ -1708,17 +1708,37 @@ Research: [OneUptime air-gapped alerting](https://oneuptime.com/enterprise/air-g
     Completed: [Article](posts/2026-11-20-size-dpdk-hugepages-per-numa-socket/README.md) (20 November 2026).
 20. Why a Huge-Page-Backed KVM Guest Will Not Start: NUMA Cell Capacity, Memlock, and Libvirt XML Checks
 
+    Completed: [Article](posts/2026-11-20-kvm-hugepage-guest-startup-numa-memlock-libvirt/README.md) (20 November 2026).
+
 ## DB2
 
 1. How to Diagnose Db2 `SQL0964C` by Finding the Transaction Holding the Active Log
+
+    Completed: [Article](posts/2026-11-20-db2-sql0964c-oldest-transaction-active-log/README.md) (20 November 2026).
 2. How to Distinguish Db2 Deadlocks from Lock Timeouts with `SQL0911N` Reason Codes and Event Monitors
+
+    Completed: [Article](posts/2026-11-20-db2-deadlock-lock-timeout-sql0911n-event-monitors/README.md) (20 November 2026).
 3. How to Find the Db2 Session and SQL Statement Blocking a Table with `MON_GET_APPL_LOCKWAIT`
+
+    Completed: [Article](posts/2026-11-20-db2-blocking-session-sql-mon-get-appl-lockwait/README.md) (20 November 2026).
 4. How to Take a Recoverable Online Db2 Backup with `INCLUDE LOGS` and Validate It with `db2ckbkp`
+
+    Completed: [Article](posts/2026-11-20-db2-online-backup-include-logs-db2ckbkp/README.md) (20 November 2026).
 5. How to Restore a Db2 Online Backup with `LOGTARGET` and Roll Forward Through an `OVERFLOW LOG PATH`
+
+    Completed: [Article](posts/2026-11-20-db2-restore-logtarget-overflow-log-path/README.md) (20 November 2026).
 6. How to Identify Exactly Which Db2 Archive Logs a Backup Needs Before Moving It Off-Host
+
+    Completed: [Article](posts/2026-11-20-db2-backup-required-archive-logs-off-host/README.md) (20 November 2026).
 7. How to Perform a Db2 Redirected Restore to New Storage Paths with a Generated CLP Script
+
+    Completed: [Article](posts/2026-11-20-db2-redirected-restore-generated-clp-storage-paths/README.md) (20 November 2026).
 8. How to Clone a Db2 LUW Database Under a New Name Without Overwriting the Source
+
+    Completed: [Article](posts/2026-11-20-clone-db2-database-new-name-preserve-source/README.md) (20 November 2026).
 9. How to Restore Db2 to a Point in Time—and Know When You Must Start Over from the Backup
+
+    Completed: [Article](posts/2026-11-20-db2-point-in-time-recovery-restart-backup/README.md) (20 November 2026).
 10. How to Build a Db2 HADR Pair from Backup to `PEER` State
 11. How to Diagnose Db2 HADR Stuck in `REMOTE_CATCHUP` or `DISCONNECTED` with `MON_GET_HADR`
 12. Planned Db2 HADR Takeover vs `BY FORCE`: How to Switch Roles Without Split-Brain

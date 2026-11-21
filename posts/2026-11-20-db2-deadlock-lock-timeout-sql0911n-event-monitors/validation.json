@@ -1,0 +1,29 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-21",
+  "runtimeTestsPerformed": false,
+  "sources": [
+    "https://www.ibm.com/docs/en/db2/11.5.x?topic=SSEPGG_11.5.0%2Fcom.ibm.db2.luw.messages.sql.doc%2Fsql0750-sql0999.htm",
+    "https://www.ibm.com/docs/en/db2/11.5.x?topic=problems-diagnosing-deadlock-problem",
+    "https://www.ibm.com/docs/en/db2/11.5.x?topic=management-lock-waits-timeouts",
+    "https://www.ibm.com/docs/en/db2/11.5.x?topic=wem-displaying-list-active-event-monitors-in-your-database",
+    "https://www.ibm.com/docs/en/db2/11.5.x?topic=commands-get-database-configuration",
+    "https://www.ibm.com/docs/en/db2/11.5.x?topic=statements-set-event-monitor-state",
+    "https://www.ibm.com/docs/en/db2/11.5.x?topic=statements-create-event-monitor-locking",
+    "https://www.ibm.com/docs/en/db2/11.5.x?topic=parameters-mon-deadlock-monitoring-deadlock",
+    "https://www.ibm.com/docs/en/db2/11.5.x?topic=parameters-mon-locktimeout-monitoring-lock-timeout",
+    "https://www.ibm.com/docs/en/db2/11.5.x?topic=monitors-information-written-tables-locking-event-monitor",
+    "https://www.ibm.com/docs/en/db2/11.5.x?topic=reference-e"
+  ],
+  "tests": [
+    "Reason codes 2 and 68, rollback scope, monitor syntax and state, configuration options and output-table fields reviewed against IBM Db2 11.5 documentation",
+    "Shell snippets passed bash -n; SQL examples extracted for review, not executed",
+    "Four-node three-edge Mermaid checked structurally, including two-node deadlock cycle",
+    "1280x720 social image visually reviewed; readable title without clipping"
+  ],
+  "limitations": [
+    "No Db2 server or CLP available; no SQL parser validation, event-monitor creation or live contention test",
+    "Minimal monitor assumes approved target schema and storage; production placement and permissions require environment review",
+    "Mermaid not rendered"
+  ]
+}

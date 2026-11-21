@@ -1,0 +1,24 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-21",
+  "runtimeTestsPerformed": false,
+  "sources": [
+    "https://www.ibm.com/docs/en/db2/11.5.x?topic=restore-performing-redirected-operation",
+    "https://www.ibm.com/docs/en/db2/11.5.x?topic=operation-performing-redirected-restore-using-automatically-generated-script",
+    "https://www.ibm.com/docs/en/db2/11.5.x?topic=commands-restore-database",
+    "https://www.ibm.com/docs/en/db2/11.5.x?topic=databases-implications-restoring",
+    "https://www.ibm.com/docs/en/db2/11.5.x?topic=commands-set-stogroup-paths",
+    "https://www.ibm.com/docs/en/db2/11.5.x?topic=clp-return-codes"
+  ],
+  "tests": [
+    "Generated-script workflow, client-side overwrite behavior, same-session requirement, storage group and manual container distinctions checked against official Db2 11.5 documentation",
+    "Two shell blocks passed bash -n; storage-group CLP fragment extracted for review",
+    "Seven-node six-edge Mermaid structurally checked",
+    "1280x720 generated social image visually reviewed without clipping"
+  ],
+  "limitations": [
+    "No Db2-generated script or restore executed: no runtime, backup image or storage placement available",
+    "Storage-group snippet is an edit example within a real generated script, not a standalone restore",
+    "Mermaid not rendered"
+  ]
+}

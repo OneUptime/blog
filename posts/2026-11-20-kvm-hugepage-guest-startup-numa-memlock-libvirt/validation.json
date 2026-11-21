@@ -1,0 +1,28 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-21",
+  "runtimeTestsPerformed": false,
+  "sources": [
+    "https://libvirt.org/manpages/virsh.html",
+    "https://libvirt.org/kbase/debuglogs.html",
+    "https://libvirt.org/formatdomain.html#memory-backing",
+    "https://www.kernel.org/doc/html/v6.12/admin-guide/mm/numa_memory_policy.html",
+    "https://www.kernel.org/doc/html/v6.12/admin-guide/mm/hugetlbpage.html",
+    "https://www.qemu.org/docs/master/system/invocation.html",
+    "https://man7.org/linux/man-pages/man5/proc_pid_limits.5.html",
+    "https://libvirt.org/manpages/virt-xml-validate.html",
+    "https://raw.githubusercontent.com/libvirt/libvirt/v11.0.0/src/conf/schemas/domain.rng"
+  ],
+  "tests": [
+    "Article memory fragment wrapped in minimal domain and validated with xmllint against official libvirt v11.0.0 Relax NG schema and its nine dependency files",
+    "Invalid allocation mode instantly rejected by same schema",
+    "Guest cells0/1 mapped to host nodes0/2,8GiB total and four1GiB pages per cell asserted; global12pages but host2only2 shortfall checked",
+    "Article fragment matches validated source; shell snippets passed bash -n",
+    "Six-node three-edge Mermaid structurally checked;1280x720 image visually reviewed"
+  ],
+  "limitations": [
+    "Schema validation only, no libvirt daemon, QEMU/KVM guest, backing allocation, host placement or memlock test",
+    "Minimal domain is a schema fixture, not a bootable deployment; article fragment requires existing full domain",
+    "Mermaid not rendered"
+  ]
+}
