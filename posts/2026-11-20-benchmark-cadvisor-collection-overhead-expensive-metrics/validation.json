@@ -1,0 +1,25 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-21",
+  "runtimeTestsPerformed": true,
+  "infrastructureDeploymentPerformed": false,
+  "sources": [
+    "https://github.com/google/cadvisor/blob/v0.55.1/docs/runtime_options.md",
+    "https://github.com/google/cadvisor/blob/v0.55.1/cmd/cadvisor.go",
+    "https://github.com/google/cadvisor/blob/v0.55.1/cmd/internal/http/handlers.go",
+    "https://prometheus.io/docs/prometheus/latest/querying/functions/",
+    "https://prometheus.io/docs/concepts/jobs_instances/"
+  ],
+  "tests": [
+    "Prometheus 3.7.3 promtool evaluated all four published expressions against populated and missing-data fixtures: eight assertions passed.",
+    "Argument comparison verified that the candidate adds only process to the metric set while retaining housekeeping and history settings.",
+    "Source-reviewed cAdvisor 0.55.1 metric-selection precedence, process collector registration and housekeeping flags.",
+    "Seven-edge Mermaid structure checked without graphical rendering.",
+    "Generated 1280x720 social image visually reviewed; readable title without clipping."
+  ],
+  "limitations": [
+    "No cAdvisor deployment, performance benchmark, production canary or workload generator was run.",
+    "Resource budgets and experiment windows are explicitly illustrative; no measured overhead results are claimed.",
+    "Fixture tests establish query semantics, not availability of process metrics on every endpoint or environment."
+  ]
+}

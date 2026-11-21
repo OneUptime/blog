@@ -1,0 +1,27 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-21",
+  "runtimeTestsPerformed": true,
+  "infrastructureDeploymentPerformed": false,
+  "sources": [
+    "https://docs.docker.com/engine/network/port-publishing/",
+    "https://github.com/google/cadvisor/blob/v0.55.1/deploy/Dockerfile",
+    "https://github.com/google/cadvisor/blob/v0.55.1/cmd/cadvisor.go",
+    "https://prometheus.io/docs/prometheus/latest/configuration/configuration/",
+    "https://docs.docker.com/reference/cli/docker/compose/config/",
+    "https://docs.docker.com/reference/cli/docker/container/inspect/",
+    "https://github.com/google/cadvisor/blob/v0.55.1/cmd/internal/healthz/healthz.go"
+  ],
+  "tests": [
+    "Both published Compose fragments passed the official schema at commit 6b3a2a93e77c30ded1aa8264307e74d1208a6eae; listener, mapping and health URL alignment asserted.",
+    "Prometheus 3.7.3 promtool accepted the published static-target configuration.",
+    "Extracted unchanged handleHealthz function from cAdvisor 0.55.1 source into a local Go HTTP test server; GET returned status 200/body ok and HEAD returned status 200/empty body.",
+    "Shell snippets passed syntax checks; five-edge Mermaid structure checked without rendering.",
+    "Generated 1280x720 social image visually reviewed with readable unclipped title."
+  ],
+  "limitations": [
+    "No Docker container, image healthcheck command, port mapping, Compose deployment or real cAdvisor collector was executed.",
+    "HTTP test exercises the extracted handler, not complete cAdvisor server initialization or image networking.",
+    "Fragments require the existing deployment mounts, access settings and other command arguments to be preserved."
+  ]
+}

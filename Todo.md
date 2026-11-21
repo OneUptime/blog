@@ -1113,15 +1113,35 @@ Research: [OneUptime air-gapped alerting](https://oneuptime.com/enterprise/air-g
 
     Completed: [Article](posts/2026-11-20-diagnose-zero-cadvisor-cpu-load-average-10s/README.md) (20 November 2026).
 30. How to Diagnose Missing Container Names When cAdvisor Monitors Rootless Podman
+
+    Completed: [Article](posts/2026-11-20-diagnose-cadvisor-missing-container-names-rootless-podman/README.md) (20 November 2026).
 31. How to Run cAdvisor on Synology DSM and Diagnose Missing Filesystem Metrics
+
+    Completed: [Article](posts/2026-11-20-run-cadvisor-synology-dsm-missing-filesystem-metrics/README.md) (20 November 2026).
 32. How to Fix cAdvisor Container Discovery Failures Caused by inotify Limits
+
+    Completed: [Article](posts/2026-11-20-fix-cadvisor-discovery-inotify-limits/README.md) (20 November 2026).
 33. How to Change cAdvisor’s Port Without Breaking Its Health Check
+
+    Completed: [Article](posts/2026-11-20-change-cadvisor-port-health-checks/README.md) (20 November 2026).
 34. How to Use cAdvisor and Node Exporter Together Without Duplicating Host Metrics
+
+    Completed: [Article](posts/2026-11-20-cadvisor-node-exporter-without-duplicate-host-metrics/README.md) (20 November 2026).
 35. How to Run cAdvisor with a Nondefault Docker Data Root and Keep Filesystem Metrics
+
+    Completed: [Article](posts/2026-11-20-cadvisor-nondefault-docker-data-root-filesystem-metrics/README.md) (20 November 2026).
 36. How to Fix cAdvisor Permission Denials on SELinux-Enforcing Container Hosts
+
+    Completed: [Article](posts/2026-11-20-fix-cadvisor-permission-denials-selinux-hosts/README.md) (20 November 2026).
 37. How to Query cAdvisor’s REST API for Raw Container and Machine Statistics
+
+    Completed: [Article](posts/2026-11-20-query-cadvisor-rest-api-container-machine-statistics/README.md) (20 November 2026).
 38. How to Benchmark cAdvisor Collection Overhead Before Enabling Expensive Metrics
+
+    Completed: [Article](posts/2026-11-20-benchmark-cadvisor-collection-overhead-expensive-metrics/README.md) (20 November 2026).
 39. How to Map cAdvisor Container IDs to Docker Compose Service Names in Prometheus
+
+    Completed: [Article](posts/2026-11-20-map-cadvisor-container-ids-compose-service-names/README.md) (20 November 2026).
 40. How to Upgrade cAdvisor Without Breaking Metric Names, Labels, or Dashboards
 
 ## NATS

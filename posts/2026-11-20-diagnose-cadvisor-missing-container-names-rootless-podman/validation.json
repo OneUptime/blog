@@ -1,0 +1,27 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-21",
+  "runtimeTestsPerformed": true,
+  "infrastructureDeploymentPerformed": false,
+  "sources": [
+    "https://docs.podman.io/en/v5.4.0/markdown/podman-container-inspect.1.html",
+    "https://github.com/google/cadvisor/blob/v0.55.1/container/podman/factory.go",
+    "https://github.com/google/cadvisor/blob/v0.55.1/container/podman/handler.go",
+    "https://github.com/google/cadvisor/blob/v0.55.1/metrics/prometheus.go",
+    "https://docs.podman.io/en/v5.4.0/markdown/podman-system-service.1.html",
+    "https://github.com/google/cadvisor/blob/v0.55.1/container/podman/client.go",
+    "https://github.com/google/cadvisor/blob/v0.55.1/container/podman/plugin.go"
+  ],
+  "tests": [
+    "Executed cAdvisor 0.55.1 DefaultContainerLabels with three synthetic ContainerInfo cases: distinct aliases mapped to names and raw cgroup metadata remained absent.",
+    "All shell snippets passed bash syntax checks after correcting an apostrophe in the parameter-expansion error text. The runtime-directory snippet was executed with a fixture value and with the variable unset; both outcomes matched the explanation.",
+    "Reviewed Podman 5.4.0 CLI/service documentation and cAdvisor 0.55.1 Podman factory, client, handler and registration sources.",
+    "Six-edge Mermaid path structurally checked, not graphically rendered.",
+    "Generated 1280x720 social image visually reviewed; readable title without clipping."
+  ],
+  "limitations": [
+    "No Podman daemon, user systemd service, SELinux policy or rootless cgroup discovery was run.",
+    "The label-function runtime test begins with synthetic metadata; it does not verify socket access or handler registration.",
+    "Published endpoint paths and user IDs are placeholders requiring actual deployment inspection."
+  ]
+}

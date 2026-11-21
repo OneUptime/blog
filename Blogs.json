@@ -827888,5 +827888,129 @@
       "Troubleshooting"
     ],
     "post": "2026-11-20-diagnose-zero-cadvisor-cpu-load-average-10s"
+  },
+  {
+    "title": "Diagnose Missing cAdvisor Container Names with Rootless Podman",
+    "description": "Trace rootless Podman names through the owning user's API socket, cAdvisor runtime discovery, cgroup access, and exported Prometheus labels.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Podman",
+      "Linux",
+      "Prometheus",
+      "Monitoring",
+      "Troubleshooting"
+    ],
+    "post": "2026-11-20-diagnose-cadvisor-missing-container-names-rootless-podman"
+  },
+  {
+    "title": "Run cAdvisor on Synology DSM and Diagnose Missing Filesystem Metrics",
+    "description": "Adapt cAdvisor to a Synology host's real Docker paths, then separate filesystem visibility problems from storage-driver collection limitations.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Docker",
+      "Linux",
+      "Prometheus",
+      "Monitoring",
+      "Troubleshooting"
+    ],
+    "post": "2026-11-20-run-cadvisor-synology-dsm-missing-filesystem-metrics"
+  },
+  {
+    "title": "Fix cAdvisor Container Discovery Failures Caused by inotify Limits",
+    "description": "Distinguish exhausted inotify watches, instances, and file descriptors, inspect evidence safely, and verify cAdvisor discovers new containers after repair.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Linux",
+      "Docker",
+      "Monitoring",
+      "Troubleshooting"
+    ],
+    "post": "2026-11-20-fix-cadvisor-discovery-inotify-limits"
+  },
+  {
+    "title": "Change cAdvisor's Port Without Breaking Its Health Check",
+    "description": "Keep cAdvisor's listener, Docker port mapping, internal health URL, and Prometheus target aligned when moving the service to another port.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Docker",
+      "Prometheus",
+      "Monitoring",
+      "Troubleshooting"
+    ],
+    "post": "2026-11-20-change-cadvisor-port-health-checks"
+  },
+  {
+    "title": "Use cAdvisor and Node Exporter Without Duplicating Host Metrics",
+    "description": "Assign host and container metrics clear roles, use stable node identity for joins, and avoid adding overlapping cAdvisor and Node Exporter measurements.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Prometheus",
+      "Kubernetes",
+      "Linux",
+      "Monitoring"
+    ],
+    "post": "2026-11-20-cadvisor-node-exporter-without-duplicate-host-metrics"
+  },
+  {
+    "title": "Keep cAdvisor Filesystem Metrics with a Custom Docker Data Root",
+    "description": "Preserve Docker's actual storage paths inside cAdvisor, distinguish API discovery from filesystem access, and verify metrics after a data-root change.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Docker",
+      "Linux",
+      "Prometheus",
+      "Monitoring",
+      "Troubleshooting"
+    ],
+    "post": "2026-11-20-cadvisor-nondefault-docker-data-root-filesystem-metrics"
+  },
+  {
+    "title": "Fix cAdvisor Permission Denials on SELinux-Enforcing Hosts",
+    "description": "Correlate cAdvisor failures with SELinux audit evidence, correct proven labeling mistakes, and choose a reviewed host-monitoring access model.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Linux",
+      "Docker",
+      "Security",
+      "Monitoring",
+      "Troubleshooting"
+    ],
+    "post": "2026-11-20-fix-cadvisor-permission-denials-selinux-hosts"
+  },
+  {
+    "title": "Query cAdvisor's REST API for Container and Machine Statistics",
+    "description": "Query cAdvisor's versioned JSON API, distinguish machine and container statistics, and interpret bounded samples without confusing missing data with zero.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Docker",
+      "Linux",
+      "Monitoring",
+      "Troubleshooting"
+    ],
+    "post": "2026-11-20-query-cadvisor-rest-api-container-machine-statistics"
+  },
+  {
+    "title": "Benchmark cAdvisor Overhead Before Enabling Expensive Metrics",
+    "description": "Measure cAdvisor CPU, memory, scrape cost, and workload impact with a controlled staging benchmark before enabling additional metric collectors.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Docker",
+      "Linux",
+      "Prometheus",
+      "Monitoring"
+    ],
+    "post": "2026-11-20-benchmark-cadvisor-collection-overhead-expensive-metrics"
+  },
+  {
+    "title": "Map cAdvisor Container IDs to Compose Service Names in Prometheus",
+    "description": "Expose Docker Compose project and service labels through cAdvisor, map them in Prometheus, and aggregate replicas without losing container identity.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Docker",
+      "Docker Compose",
+      "Prometheus",
+      "Monitoring"
+    ],
+    "post": "2026-11-20-map-cadvisor-container-ids-compose-service-names"
   }
 ]
