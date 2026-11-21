@@ -1,0 +1,21 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-21",
+  "runtimeTestsPerformed": true,
+  "sources": [
+    "https://github.com/juicedata/juicefs/blob/v1.4.2/docs/en/deployment/hadoop_java_sdk.md#faq",
+    "https://hadoop.apache.org/docs/r3.3.6/hadoop-project-dist/hadoop-common/CommandsManual.html",
+    "https://docs.oracle.com/en/java/javase/17/docs/api/java.base/java/lang/Class.html"
+  ],
+  "tests": [
+    "JDK17.0.16 javac --release8 compiled exact ClassProbe helper",
+    "Actual Java runs found platform java.lang.String and local ClassProbe with origin reporting; missing class produced ClassNotFoundException/nonzero exit",
+    "Parsed exact XML and reviewed CE1.4.2 FAQ/class mappings,Hadoop3.3.6 command syntax and Java17 Class API",
+    "Seven-node/six-edge Mermaid and shell syntax checked;1280x720 image visually reviewed"
+  ],
+  "limitations": [
+    "No actual JuiceFS SDK class/native library,Hadoop runtime,remote worker or backend access tested",
+    "Probe uses supplied context loader and does not prove a framework plugin loader sees the same resources",
+    "Mermaid not rendered"
+  ]
+}

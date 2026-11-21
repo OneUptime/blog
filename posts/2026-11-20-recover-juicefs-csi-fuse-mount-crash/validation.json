@@ -1,0 +1,23 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-21",
+  "runtimeTestsPerformed": false,
+  "sources": [
+    "https://github.com/juicedata/juicefs-csi-driver/blob/v0.34.0/docs/en/guide/configurations.md#automatic-mount-point-recovery",
+    "https://github.com/juicedata/juicefs-csi-driver/blob/v0.34.0/docs/en/guide/configurations.md",
+    "https://kubernetes.io/docs/concepts/storage/volumes/#mount-propagation",
+    "https://github.com/juicedata/juicefs-csi-driver/blob/v0.34.0/docs/en/administration/troubleshooting-cases.md"
+  ],
+  "tests": [
+    "Helm3.17.3 rendered official chart0.34.0 into18 objects; two CE image environment bindings matched pinned image",
+    "Parsed observer Deployment; verified read-only HostToContainer mount, no privileged mode or liveness probe; both embedded shell scripts passed sh -n",
+    "Reviewed pinned recovery documentation and seven-node six-edge Mermaid structure",
+    "1280x720 social image visually reviewed: readable title, no clipping"
+  ],
+  "limitations": [
+    "No Kubernetes API validation or live deployment",
+    "No FUSE crash, descriptor preservation, propagation or recovery latency tested",
+    "Normal deletion example is controlled recreation, not abrupt crash simulation",
+    "Mermaid structurally checked, not rendered"
+  ]
+}

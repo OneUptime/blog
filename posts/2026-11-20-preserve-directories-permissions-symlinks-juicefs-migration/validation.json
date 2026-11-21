@@ -1,0 +1,22 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-21",
+  "runtimeTestsPerformed": true,
+  "sources": [
+    "https://github.com/juicedata/juicefs/blob/v1.4.2/docs/en/guide/sync.md#sync-without-mount-point",
+    "https://github.com/juicedata/juicefs/blob/v1.4.2/docs/en/guide/sync.md#copy-symbolic-links",
+    "https://docs.python.org/3/library/os.html#os.lstat",
+    "https://github.com/juicedata/juicefs/blob/v1.4.2/pkg/sync/sync.go"
+  ],
+  "tests": [
+    "Actual JuiceFS1.4.2 native jfs import/export through disposable SQLite/file volume with dirs,perms,links,check-all",
+    "Verified empty directory,regular binary contents,current-user UID/GID,modes0640/0750,and relative/dangling symlink text",
+    "Python inspection helper tested file size/mode,directory classification and dangling link without target traversal",
+    "Seven-node/six-edge Mermaid and shell syntax reviewed;1280x720 image visually reviewed"
+  ],
+  "limitations": [
+    "No root-owned files,cross-host numeric identity mapping,ACLs,xattrs,hard-link relationships or Linux FUSE tested",
+    "Native fixture tests are not a guarantee for every storage backend or special file",
+    "Mermaid not rendered"
+  ]
+}

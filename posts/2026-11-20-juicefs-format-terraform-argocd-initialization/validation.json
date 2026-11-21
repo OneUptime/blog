@@ -1,0 +1,23 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-21",
+  "runtimeTestsPerformed": true,
+  "sources": [
+    "https://github.com/juicedata/juicefs/blob/v1.4.2/cmd/format.go",
+    "https://developer.hashicorp.com/terraform/language/resources/terraform-data",
+    "https://argo-cd.readthedocs.io/en/release-3.2/user-guide/resource_hooks/"
+  ],
+  "tests": [
+    "Exact article Bash/Python wrapper and HCL executed with Terraform1.11.4 and JuiceFS1.4.2 against disposable SQLite/file backend",
+    "Terraform init,validate,apply and second no-change detailed-exitcode plan passed",
+    "Repeated initialize preserved complete Setting including UUID; verify passed with correct UUID and rejected wrong UUID/name",
+    "Known UUID refused initialize mode; unavailable metadata verify failed without creating test database",
+    "Reviewed no-update implementation and ArgoCD3.2 hook lifecycle",
+    "Six-node/six-edge Mermaid and shell syntax checked;1280x720 social image visually reviewed"
+  ],
+  "limitations": [
+    "No remote Terraform backend,cloud database,S3 credentials,Kubernetes Job or ArgoCD controller exercised",
+    "The workflow requires independently retained UUID and authorized first-creation inventory; does not recover lost metadata",
+    "Mermaid structurally checked, not rendered"
+  ]
+}

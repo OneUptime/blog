@@ -1,0 +1,22 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-21",
+  "runtimeTestsPerformed": true,
+  "sources": [
+    "https://github.com/juicedata/juicefs/blob/v1.4.2/cmd/fsck.go",
+    "https://github.com/juicedata/juicefs/blob/v1.4.2/cmd/gc.go",
+    "https://github.com/juicedata/juicefs/blob/v1.4.2/docs/en/security/trash.md#gc"
+  ],
+  "tests": [
+    "Actual JuiceFS1.4.2 local SQLite/file-volume import, whole-volume and scoped recursive fsck passed",
+    "Withheld one block only in disposable backend; fsck failed with affected file; returned block and fsck passed",
+    "Added old synthetic unreferenced4byte object; check-only gc reported1leaked4bytes and preserved both valid and synthetic bytes; fsck remained successful",
+    "Reviewed tagged fsck/gc/status help and implementations, Trash retention documentation",
+    "Seven-node/five-edge Mermaid structure and shell syntax checked;1280x720 social image visually reviewed"
+  ],
+  "limitations": [
+    "No production or S3 backend modified; no permission, network, concurrent write or provider versioning tests",
+    "No gc delete/compact, fsck repair or full content checksum scrub executed",
+    "Mermaid not rendered"
+  ]
+}

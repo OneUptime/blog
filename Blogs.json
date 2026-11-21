@@ -829275,5 +829275,118 @@
       "Linux"
     ],
     "post": "2026-11-20-juicefs-directory-user-group-quotas-usage-counters"
+  },
+  {
+    "title": "Restore Deleted JuiceFS Files with a Reviewed Put-Back Procedure",
+    "description": "Locate retained JuiceFS Trash entries, rebuild their directory structure, review conflicts, and restore files to live paths with checks beyond command exit status.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "JuiceFS",
+      "Backup",
+      "Disaster Recovery"
+    ],
+    "post": "2026-11-20-restore-deleted-juicefs-files-put-back"
+  },
+  {
+    "title": "Diagnose JuiceFS Missing Data, Leaked Objects, and Stale Slices",
+    "description": "Use read-only JuiceFS fsck and gc checks to distinguish missing referenced blocks from unreferenced or retained data before choosing recovery or cleanup.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "JuiceFS",
+      "Storage",
+      "Troubleshooting"
+    ],
+    "post": "2026-11-20-juicefs-fsck-gc-corruption-leaked-stale-objects"
+  },
+  {
+    "title": "Compact Randomly Rewritten JuiceFS Files Without Guessing at Gains",
+    "description": "Inspect JuiceFS slice fragmentation, run scoped compaction on a mounted file, and verify content and read performance while preserving retention guarantees.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "JuiceFS",
+      "Performance",
+      "Storage"
+    ],
+    "post": "2026-11-20-defragment-juicefs-random-writes-compact"
+  },
+  {
+    "title": "Clone JuiceFS Directory Trees While Preserving Ownership",
+    "description": "Create metadata-only JuiceFS clones with explicit ownership preservation, plan for non-atomic directory copies, and verify access and logical capacity.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "JuiceFS",
+      "Storage",
+      "Linux"
+    ],
+    "post": "2026-11-20-clone-juicefs-directory-trees-preserve-ownership"
+  },
+  {
+    "title": "Resume JuiceFS Sync from Checkpoints and Verify File Contents",
+    "description": "Resume an interrupted JuiceFS sync with matching checkpoints, then run a separate content-verification pass before accepting the migrated dataset.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "JuiceFS",
+      "Data Migration",
+      "Storage"
+    ],
+    "post": "2026-11-20-resume-juicefs-sync-checkpoints-byte-verification"
+  },
+  {
+    "title": "Preserve Directory Structure and Permissions When Migrating to JuiceFS",
+    "description": "Migrate local trees into JuiceFS with explicit empty-directory, permission, and symlink handling, then verify filesystem semantics as well as file bytes.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "JuiceFS",
+      "Data Migration",
+      "Linux"
+    ],
+    "post": "2026-11-20-preserve-directories-permissions-symlinks-juicefs-migration"
+  },
+  {
+    "title": "Initialize JuiceFS Safely from Terraform or Argo CD",
+    "description": "Separate JuiceFS initialization from routine deployment checks, use no-update for bootstrap retries, and record volume identity outside disposable job state.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "JuiceFS",
+      "Terraform",
+      "Argo CD"
+    ],
+    "post": "2026-11-20-juicefs-format-terraform-argocd-initialization"
+  },
+  {
+    "title": "Run JuiceFS Java SDK Workloads with Explicit Native Memory Budgets",
+    "description": "Configure the JuiceFS Hadoop Java SDK across Spark, Flink, and Hive, then budget native memory separately from the JVM heap and test each worker path.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "JuiceFS",
+      "Apache Spark",
+      "Apache Flink",
+      "Hive"
+    ],
+    "post": "2026-11-20-juicefs-spark-flink-hive-java-sdk-off-heap-memory"
+  },
+  {
+    "title": "Fix JuiceFS Java Class and jfs Scheme Resolution Errors",
+    "description": "Trace JuiceFS class-loading and jfs scheme errors to the failing JVM, verify the effective classpath and configuration, and separate native-library failures.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "JuiceFS",
+      "Java",
+      "Hadoop",
+      "Troubleshooting"
+    ],
+    "post": "2026-11-20-fix-juicefs-java-class-not-found-jfs-scheme"
+  },
+  {
+    "title": "Recover JuiceFS CSI Mounts After a FUSE Process Failure",
+    "description": "Configure JuiceFS CSI recovery safeguards, distinguish descriptor-preserving recovery from remount propagation, and rehearse application recovery safely in staging.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "JuiceFS",
+      "Kubernetes",
+      "CSI",
+      "Troubleshooting"
+    ],
+    "post": "2026-11-20-recover-juicefs-csi-fuse-mount-crash"
   }
 ]

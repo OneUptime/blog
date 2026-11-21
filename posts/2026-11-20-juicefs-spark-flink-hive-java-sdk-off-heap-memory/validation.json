@@ -1,0 +1,24 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-21",
+  "runtimeTestsPerformed": false,
+  "sources": [
+    "https://github.com/juicedata/juicefs/blob/v1.4.2/sdk/java/pom.xml",
+    "https://github.com/juicedata/juicefs/blob/v1.4.2/docs/en/deployment/hadoop_java_sdk.md",
+    "https://github.com/juicedata/juicefs/blob/v1.4.2/docs/en/deployment/hadoop_java_sdk.md#client-configurations",
+    "https://spark.apache.org/docs/3.5.7/configuration.html",
+    "https://github.com/juicedata/juicefs/blob/v1.4.2/sdk/java/src/main/java/io/juicefs/FlinkFileSystemFactory.java",
+    "https://nightlies.apache.org/flink/flink-docs-release-1.20/docs/deployment/memory/mem_setup_tm/"
+  ],
+  "tests": [
+    "Parsed exact XML configuration and asserted CE class names and memory setting; checked300MiB*4=1200MiB planning arithmetic",
+    "Parsed Flink YAML; Python smoke example AST and Bash submission syntax passed",
+    "Reviewed JuiceFS1.4.2 Java pom,SDK guide,Flink factory; Spark3.5.7 and Flink1.20 official memory documentation",
+    "Six-node/five-edge Mermaid reviewed;1280x720 social image visually reviewed"
+  ],
+  "limitations": [
+    "No Java SDK native load,Spark,Flink,Hive or cluster workload executed",
+    "Memory settings are illustrative planning values,not measured safe limits or a certified compatibility matrix",
+    "No Grafana/JVM memory profiling or container termination test; Mermaid not rendered"
+  ]
+}

@@ -1,0 +1,21 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-21",
+  "runtimeTestsPerformed": true,
+  "sources": [
+    "https://github.com/juicedata/juicefs/blob/v1.4.2/docs/en/security/trash.md#recover",
+    "https://github.com/juicedata/juicefs/blob/v1.4.2/cmd/restore.go",
+    "https://docs.python.org/3/library/hashlib.html#hashlib.file_digest"
+  ],
+  "tests": [
+    "JuiceFS1.4.2 restore help and tagged implementation reviewed: root gate, rebuild versus put-back, no-replace rename, partial-result exit behavior",
+    "Actual nonroot restore invocation rejected before metadata access",
+    "Python3.11 checksum helper accepted correct and uppercase hashes, rejected mismatch and malformed hashes; input bytes unchanged",
+    "Seven-node/six-edge Mermaid and shell syntax checked;1280x720 image visually reviewed"
+  ],
+  "limitations": [
+    "No privileged JuiceFS restore, Trash mutation, conflicting destination or multi-hour recovery executed",
+    "Checksum helper local tests do not prove restoration or application consistency",
+    "Mermaid structurally checked, not rendered"
+  ]
+}

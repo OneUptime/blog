@@ -1,0 +1,23 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-21",
+  "runtimeTestsPerformed": true,
+  "sources": [
+    "https://github.com/juicedata/juicefs/blob/v1.4.2/docs/en/guide/sync.md#checkpoint",
+    "https://github.com/juicedata/juicefs/blob/v1.4.2/pkg/sync/checkpoint.go",
+    "https://github.com/juicedata/juicefs/blob/v1.4.2/docs/en/guide/sync.md#sync-behavior",
+    "https://github.com/juicedata/juicefs/blob/v1.4.2/pkg/sync/sync.go"
+  ],
+  "tests": [
+    "Actual JuiceFS1.4.2 sync with checkpoint1s,check-new,one thread,8Mbps limit on twelve512KiB local files",
+    "Terminated only owned test process after checkpoint existed; confirmed retained checkpoint, identical-command resume, complete byte equality and automatic checkpoint removal",
+    "Separate check-all repaired equal-size destination corruption; independently compared all12file contents",
+    "Tagged checkpoint identity and content comparison implementation plus CLI/docs reviewed",
+    "Eight-node/seven-edge Mermaid and shell syntax reviewed;1280x720 social image visually reviewed"
+  ],
+  "limitations": [
+    "No remote object-storage multipart recovery, live source mutation, credential failure or mounted JuiceFS test",
+    "Article30s/four-worker settings are source-verified examples; local interruption test used1s/one worker to bound runtime",
+    "No claim of cryptographic authenticity from sync checks; Mermaid not rendered"
+  ]
+}

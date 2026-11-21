@@ -1488,15 +1488,35 @@ Research: [OneUptime air-gapped alerting](https://oneuptime.com/enterprise/air-g
 
     Completed: [Article](posts/2026-11-20-juicefs-directory-user-group-quotas-usage-counters/README.md) (20 November 2026).
 30. How to Restore Accidentally Deleted JuiceFS Files with `juicefs restore --put-back`
+
+    Completed: [Article](posts/2026-11-20-restore-deleted-juicefs-files-put-back/README.md) (20 November 2026).
 31. How to Distinguish Real JuiceFS Corruption from Leaked or Stale Objects with `fsck` and `gc`
+
+    Completed: [Article](posts/2026-11-20-juicefs-fsck-gc-corruption-leaked-stale-objects/README.md) (20 November 2026).
 32. How to Defragment Randomly Rewritten JuiceFS Files with `juicefs compact`
+
+    Completed: [Article](posts/2026-11-20-defragment-juicefs-random-writes-compact/README.md) (20 November 2026).
 33. How to Clone Large JuiceFS Directory Trees Without Duplicating Object Data—and Preserve Ownership
+
+    Completed: [Article](posts/2026-11-20-clone-juicefs-directory-trees-preserve-ownership/README.md) (20 November 2026).
 34. How to Resume an Interrupted `juicefs sync` with Checkpoints and Verify Every Byte
+
+    Completed: [Article](posts/2026-11-20-resume-juicefs-sync-checkpoints-byte-verification/README.md) (20 November 2026).
 35. How to Preserve Empty Directories, Permissions, and Symlinks During a Local-to-JuiceFS Migration
+
+    Completed: [Article](posts/2026-11-20-preserve-directories-permissions-symlinks-juicefs-migration/README.md) (20 November 2026).
 36. How to Run `juicefs format` Once from Terraform or Argo CD Without Reinitializing an Existing Filesystem
+
+    Completed: [Article](posts/2026-11-20-juicefs-format-terraform-argocd-initialization/README.md) (20 November 2026).
 37. How to Run JuiceFS on Spark, Flink, and Hive with the Hadoop Java SDK and Correct Off-Heap Memory
+
+    Completed: [Article](posts/2026-11-20-juicefs-spark-flink-hive-java-sdk-off-heap-memory/README.md) (20 November 2026).
 38. How to Fix `Class io.juicefs.JuiceFileSystem Not Found` and `No FileSystem for scheme: jfs`
+
+    Completed: [Article](posts/2026-11-20-fix-juicefs-java-class-not-found-jfs-scheme/README.md) (20 November 2026).
 39. How to Recover a JuiceFS CSI Mount Automatically After the FUSE Process Crashes
+
+    Completed: [Article](posts/2026-11-20-recover-juicefs-csi-fuse-mount-crash/README.md) (20 November 2026).
 40. How to Avoid Privileged Application Pods by Choosing the JuiceFS CSI Driver over In-Container FUSE
 
 ## Preemption
