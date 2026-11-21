@@ -831262,5 +831262,115 @@
       "Security"
     ],
     "post": "2026-11-20-nginx-auth-request-oauth-identity-headers"
+  },
+  {
+    "title": "Cache NGINX auth_request Decisions Without Mixing Users",
+    "description": "Scope cached NGINX authorization decisions to credentials and request context, protect sensitive cache keys, and test isolation plus revocation delay.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Nginx",
+      "Caching",
+      "Security"
+    ],
+    "post": "2026-11-20-cache-nginx-auth-request-per-user-authorization"
+  },
+  {
+    "title": "Preserve POST Bodies with NGINX auth_request",
+    "description": "Keep authorization subrequests body-free while forwarding approved POST payloads intact, then verify byte counts, hashes, and application invocation counts.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Nginx",
+      "Security",
+      "Troubleshooting"
+    ],
+    "post": "2026-11-20-nginx-auth-request-post-body-preservation"
+  },
+  {
+    "title": "Route NGINX Stream Traffic by ALPN Without Terminating TLS",
+    "description": "Route TLS connections using advertised ALPN protocols, make fallback and precedence explicit, and verify that backend TLS identity remains intact.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Nginx",
+      "TLS",
+      "Networking"
+    ],
+    "post": "2026-11-20-nginx-stream-alpn-routing-tls-passthrough"
+  },
+  {
+    "title": "Debug Empty ssl_preread_server_name in NGINX Stream Routing",
+    "description": "Diagnose empty NGINX preread SNI values by comparing known ClientHello inputs, stream logs, listener configuration, and the actual traffic path.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Nginx",
+      "TLS",
+      "Troubleshooting"
+    ],
+    "post": "2026-11-20-debug-empty-nginx-ssl-preread-server-name"
+  },
+  {
+    "title": "Preserve Bidirectional gRPC Streams Through NGINX",
+    "description": "Proxy bidirectional gRPC through NGINX and test responses before and after a client half-close, including final status and trailing metadata.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Nginx",
+      "gRPC",
+      "Troubleshooting"
+    ],
+    "post": "2026-11-20-nginx-bidirectional-grpc-stream-half-close"
+  },
+  {
+    "title": "Set Safe NGINX gRPC Retry Rules for Non-Idempotent Calls",
+    "description": "Separate NGINX failover from gRPC client retries, protect state-changing calls, and test whether a failed response repeats an operation.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Nginx",
+      "gRPC",
+      "Troubleshooting"
+    ],
+    "post": "2026-11-20-nginx-grpc-retries-non-idempotent-calls"
+  },
+  {
+    "title": "Stop NGINX Idle gRPC Timeouts Without Hiding Dead Backends",
+    "description": "Give quiet gRPC streams a deliberate timeout budget, separate transport keepalive from progress, and test that stalled backends still fail promptly.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Nginx",
+      "gRPC",
+      "Troubleshooting"
+    ],
+    "post": "2026-11-20-nginx-idle-grpc-stream-timeouts"
+  },
+  {
+    "title": "Reuse NGINX Upstream Connections with DNS Service Discovery",
+    "description": "Combine dynamic upstream DNS with HTTP connection reuse, verify both independently, and avoid confusing DNS refresh with connection lifetime.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Nginx",
+      "DNS",
+      "Performance"
+    ],
+    "post": "2026-11-20-nginx-upstream-keepalive-dns-discovery"
+  },
+  {
+    "title": "Handle NGINX njs Fetch DNS, TLS, and Subrequest Errors",
+    "description": "Build an njs metadata handler with explicit DNS and TLS trust, checked response status, bounded bodies, and controlled subrequest failure handling.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Nginx",
+      "JavaScript",
+      "Troubleshooting"
+    ],
+    "post": "2026-11-20-nginx-njs-fetch-dns-tls-subrequest-errors"
+  },
+  {
+    "title": "Validate JWTs with Rotating JWKS and Caching in NGINX njs",
+    "description": "Verify a restricted JWT profile with njs, cache issuer keys, test key rotation, and reject unknown keys without fetching JWKS for every token.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Nginx",
+      "JWT",
+      "Security"
+    ],
+    "post": "2026-11-20-nginx-njs-jwt-rotating-jwks-cache"
   }
 ]

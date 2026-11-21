@@ -1,0 +1,24 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-21",
+  "runtimeTestsPerformed": true,
+  "sources": [
+    "https://github.com/nginx/nginx/blob/release-1.30.7/src/http/ngx_http_file_cache.c",
+    "https://nginx.org/en/docs/http/ngx_http_map_module.html",
+    "https://nginx.org/en/docs/http/ngx_http_auth_request_module.html",
+    "https://nginx.org/en/docs/http/ngx_http_proxy_module.html#proxy_cache_valid"
+  ],
+  "tests": [
+    "NGINX1.30.7 fixture: same Alice credential/URI reused decision; Bob got separate identity; different denied URI checked independently",
+    "Two credential-free requests both consulted auth; revoked Alice allowed before cache expiry and denied after expiry",
+    "Article config passed nginx -t with local cache directory substituted",
+    "Eight-node eight-edge Mermaid structurally reviewed",
+    "1280x720 image visually inspected"
+  ],
+  "limitations": [
+    "Synthetic bearer credentials and counting auth stub only; no OAuth provider or browser session",
+    "Method/cookie changes, credential expiry, auth outages and extra policy inputs not runtime-tested",
+    "Credential-bearing key storage explicitly documented; no production secrets used",
+    "Mermaid not rendered"
+  ]
+}

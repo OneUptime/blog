@@ -1,0 +1,25 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-21",
+  "runtimeTestsPerformed": true,
+  "sources": [
+    "https://nginx.org/en/docs/njs/install.html",
+    "https://nginx.org/en/docs/njs/reference.html",
+    "https://nginx.org/en/docs/http/ngx_http_js_module.html#js_fetch_trusted_certificate",
+    "https://nginx.org/en/docs/http/ngx_http_core_module.html#subrequest_output_buffer_size",
+    "https://github.com/nginx/njs/tree/0.9.5"
+  ],
+  "tests": [
+    "Built NGINX1.30.7 with njs0.9.5 engine; macOS linker flag changed from -Wl,-E to -Wl,-export_dynamic in local njs auto/options only",
+    "Exact article JS executed with fixture endpoint port substitutions: good JSON200; HTTP503, malformed JSON, wrong SAN, wrong CA, missing resolver and internal503 all controlled502",
+    "Article nginx fragment with local CA/JS paths passed nginx -t",
+    "Nine-node nine-edge Mermaid structurally reviewed",
+    "1280x720 social image visually reviewed"
+  ],
+  "limitations": [
+    "Local TLS fixture and UDP resolver, not production; local linker adaptation means not unmodified upstream build",
+    "No timeout, oversized response, real identity provider, production packaging or load test",
+    "Subrequest failure used internal return503; article proxy location syntax checked",
+    "Mermaid not rendered"
+  ]
+}

@@ -1,0 +1,24 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-21",
+  "runtimeTestsPerformed": true,
+  "sources": [
+    "https://github.com/grpc/grpc/blob/v1.76.0/doc/PROTOCOL-HTTP2.md",
+    "https://nginx.org/en/docs/http/ngx_http_grpc_module.html#grpc_next_upstream",
+    "https://github.com/nginx/nginx/blob/release-1.30.7/src/http/ngx_http_upstream.c",
+    "https://grpc.io/docs/guides/retry/",
+    "https://github.com/grpc/grpc/blob/v1.76.0/include/grpc/impl/channel_arg_names.h",
+    "https://grpc.io/docs/guides/status-codes/"
+  ],
+  "tests": [
+    "NGINX1.30.7 exact article configuration passed nginx -t",
+    "Python3.11 grpcio1.76.0 loopback handler recorded an effect then returned UNAVAILABLE: one execution with client retries disabled, two with two-attempt client policy; NGINX retries off in both",
+    "Article Python parsed; three-participant seven-message Mermaid structurally reviewed",
+    "1280x720 social image visually reviewed"
+  ],
+  "limitations": [
+    "No real database transaction, lost response, TCP fault, TLS, multi-backend failover or production testing",
+    "Read-method bounded failover configuration syntax checked only",
+    "Mermaid not rendered"
+  ]
+}

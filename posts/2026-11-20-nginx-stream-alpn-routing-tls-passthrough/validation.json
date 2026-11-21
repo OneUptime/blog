@@ -1,0 +1,26 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-21",
+  "runtimeTestsPerformed": true,
+  "sources": [
+    "https://www.rfc-editor.org/rfc/rfc7301.html",
+    "https://nginx.org/en/docs/stream/ngx_stream_ssl_preread_module.html",
+    "https://nginx.org/en/docs/stream/ngx_stream_map_module.html",
+    "https://nginx.org/en/docs/stream/ngx_stream_return_module.html",
+    "https://nginx.org/en/docs/stream/ngx_stream_proxy_module.html",
+    "https://docs.openssl.org/3.6/man1/openssl-s_client/"
+  ],
+  "tests": [
+    "NGINX1.30.7 stream/preread: h2, http1-only, combined offer routed to expected TLS backend with certificate/hostname verification",
+    "Missing and unsupported ALPN rejected by empty stream return endpoint; exactly three backend TLS connections observed",
+    "Article full stream configuration passed nginx -t; OpenSSL shell block bash -n",
+    "Six-node six-edge Mermaid structurally reviewed",
+    "1280x720 image visually inspected"
+  ],
+  "limitations": [
+    "Python TLS fixture used diagnostic bytes after ALPN; not valid HTTP2 protocol exchange",
+    "No ECH, large/fragmented ClientHello, certificate rotation or load tests",
+    "OpenSSL placeholder command source/syntax checked, not executed against article endpoints",
+    "Mermaid not rendered"
+  ]
+}

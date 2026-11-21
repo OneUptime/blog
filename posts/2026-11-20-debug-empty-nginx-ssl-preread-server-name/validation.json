@@ -1,0 +1,25 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-21",
+  "runtimeTestsPerformed": true,
+  "sources": [
+    "https://www.rfc-editor.org/rfc/rfc6066.html#section-3",
+    "https://nginx.org/en/docs/stream/ngx_stream_ssl_preread_module.html",
+    "https://nginx.org/en/docs/stream/ngx_stream_log_module.html",
+    "https://nginx.org/en/docs/switches.html",
+    "https://docs.openssl.org/3.6/man1/openssl-s_client/",
+    "https://nginx.org/en/docs/stream/ngx_stream_core_module.html#preread_buffer_size"
+  ],
+  "tests": [
+    "NGINX1.30.7 local raw ClientHello fixture: explicit SNI named, omitted SNI empty with TLSv1.3 offer, plaintext HTTP both empty",
+    "Three JSON session records parsed and asserted; disposable byte sink, no completed handshake claimed",
+    "Article log fragment passed nginx -t with local path and minimal stream wrapper; shell blocks bash -n",
+    "Seven-node six-edge Mermaid structurally reviewed",
+    "1280x720 image visually inspected"
+  ],
+  "limitations": [
+    "Preread extraction test only; no full TLS handshake, backend verification or real application",
+    "No ECH, PROXY protocol, upstream TLS termination, fragmented/oversized ClientHello or timeout tests",
+    "OpenSSL diagnostic examples source/syntax checked, not executed; Mermaid not rendered"
+  ]
+}

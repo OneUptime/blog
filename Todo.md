@@ -2053,15 +2053,35 @@ Research: [OneUptime air-gapped alerting](https://oneuptime.com/enterprise/air-g
 
     Completed: [Article](posts/2026-11-20-nginx-auth-request-oauth-identity-headers/README.md) (20 November 2026).
 10. How to Cache NGINX auth_request Results Without Reusing One User’s Authorization for Another
+
+    Completed: [Article](posts/2026-11-20-cache-nginx-auth-request-per-user-authorization/README.md) (20 November 2026).
 11. How to Authenticate POST Requests with NGINX auth_request Without Losing or Duplicating the Request Body
+
+    Completed: [Article](posts/2026-11-20-nginx-auth-request-post-body-preservation/README.md) (20 November 2026).
 12. How to Route NGINX Stream Traffic by ALPN Without Terminating TLS
+
+    Completed: [Article](posts/2026-11-20-nginx-stream-alpn-routing-tls-passthrough/README.md) (20 November 2026).
 13. How to Debug Empty ssl_preread_server_name Values in NGINX Stream Routing
+
+    Completed: [Article](posts/2026-11-20-debug-empty-nginx-ssl-preread-server-name/README.md) (20 November 2026).
 14. How to Proxy Bidirectional gRPC Streams Through NGINX Without Premature Half-Closes
+
+    Completed: [Article](posts/2026-11-20-nginx-bidirectional-grpc-stream-half-close/README.md) (20 November 2026).
 15. How to Set Safe NGINX Retry Rules for gRPC Without Replaying Non-Idempotent Calls
+
+    Completed: [Article](posts/2026-11-20-nginx-grpc-retries-non-idempotent-calls/README.md) (20 November 2026).
 16. How to Stop NGINX from Timing Out Idle gRPC Streams Without Masking Dead Backends
+
+    Completed: [Article](posts/2026-11-20-nginx-idle-grpc-stream-timeouts/README.md) (20 November 2026).
 17. How to Keep NGINX Upstream Connections Reusable When Backends Are Discovered Through DNS
+
+    Completed: [Article](posts/2026-11-20-nginx-upstream-keepalive-dns-discovery/README.md) (20 November 2026).
 18. How to Prevent NGINX njs Fetch Handlers from Failing on DNS, TLS, or Subrequest Errors
+
+    Completed: [Article](posts/2026-11-20-nginx-njs-fetch-dns-tls-subrequest-errors/README.md) (20 November 2026).
 19. How to Validate JWTs Against Rotating JWKS in NGINX njs Without Fetching Keys per Request
+
+    Completed: [Article](posts/2026-11-20-nginx-njs-jwt-rotating-jwks-cache/README.md) (20 November 2026).
 20. How to Debug NGINX Cache Bypass and No-Cache Decisions with $upstream_cache_status
 
 ## Renovate

@@ -1,0 +1,26 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-21",
+  "runtimeTestsPerformed": true,
+  "sources": [
+    "https://www.rfc-editor.org/rfc/rfc8725.html",
+    "https://www.rfc-editor.org/rfc/rfc7519.html",
+    "https://www.rfc-editor.org/rfc/rfc7517.html",
+    "https://nginx.org/en/docs/http/ngx_http_proxy_module.html#proxy_cache_valid",
+    "https://nginx.org/en/docs/njs/reference.html#crypto"
+  ],
+  "tests": [
+    "Companion jwt.js executed in NGINX1.30.7/njs0.9.5 with generated RSA keys; valid204, wrong signature/alg/issuer/audience/expiry/future nbf/unknown kid401",
+    "Repeated valid and invalid checks shared one HTTP origin fetch with public max-age1 JWKS",
+    "New key rejected while cache fresh; after refresh old/new overlap accepted; after retirement/refresh old rejected; origin503 after expiry returned503",
+    "Article config with local file/cache paths passed nginx -t",
+    "Eight-node eight-edge Mermaid structurally reviewed",
+    "1280x720 social image visually reviewed"
+  ],
+  "limitations": [
+    "Restricted single issuer RS256 profile, scalar audience, JWT typ, no clock grace; not general JWT/OIDC library or complete resource authorization",
+    "Single worker loopback HTTP JWKS service; no production TLS, multiworker concurrency, cache lock stress, emergency fleet invalidation or app auth wiring",
+    "njs0.9.5 local macOS build changed linker flag -Wl,-E to -Wl,-export_dynamic only",
+    "Mermaid not rendered"
+  ]
+}

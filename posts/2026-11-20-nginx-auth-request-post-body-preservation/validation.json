@@ -1,0 +1,24 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-21",
+  "runtimeTestsPerformed": true,
+  "sources": [
+    "https://nginx.org/en/docs/http/ngx_http_auth_request_module.html",
+    "https://github.com/nginx/nginx/blob/release-1.30.7/src/http/modules/ngx_http_auth_request_module.c",
+    "https://nginx.org/en/docs/http/ngx_http_proxy_module.html#proxy_request_buffering",
+    "https://nginx.org/en/docs/http/ngx_http_core_module.html#client_max_body_size",
+    "https://curl.se/docs/manpage.html#--data-binary"
+  ],
+  "tests": [
+    "NGINX1.30.7 approved29-byte JSON and1MiB binary POST: exact lengths/SHA256 and one application invocation each",
+    "Denied POST403 with no application call; three auth subrequests GET without Content-Length and original method POST",
+    "Fixture8KiB body buffer exercised large body; article config passed nginx -t; shell block bash -n",
+    "Four-participant six-message Mermaid structurally reviewed",
+    "1280x720 social image visually inspected"
+  ],
+  "limitations": [
+    "Local synthetic auth and application handlers; no real identity provider",
+    "No chunked upload, multipart, Expect100, client disconnect, upstream failure, retry/idempotency or streaming-mode tests",
+    "Mermaid not rendered; curl example source/syntax checked only"
+  ]
+}

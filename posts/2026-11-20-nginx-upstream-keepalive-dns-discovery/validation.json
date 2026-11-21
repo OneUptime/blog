@@ -1,0 +1,24 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-21",
+  "runtimeTestsPerformed": true,
+  "sources": [
+    "https://github.com/nginx/nginx/blob/release-1.30.7/src/http/modules/ngx_http_upstream_keepalive_module.c",
+    "https://nginx.org/en/docs/http/ngx_http_upstream_module.html#server",
+    "https://nginx.org/en/docs/http/ngx_http_upstream_module.html#keepalive",
+    "https://nginx.org/en/docs/http/ngx_http_proxy_module.html#proxy_set_header",
+    "https://docs.python.org/3.11/library/http.server.html#http.server.BaseHTTPRequestHandler.protocol_version"
+  ],
+  "tests": [
+    "NGINX1.30.7 exact article fragment in enclosing events/http passed nginx -t",
+    "Local DNS changed A127.0.0.1 to AAAA::1; HTTP1.1 backends at same port, length-delimited replies; worker PID unchanged",
+    "Sequential requests reused one backend peer port before DNS change and another after change; keepalive8 local, valid1s fixture",
+    "Eight-node eight-edge Mermaid structurally reviewed",
+    "1280x720 social image visually reviewed"
+  ],
+  "limitations": [
+    "Runtime uses one worker and loopback plaintext; article32connection/10s DNS policy syntax only",
+    "No multiple workers, concurrent load, DNS outage, TLS, long response drain or connection-bound authentication test",
+    "Mermaid not rendered"
+  ]
+}

@@ -1,0 +1,26 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-21",
+  "runtimeTestsPerformed": true,
+  "sources": [
+    "https://grpc.io/docs/what-is-grpc/core-concepts/",
+    "https://nginx.org/en/docs/http/ngx_http_grpc_module.html",
+    "https://nginx.org/en/docs/http/ngx_http_v2_module.html",
+    "https://pypi.org/project/grpcio/1.76.0/",
+    "https://grpc.github.io/grpc/python/grpc.html",
+    "https://grpc.io/docs/guides/deadlines/"
+  ],
+  "tests": [
+    "Built NGINX1.30.7 with HTTP2; Python3.11 grpcio1.76.0 wheel installed in isolated environment",
+    "Exact article server/client snippets executed directly and through NGINX; first response released waiting request generator before second message",
+    "After request iterator ended, delayed final server message, statusOK and trailing metadata complete received",
+    "Article nginx -t passed; Python compiled; shell install snippet bash -n",
+    "Three-participant seven-message Mermaid structurally reviewed",
+    "1280x720 image visually inspected"
+  ],
+  "limitations": [
+    "Loopback plaintext diagnostic raw-byte handler; no TLS, generated protobuf, auth or production load",
+    "No cancellation, deadline failure, large flow-control pressure, backend failure or proxy reload tests",
+    "Mermaid not rendered"
+  ]
+}

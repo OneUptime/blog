@@ -1,0 +1,25 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-21",
+  "runtimeTestsPerformed": true,
+  "sources": [
+    "https://nginx.org/en/docs/http/ngx_http_grpc_module.html#grpc_read_timeout",
+    "https://grpc.io/docs/guides/deadlines/",
+    "https://grpc.io/docs/guides/keepalive/",
+    "https://grpc.io/docs/guides/health-checking/",
+    "https://grpc.io/docs/guides/cancellation/"
+  ],
+  "tests": [
+    "NGINX1.30.7 article fragment wrapped in events/http passed nginx -t",
+    "Python3.11/grpcio1.76.0 silent stream with1s read timeout failed at1.01s and logged upstream timed out",
+    "Eight0.2s heartbeat messages kept1.66s stream alive and completed OK",
+    "Client0.6s deadline interrupted heartbeat stream with DEADLINE_EXCEEDED at0.611s",
+    "Four-node five-edge Mermaid structurally checked",
+    "1280x720 social image visually reviewed"
+  ],
+  "limitations": [
+    "Short loopback plaintext timing fixture, not production75s policy runtime",
+    "No HTTP2 PING experiment, packet loss, external LB, TLS, database stall or reconnect test",
+    "Mermaid not rendered"
+  ]
+}
