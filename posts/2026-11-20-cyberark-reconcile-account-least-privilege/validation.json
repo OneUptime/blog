@@ -1,0 +1,29 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-21",
+  "runtimeTestsPerformed": false,
+  "sources": [
+    "https://www.github.com/nawazdhandala",
+    "https://learn.microsoft.com/en-us/windows-server/identity/ad-ds/plan/delegating-administration-by-using-ou-objects",
+    "https://docs.cyberark.com/pam-self-hosted/latest/en/content/pasimp/configuring-accounts-for-automatic-management.htm",
+    "https://live.paloaltonetworks.com/t5/pam-self-hosted-articles/how-to-reconcile-a-domain-admin-account-without-domain-admin/ta-p/1427191",
+    "https://learn.microsoft.com/en-us/previous-versions/windows/it-pro/windows-10/security/threat-protection/security-policy-settings/network-access-restrict-clients-allowed-to-make-remote-sam-calls",
+    "https://learn.microsoft.com/en-us/previous-versions/windows/it-pro/windows-server-2012-r2-and-2012/cc771151%28v%3Dws.11%29",
+    "https://learn.microsoft.com/en-us/windows-server/identity/ad-ds/plan/security-best-practices/appendix-c--protected-accounts-and-groups-in-active-directory",
+    "https://docs.cyberark.com/pam-self-hosted/latest/en/content/pasimp/reconciling-passwords.htm",
+    "https://docs.cyberark.com/pam-self-hosted/latest/en/content/pasimp/configuring-accounts-for-automatic-management.htm"
+  ],
+  "tests": [
+    "Reviewed dsacls display-only invocation against Microsoft command reference; two commands contain only quoted object names and no mutation switches",
+    "Reviewed account-over-platform association precedence and exact reference fields against official CyberArk documentation",
+    "Compared conflicting historical unlock guidance with version-qualified vendor section; article avoids universal permission grants",
+    "Eight-node six-edge Mermaid structurally reviewed",
+    "1280x720 social image visually reviewed"
+  ],
+  "limitations": [
+    "No Windows command processor, dsacls execution, Active Directory delegation or CyberArk reconciliation tested",
+    "The article does not prescribe a universal plugin permission set; installed version and enabled operations require verification",
+    "Positive and negative permission tests are reader acceptance procedures, not tests performed here",
+    "Mermaid not rendered"
+  ]
+}

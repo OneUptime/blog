@@ -1,0 +1,26 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-21",
+  "runtimeTestsPerformed": false,
+  "sources": [
+    "https://docs.cyberark.com/pam-self-hosted/latest/en/content/pasimp/createcredfile-utility.htm",
+    "https://knowledgebase.paloaltonetworks.com/KCSArticleDetail?id=kA1hj00000018jXCAQ&lang=en_US",
+    "https://learn.microsoft.com/en-us/powershell/module/Microsoft.PowerShell.Management/Get-Item?view=powershell-5.1",
+    "https://learn.microsoft.com/en-us/powershell/module/Microsoft.PowerShell.Security/get-acl?view=powershell-5.1",
+    "https://live.paloaltonetworks.com/t5/pam-self-hosted-articles/pvwa-how-can-i-create-or-update-the-credential-files-credfile/ta-p/1428053",
+    "https://live.paloaltonetworks.com/t5/pam-self-hosted-articles/cpm-how-can-i-create-or-update-the-credential-files-credfile-for/ta-p/1428529",
+    "https://live.paloaltonetworks.com/t5/pam-self-hosted-articles/cred-file-reset-article-list/ta-p/1428472"
+  ],
+  "tests": [
+    "Two exact PowerShell snippets parsed with PowerShell 7.5.4 on macOS",
+    "Reviewed PVWA 12.1.1+ and CPM 12.1+ recovery boundaries and component-specific protection settings",
+    "Reviewed entropy-file handling, permissions and separate scanner dependency",
+    "Seven-node six-edge Mermaid structurally reviewed",
+    "Generated 1280x720 social image visually reviewed"
+  ],
+  "limitations": [
+    "No Windows ACL inspection, CreateCredFile execution, Vault reset or live component recovery performed",
+    "Version metadata snippet parsed only; installed CyberArk binaries unavailable",
+    "Mermaid not rendered"
+  ]
+}

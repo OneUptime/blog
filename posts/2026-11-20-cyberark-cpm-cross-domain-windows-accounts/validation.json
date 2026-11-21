@@ -1,0 +1,31 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-21",
+  "runtimeTestsPerformed": false,
+  "sources": [
+    "https://www.github.com/nawazdhandala",
+    "https://docs.cyberark.com/plugins-pam-sh/latest/en/pam-sh/pasimp/windows-domain-accounts/",
+    "https://learn.microsoft.com/en-us/powershell/module/dnsclient/resolve-dnsname?view=windowsserver2025-ps",
+    "https://learn.microsoft.com/en-us/troubleshoot/windows-server/active-directory/config-firewall-for-ad-domains-and-trusts",
+    "https://learn.microsoft.com/en-us/powershell/module/nettcpip/test-netconnection?view=windowsserver2025-ps",
+    "https://learn.microsoft.com/en-us/troubleshoot/windows-client/networking/rpc-errors-troubleshooting",
+    "https://docs.cyberark.com/plugins-pam-sh/latest/en/pam-sh/plugins/plugin-ldap/",
+    "https://learn.microsoft.com/en-us/troubleshoot/windows-server/active-directory/enable-ldap-over-ssl-3rd-certification-authority",
+    "https://learn.microsoft.com/en-us/entra/identity/domain-services/concepts-forest-trust",
+    "https://learn.microsoft.com/en-us/windows-server/identity/ad-ds/plan/security-best-practices/appendix-c--protected-accounts-and-groups-in-active-directory"
+  ],
+  "tests": [
+    "Both exact PowerShell examples parsed with PowerShell 7.5.4",
+    "Reviewed DNS SRV/A query and TCP listener-test flags against Microsoft Windows Server documentation",
+    "Reviewed illustrative LDAP field values, UPN/LogonDomain rules, Basic+SSL requirement and alternate-UPN limitation against official plugin reference",
+    "Reviewed protocol-specific port discussion, RPC negotiation, TLS certificate requirements and trust/authorization distinction",
+    "Eight-node eight-edge Mermaid structurally reviewed",
+    "1280x720 social image visually reviewed"
+  ],
+  "limitations": [
+    "No Windows DNS/TCP commands executed; parser check only",
+    "No live directory bind, TLS handshake, Kerberos exchange, domain trust, password change or reconciliation tested",
+    "LDAP settings are illustrative reviewed fields, not an imported or executed configuration; installed plugin compatibility must be confirmed",
+    "Mermaid not rendered"
+  ]
+}

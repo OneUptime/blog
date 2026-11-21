@@ -1834,17 +1834,37 @@ Research: [OneUptime air-gapped alerting](https://oneuptime.com/enterprise/air-g
     Completed: [Article](posts/2026-11-20-validate-custom-kube-bench-control-yaml/README.md) (20 November 2026).
 20. How to Fix kube-bench `exec format error` by Matching the Image Architecture to the Node
 
+    Completed: [Article](posts/2026-11-20-kube-bench-exec-format-error-node-architecture/README.md) (20 November 2026).
+
 ## CyberArk
 
 1. How to Diagnose CyberArk CPM When Verify Succeeds but Password Change Fails
+
+    Completed: [Article](posts/2026-11-20-cyberark-cpm-verify-succeeds-password-change-fails/README.md) (20 November 2026).
 2. How to Configure a CyberArk Reconcile Account Without Giving It Excessive Privileges
+
+    Completed: [Article](posts/2026-11-20-cyberark-reconcile-account-least-privilege/README.md) (20 November 2026).
 3. How to Rotate Windows Service, Scheduled Task, and IIS App Pool Credentials with CyberArk Dependencies
+
+    Completed: [Article](posts/2026-11-20-cyberark-windows-service-task-iis-dependencies/README.md) (20 November 2026).
 4. How to Troubleshoot CyberArk CPM Rotations That Are Skipped Without an Error
+
+    Completed: [Article](posts/2026-11-20-cyberark-cpm-rotations-skipped-without-error/README.md) (20 November 2026).
 5. How to Rotate Cross-Domain Windows Accounts with CyberArk CPM: DNS, Ports, and Reconcile Accounts
+
+    Completed: [Article](posts/2026-11-20-cyberark-cpm-cross-domain-windows-accounts/README.md) (20 November 2026).
 6. How to Build and Debug a Custom CyberArk CPM Plug-In for an Unsupported Target
+
+    Completed: [Article](posts/2026-11-20-build-debug-custom-cyberark-cpm-plugin/README.md) (20 November 2026).
 7. How to Troubleshoot CyberArk PSM RDP Failures Caused by NLA, Connection Components, or Load Balancers
+
+    Completed: [Article](posts/2026-11-20-cyberark-psm-rdp-nla-components-load-balancers/README.md) (20 November 2026).
 8. How to Diagnose CyberArk PSM for SSH (PSMP) Authentication Failures One Hop at a Time
+
+    Completed: [Article](posts/2026-11-20-cyberark-psmp-authentication-one-hop/README.md) (20 November 2026).
 9. How to Repair CyberArk PVWA or CPM Connectivity After a Component Credential File Breaks
+
+    Completed: [Article](posts/2026-11-20-repair-cyberark-component-credential-files/README.md) (20 November 2026).
 10. How to Fix CyberArk PVWA “Failed to Contact Domain” Errors During LDAPS Integration
 11. How to Upgrade CyberArk PAM Self-Hosted in the Correct Component Order with a Tested Rollback
 12. How to Test CyberArk DR Vault Failover Without Losing Password Operations or PSM Recordings

@@ -1,0 +1,30 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-21",
+  "runtimeTestsPerformed": false,
+  "sources": [
+    "https://www.github.com/nawazdhandala",
+    "https://kubernetes.io/docs/tasks/debug/debug-application/debug-running-pod/",
+    "https://kubernetes.io/docs/reference/labels-annotations-taints/",
+    "https://github.com/opencontainers/image-spec/blob/v1.1.1/image-index.md",
+    "https://github.com/google/go-containerregistry/blob/v0.20.6/cmd/crane/doc/crane_manifest.md",
+    "https://github.com/google/go-containerregistry/blob/v0.20.6/cmd/crane/doc/crane_config.md",
+    "https://docs.docker.com/build/metadata/attestations/attestation-storage/",
+    "https://docs.docker.com/build/building/multi-platform/",
+    "https://github.com/aquasecurity/kube-bench/blob/v0.14.0/Dockerfile"
+  ],
+  "tests": [
+    "Fetched actual v0.14.0 image index with crane v0.20.6; confirmed four Linux architecture entries and attestation entries",
+    "Fetched linux/amd64 config and exercised index jq projection",
+    "Inspected retained official AMD64 root filesystem ELF header: machine 62",
+    "Three Bash examples passed syntax checks; YAML selector parsed and asserted",
+    "Seven-node seven-edge Mermaid structurally reviewed",
+    "1280x720 social image visually reviewed"
+  ],
+  "limitations": [
+    "No Kubernetes workload launched or exec format error reproduced",
+    "No ARM64 executable or runtime tested; index metadata alone does not prove execution",
+    "Cluster read commands and scheduling fragment not exercised against a live cluster",
+    "Mermaid not rendered"
+  ]
+}

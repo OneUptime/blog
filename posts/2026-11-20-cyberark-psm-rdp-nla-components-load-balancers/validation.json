@@ -1,0 +1,28 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-21",
+  "runtimeTestsPerformed": true,
+  "sources": [
+    "https://knowledgebase.paloaltonetworks.com/KCSArticleDetail?id=kA1hj00000012qzCAA&lang=en_US",
+    "https://docs.cyberark.com/pam-self-hosted/latest/en/content/pasimp/securing-rdp-connections-with-ssl.htm",
+    "https://learn.microsoft.com/en-us/powershell/module/microsoft.powershell.utility/select-string?view=powershell-7.5",
+    "https://docs.cyberark.com/plugins-pam-sh/latest/en/pam-sh/pasimp/psmconnectioncomponents/",
+    "https://learn.microsoft.com/en-us/powershell/module/nettcpip/test-netconnection?view=windowsserver2025-ps",
+    "https://docs.cyberark.com/pam-self-hosted/latest/en/content/pas%20inst/installing-psm-in-a-load-balancing-environment.htm",
+    "https://learn.microsoft.com/en-us/powershell/module/microsoft.powershell.utility/invoke-webrequest?view=powershell-7.5",
+    "https://docs.cyberark.com/pam-self-hosted/latest/en/content/psm/psm_healthcheck.htm",
+    "https://docs.cyberark.com/pam-self-hosted/latest/en/content/psm/exampleloadbalancer.htm"
+  ],
+  "tests": [
+    "Three exact PowerShell snippets parsed using PowerShell 7.5.4 on macOS",
+    "Executed exact RDP filtering example against synthetic UTF-16 file; three intended settings selected and unrelated sensitive-placeholder fields excluded",
+    "Reviewed NLA boundary, component parameters, load balancing and health modes against official documentation",
+    "Seven-node six-edge Mermaid structurally reviewed",
+    "1280x720 generated social image visually reviewed"
+  ],
+  "limitations": [
+    "No live PSM, Windows RDP, target authentication, load-balancer or health endpoint tested",
+    "Local filtering fixture does not establish generated RDP file compatibility",
+    "Mermaid not rendered"
+  ]
+}

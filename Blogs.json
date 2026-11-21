@@ -830491,5 +830491,115 @@
       "Testing"
     ],
     "post": "2026-11-20-validate-custom-kube-bench-control-yaml"
+  },
+  {
+    "title": "Fix kube-bench Exec Format Errors by Matching Node Architecture",
+    "description": "Diagnose kube-bench startup failures by comparing node architecture, image manifests, and executable formats before repairing your image or scheduling policy.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Kubernetes",
+      "Security",
+      "Troubleshooting"
+    ],
+    "post": "2026-11-20-kube-bench-exec-format-error-node-architecture"
+  },
+  {
+    "title": "Diagnose CyberArk CPM When Verify Passes but Password Change Fails",
+    "description": "Trace CyberArk password-change failures through account restrictions, target password policy, plugin logs, and controlled recovery after a successful Verify.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "CyberArk",
+      "Security",
+      "Troubleshooting"
+    ],
+    "post": "2026-11-20-cyberark-cpm-verify-succeeds-password-change-fails"
+  },
+  {
+    "title": "Configure a CyberArk Reconcile Account with Least Privilege",
+    "description": "Scope CyberArk reconciliation to approved accounts using separate target permissions, Vault access, account associations, and positive and negative tests.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "CyberArk",
+      "Security",
+      "Access Control"
+    ],
+    "post": "2026-11-20-cyberark-reconcile-account-least-privilege"
+  },
+  {
+    "title": "Rotate Windows Service, Task, and IIS Credentials with CyberArk",
+    "description": "Inventory Windows credential consumers, configure CyberArk dependencies, and verify service, scheduled-task, and IIS recovery after password rotation.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "CyberArk",
+      "Windows Server",
+      "Security"
+    ],
+    "post": "2026-11-20-cyberark-windows-service-task-iis-dependencies"
+  },
+  {
+    "title": "Troubleshoot CyberArk CPM Rotations Skipped Without an Error",
+    "description": "Trace missing CyberArk rotations through account eligibility, Safe scope, scheduling windows, management state, and CPM logs before changing policy.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "CyberArk",
+      "Troubleshooting",
+      "Security"
+    ],
+    "post": "2026-11-20-cyberark-cpm-rotations-skipped-without-error"
+  },
+  {
+    "title": "Rotate Cross-Domain Windows Accounts with CyberArk CPM",
+    "description": "Plan cross-domain CyberArk rotation by separating DNS, plugin protocols, TLS trust, authentication paths, and target-domain reconcile permissions.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "CyberArk",
+      "Active Directory",
+      "Troubleshooting"
+    ],
+    "post": "2026-11-20-cyberark-cpm-cross-domain-windows-accounts"
+  },
+  {
+    "title": "Build and Debug a Custom CyberArk CPM Plugin",
+    "description": "Design a custom CPM plugin around explicit actions, bounded target operations, useful errors, and staged manual testing before integrating it with CyberArk.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "CyberArk",
+      "Security",
+      "Software Development"
+    ],
+    "post": "2026-11-20-build-debug-custom-cyberark-cpm-plugin"
+  },
+  {
+    "title": "Troubleshoot CyberArk PSM RDP, NLA, and Load-Balancer Failures",
+    "description": "Isolate CyberArk RDP failures by checking each connection leg, the correct NLA boundary, component overrides, and load-balancer health behavior.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "CyberArk",
+      "RDP",
+      "Troubleshooting"
+    ],
+    "post": "2026-11-20-cyberark-psm-rdp-nla-components-load-balancers"
+  },
+  {
+    "title": "Diagnose CyberArk PSMP Authentication Failures One Hop at a Time",
+    "description": "Separate client, Vault, and target authentication failures in CyberArk PSMP using a controlled connection, correlated logs, and precise account checks.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "CyberArk",
+      "SSH",
+      "Troubleshooting"
+    ],
+    "post": "2026-11-20-cyberark-psmp-authentication-one-hop"
+  },
+  {
+    "title": "Repair CyberArk PVWA and CPM Component Credential Files",
+    "description": "Recover PVWA or CPM Vault connectivity by diagnosing file access, host protection, and account mismatches before following version-specific credential repair.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "CyberArk",
+      "Security",
+      "Troubleshooting"
+    ],
+    "post": "2026-11-20-repair-cyberark-component-credential-files"
   }
 ]

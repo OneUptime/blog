@@ -1,0 +1,29 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-21",
+  "runtimeTestsPerformed": false,
+  "sources": [
+    "https://www.github.com/nawazdhandala",
+    "https://docs.cyberark.com/plugins-pam-sh/latest/en/pam-sh/plugins/cpm-plugins-rest-api-infrastructure/",
+    "https://docs.cyberark.com/plugins-pam-sh/latest/en/pam-sh/pasimp/plug-in-netinvoker/",
+    "https://docs.cyberark.com/plugins-pam-sh/latest/en/pam-sh/pasimp/plug-in-netinvoker_project-structure/",
+    "https://docs.cyberark.com/plugins-pam-sh/latest/en/pam-sh/pasimp/plug-in-netinvoker_implement-action/",
+    "https://docs.cyberark.com/plugins-pam-sh/latest/en/pam-sh/pasimp/plug-in-netinvoker_access/",
+    "https://docs.cyberark.com/plugins-pam-sh/latest/en/pam-sh/pasimp/plug-in-netinvoker_test/",
+    "https://docs.cyberark.com/plugins-pam-sh/latest/en/pam-sh/pasimp/plug-in-netinvoker_utilities_logger/"
+  ],
+  "tests": [
+    "INI fixture parsed with strict ConfigParser; required identity metadata, password placeholders and ManagementType asserted",
+    "Exact PowerShell invoker example parsed with PowerShell 7.5.4",
+    "Reviewed SDK prerequisites, runtime-specific action registration, official assembly names, return-code contract and manual invoker argument order",
+    "Reviewed account property separation and logging against SDK references",
+    "Eight-node seven-edge Mermaid structurally reviewed",
+    "1280x720 social image visually reviewed"
+  ],
+  "limitations": [
+    "Proprietary SDK assemblies unavailable; no plugin compiled or CANetPluginInvoker executed",
+    "Fixture syntax check is not an SDK parsing or schema test",
+    "No target-specific implementation, password operation, mock transport or live CPM integration tested",
+    "Mermaid not rendered"
+  ]
+}

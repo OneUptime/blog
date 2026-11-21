@@ -1,0 +1,32 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-21",
+  "runtimeTestsPerformed": true,
+  "sources": [
+    "https://www.github.com/nawazdhandala",
+    "https://docs.cyberark.com/pam-self-hosted/latest/en/content/pasref/automatic%20password%20management%20-%20general.htm",
+    "https://live.paloaltonetworks.com/t5/pam-self-hosted-articles/cpm-what-happens-in-the-event-of-a-failure-in-a-password-change/ta-p/1429366",
+    "https://docs.cyberark.com/pam-self-hosted/latest/en/content/pasref/automatic%20password%20management%20-%20password%20change.htm",
+    "https://live.paloaltonetworks.com/t5/pam-saas-articles/what-time-zone-is-used-by-the-fromhour-and-tohour-parameters-in/ta-p/1428428",
+    "https://learn.microsoft.com/en-us/powershell/module/microsoft.powershell.utility/get-date?view=powershell-7.5",
+    "https://learn.microsoft.com/en-us/powershell/module/microsoft.powershell.management/get-timezone?view=powershell-7.5",
+    "https://docs.cyberark.com/pam-self-hosted/latest/en/content/pasimp/cpmlogging.htm",
+    "https://learn.microsoft.com/en-us/powershell/module/microsoft.powershell.utility/select-string?view=powershell-7.5",
+    "https://docs.cyberark.com/pam-self-hosted/latest/en/content/pasimp/configuring-accounts-for-automatic-management.htm",
+    "https://docs.cyberark.com/plugins-pam-sh/latest/en/pam-sh/pasimp/windowsservicesaccounts/"
+  ],
+  "tests": [
+    "Both exact PowerShell snippets parsed with PowerShell 7.5.4",
+    "Executed Select-String fixture checks for literal bracketed filename/account text, regex-like decoy rejection, pre/post context, absent matches and missing-file stop behavior",
+    "Executed Get-Date round-trip timestamp output and parsed it as DateTimeOffset",
+    "Reviewed platform scope, operation enablement, interval/window distinctions, timezone, retry/suspension and special-case dependencies against official documentation",
+    "Nine-node nine-edge Mermaid structurally reviewed",
+    "1280x720 social image visually reviewed"
+  ],
+  "limitations": [
+    "Synthetic local log files only; no real CPM logs or live scheduling observed",
+    "Windows-only Get-TimeZone source-reviewed and parsed but not executed",
+    "No CyberArk management changes, password operation or account resumption tested",
+    "Mermaid not rendered"
+  ]
+}

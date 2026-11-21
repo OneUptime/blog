@@ -1,0 +1,32 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-21",
+  "runtimeTestsPerformed": false,
+  "sources": [
+    "https://www.github.com/nawazdhandala",
+    "https://learn.microsoft.com/en-us/windows/win32/cimwin32prov/win32-service",
+    "https://learn.microsoft.com/en-us/powershell/module/cimcmdlets/get-ciminstance?view=powershell-7.5",
+    "https://learn.microsoft.com/en-us/powershell/module/scheduledtasks/get-scheduledtask?view=windowsserver2025-ps",
+    "https://learn.microsoft.com/en-us/powershell/module/scheduledtasks/get-scheduledtaskinfo?view=windowsserver2025-ps",
+    "https://learn.microsoft.com/en-us/windows/win32/taskschd/principal-logontype",
+    "https://learn.microsoft.com/en-us/iis/manage/powershell/powershell-snap-in-making-simple-configuration-changes-to-web-sites-and-application-pools",
+    "https://learn.microsoft.com/en-us/iis/configuration/system.applicationhost/applicationpools/add/processmodel",
+    "https://docs.cyberark.com/plugins-pam-sh/latest/en/pam-sh/pasimp/windowsservicesaccounts/",
+    "https://docs.cyberark.com/plugins-pam-sh/latest/en/pam-sh/pasimp/windowsscheduledtasksaccounts/",
+    "https://docs.cyberark.com/plugins-pam-sh/latest/en/pam-sh/pasimp/windowsiisapplicationpools/",
+    "https://docs.cyberark.com/pam-self-hosted/latest/en/content/pasimp/managing-service-accounts.htm"
+  ],
+  "tests": [
+    "All three exact PowerShell snippets parsed successfully with official PowerShell 7.5.4 macOS ARM64 runtime; release archive SHA256 matched published checksum",
+    "Source-reviewed Windows service fields, task definitions/runtime metadata/logon types and IIS provider/process-model fields",
+    "Source-reviewed current plugin prerequisites, RestartService default, unsupported task storage, IIS local-machine limitation and dependent-account onboarding",
+    "Nine-node ten-edge Mermaid structurally reviewed",
+    "1280x720 social image visually reviewed"
+  ],
+  "limitations": [
+    "No Windows PowerShell 5.1 execution, Windows modules, service/task/IIS queries or CyberArk rotation performed",
+    "PowerShell 7.5.4 parsing does not establish Windows provider behavior or plugin compatibility",
+    "No live restart, task execution, IIS recycle or distributed credential synchronization tested",
+    "Mermaid not rendered"
+  ]
+}

@@ -1,0 +1,27 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-21",
+  "runtimeTestsPerformed": true,
+  "sources": [
+    "https://docs.cyberark.com/pam-self-hosted/latest/en/content/pasimp/psso-pmsp.htm",
+    "https://man.openbsd.org/ssh.1",
+    "https://docs.cyberark.com/pam-self-hosted/latest/en/content/pasimp/configuring-psmp-syntax-delimiters.htm",
+    "https://docs.cyberark.com/pam-self-hosted/latest/en/content/pasimp/psso-pmsp.htm",
+    "https://docs.cyberark.com/pam-self-hosted/latest/en/content/pasimp/administrating-the-psmp.htm",
+    "https://live.paloaltonetworks.com/t5/pam-self-hosted-articles/where-can-i-find-the-logs-for-each-cyberark-product/ta-p/1427490",
+    "https://docs.cyberark.com/pam-self-hosted/latest/en/content/pasimp/configuring-psmp-connection-component-parameters.htm"
+  ],
+  "tests": [
+    "Three shell examples passed bash -n",
+    "OpenSSH 10.3p1 local ssh -G with empty configuration verified proxy hostname and embedded user fields; no network connection",
+    "Official connection, delimiter, component, service and log references reviewed",
+    "Eight-node seven-edge Mermaid structurally reviewed",
+    "1280x720 social image visually reviewed"
+  ],
+  "limitations": [
+    "No live PSMP, Vault, identity service or target SSH session tested",
+    "Client parsing is not PSMP server-side syntax validation",
+    "RHEL service query not executed on macOS",
+    "Mermaid not rendered"
+  ]
+}
