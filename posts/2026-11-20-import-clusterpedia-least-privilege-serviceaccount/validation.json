@@ -1,0 +1,28 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-21",
+  "runtimeTestsPerformed": false,
+  "localCodeTestsPerformed": true,
+  "sources": [
+    "https://clusterpedia.io/docs/usage/import-clusters/",
+    "https://github.com/clusterpedia-io/clusterpedia/blob/v0.9.0/pkg/runtime/discovery/dynamic_discovery.go",
+    "https://github.com/clusterpedia-io/clusterpedia/blob/v0.9.0/pkg/synchromanager/clustersynchro/cluster_monitor.go",
+    "https://kubernetes.io/docs/reference/access-authn-authz/rbac/",
+    "https://kubernetes.io/docs/reference/kubectl/generated/kubectl_create/kubectl_create_token/",
+    "https://github.com/clusterpedia-io/clusterpedia/blob/v0.9.0/pkg/utils/rest.go",
+    "https://github.com/clusterpedia-io/clusterpedia/blob/v0.9.0/pkg/synchromanager/features/features.go"
+  ],
+  "tests": [
+    "Generated import tested with Python3.9.6, a local OpenSSL test CA and synthetic token; validated against pinned chart2.7.0 PediaCluster v1alpha2 schema",
+    "CA/token decoded bytes match inputs; output0600; existing output and empty CA rejected",
+    "Static RBAC checks restrict resource pairs and verbs to intended pod/deployment/discovery reads; published helper and manifest match tested files",
+    "Tagged v0.9.0 discovery controllers, health endpoints, CA fallback and authentication feature gate reviewed",
+    "Shell syntax and seven Mermaid edges checked;1280x720 image visually reviewed"
+  ],
+  "limitations": [
+    "No member/host API, TokenRequest, token expiry/rotation, actual authorization or synchronization test",
+    "Static RBAC review does not prove effective permissions when other bindings exist",
+    "Local CA parsing is not endpoint trust or hostname validation",
+    "Mermaid not rendered"
+  ]
+}

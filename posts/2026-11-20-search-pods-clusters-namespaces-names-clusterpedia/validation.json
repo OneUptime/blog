@@ -1,0 +1,23 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-21",
+  "runtimeTestsPerformed": false,
+  "localCodeTestsPerformed": true,
+  "sources": [
+    "https://clusterpedia.io/docs/usage/access-clusterpedia/",
+    "https://github.com/clusterpedia-io/clusterpedia/blob/v0.9.0/staging/src/github.com/clusterpedia-io/api/clusterpedia/v1beta1/conversion.go",
+    "https://clusterpedia.io/docs/usage/search/multi-cluster/",
+    "https://github.com/clusterpedia-io/clusterpedia/blob/v0.9.0/staging/src/github.com/clusterpedia-io/api/clusterpedia/v1beta1/types.go"
+  ],
+  "tests": [
+    "Go1.25.0 executed v0.9.0 API conversion code with Kubernetes apimachinery0.31.2",
+    "Exact combined article selector produced two clusters, two namespaces, two names and preserved ordinary application label",
+    "Comma-separated query fields parsed; malformed selector rejected",
+    "Shell syntax and URL parameter parsing passed; five Mermaid edges structurally checked;1280x720 image visually reviewed"
+  ],
+  "limitations": [
+    "No live Kubernetes, Clusterpedia server, storage query, authorization or pagination tested",
+    "Go fixture exercises API option conversion only; no SQL execution or HTTP routing",
+    "Mermaid not rendered"
+  ]
+}

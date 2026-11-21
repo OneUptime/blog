@@ -1270,17 +1270,37 @@ Research: [OneUptime air-gapped alerting](https://oneuptime.com/enterprise/air-g
     Completed: [Article](posts/2026-11-20-trace-artifact-source-build-promotion-production/README.md) (20 November 2026).
 20. How to Build an Air-Gapped Artifact Mirror with a Complete Dependency Closure and Controlled Updates
 
+    Completed: [Article](posts/2026-11-20-air-gapped-artifact-mirror-dependency-closure/README.md) (20 November 2026).
+
 ## Clusterpedia
 
 1. How to Install Clusterpedia with Helm Using an External PostgreSQL or MySQL Database
+
+    Completed: [Article](posts/2026-11-20-install-clusterpedia-helm-external-database/README.md) (20 November 2026).
 2. How to Configure kubectl for Clusterpedia Multi-Cluster Search Through the Kubernetes Aggregation API
+
+    Completed: [Article](posts/2026-11-20-configure-kubectl-clusterpedia-aggregation-api/README.md) (20 November 2026).
 3. How to Import a Kubernetes Cluster into Clusterpedia with a Least-Privilege ServiceAccount
+
+    Completed: [Article](posts/2026-11-20-import-clusterpedia-least-privilege-serviceaccount/README.md) (20 November 2026).
 4. Why a PediaCluster Is Unhealthy: Debugging API Reachability, CA Data, Tokens, RBAC, and Discovery
+
+    Completed: [Article](posts/2026-11-20-debug-unhealthy-pediacluster/README.md) (20 November 2026).
 5. How to Reuse Clusterpedia Sync Policies Across Clusters with ClusterSyncResources and Per-Cluster Overrides
+
+    Completed: [Article](posts/2026-11-20-reuse-clusterpedia-sync-policies-overrides/README.md) (20 November 2026).
 6. How to Synchronize Custom Resources Across Kubernetes Versions Without Silent Clusterpedia Query Gaps
+
+    Completed: [Article](posts/2026-11-20-clusterpedia-custom-resource-version-query-gaps/README.md) (20 November 2026).
 7. How to Use Clusterpedia Sync Wildcards Without Creating an Informer and Storage Explosion
+
+    Completed: [Article](posts/2026-11-20-control-clusterpedia-sync-wildcard-growth/README.md) (20 November 2026).
 8. How to Search Pods Across Selected Clusters, Namespaces, and Names with Clusterpedia
+
+    Completed: [Article](posts/2026-11-20-search-pods-clusters-namespaces-names-clusterpedia/README.md) (20 November 2026).
 9. How to Query Nested Kubernetes Status and Annotation Fields with Clusterpedia Field Selectors
+
+    Completed: [Article](posts/2026-11-20-query-nested-fields-clusterpedia/README.md) (20 November 2026).
 10. How to Find Every Pod Owned by a Deployment with Clusterpedia Owner Seniority
 11. How to Paginate Large Clusterpedia Queries Without kubectl Fetching Every Remaining Page
 12. How to Build Stable Multi-Field Sorts for Clusterpedia Pagination

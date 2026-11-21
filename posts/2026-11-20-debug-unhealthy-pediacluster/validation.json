@@ -1,0 +1,28 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-21",
+  "runtimeTestsPerformed": false,
+  "localCodeTestsPerformed": true,
+  "sources": [
+    "https://kubernetes.io/docs/reference/kubectl/generated/kubectl_get/",
+    "https://github.com/clusterpedia-io/clusterpedia/blob/v0.9.0/staging/src/github.com/clusterpedia-io/api/cluster/v1alpha2/types.go",
+    "https://github.com/clusterpedia-io/clusterpedia/blob/v0.9.0/pkg/synchromanager/clustersynchro_manager.go",
+    "https://github.com/clusterpedia-io/clusterpedia/blob/v0.9.0/pkg/synchromanager/clustersynchro/cluster_monitor.go",
+    "https://docs.openssl.org/3.6/man1/openssl-x509/",
+    "https://github.com/clusterpedia-io/clusterpedia/blob/v0.9.0/pkg/utils/rest.go",
+    "https://kubernetes.io/docs/reference/access-authn-authz/authentication/",
+    "https://github.com/clusterpedia-io/clusterpedia/blob/v0.9.0/pkg/runtime/discovery/dynamic_discovery.go"
+  ],
+  "tests": [
+    "Exact jq1.6 filter tested on simultaneous ClusterHealthyTrue and resourceError, missing arrays and nonobject input",
+    "Pinned v0.9.0 manager validation, status types, health fallback and discovery sources reviewed",
+    "kubectl flags and OpenSSL3.6 inspection options source reviewed; shell syntax passed",
+    "Seven Mermaid edges structurally checked;1280x720 image visually reviewed"
+  ],
+  "limitations": [
+    "No Kubernetes API, TLS handshake, credential validation, effective RBAC or synchronization recovery tested",
+    "OpenSSL inspection command source-reviewed only in this article",
+    "Synthetic status tests do not prove freshness or live service health",
+    "Mermaid not rendered"
+  ]
+}

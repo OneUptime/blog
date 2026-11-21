@@ -828489,5 +828489,117 @@
       "Supply Chain Security"
     ],
     "post": "2026-11-20-trace-artifact-source-build-promotion-production"
+  },
+  {
+    "title": "Build an Air-Gapped Artifact Mirror with Complete Dependencies",
+    "description": "Prepare versioned offline artifact bundles, include transitive and platform dependencies, and promote updates only after clean offline acceptance tests.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Air-Gapped",
+      "Artifact Management",
+      "Dependency Management"
+    ],
+    "post": "2026-11-20-air-gapped-artifact-mirror-dependency-closure"
+  },
+  {
+    "title": "Install Clusterpedia with Helm and an External Database",
+    "description": "Configure Clusterpedia chart 2.7.0 with an external database, Secret-based credentials, verified TLS and locally reviewed deployment manifests.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Kubernetes",
+      "Helm",
+      "PostgreSQL",
+      "MySQL"
+    ],
+    "post": "2026-11-20-install-clusterpedia-helm-external-database"
+  },
+  {
+    "title": "Configure kubectl for Clusterpedia Multi-Cluster Search",
+    "description": "Create a separate kubectl configuration for Clusterpedia search while preserving authentication, certificate trust and the normal host-cluster context.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Kubernetes",
+      "kubectl",
+      "Multi-Cluster"
+    ],
+    "post": "2026-11-20-configure-kubectl-clusterpedia-aggregation-api"
+  },
+  {
+    "title": "Import a Cluster into Clusterpedia with a Scoped ServiceAccount",
+    "description": "Import Pods and Deployments into Clusterpedia using explicit read permissions, verified CA data and a bounded ServiceAccount token with a rotation plan.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Kubernetes",
+      "RBAC",
+      "ServiceAccount",
+      "Multi-Cluster"
+    ],
+    "post": "2026-11-20-import-clusterpedia-least-privilege-serviceaccount"
+  },
+  {
+    "title": "Debug an Unhealthy PediaCluster from Connection to Discovery",
+    "description": "Diagnose PediaCluster failures by separating configuration, network reachability, CA trust, token authentication, permissions and resource discovery.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Kubernetes",
+      "Troubleshooting",
+      "Multi-Cluster"
+    ],
+    "post": "2026-11-20-debug-unhealthy-pediacluster"
+  },
+  {
+    "title": "Reuse Clusterpedia Sync Policies with Explicit Per-Cluster Additions",
+    "description": "Share Clusterpedia resource selections safely, add cluster-specific resources, and roll out policy changes without mistaking additions for exclusions.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Kubernetes",
+      "Multi-Cluster",
+      "Configuration Management"
+    ],
+    "post": "2026-11-20-reuse-clusterpedia-sync-policies-overrides"
+  },
+  {
+    "title": "Prevent Custom Resource Version Gaps in Clusterpedia Queries",
+    "description": "Diagnose missing custom resources in Clusterpedia by checking served, synchronized, and queried API versions before changing collection policies.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Kubernetes",
+      "Multi-Cluster",
+      "Troubleshooting"
+    ],
+    "post": "2026-11-20-clusterpedia-custom-resource-version-query-gaps"
+  },
+  {
+    "title": "Control Clusterpedia Wildcard Sync Growth Before It Overloads Storage",
+    "description": "Bound Clusterpedia wildcard synchronization with explicit resource choices, pinned feature gates, discovery inventories, and measured pilot rollouts.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Kubernetes",
+      "Multi-Cluster",
+      "Performance"
+    ],
+    "post": "2026-11-20-control-clusterpedia-sync-wildcard-growth"
+  },
+  {
+    "title": "Search Pods by Cluster, Namespace, and Name with Clusterpedia",
+    "description": "Build precise Clusterpedia Pod queries across selected clusters and namespaces, combine application labels, and avoid misleading empty results.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Kubernetes",
+      "Multi-Cluster",
+      "kubectl"
+    ],
+    "post": "2026-11-20-search-pods-clusters-namespaces-names-clusterpedia"
+  },
+  {
+    "title": "Query Nested Status and Annotation Fields with Clusterpedia",
+    "description": "Filter Clusterpedia objects by nested status and annotation fields, quote complex keys correctly, and understand missing-field and array limitations.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Kubernetes",
+      "Multi-Cluster",
+      "Troubleshooting"
+    ],
+    "post": "2026-11-20-query-nested-fields-clusterpedia"
   }
 ]

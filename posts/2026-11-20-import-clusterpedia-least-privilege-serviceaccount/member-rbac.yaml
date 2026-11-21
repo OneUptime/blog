@@ -1,0 +1,44 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: clusterpedia-reader
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: resource-reader
+  namespace: clusterpedia-reader
+automountServiceAccountToken: false
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: clusterpedia-resource-reader
+rules:
+- apiGroups: [""]
+  resources: ["pods"]
+  verbs: ["get", "list", "watch"]
+- apiGroups: ["apps"]
+  resources: ["deployments"]
+  verbs: ["get", "list", "watch"]
+- apiGroups: ["apiextensions.k8s.io"]
+  resources: ["customresourcedefinitions"]
+  verbs: ["get", "list", "watch"]
+- apiGroups: ["apiregistration.k8s.io"]
+  resources: ["apiservices"]
+  verbs: ["get", "list", "watch"]
+- nonResourceURLs: ["/api", "/api/*", "/apis", "/apis/*", "/version", "/readyz", "/healthz"]
+  verbs: ["get"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: clusterpedia-resource-reader
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: clusterpedia-resource-reader
+subjects:
+- kind: ServiceAccount
+  name: resource-reader
+  namespace: clusterpedia-reader

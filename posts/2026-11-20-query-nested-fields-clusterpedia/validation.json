@@ -1,0 +1,24 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-21",
+  "runtimeTestsPerformed": false,
+  "localCodeTestsPerformed": true,
+  "sources": [
+    "https://kubernetes.io/docs/concepts/overview/working-with-objects/field-selectors/",
+    "https://clusterpedia.io/docs/usage/search/multi-cluster/#field-selector",
+    "https://github.com/clusterpedia-io/clusterpedia/blob/v0.9.0/staging/src/github.com/clusterpedia-io/api/clusterpedia/fields/selector.go",
+    "https://github.com/clusterpedia-io/clusterpedia/blob/v0.9.0/pkg/storage/internalstorage/util_test.go",
+    "https://github.com/clusterpedia-io/clusterpedia/blob/v0.9.0/pkg/storage/internalstorage/util.go"
+  ],
+  "tests": [
+    "Go1.25.0 ran v0.9.0 field parser on all five exact article selectors; dotted/slashed annotation key remained one segment",
+    "Malformed brackets and incomplete set rejected; array field retains IsList marker",
+    "Tagged internal-storage query builder and SQL-generation test expectations reviewed for missing-field and array behavior",
+    "Shell argument extraction matches parser fixtures, bash syntax passed, five Mermaid edges structurally checked;1280x720 image visually reviewed"
+  ],
+  "limitations": [
+    "No live Clusterpedia or Kubernetes API, SQL execution, database result semantics, or performance benchmark",
+    "Backend behavior source-reviewed, not executed; local tests cover parser and field path structure",
+    "Mermaid not rendered"
+  ]
+}

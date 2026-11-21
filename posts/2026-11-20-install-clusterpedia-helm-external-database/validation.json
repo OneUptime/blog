@@ -1,0 +1,33 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-21",
+  "runtimeTestsPerformed": false,
+  "localCodeTestsPerformed": true,
+  "sources": [
+    "https://clusterpedia.io/docs/installation/configuration/configure-internalstorage/",
+    "https://github.com/clusterpedia-io/clusterpedia/blob/v0.9.0/pkg/storage/internalstorage/config.go",
+    "https://github.com/jackc/pgx/blob/v5.7.5/pgconn/config.go",
+    "https://kubernetes.io/docs/reference/kubectl/generated/kubectl_create/kubectl_create_secret_generic/",
+    "https://github.com/clusterpedia-io/clusterpedia-helm/blob/clusterpedia-2.7.0/charts/clusterpedia/values.yaml",
+    "https://github.com/clusterpedia-io/clusterpedia-helm/blob/clusterpedia-2.7.0/charts/clusterpedia/templates/apiserver-apiservice.yaml",
+    "https://helm.sh/docs/topics/advanced/",
+    "https://github.com/go-sql-driver/mysql/blob/v1.9.3/README.md#tls",
+    "https://github.com/clusterpedia-io/clusterpedia/blob/v0.9.0/cmd/apiserver/app/options/options.go",
+    "https://clusterpedia-io.github.io/clusterpedia-helm/index.yaml"
+  ],
+  "tests": [
+    "Official chart2.7.0 archive SHA256 matches index7fa515864bb4b849cdd57b05bc059290dae4b8d2856b1ac8e6b752e241f00441",
+    "Helm3.17.3 template with exact PostgreSQL values and Python3.11/PyYAML6.0.2 renderer passed; chart lint passed with documented DSN coalesce warnings",
+    "Parsed output excludes database StatefulSet/PVC/PV; two consumers/init containers have exact DSN Secret references and database CA mounts",
+    "APIService verification false-skip flag and public bundle bytes checked; serving cert flags present; missing deployment/APIService rejected",
+    "Published YAML equals tested values; shell syntax, Python parsing and seven Mermaid edges checked",
+    "1280x720 social image visually reviewed; title complete"
+  ],
+  "limitations": [
+    "No Kubernetes API validation, live install, image pulls, database authentication, schema migration, or TLS handshake",
+    "CA renderer fixture contains synthetic public bytes, not a real certificate; renderer does not validate certificate contents",
+    "MySQL alternative source reviewed only, not rendered or connected",
+    "No availability/security attestation for historical default init/hook images",
+    "Mermaid not rendered"
+  ]
+}

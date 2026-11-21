@@ -1,0 +1,25 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-21",
+  "runtimeTestsPerformed": false,
+  "localCodeTestsPerformed": true,
+  "sources": [
+    "https://clusterpedia.io/docs/usage/sync-resources/",
+    "https://kubernetes.io/docs/tasks/extend-kubernetes/custom-resources/custom-resource-definition-versioning/",
+    "https://github.com/clusterpedia-io/clusterpedia/blob/v0.9.0/pkg/synchromanager/clustersynchro/resource_negotiator.go",
+    "https://clusterpedia.io/docs/usage/search/multi-cluster/"
+  ],
+  "tests": [
+    "Exact jq1.6 identity comparison tested with matching, missing and unexpected UIDs",
+    "Rejected empty source, pagination tokens on either side, missing UID and malformed items fixtures",
+    "YAML selection fragment checked inside a synthetic PediaCluster against chart2.7.0 schema",
+    "v0.9.0 negotiation source reviewed for explicit intersection, three-version default and no-match skip",
+    "Shell syntax and six Mermaid edges structurally checked;1280x720 social image visually reviewed"
+  ],
+  "limitations": [
+    "No live Kubernetes, CRD conversion, Clusterpedia synchronization or versioned query tested",
+    "Other inspection filters source-reviewed; only identity comparison fixture-executed",
+    "Identity comparison is not field freshness or transactional consistency validation",
+    "Mermaid not rendered"
+  ]
+}

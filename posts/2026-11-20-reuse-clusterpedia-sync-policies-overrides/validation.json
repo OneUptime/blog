@@ -1,0 +1,24 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-21",
+  "runtimeTestsPerformed": false,
+  "localCodeTestsPerformed": true,
+  "sources": [
+    "https://clusterpedia.io/docs/concepts/cluster-sync-resources/",
+    "https://github.com/clusterpedia-io/clusterpedia-helm/blob/clusterpedia-2.7.0/charts/clusterpedia/_crds/cluster.clusterpedia.io_clustersyncresources.yaml",
+    "https://kubernetes.io/docs/tasks/manage-kubernetes-objects/update-api-object-kubectl-patch/",
+    "https://github.com/clusterpedia-io/clusterpedia/blob/v0.9.0/pkg/synchromanager/clustersynchro_manager.go"
+  ],
+  "tests": [
+    "Three YAML examples parsed with PyYAML6.0.2 and validated against chart2.7.0 CRD schemas",
+    "jq1.6 synthetic patch fixtures preserve credentials and replace local selection arrays; wrong versions type rejected by schema",
+    "v0.9.0 manager source confirms additive selection, missing-reference warning and update fanout",
+    "Shell syntax and five Mermaid edges structurally checked;1280x720 image visually reviewed"
+  ],
+  "limitations": [
+    "No Kubernetes API, admission, live patch, RBAC evaluation, synchronization or query tested",
+    "Patch fixture models only supplied shallow spec changes; not a general JSON merge-patch implementation",
+    "Schema checks do not establish API availability or resource freshness",
+    "Mermaid not rendered"
+  ]
+}

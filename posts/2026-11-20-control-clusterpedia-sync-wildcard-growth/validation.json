@@ -1,0 +1,27 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-21",
+  "runtimeTestsPerformed": false,
+  "localCodeTestsPerformed": true,
+  "sources": [
+    "https://clusterpedia.io/docs/features/sync-all-resources/",
+    "https://clusterpedia.io/docs/features/sync-all-custom-resources/",
+    "https://github.com/clusterpedia-io/clusterpedia/blob/v0.9.0/pkg/synchromanager/features/features.go",
+    "https://github.com/clusterpedia-io/clusterpedia/blob/v0.9.0/pkg/synchromanager/clustersynchro/resource_negotiator.go",
+    "https://kubernetes.io/docs/reference/kubectl/generated/kubectl_api-resources/",
+    "https://github.com/clusterpedia-io/clusterpedia-helm/blob/clusterpedia-2.7.0/charts/clusterpedia/templates/clustersynchro-manager-deployment.yaml",
+    "https://github.com/clusterpedia-io/clusterpedia/blob/v0.9.0/pkg/synchromanager/clustersynchro_manager.go"
+  ],
+  "tests": [
+    "Helm3.17.3 rendered chart2.7.0 with exact guardrail values and isolated external-database fixture; both gates false in container command arguments",
+    "jq1.6 observed-status filter preserved an error and separate custom versions; missing status returned an empty list",
+    "YAML parsed, shell syntax passed, seven Mermaid edges structurally checked",
+    "Pinned gate defaults and existing-synchronizer validation behavior source reviewed;1280x720 image visually reviewed"
+  ],
+  "limitations": [
+    "No API discovery, live upgrade, informer count, memory profiling or database capacity benchmark",
+    "Helm rendering does not validate runtime behavior; known external DSN map coalescing warning retained",
+    "CRD inventory command source-reviewed only",
+    "Mermaid not rendered"
+  ]
+}

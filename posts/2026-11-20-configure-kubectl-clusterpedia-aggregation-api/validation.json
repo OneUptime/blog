@@ -1,0 +1,25 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-21",
+  "runtimeTestsPerformed": false,
+  "localCodeTestsPerformed": true,
+  "sources": [
+    "https://kubernetes.io/docs/tasks/extend-kubernetes/configure-aggregation-layer/",
+    "https://clusterpedia.io/docs/usage/access-clusterpedia/",
+    "https://kubernetes.io/docs/reference/kubectl/generated/kubectl_config/kubectl_config_view/",
+    "https://github.com/clusterpedia-io/clusterpedia/blob/v0.9.0/hack/gen-clusterconfigs.sh"
+  ],
+  "tests": [
+    "kubectl1.34.0 Darwinarm64 binary verified against official dl.k8s.io SHA256",
+    "Exact Python3.9.6 helper and kubectl offline minify/raw/flatten/current-context commands tested on synthetic kubeconfig",
+    "Preserved user credentials, TLS server name, CA data, proxy URL, existing server prefix and namespace; original unchanged; output permissions0600",
+    "Existing output and insecure TLS source rejected",
+    "Shell syntax checked; seven Mermaid edges structurally reviewed; image1280x720 visually inspected"
+  ],
+  "limitations": [
+    "No host/member Kubernetes API requests, auth plugin execution, TLS validation or Clusterpedia query",
+    "Synthetic credentials only; no user kubeconfig inspected",
+    "Configuration transformation is not authorization policy enforcement",
+    "Mermaid not rendered"
+  ]
+}

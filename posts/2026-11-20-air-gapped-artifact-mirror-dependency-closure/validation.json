@@ -1,0 +1,24 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-21",
+  "runtimeTestsPerformed": false,
+  "localCodeTestsPerformed": true,
+  "sources": [
+    "https://github.com/pypa/pip/blob/26.2.1/docs/html/cli/pip_download.rst",
+    "https://github.com/pypa/pip/blob/26.2.1/docs/html/topics/secure-installs.md",
+    "https://github.com/helm/helm/blob/v3.17.3/cmd/helm/dependency_build.go"
+  ],
+  "tests": [
+    "pip26.2.1/Python3.15 synthetic two-wheel transitive dependency installed into fresh target directory and imported successfully",
+    "Removing dependency wheel causes new clean install failure; no-index/hash/only-binary/no-cache flags exercised",
+    "Connected download flags and Helm3.17.3 lock behavior reviewed against tagged official documentation/source",
+    "Both shell snippets pass bash -n; seven Mermaid edges structurally checked",
+    "1280x720 social image visually reviewed with complete readable title"
+  ],
+  "limitations": [
+    "No public or internal repository download, mirror import, production package or container tested",
+    "No egress firewall enforced; local wheel fixture does not establish production dependency closure",
+    "Fixture used fresh target directory rather than provisioning offline virtual environment",
+    "No Helm render or Kubernetes install; Mermaid not rendered"
+  ]
+}
