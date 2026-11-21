@@ -1,0 +1,25 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-21",
+  "runtimeTestsPerformed": true,
+  "sources": [
+    "https://prometheus.io/docs/prometheus/latest/configuration/recording_rules/",
+    "https://prometheus.io/docs/prometheus/latest/configuration/configuration/",
+    "https://prometheus.io/docs/prometheus/latest/command-line/promtool/",
+    "https://docs.docker.com/reference/cli/docker/container/kill/",
+    "https://prometheus.io/docs/prometheus/latest/management_api/",
+    "https://prometheus.io/docs/prometheus/latest/querying/api/",
+    "https://prometheus.io/docs/operating/security/"
+  ],
+  "tests": [
+    "Promtool3.7.3 checked exact two-rule YAML and temporary main config with relocated absolute rule path",
+    "Local Prometheus3.7.3 accepted HTTP reload; config and rules APIs exposed expected files and names",
+    "Invalid main config reload returned500 while previously loaded rule group remained available",
+    "Shell syntax checked; generated1280x720 social image visually reviewed"
+  ],
+  "limitations": [
+    "Local macOS process only; no production service, Docker signal delivery, authentication or TLS tested",
+    "No target scraping or five-minute alert firing test",
+    "No Operator integration tested"
+  ]
+}
