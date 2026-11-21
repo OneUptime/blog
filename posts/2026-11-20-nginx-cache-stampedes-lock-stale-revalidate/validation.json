@@ -1,0 +1,25 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-21",
+  "runtimeTestsPerformed": true,
+  "sources": [
+    "https://datatracker.ietf.org/doc/html/rfc5861#section-3",
+    "https://nginx.org/en/docs/http/ngx_http_proxy_module.html#proxy_cache_lock",
+    "https://github.com/nginx/nginx/blob/release-1.30.7/src/http/ngx_http_upstream.c",
+    "https://nginx.org/en/docs/http/ngx_http_headers_module.html#add_header",
+    "https://github.com/nginx/nginx/blob/release-1.30.7/src/http/ngx_http_file_cache.c"
+  ],
+  "tests": [
+    "NGINX1.30.7: eight concurrent cold requests caused one origin fetch and shared generation1",
+    "After expiry eight concurrent requests returned generation1 STALE/UPDATING while one background fetch populated generation2; subsequent HIT; total origin requests2",
+    "Article configuration passed nginx -t with cache directory path substituted",
+    "Eight-node seven-edge Mermaid structurally reviewed",
+    "1280x720 social image visually inspected"
+  ],
+  "limitations": [
+    "Local macOS single-instance HTTP fixture, one-second freshness and ten-second stale allowance; article origin example uses thirty-second freshness",
+    "Cookie/authorization guard directives syntax-tested, not exercised in runtime fixture",
+    "No lock-timeout escape, uncacheable-response, stale-window exhaustion, origin outage, distributed replicas or production load test",
+    "Mermaid not rendered"
+  ]
+}

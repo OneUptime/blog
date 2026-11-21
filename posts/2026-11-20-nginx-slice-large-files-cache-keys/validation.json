@@ -1,0 +1,25 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-21",
+  "runtimeTestsPerformed": true,
+  "sources": [
+    "https://nginx.org/en/docs/configure.html",
+    "https://www.rfc-editor.org/rfc/rfc9110.html#name-range-requests",
+    "https://nginx.org/en/docs/http/ngx_http_slice_module.html",
+    "https://nginx.org/en/docs/http/ngx_http_proxy_module.html",
+    "https://github.com/nginx/nginx/blob/release-1.30.7/src/http/modules/ngx_http_slice_filter_module.c",
+    "https://curl.se/docs/manpage.html#--range"
+  ],
+  "tests": [
+    "Built local NGINX1.30.7 with http_slice_module; exact article fragment passed nginx -t with cache directory substituted",
+    "Loopback range fixture: cross-boundary request fetched two aligned1MiB slices and returned exact201 source bytes",
+    "Identical request caused no new origin fetch; farther range fetched third slice; Content-Range/status/body equality and digests asserted",
+    "Shell blocks passed bash -n; seven-node eight-edge Mermaid structurally reviewed",
+    "1280x720 social image visually inspected"
+  ],
+  "limitations": [
+    "Local macOS HTTP correctness test with approximately3MiB fixture, not throughput benchmark",
+    "Cookie/auth guards syntax-tested only; no malformed range, ETag change, multi-range, suffix-range, compression or origin error tests",
+    "Mermaid not rendered; curl placeholder snippet syntax-tested only"
+  ]
+}

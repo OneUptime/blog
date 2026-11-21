@@ -1,0 +1,24 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-21",
+  "runtimeTestsPerformed": true,
+  "sources": [
+    "https://oauth2-proxy.github.io/oauth2-proxy/configuration/overview/",
+    "https://github.com/oauth2-proxy/oauth2-proxy/blob/v7.15.6/pkg/apis/options/legacy_options.go",
+    "https://nginx.org/en/docs/http/ngx_http_auth_request_module.html",
+    "https://nginx.org/en/docs/http/ngx_http_proxy_module.html#proxy_set_header",
+    "https://oauth2-proxy.github.io/oauth2-proxy/7.11.x/configuration/integration/"
+  ],
+  "tests": [
+    "NGINX1.30.7 auth stub:202 allowed,401/403 denied,500 failed closed; application called only once",
+    "Forged identity overwritten; Authorization and raw auth header names removed",
+    "Article nginx -t passed; TOML parsed and names checked against OAuth2 Proxy7.15.6 source",
+    "Four-participant six-message Mermaid structurally reviewed",
+    "1280x720 image visually inspected"
+  ],
+  "limitations": [
+    "OAuth2 Proxy header contract source-reviewed; runtime used deterministic stub",
+    "No provider login, token validation, cookie renewal, TLS, POST body or application permission tests",
+    "Mermaid not rendered"
+  ]
+}

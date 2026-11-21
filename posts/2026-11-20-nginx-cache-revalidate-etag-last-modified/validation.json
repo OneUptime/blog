@@ -1,0 +1,24 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-21",
+  "runtimeTestsPerformed": true,
+  "sources": [
+    "https://www.rfc-editor.org/rfc/rfc9110.html#name-if-none-match",
+    "https://www.rfc-editor.org/rfc/rfc9111.html#section-4.3",
+    "https://nginx.org/en/docs/http/ngx_http_proxy_module.html#proxy_cache_revalidate",
+    "https://curl.se/docs/manpage.html"
+  ],
+  "tests": [
+    "NGINX1.30.7 initial MISS, expired unchanged REVALIDATED with origin304/zero body bytes, expired changed EXPIRED with origin200/new body",
+    "Origin received exact stored ETag and Last-Modified validators; separate Last-Modified-only run also passed",
+    "Article config passed nginx -t with local cache path substituted; shell snippet passed bash -n",
+    "Three-participant six-message Mermaid with balanced alt/else/end structurally reviewed",
+    "Generated1280x720 social image visually inspected"
+  ],
+  "limitations": [
+    "Local macOS HTTP origin with one-second freshness, not production performance evidence",
+    "Authorization/cookie exclusions syntax-tested only",
+    "No compressed variants, multiple replicas, downstream conditional requests or production-size transfers tested",
+    "Mermaid not rendered; placeholder curl request not executed"
+  ]
+}

@@ -831151,5 +831151,116 @@
       "Networking"
     ],
     "post": "2026-11-20-coturn-relay-ports-dedicated-multus-network"
+  },
+  {
+    "title": "Make Home Assistant mDNS Discovery Work on a Multus LAN",
+    "description": "Diagnose Home Assistant discovery across a Multus LAN attachment by checking interface selection, multicast delivery, advertised service addresses, and device connectivity.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Home Assistant",
+      "Multus",
+      "Kubernetes",
+      "mDNS"
+    ],
+    "post": "2026-11-20-home-assistant-mdns-discovery-multus-lan"
+  },
+  {
+    "title": "Fix NGINX Upstream TLS Names with proxy_ssl_name and SNI",
+    "description": "Separate upstream connection addresses, TLS names, SNI, and HTTP Host headers to repair NGINX certificate-name failures while keeping upstream certificate verification enabled.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Nginx",
+      "TLS",
+      "Troubleshooting"
+    ],
+    "post": "2026-11-20-fix-nginx-upstream-tls-name-proxy-ssl-name-sni"
+  },
+  {
+    "title": "Configure NGINX Upstream mTLS with the Correct Client Certificate Chain",
+    "description": "Configure NGINX upstream mutual TLS, assemble the client certificate chain, separate trust directions, and test fresh handshakes before rotating certificates.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Nginx",
+      "TLS",
+      "Troubleshooting"
+    ],
+    "post": "2026-11-20-nginx-mtls-client-upstream-certificate-chain"
+  },
+  {
+    "title": "Refresh NGINX Upstream DNS Without Reloading Workers",
+    "description": "Configure dynamic NGINX upstream DNS, verify backend changes without worker reloads, and separate resolver timing from connection draining.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Nginx",
+      "DNS",
+      "Troubleshooting"
+    ],
+    "post": "2026-11-20-nginx-upstream-dns-refresh-without-reload"
+  },
+  {
+    "title": "Prevent NGINX Cache Stampedes with Locks and Background Refresh",
+    "description": "Protect origins from simultaneous cache misses, serve approved stale responses during refresh, and verify NGINX behavior with origin request counts.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Nginx",
+      "Caching",
+      "Performance"
+    ],
+    "post": "2026-11-20-nginx-cache-stampedes-lock-stale-revalidate"
+  },
+  {
+    "title": "Revalidate NGINX Cache Entries with ETag and Last-Modified",
+    "description": "Use conditional requests to refresh expired NGINX cache entries, verify body-free origin responses, and distinguish revalidation from ordinary cache hits.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Nginx",
+      "Caching",
+      "Performance"
+    ],
+    "post": "2026-11-20-nginx-cache-revalidate-etag-last-modified"
+  },
+  {
+    "title": "Cache Large Files with NGINX Slice and Correct Range Keys",
+    "description": "Configure NGINX slice caching for large immutable files, keep byte ranges separate in cache keys, and verify cross-boundary responses against source bytes.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Nginx",
+      "Caching",
+      "Performance"
+    ],
+    "post": "2026-11-20-nginx-slice-large-files-cache-keys"
+  },
+  {
+    "title": "Bound NGINX Graceful Reloads for WebSocket and SSE Connections",
+    "description": "Set an NGINX worker shutdown budget, test long-lived stream draining, and plan WebSocket and SSE recovery without confusing reloads with idle timeouts.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Nginx",
+      "WebSocket",
+      "Performance"
+    ],
+    "post": "2026-11-20-bound-nginx-graceful-reloads-websocket-sse"
+  },
+  {
+    "title": "Test NGINX Request Framing for HTTP Smuggling Risks",
+    "description": "Build an isolated NGINX request-framing test, compare frontend and origin evidence, and understand what parser rejection tests do and do not prove.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Nginx",
+      "Security",
+      "Testing"
+    ],
+    "post": "2026-11-20-test-nginx-request-smuggling-parser-disagreement"
+  },
+  {
+    "title": "Pass OAuth Identity Headers Through NGINX auth_request",
+    "description": "Capture trusted identity headers from an NGINX authorization subrequest, overwrite client-supplied values, and test denial and authentication-service failures.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Nginx",
+      "OAuth",
+      "Security"
+    ],
+    "post": "2026-11-20-nginx-auth-request-oauth-identity-headers"
   }
 ]

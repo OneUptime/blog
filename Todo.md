@@ -2021,17 +2021,37 @@ Research: [OneUptime air-gapped alerting](https://oneuptime.com/enterprise/air-g
     Completed: [Article](posts/2026-11-20-coturn-relay-ports-dedicated-multus-network/README.md) (20 November 2026).
 40. How to Make Home Assistant mDNS Discovery Work Across a Multus LAN Interface
 
+    Completed: [Article](posts/2026-11-20-home-assistant-mdns-discovery-multus-lan/README.md) (20 November 2026).
+
 ## NGINX
 
 1. How to Fix NGINX Upstream TLS Name Mismatches with proxy_ssl_name and SNI
+
+    Completed: [Article](posts/2026-11-20-fix-nginx-upstream-tls-name-proxy-ssl-name-sni/README.md) (20 November 2026).
 2. How to Configure NGINX as an mTLS Client to an HTTPS Upstream with the Correct Certificate Chain
+
+    Completed: [Article](posts/2026-11-20-nginx-mtls-client-upstream-certificate-chain/README.md) (20 November 2026).
 3. How to Re-Resolve DNS for NGINX Upstream Servers Without Reloading Workers
+
+    Completed: [Article](posts/2026-11-20-nginx-upstream-dns-refresh-without-reload/README.md) (20 November 2026).
 4. How to Prevent Cache Stampedes in NGINX with proxy_cache_lock and Stale-While-Revalidate
+
+    Completed: [Article](posts/2026-11-20-nginx-cache-stampedes-lock-stale-revalidate/README.md) (20 November 2026).
 5. How to Revalidate Expired NGINX Cache Entries with ETag and Last-Modified Instead of Refetching Bodies
+
+    Completed: [Article](posts/2026-11-20-nginx-cache-revalidate-etag-last-modified/README.md) (20 November 2026).
 6. How to Cache Large Range-Requested Files with the NGINX Slice Module Without Breaking Cache Keys
+
+    Completed: [Article](posts/2026-11-20-nginx-slice-large-files-cache-keys/README.md) (20 November 2026).
 7. How to Bound NGINX Graceful Reloads When Old Workers Hold WebSocket and SSE Connections
+
+    Completed: [Article](posts/2026-11-20-bound-nginx-graceful-reloads-websocket-sse/README.md) (20 November 2026).
 8. How to Test NGINX for HTTP Request Smuggling When Frontend and Upstream Parsers Disagree
+
+    Completed: [Article](posts/2026-11-20-test-nginx-request-smuggling-parser-disagreement/README.md) (20 November 2026).
 9. How to Pass OAuth Identity Headers from auth_request Subrequests to NGINX Upstreams
+
+    Completed: [Article](posts/2026-11-20-nginx-auth-request-oauth-identity-headers/README.md) (20 November 2026).
 10. How to Cache NGINX auth_request Results Without Reusing One User’s Authorization for Another
 11. How to Authenticate POST Requests with NGINX auth_request Without Losing or Duplicating the Request Body
 12. How to Route NGINX Stream Traffic by ALPN Without Terminating TLS

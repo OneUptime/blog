@@ -1,0 +1,27 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-21",
+  "runtimeTestsPerformed": true,
+  "sources": [
+    "https://nginx.org/en/docs/control.html",
+    "https://nginx.org/en/docs/ngx_core_module.html#worker_shutdown_timeout",
+    "https://github.com/nginx/nginx/blob/release-1.30.7/src/os/unix/ngx_process_cycle.c",
+    "https://nginx.org/en/docs/http/ngx_http_proxy_module.html#proxy_read_timeout",
+    "https://nginx.org/en/docs/http/websocket.html",
+    "https://curl.se/docs/manpage.html",
+    "https://html.spec.whatwg.org/multipage/server-sent-events.html"
+  ],
+  "tests": [
+    "NGINX1.30.7 SSE fixture: active heartbeat stream closed about2.1s after reload with2s worker_shutdown_timeout and30s proxy_read_timeout",
+    "Old worker exited, new worker remained, subsequent health request succeeded",
+    "Article NGINX snippets combined in minimal config with local upstream passed nginx -t; curl shell block passed bash -n",
+    "Four-participant five-message Mermaid sequence structurally reviewed",
+    "1280x720 generated image visually inspected"
+  ],
+  "limitations": [
+    "Local macOS single-worker SSE test; article30s budget is illustrative, not measured",
+    "WebSocket configuration syntax-tested but no WebSocket runtime or reconnect tests",
+    "No browser EventSource replay, client state recovery, first-rollout adoption or fleet load tests",
+    "Mermaid not rendered; placeholder curl command not executed"
+  ]
+}

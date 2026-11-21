@@ -1,0 +1,26 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-21",
+  "runtimeTestsPerformed": true,
+  "sources": [
+    "https://github.com/nginx/nginx/blob/release-1.30.7/src/event/ngx_event_openssl.c",
+    "https://docs.openssl.org/3.6/man1/openssl-x509/",
+    "https://docs.openssl.org/3.6/man1/openssl-verify/",
+    "https://docs.openssl.org/3.6/man1/openssl-pkey/",
+    "https://nginx.org/en/docs/http/ngx_http_proxy_module.html#proxy_ssl_certificate",
+    "https://nginx.org/en/docs/control.html"
+  ],
+  "tests": [
+    "NGINX1.30.7/OpenSSL3.6.2 loopback upstream requiring client authentication: full chain200, leaf only502, absent certificate502; expected client subject observed",
+    "Session reuse disabled for independent fresh handshake negative checks; initial reused-session result investigated",
+    "Article NGINX fragment passed nginx -t with test certificate paths substituted",
+    "OpenSSL client-purpose chain verification, certificate inspection and public-key equality passed using temporary fixtures",
+    "Shell snippets passed bash -n; six-node six-edge Mermaid structurally reviewed",
+    "1280x720 generated social image visually inspected; readable and unclipped"
+  ],
+  "limitations": [
+    "Temporary local CA and Python TLS upstream on macOS, not production integration",
+    "No application authorization, revocation, production key delivery, reload rotation or pooled-connection lifecycle testing",
+    "Mermaid syntax structurally checked, not rendered"
+  ]
+}

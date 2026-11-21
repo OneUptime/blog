@@ -1,0 +1,25 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-21",
+  "runtimeTestsPerformed": true,
+  "sources": [
+    "https://nginx.org/en/docs/http/ngx_http_upstream_module.html#resolve",
+    "https://nginx.org/en/docs/switches.html",
+    "https://nginx.org/en/docs/http/ngx_http_core_module.html#resolver",
+    "https://nginx.org/en/docs/http/ngx_http_log_module.html",
+    "https://curl.se/docs/manpage.html"
+  ],
+  "tests": [
+    "NGINX1.30.7 local DNS responder changed IPv4 backend A to IPv6 backend B on same port; response markers changed and worker PID remained unchanged without reload",
+    "NGINX requested both A and AAAA records before and after change; one-second validity in fixture",
+    "Article configuration and log format passed nginx -t with log path substituted",
+    "Shell examples passed bash -n; four-participant six-message Mermaid structurally reviewed",
+    "Generated1280x720 social image visually inspected"
+  ],
+  "limitations": [
+    "Local macOS loopback fixture; not production DNS or Kubernetes networking",
+    "Initial64k zone rejected on local platform; article uses tested256k",
+    "No NXDOMAIN, resolver timeout, long-lived connection, HTTPS or multi-worker cutover tests",
+    "Mermaid not rendered; curl placeholder health endpoint not executed"
+  ]
+}

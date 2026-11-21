@@ -1,0 +1,26 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-21",
+  "runtimeTestsPerformed": true,
+  "sources": [
+    "https://nginx.org/en/docs/http/ngx_http_upstream_module.html",
+    "https://nginx.org/en/docs/http/ngx_http_proxy_module.html#proxy_ssl_name",
+    "https://docs.openssl.org/3.5/man1/openssl-s_client/",
+    "https://curl.se/docs/manpage.html#--resolve",
+    "https://nginx.org/en/docs/switches.html"
+  ],
+  "tests": [
+    "NGINX1.30.7/OpenSSL3.6.2 local loopback TLS fixture: correct name/SNI/CA returned200 and expected Host header",
+    "Wrong hostname, absent SNI against requiring fixture, and unrelated CA returned502; corresponding logs and server SNI observations verified",
+    "Article NGINX snippet passed nginx -t with local CA path substituted",
+    "All shell snippets passed bash -n",
+    "Three-participant seven-message Mermaid sequence structurally reviewed",
+    "Generated1280x720 image visually inspected; title legible and unclipped"
+  ],
+  "limitations": [
+    "Local macOS loopback fixture with temporary test CA, not production backend validation",
+    "OpenSSL/curl diagnostic snippets source-reviewed and syntax-checked, not executed against article placeholder endpoint",
+    "No multi-member backend, production reload or certificate-rotation tests",
+    "Mermaid not rendered"
+  ]
+}

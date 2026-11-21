@@ -1,0 +1,23 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-21",
+  "runtimeTestsPerformed": true,
+  "sources": [
+    "https://nginx.org/en/security_advisories.html",
+    "https://www.rfc-editor.org/rfc/rfc9112.html#section-6.3",
+    "https://github.com/nginx/nginx/blob/release-1.30.7/src/http/ngx_http_request.c",
+    "https://nginx.org/en/docs/http/ngx_http_proxy_module.html#proxy_request_buffering"
+  ],
+  "tests": [
+    "Exact article Python probe executed against isolated NGINX1.30.7 loopback listener: valid Content-Length200, conflicting lengths400, length plus chunked400",
+    "Counting origin received only baseline with body test; invalid request log evidence reviewed",
+    "Article NGINX fragment passed nginx -t; Python code compiled and matched executed fixture",
+    "Six-node seven-edge Mermaid structurally reviewed",
+    "1280x720 social image visually inspected"
+  ],
+  "limitations": [
+    "Limited rejection regression test, not complete request-smuggling vulnerability assessment",
+    "Python test origin, not deployed application parser; no edge/WAF, HTTP2 translation, reused connection desynchronization, TLS or streaming tests",
+    "Mermaid not rendered"
+  ]
+}
