@@ -1,0 +1,23 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-21",
+  "runtimeTestsPerformed": true,
+  "sources": [
+    "https://github.com/aquasecurity/kube-bench/blob/v0.14.0/check/controls.go",
+    "https://github.com/aquasecurity/kube-bench/blob/v0.14.0/cmd/root.go",
+    "https://github.com/aquasecurity/kube-bench/blob/v0.14.0/cmd/common.go"
+  ],
+  "tests": [
+    "Native v0.14.0 synthetic JUnit scans verified default zero, configured failure exit, PASS, WARN skip and empty selection",
+    "Article verifier accepted matching passing inventory, returned 3 for failures, and rejected mismatched status, missing coverage, empty and truncated XML",
+    "Bash wrapper executed with fixture executable emitting native-generated failure XML; preserved status and returned 3",
+    "Shell syntax and eight-node eight-edge Mermaid structure checked",
+    "1280x720 image visually reviewed"
+  ],
+  "limitations": [
+    "No Linux node scan or hosted CI execution",
+    "Wrapper integration used a fixture executable; native binary tests were separate synthetic scans",
+    "Artifact upload and node placement were not tested",
+    "Mermaid not rendered"
+  ]
+}

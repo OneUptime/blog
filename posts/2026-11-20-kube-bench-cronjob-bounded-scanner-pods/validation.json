@@ -1,0 +1,27 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-21",
+  "runtimeTestsPerformed": true,
+  "sources": [
+    "https://www.github.com/nawazdhandala",
+    "https://github.com/aquasecurity/kube-bench/blob/v0.14.0/job-node.yaml",
+    "https://kubernetes.io/docs/concepts/workloads/controllers/cron-jobs/",
+    "https://kubernetes.io/docs/reference/kubectl/generated/kubectl_apply/",
+    "https://kubernetes.io/docs/reference/kubectl/generated/kubectl_create/kubectl_create_job/",
+    "https://kubernetes.io/docs/concepts/workloads/controllers/job/",
+    "https://kubernetes.io/docs/concepts/workloads/controllers/ttlafterfinished/"
+  ],
+  "tests": [
+    "Extracted YAML parsed and accepted by local Kubernetes1.34 API as CronJob, derived Job and unscheduled Pod",
+    "Asserted suspended schedule, UTC timezone, Forbid policy, zero retries, 600-second active deadline, 86400-second TTL and read-only mounts",
+    "Three shell blocks passed bash syntax checks",
+    "Eight-node seven-edge Mermaid structurally reviewed",
+    "1280x720 social image visually reviewed"
+  ],
+  "limitations": [
+    "Local envtest API and etcd only; no scheduler, kubelet, CronJob/Job/TTL controllers",
+    "No image pull, real node mounts, scan, deadline enforcement, cleanup or evidence export executed",
+    "Resource sizing illustrative, not measured",
+    "Mermaid not rendered"
+  ]
+}

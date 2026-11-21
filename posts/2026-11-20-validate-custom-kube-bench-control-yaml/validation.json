@@ -1,0 +1,24 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-21",
+  "runtimeTestsPerformed": true,
+  "sources": [
+    "https://www.github.com/nawazdhandala",
+    "https://github.com/aquasecurity/kube-bench/blob/v0.14.0/docs/controls.md",
+    "https://github.com/aquasecurity/kube-bench/blob/v0.14.0/check/controls.go",
+    "https://github.com/aquasecurity/kube-bench/blob/v0.14.0/check/test.go",
+    "https://github.com/aquasecurity/kube-bench/blob/v0.14.0/check/check.go"
+  ],
+  "tests": [
+    "Exact article YAML and Python runner executed with native kube-bench v0.14.0: good input PASS/0, bad input FAIL/3, absent key FAIL/3, missing file FAIL/3",
+    "Article PyYAML structural guard accepted fixture and rejected duplicate IDs, empty test items and misspelled test_items",
+    "Verified missing-file result retained collection-error reason",
+    "Seven-node six-edge Mermaid structurally reviewed",
+    "1280x720 social image visually reviewed"
+  ],
+  "limitations": [
+    "Synthetic local file control only; no actual Kubernetes node, host mounts, API permissions or Linux image execution",
+    "Structural helper intentionally covers only the illustrated automated fixture, not the full schema",
+    "Mermaid not rendered"
+  ]
+}

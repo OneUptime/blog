@@ -1,0 +1,29 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-21",
+  "runtimeTestsPerformed": false,
+  "sources": [
+    "https://www.github.com/nawazdhandala",
+    "https://github.com/aquasecurity/kube-bench/blob/v0.14.0/cfg/cis-1.11/node.yaml",
+    "https://kubernetes.io/docs/reference/config-api/kubelet-config.v1beta1/",
+    "https://kubernetes.io/docs/tasks/administer-cluster/kubelet-config-file/",
+    "https://kubernetes.io/docs/tasks/administer-cluster/safely-drain-node/",
+    "https://kubernetes.io/docs/reference/kubectl/generated/kubectl_drain/",
+    "https://kubernetes.io/docs/reference/kubectl/generated/kubectl_wait/",
+    "https://kubernetes.io/docs/reference/kubectl/generated/kubectl_uncordon/"
+  ],
+  "tests": [
+    "Four shell blocks passed bash syntax checks",
+    "Kubelet YAML fragment parsed and verified as numeric readOnlyPort zero",
+    "kubectl v1.34.0 local help verified get/drain/wait/uncordon and relevant flags",
+    "Reviewed pinned kube-bench cis-1.11 control4.2.4 definition and unscored assessment behavior",
+    "Nine-node eight-edge Mermaid structurally checked",
+    "1280x720 social image visually reviewed"
+  ],
+  "limitations": [
+    "No drain, eviction, kubelet configuration activation, restart, replacement, workload or monitoring test performed",
+    "Local help and syntax checks do not establish safe disruption in a real cluster",
+    "Example field is a merge fragment; distribution-specific activation and recovery remain required",
+    "Mermaid not rendered"
+  ]
+}

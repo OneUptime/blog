@@ -1,0 +1,34 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-21",
+  "runtimeTestsPerformed": true,
+  "sources": [
+    "https://www.github.com/nawazdhandala",
+    "https://github.com/google/go-containerregistry/blob/v0.20.6/cmd/crane/doc/crane_pull.md",
+    "https://github.com/google/go-containerregistry/blob/v0.20.6/cmd/crane/doc/crane_validate.md",
+    "https://github.com/aquasecurity/kube-bench/blob/v0.14.0/Dockerfile",
+    "https://github.com/google/go-containerregistry/blob/v0.20.6/cmd/crane/doc/crane_export.md",
+    "https://github.com/aquasecurity/kube-bench/blob/v0.14.0/cmd/run.go",
+    "https://github.com/google/go-containerregistry/blob/v0.20.6/cmd/crane/doc/crane_push.md",
+    "https://github.com/google/go-containerregistry/blob/v0.20.6/cmd/crane/doc/crane_manifest.md",
+    "https://kubernetes.io/docs/concepts/containers/images/"
+  ],
+  "tests": [
+    "Crane v0.20.6 resolved and pulled the real kube-bench v0.14.0 linux/amd64 digest; local archive validation and rootfs export passed",
+    "Verified binary/kubectl and cfg tree presence; extracted global config and cis-1.11 node.yaml exactly matched tagged source",
+    "Actual Crane push imported archive into local HTTP fixture registry; remote validation passed; OCI-to-Docker manifest conversion preserved configuration and ordered layer digests/sizes",
+    "Article Python identity comparison accepted real manifests and rejected a modified layer digest",
+    "Three Bash blocks syntax checked; Pod fragment YAML parsed; seven-node six-edge Mermaid structurally reviewed",
+    "1280x720 social image visually reviewed"
+  ],
+  "artifactEvidence": {
+    "sourceDigest": "sha256:a0511b66fd754f873160a90eb5f98705f25f6fb5339a8440a1f3b885934378ab",
+    "importedDigest": "sha256:3bd182d72a5b3ffa6941174959c6a514265782ed76cd430c32316ae86dca21e4"
+  },
+  "limitations": [
+    "Local registry fixture used HTTP loopback; no production registry authentication or TLS trust tested",
+    "No Linux container, uncached node, Kubernetes scan or physical air-gap transfer executed",
+    "Image digest and checksums do not establish publisher authenticity",
+    "Mermaid not rendered"
+  ]
+}

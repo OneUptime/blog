@@ -1,0 +1,33 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-21",
+  "runtimeTestsPerformed": true,
+  "sources": [
+    "https://www.github.com/nawazdhandala",
+    "https://docs.aws.amazon.com/securityhub/latest/userguide/finding-update-batchimportfindings.html",
+    "https://github.com/aquasecurity/kube-bench/blob/v0.14.0/docs/asff.md",
+    "https://docs.aws.amazon.com/securityhub/latest/partnerguide/integration-use-cases.html",
+    "https://docs.aws.amazon.com/eks/latest/userguide/associate-service-account-role.html",
+    "https://docs.aws.amazon.com/eks/latest/userguide/configure-sts-endpoint.html",
+    "https://github.com/aquasecurity/kube-bench/blob/v0.14.0/cmd/securityHub.go",
+    "https://github.com/aquasecurity/kube-bench/blob/v0.14.0/cmd/root.go",
+    "https://github.com/aquasecurity/kube-bench/blob/v0.14.0/check/controls.go",
+    "https://docs.aws.amazon.com/sdkref/latest/guide/feature-imds-credentials.html",
+    "https://docs.aws.amazon.com/eks/latest/userguide/iam-roles-for-service-accounts.html",
+    "https://github.com/aquasecurity/kube-bench/blob/v0.14.0/internal/findings/publisher.go",
+    "https://docs.aws.amazon.com/securityhub/1.0/APIReference/API_BatchImportFindings.html"
+  ],
+  "tests": [
+    "Focused Go tests against v0.14.0 source verified KUBE_BENCH-prefixed settings, node-qualified finding IDs and FAIL/WARN-only selection",
+    "Local HTTP fixture verified per-finding failure counts can accompany nil publisher error and 101 findings are submitted unsliced twice in this release",
+    "Two JSON policies and two YAML snippets parsed; exact trust subject/audience, product subscription scope, service account and prefixed env settings asserted",
+    "Seven-node six-edge Mermaid structurally reviewed",
+    "1280x720 social image visually reviewed"
+  ],
+  "limitations": [
+    "No AWS credentials or APIs used; no IAM authorization, Security Hub subscription, STS exchange or actual import verified",
+    "No EKS admission webhook, Pod execution or host scan tested",
+    "Pod YAML is a merge fragment requiring an approved existing Job",
+    "Mermaid not rendered"
+  ]
+}

@@ -1,0 +1,24 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-21",
+  "runtimeTestsPerformed": true,
+  "sources": [
+    "https://www.github.com/nawazdhandala",
+    "https://github.com/aquasecurity/kube-bench/blob/v0.14.0/cmd/common.go",
+    "https://github.com/aquasecurity/kube-bench/blob/v0.14.0/docs/flags-and-commands.md",
+    "https://github.com/aquasecurity/kube-bench/blob/v0.14.0/check/check.go",
+    "https://github.com/aquasecurity/kube-bench/blob/v0.14.0/check/test.go"
+  ],
+  "tests": [
+    "Five native v0.14.0 synthetic scans compared plain text, include-test-output, verbose level3, JSON and JSON with include-test-output",
+    "Verified observed failing value appears in text with flag; JSON remains identical; verbose command/output logged on stderr; explicit failure exit3 retained",
+    "Three Bash blocks syntax checked; jq projection executed using synthetic L.2 result",
+    "Eight-node eight-edge Mermaid structurally reviewed",
+    "1280x720 image visually reviewed"
+  ],
+  "limitations": [
+    "No Linux node scan or Kubernetes diagnostic Job executed",
+    "Output tests used synthetic commands and do not establish validity of real host evidence",
+    "Mermaid not rendered"
+  ]
+}

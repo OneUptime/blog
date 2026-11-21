@@ -1,0 +1,23 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-21",
+  "runtimeTestsPerformed": true,
+  "sources": [
+    "https://github.com/aquasecurity/kube-bench/blob/v0.14.0/check/controls.go",
+    "https://github.com/aquasecurity/kube-bench/blob/v0.14.0/cmd/common.go",
+    "https://github.com/aquasecurity/kube-bench/blob/v0.14.0/check/check.go",
+    "https://github.com/aquasecurity/kube-bench/blob/v0.14.0/cfg/config.yaml"
+  ],
+  "tests": [
+    "Article Python comparer executed with native-generated synthetic baseline: unchanged report, combined added/missing/modified controls, changed scope, duplicate IDs, empty results, unknown status and alternate array root",
+    "Two shell examples passed bash syntax checks",
+    "Seven-node seven-edge Mermaid structurally checked",
+    "1280x720 social image visually reviewed"
+  ],
+  "limitations": [
+    "No real cluster upgrade or node scan performed for this article",
+    "Comparison uses synthetic fixture mutations and cannot establish semantic equivalence across benchmark revisions",
+    "External provenance validation remains required",
+    "Mermaid not rendered"
+  ]
+}

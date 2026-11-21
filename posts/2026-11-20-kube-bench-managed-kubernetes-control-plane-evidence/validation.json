@@ -1,0 +1,29 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-21",
+  "runtimeTestsPerformed": true,
+  "sources": [
+    "https://www.github.com/nawazdhandala",
+    "https://docs.aws.amazon.com/eks/latest/best-practices/security.html",
+    "https://learn.microsoft.com/en-us/azure/aks/cis-kubernetes",
+    "https://github.com/aquasecurity/kube-bench/blob/v0.14.0/cfg/eks-1.7.0/master.yaml",
+    "https://github.com/aquasecurity/kube-bench/blob/v0.14.0/cfg/eks-1.7.0/controlplane.yaml",
+    "https://docs.aws.amazon.com/cli/latest/reference/eks/describe-cluster.html",
+    "https://docs.aws.amazon.com/eks/latest/userguide/control-plane-logs.html",
+    "https://kubernetes.io/docs/reference/kubectl/generated/kubectl_get/",
+    "https://github.com/aquasecurity/kube-bench/blob/v0.14.0/cfg/eks-1.7.0/policies.yaml"
+  ],
+  "tests": [
+    "Native v0.14.0 binary with tagged eks-1.7.0 definitions produced zero master results and two manual controlplane WARN records without scanning a cluster",
+    "Three shell blocks syntax checked; cloud-response jq projection executed against a synthetic fixture",
+    "Kubernetes read wrapper executed with shell fixtures: accepted JSON list and stopped on Forbidden exit before evaluation",
+    "Six-node seven-edge Mermaid structurally reviewed",
+    "1280x720 social image visually reviewed"
+  ],
+  "limitations": [
+    "No actual EKS/AKS cloud calls, Kubernetes API assessment or worker scan performed",
+    "Cloud query tested with synthetic response; authorization wrapper used fixtures",
+    "Provider evidence applicability requires service/version-specific review",
+    "Mermaid not rendered"
+  ]
+}

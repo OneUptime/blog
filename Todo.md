@@ -1803,15 +1803,35 @@ Research: [OneUptime air-gapped alerting](https://oneuptime.com/enterprise/air-g
 
     Completed: [Article](posts/2026-11-20-rerun-failed-kube-bench-checks-groups/README.md) (20 November 2026).
 10. How to Record Approved kube-bench Exceptions with `--skip` Without Hiding New Drift
+
+    Completed: [Article](posts/2026-11-20-kube-bench-approved-skip-exceptions-drift/README.md) (20 November 2026).
 11. How to Gate CI on kube-bench Failures with JUnit Output and Deterministic Exit Codes
+
+    Completed: [Article](posts/2026-11-20-kube-bench-ci-junit-exit-codes/README.md) (20 November 2026).
 12. How to Parse kube-bench JSON and Track CIS Compliance Drift Between Cluster Releases
+
+    Completed: [Article](posts/2026-11-20-kube-bench-json-compliance-drift-cluster-releases/README.md) (20 November 2026).
 13. How to Schedule kube-bench as a CronJob Without Leaving Privileged Scanner Pods Running
+
+    Completed: [Article](posts/2026-11-20-kube-bench-cronjob-bounded-scanner-pods/README.md) (20 November 2026).
 14. How to Send kube-bench Findings to AWS Security Hub with IRSA and Least-Privilege IAM
+
+    Completed: [Article](posts/2026-11-20-kube-bench-security-hub-irsa-least-privilege/README.md) (20 November 2026).
 15. How to Run kube-bench in an Air-Gapped Cluster with Pinned Images and Versioned CIS Configs
+
+    Completed: [Article](posts/2026-11-20-kube-bench-air-gapped-image-benchmark-bundle/README.md) (20 November 2026).
 16. How to Debug kube-bench Checks with `--include-test-output` and Verbose Logs
+
+    Completed: [Article](posts/2026-11-20-debug-kube-bench-test-output-verbose-logs/README.md) (20 November 2026).
 17. How to Audit Managed Kubernetes When kube-bench Cannot Access the Control Plane
+
+    Completed: [Article](posts/2026-11-20-kube-bench-managed-kubernetes-control-plane-evidence/README.md) (20 November 2026).
 18. How to Roll Out kube-bench Kubelet Remediations Without Draining an Entire Production Node Pool
+
+    Completed: [Article](posts/2026-11-20-roll-out-kube-bench-kubelet-remediations/README.md) (20 November 2026).
 19. How to Validate a Custom kube-bench Control YAML Before Rolling It Out Cluster-Wide
+
+    Completed: [Article](posts/2026-11-20-validate-custom-kube-bench-control-yaml/README.md) (20 November 2026).
 20. How to Fix kube-bench `exec format error` by Matching the Image Architecture to the Node
 
 ## CyberArk

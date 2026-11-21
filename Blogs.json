@@ -830381,5 +830381,115 @@
       "Troubleshooting"
     ],
     "post": "2026-11-20-rerun-failed-kube-bench-checks-groups"
+  },
+  {
+    "title": "Track kube-bench Skip Exceptions Without Hiding New Drift",
+    "description": "Keep kube-bench exceptions narrow, approved, and time-limited while preserving skipped-control evidence and detecting unexpected changes in assessment coverage.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Kubernetes",
+      "Security",
+      "Compliance"
+    ],
+    "post": "2026-11-20-kube-bench-approved-skip-exceptions-drift"
+  },
+  {
+    "title": "Gate CI on kube-bench Results with JUnit and Explicit Exit Codes",
+    "description": "Capture kube-bench JUnit evidence without losing failure status, reject empty or incomplete reports, and distinguish failed controls from scanner execution errors.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Kubernetes",
+      "Security",
+      "CI/CD"
+    ],
+    "post": "2026-11-20-kube-bench-ci-junit-exit-codes"
+  },
+  {
+    "title": "Track kube-bench JSON Drift Across Cluster Releases",
+    "description": "Compare kube-bench reports by control identity, preserve node and benchmark context, and separate real security drift from changed assessment coverage.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Kubernetes",
+      "Security",
+      "Compliance"
+    ],
+    "post": "2026-11-20-kube-bench-json-compliance-drift-cluster-releases"
+  },
+  {
+    "title": "Schedule kube-bench with Bounded Runtime and Pod Cleanup",
+    "description": "Schedule short-lived kube-bench assessments with runtime limits, controlled overlap, retained evidence, and cleanup that does not hide missing node coverage.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Kubernetes",
+      "Security",
+      "Automation"
+    ],
+    "post": "2026-11-20-kube-bench-cronjob-bounded-scanner-pods"
+  },
+  {
+    "title": "Send kube-bench Findings to Security Hub with Scoped IRSA",
+    "description": "Connect kube-bench to AWS Security Hub using a dedicated service-account role, scoped import permissions, node attribution, and explicit delivery checks.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Kubernetes",
+      "AWS",
+      "Security"
+    ],
+    "post": "2026-11-20-kube-bench-security-hub-irsa-least-privilege"
+  },
+  {
+    "title": "Run kube-bench Offline with Pinned Images and CIS Configs",
+    "description": "Prepare a verified kube-bench image and matching benchmark bundle, import it into an internal registry, and rehearse assessments on uncached offline nodes.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Kubernetes",
+      "Security",
+      "Air-Gapped"
+    ],
+    "post": "2026-11-20-kube-bench-air-gapped-image-benchmark-bundle"
+  },
+  {
+    "title": "Debug kube-bench Checks with Test Output and Verbose Logs",
+    "description": "Diagnose kube-bench failures by separating observed test values, verbose collection logs, and control definitions before changing cluster settings.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Kubernetes",
+      "Security",
+      "Troubleshooting"
+    ],
+    "post": "2026-11-20-debug-kube-bench-test-output-verbose-logs"
+  },
+  {
+    "title": "Audit Managed Kubernetes Beyond kube-bench Control-Plane Access",
+    "description": "Combine kube-bench worker assessments, cloud configuration evidence, and provider attestations without mistaking an inaccessible control plane for a passing scan.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Kubernetes",
+      "Security",
+      "Compliance"
+    ],
+    "post": "2026-11-20-kube-bench-managed-kubernetes-control-plane-evidence"
+  },
+  {
+    "title": "Roll Out kube-bench Kubelet Fixes One Node at a Time",
+    "description": "Turn kube-bench kubelet findings into a controlled rollout with dependency checks, a single-node canary, disruption safeguards, and evidence-based recovery gates.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Kubernetes",
+      "Security",
+      "Reliability"
+    ],
+    "post": "2026-11-20-roll-out-kube-bench-kubelet-remediations"
+  },
+  {
+    "title": "Validate Custom kube-bench Controls Before Cluster Rollout",
+    "description": "Test custom kube-bench YAML with explicit pass, fail, missing-field, and collection-error fixtures before trusting it across production nodes.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Kubernetes",
+      "Security",
+      "Testing"
+    ],
+    "post": "2026-11-20-validate-custom-kube-bench-control-yaml"
   }
 ]

@@ -1,0 +1,22 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-21",
+  "runtimeTestsPerformed": true,
+  "sources": [
+    "https://github.com/aquasecurity/kube-bench/blob/v0.14.0/docs/flags-and-commands.md",
+    "https://github.com/aquasecurity/kube-bench/blob/v0.14.0/check/controls.go",
+    "https://github.com/aquasecurity/kube-bench/blob/v0.14.0/check/check.go"
+  ],
+  "tests": [
+    "Native v0.14.0 fixture verified individual and group skips, unknown ID behavior, filtering before skipping, INFO results and configured failure exit status",
+    "Python helper passed valid record and rejected placeholders, wrong node, expiry, group ID, missing reason, duplicate ID and wrong benchmark",
+    "JSON example parsed and Bash example syntax checked",
+    "Seven-node six-edge Mermaid structurally reviewed",
+    "1280x720 social image visually reviewed"
+  ],
+  "limitations": [
+    "No cluster scan, real risk approval or production exception was performed",
+    "Helper validates record shape and stated scope; it does not authenticate approval or schedule a scanner",
+    "Mermaid not rendered"
+  ]
+}
