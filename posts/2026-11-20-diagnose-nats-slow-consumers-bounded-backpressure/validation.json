@@ -1,0 +1,28 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-21",
+  "runtimeTestsPerformed": true,
+  "infrastructureDeploymentPerformed": false,
+  "localServerTestPerformed": true,
+  "sources": [
+    "https://github.com/nats-io/nats.docs/blob/master/running-a-nats-service/nats_admin/slow_consumers.md",
+    "https://github.com/nats-io/nats.go/blob/v1.42.0/nats.go",
+    "https://github.com/nats-io/nats-server/blob/v2.11.4/server/monitor.go",
+    "https://docs.nats.io/learn/jetstream/pull-consumers"
+  ],
+  "tests": [
+    "Built all published Go fragments with nats.go 1.42.0 and Go 1.25.0; exact reportAsyncError function executed in local test.",
+    "NATS Server 2.11.4 disposable loopback test: Core subscription pending limit two, twenty one-byte publications, two pending and eighteen dropped, error callback observed, connection stayed connected.",
+    "Queried local /varz and /connz?sort=pending&limit=20: server slow_consumers remained zero and named client connection was present.",
+    "JetStream MaxAckPending=2 prevented third message delivery until one of first two was acknowledged; all three later acknowledged.",
+    "Published seven-edge Mermaid structure checked; shell examples syntax checked during isolated integration.",
+    "1280x720 social image generated and visually inspected; title readable without clipping.",
+    "Owned local server stopped and temporary stream storage removed."
+  ],
+  "limitations": [
+    "No server slow-consumer disconnect, impaired network, production overload, performance benchmark or clustered deployment was simulated.",
+    "Client pending-limit execution used a deliberately tiny two-message cap; article production-sized limit fragment compiled only.",
+    "Monitoring requests were executed through the Go HTTP client; equivalent published curl examples received syntax review.",
+    "Mermaid was structurally checked, not graphically rendered."
+  ]
+}

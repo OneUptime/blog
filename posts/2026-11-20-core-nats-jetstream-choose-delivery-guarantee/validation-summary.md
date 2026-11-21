@@ -1,0 +1,29 @@
+# Validation summary
+
+## Checks
+
+- Downloaded NATS Server 2.11.4 darwin-arm64 archive and verified SHA256 against the official release checksum; no signature verification was performed.
+- Compiled the exact published Go program with Go 1.25.0 and nats.go 1.42.0.
+- Executed the program against a disposable local loopback NATS Server 2.11.4 with JetStream and temporary file storage: Core late-subscriber timeout, publish acknowledgment sequence 1, retained-message fetch and DoubleAck all succeeded.
+- Verified exact README code equality with executed main.go, both fetch error checks and expected output.
+- Stopped the owned server and cleaned its temporary storage after the test.
+- Published shell snippets passed bash syntax checks; seven-edge Mermaid structure checked without graphical rendering.
+- Generated 1280x720 social image visually reviewed; readable title without clipping.
+
+## Sources reviewed
+
+- https://docs.nats.io/learn/core-nats/
+- https://docs.nats.io/concepts/jetstream
+- https://docs.nats.io/learn/jetstream/delivery-and-acknowledgment
+- https://github.com/nats-io/nats-server/releases/tag/v2.11.4
+- https://github.com/nats-io/nats.go/blob/v1.42.0/jetstream/README.md
+
+## Limitations
+
+- The test used one local unauthenticated loopback server; no cluster, failover, TLS or authorization deployment was exercised.
+- No server crash/restart, external database transaction, deduplication window or irreversible side effect was tested.
+- The example demonstrates retained delivery to a later consumer, not a production durability or exactly-once business-processing guarantee.
+
+## Repository checks
+
+The repository validator passed for this post in an isolated fixture with its catalog entry, author list, tag allowlist, and social image. Shell examples, if present, passed bash syntax checking. The full existing catalog was not revalidated.

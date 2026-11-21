@@ -828012,5 +828012,122 @@
       "Monitoring"
     ],
     "post": "2026-11-20-map-cadvisor-container-ids-compose-service-names"
+  },
+  {
+    "title": "Upgrade cAdvisor Without Breaking Metrics, Labels, or Dashboards",
+    "description": "Rehearse a cAdvisor upgrade with metric-shape comparisons, dashboard and alert checks, isolated canary collection, and a practical rollback plan.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Docker",
+      "Kubernetes",
+      "Prometheus",
+      "Monitoring"
+    ],
+    "post": "2026-11-20-upgrade-cadvisor-without-breaking-metrics-labels-dashboards"
+  },
+  {
+    "title": "Core NATS or JetStream: Choose the Right Delivery Guarantee",
+    "description": "Choose Core NATS or JetStream per message flow, understand acknowledgment boundaries, and run a local Go example showing late-subscriber behavior.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "NATS",
+      "Messaging",
+      "Go"
+    ],
+    "post": "2026-11-20-core-nats-jetstream-choose-delivery-guarantee"
+  },
+  {
+    "title": "Why JetStream Resumes After Restart and How to Reset Safely",
+    "description": "Understand JetStream durable consumer progress, inspect pending acknowledgments, and choose a safe replay or recreation plan instead of expecting restart to rewind.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "NATS",
+      "Messaging",
+      "Go",
+      "Troubleshooting"
+    ],
+    "post": "2026-11-20-nats-jetstream-durable-consumer-restart-reset-cursor"
+  },
+  {
+    "title": "Scale JetStream Workers with One Shared Pull Consumer",
+    "description": "Share one JetStream pull consumer across worker replicas, bound outstanding work, acknowledge after processing, and verify scaling without accidental fan-out.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "NATS",
+      "Messaging",
+      "Go"
+    ],
+    "post": "2026-11-20-scale-nats-jetstream-workers-shared-pull-consumer"
+  },
+  {
+    "title": "Why JetStream Redelivers Messages Your Worker Already Processed",
+    "description": "Diagnose JetStream redelivery using message metadata, acknowledgment confirmation, AckWait and BackOff, then protect business effects with idempotency.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "NATS",
+      "Messaging",
+      "Go",
+      "Troubleshooting"
+    ],
+    "post": "2026-11-20-jetstream-redelivery-acksync-ackwait-backoff-idempotency"
+  },
+  {
+    "title": "Replay JetStream by Sequence or Time Without Moving Production",
+    "description": "Create an isolated JetStream replay consumer with a sequence or timestamp start, capture an end boundary, and preserve production delivery progress.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "NATS",
+      "Messaging",
+      "Go",
+      "Troubleshooting"
+    ],
+    "post": "2026-11-20-replay-nats-jetstream-sequence-timestamp-isolated-consumer"
+  },
+  {
+    "title": "Handle JetStream Poison Messages with a Dead-Letter Workflow",
+    "description": "Capture MaxDeliver advisories, preserve failed JetStream payloads in quarantine, and resolve poison messages with confirmed storage and controlled retries.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "NATS",
+      "Messaging",
+      "Go",
+      "Troubleshooting"
+    ],
+    "post": "2026-11-20-jetstream-poison-messages-maxdeliver-dead-letter-workflow"
+  },
+  {
+    "title": "Build Effectively-Once Processing with NATS JetStream",
+    "description": "Combine stable publish IDs, confirmed acknowledgments, and an atomic database receipt to prevent repeated JetStream deliveries from repeating business effects.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "NATS",
+      "Messaging",
+      "Python",
+      "SQLite"
+    ],
+    "post": "2026-11-20-effectively-once-nats-jetstream-deduplication-idempotency"
+  },
+  {
+    "title": "Choose NATS JetStream Retention: Limits, Interest, or Work Queue",
+    "description": "Choose JetStream retention by message lifetime, replay needs, and consumer ownership, then verify acknowledgment and capacity behavior in a small lab.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "NATS",
+      "Messaging",
+      "Python"
+    ],
+    "post": "2026-11-20-choose-nats-jetstream-retention-limits-interest-workqueue"
+  },
+  {
+    "title": "Diagnose NATS Slow Consumers and Add Bounded Backpressure",
+    "description": "Separate client-side drops from server slow-consumer disconnects, inspect the right queues, and bound delivery before overload becomes message loss.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "NATS",
+      "Messaging",
+      "Go",
+      "Troubleshooting"
+    ],
+    "post": "2026-11-20-diagnose-nats-slow-consumers-bounded-backpressure"
   }
 ]

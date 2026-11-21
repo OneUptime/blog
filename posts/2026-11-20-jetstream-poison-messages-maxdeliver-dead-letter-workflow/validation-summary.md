@@ -1,0 +1,31 @@
+# Validation summary
+
+## Checks
+
+- Compiled all published Go fragments with Go 1.25.0 and nats.go 1.42.0, wrapping the capture-stream fragment in a function.
+- Executed exact quarantine helper on disposable NATS Server 2.11.4 with file storage on loopback.
+- MaxDeliver=2 fixture produced two unacknowledged deliveries; a subsequent bounded pull produced no third delivery and allowed exhaustion advisory observation.
+- Advisory was stored in its pre-provisioned capture stream and identified source sequence 1 with two deliveries.
+- Original bad-payload bytes copied into quarantine envelope and decoded back unchanged; immediate repeat copy produced one destination message within deduplication window.
+- Original remained retrievable; invalid advisory type was rejected.
+- Owned server stopped and temporary storage cleaned.
+- Seven-edge Mermaid structure checked without graphical rendering.
+- Generated 1280x720 social image visually reviewed; readable title without clipping.
+
+## Sources reviewed
+
+- https://github.com/nats-io/nats-server/blob/v2.11.4/server/jetstream_events.go
+- https://github.com/nats-io/nats.go/blob/v1.42.0/jetstream/stream.go
+- https://github.com/nats-io/nats.go/blob/v1.42.0/jetstream/README.md
+- https://docs.nats.io/learn/jetstream/acknowledgment
+
+## Limitations
+
+- No production deployment, cluster failover, authorization setup, source-expiry race, storage rejection or crash between copy and case recording was tested.
+- The illustrative 24-hour/10000-message advisory configuration was compiled; runtime lab used a smaller ten-message limit.
+- No durable business case ledger, permanent deduplication or automated source cleanup was implemented; these are explicit production requirements.
+- Deduplication test covered an immediate repeated publish only, not expiry of its configured window.
+
+## Repository checks
+
+The repository validator passed for this post in an isolated fixture with its catalog entry, author list, tag allowlist, and social image. Shell examples, if present, passed bash syntax checking. The full existing catalog was not revalidated.

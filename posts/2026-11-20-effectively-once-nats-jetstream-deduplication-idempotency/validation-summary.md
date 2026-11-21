@@ -1,0 +1,31 @@
+# Validation summary
+
+## Checks
+
+- Executed exact apply_once and handle_message functions with Python 3.11, SQLite 3.54.1, nats-py 2.10.0 and disposable NATS Server 2.11.4 on loopback.
+- Immediate repeat publication with the same Nats-Msg-Id returned the same sequence and duplicate flag.
+- First delivery committed effect and receipt without acknowledgment; after database close/reopen, redelivery had delivery count 2 and skipped the already committed effect before ack_sync.
+- Repeat publication after a shortened 200ms lab deduplication window produced a second stream record, while database total remained seven.
+- Conflicting content under the same operation ID was rejected.
+- Injected SQLite trigger failure during receipt insertion rolled back the preceding counter update; one receipt and total seven remained.
+- Published Python snippets compiled; exact handler text matched tested source; eight-edge Mermaid structure checked without graphical rendering.
+- Owned server stopped and temporary stream/database storage cleaned.
+- Generated 1280x720 social image visually reviewed; readable title without clipping.
+
+## Sources reviewed
+
+- https://docs.nats.io/learn/jetstream/publishing
+- https://www.sqlite.org/lang_transaction.html
+- https://docs.python.org/3.11/library/sqlite3.html
+- https://github.com/nats-io/nats.py/blob/v2.10.0/nats/aio/msg.py
+
+## Limitations
+
+- No power failure, operating-system process kill, network-packet loss, multi-host database contention or clustered failover was tested.
+- The acknowledgment was deliberately omitted to exercise redelivery; database connection reopening was not a full worker crash.
+- The SQLite example is a local transactional model; independent per-replica databases would not deduplicate a shared worker pool.
+- External API idempotency, durable producer outbox and receipt-retention policy are explained requirements, not implemented here.
+
+## Repository checks
+
+The repository validator passed for this post in an isolated fixture with its catalog entry, author list, tag allowlist, and social image. Shell examples, if present, passed bash syntax checking. The full existing catalog was not revalidated.

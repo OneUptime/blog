@@ -1,0 +1,31 @@
+# Validation summary
+
+## Checks
+
+- Compiled all published Go snippets in Go 1.25.0 with nats.go 1.42.0; administrative snippet wrapped in a function for compilation.
+- Executed exact logDelivery and confirmAck helpers against disposable NATS Server 2.11.4 on loopback with temporary file storage.
+- Omitted first acknowledgment and verified second delivery had the same stream sequence, increased consumer sequence and NumDelivered=2.
+- Short 150ms/300ms BackOff schedule produced redelivery before the separately configured 5s AckWait; bounded assertion allowed less than 3s.
+- DoubleAck completed, NumAckPending became zero, and no further delivery appeared in a 500ms observation window.
+- Owned server stopped and temporary storage cleaned.
+- Reviewed legacy AckSync, modern DoubleAck, Nak/NakWithDelay/InProgress and BackOff source behavior.
+- Mermaid sequence diagram checked structurally for three participants, seven messages and a note; not graphically rendered.
+- Generated 1280x720 social image visually reviewed; readable title without clipping.
+
+## Sources reviewed
+
+- https://github.com/nats-io/nats.go/blob/v1.42.0/jetstream/message.go
+- https://github.com/nats-io/nats.go/blob/v1.42.0/js.go
+- https://github.com/nats-io/nats.go/blob/v1.42.0/jetstream/consumer_config.go
+- https://docs.nats.io/learn/jetstream/acknowledgment
+
+## Limitations
+
+- No packet-loss injection, real database transaction, external API, cluster failover or production worker crash was tested.
+- Published illustrative 30s/2m/10m policy was compiled but not timed; the runtime experiment used explicitly shortened lab intervals.
+- Legacy AckSync and Nak/InProgress behavior were source-reviewed; runtime acknowledgment test used modern DoubleAck.
+- The test demonstrates bounded local observations, not an exactly-once business-processing guarantee.
+
+## Repository checks
+
+The repository validator passed for this post in an isolated fixture with its catalog entry, author list, tag allowlist, and social image. Shell examples, if present, passed bash syntax checking. The full existing catalog was not revalidated.

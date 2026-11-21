@@ -1,0 +1,29 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-21",
+  "runtimeTestsPerformed": true,
+  "infrastructureDeploymentPerformed": false,
+  "localServerTestPerformed": true,
+  "sources": [
+    "https://docs.nats.io/learn/jetstream/filtering",
+    "https://docs.nats.io/learn/jetstream/retention-policies",
+    "https://github.com/nats-io/nats.go/blob/v1.42.0/jetstream/stream.go",
+    "https://github.com/nats-io/nats.go/blob/v1.42.0/jetstream/consumer_config.go"
+  ],
+  "tests": [
+    "Compiled exact published newReview helper with Go 1.25.0 and nats.go 1.42.0.",
+    "Executed against disposable NATS Server 2.11.4 on loopback with temporary file storage: sequence-based and stored-timestamp-based consumers both selected stream sequence 2.",
+    "Captured last sequence 3 remained the recorded ceiling after publishing sequence 4.",
+    "Missing and conflicting start-boundary arguments were rejected.",
+    "Original production-named fixture consumer delivered and acknowledgment sequence state remained unchanged.",
+    "Owned server stopped and temporary storage cleaned.",
+    "Shell snippet passed syntax check; six-edge Mermaid structure checked without graphical rendering.",
+    "Generated 1280x720 social image visually reviewed; readable title without clipping."
+  ],
+  "limitations": [
+    "No production replay, export service, concurrent retention deletion or cluster failover was tested.",
+    "The helper captures an upper boundary but does not implement the complete bounded reader; reader stopping and deadline handling are explained explicitly.",
+    "Replay fixture used a quiet Limits-retention stream; WorkQueue and Interest caveats were documentation-reviewed.",
+    "No business side effects or authorization/TLS configuration was exercised."
+  ]
+}

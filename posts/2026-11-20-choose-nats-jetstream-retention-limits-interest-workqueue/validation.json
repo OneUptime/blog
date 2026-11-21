@@ -1,0 +1,27 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-21",
+  "runtimeTestsPerformed": true,
+  "infrastructureDeploymentPerformed": false,
+  "localServerTestPerformed": true,
+  "sources": [
+    "https://docs.nats.io/learn/jetstream/retention-policies",
+    "https://github.com/nats-io/nats.py/blob/v2.10.0/nats/js/api.py",
+    "https://github.com/nats-io/nats-server/blob/v2.11.4/server/consumer.go",
+    "https://docs.nats.io/learn/jetstream/shaping-the-stream",
+    "https://github.com/nats-io/nats-server/blob/v2.11.4/server/stream.go"
+  ],
+  "tests": [
+    "NATS Server 2.11.4 with nats-py 2.10.0 in a disposable loopback server: Limits retained after acknowledgment; Interest dropped records without consumers and waited for both interested consumers; WorkQueue retained before consumer creation, rejected overlap, and removed acknowledged work.",
+    "DiscardOld evicted oldest record at a two-message cap; DiscardNew rejected overflow at a one-message cap.",
+    "Published Python snippets parsed successfully; provisioning fields match executed lab configuration.",
+    "Nine-edge Mermaid structure checked; no graphical diagram rendering performed.",
+    "1280x720 social image generated and visually reviewed; readable title without clipping.",
+    "Owned test server stopped and temporary storage removed."
+  ],
+  "limitations": [
+    "No clustered failover, disk exhaustion, production traffic, age-expiration timing or performance benchmark performed.",
+    "Example provisions streams only; acceptance results came from a separate local test harness.",
+    "No production deployment or application exactly-once guarantee tested."
+  ]
+}

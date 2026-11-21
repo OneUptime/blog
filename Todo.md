@@ -1144,17 +1144,37 @@ Research: [OneUptime air-gapped alerting](https://oneuptime.com/enterprise/air-g
     Completed: [Article](posts/2026-11-20-map-cadvisor-container-ids-compose-service-names/README.md) (20 November 2026).
 40. How to Upgrade cAdvisor Without Breaking Metric Names, Labels, or Dashboards
 
+    Completed: [Article](posts/2026-11-20-upgrade-cadvisor-without-breaking-metrics-labels-dashboards/README.md) (20 November 2026).
+
 ## NATS
 
 1. Core NATS or JetStream? How to Choose the Right Delivery Guarantee for Each Message Flow
+
+    Completed: [Article](posts/2026-11-20-core-nats-jetstream-choose-delivery-guarantee/README.md) (20 November 2026).
 2. Why a NATS JetStream Consumer Resumes After Restart—and How to Reset Its Durable Cursor Safely
+
+    Completed: [Article](posts/2026-11-20-nats-jetstream-durable-consumer-restart-reset-cursor/README.md) (20 November 2026).
 3. How to Scale NATS JetStream Workers Horizontally with One Shared Pull Consumer
+
+    Completed: [Article](posts/2026-11-20-scale-nats-jetstream-workers-shared-pull-consumer/README.md) (20 November 2026).
 4. Why JetStream Redelivers Messages Your Worker Already Processed: AckSync, AckWait, BackOff, and Idempotency
+
+    Completed: [Article](posts/2026-11-20-jetstream-redelivery-acksync-ackwait-backoff-idempotency/README.md) (20 November 2026).
 5. How to Replay NATS JetStream Messages from a Sequence or Timestamp Without Moving a Production Consumer
+
+    Completed: [Article](posts/2026-11-20-replay-nats-jetstream-sequence-timestamp-isolated-consumer/README.md) (20 November 2026).
 6. How to Handle Poison Messages in JetStream with MaxDeliver Advisories and a Dead-Letter Workflow
+
+    Completed: [Article](posts/2026-11-20-jetstream-poison-messages-maxdeliver-dead-letter-workflow/README.md) (20 November 2026).
 7. How to Achieve Effectively-Once Processing in NATS JetStream with Message Deduplication, Double Acks, and Idempotency
+
+    Completed: [Article](posts/2026-11-20-effectively-once-nats-jetstream-deduplication-idempotency/README.md) (20 November 2026).
 8. Limits, Interest, or Work Queue? How to Choose a NATS JetStream Retention Policy
+
+    Completed: [Article](posts/2026-11-20-choose-nats-jetstream-retention-limits-interest-workqueue/README.md) (20 November 2026).
 9. How to Diagnose NATS Slow Consumers and Add Backpressure Before the Server Disconnects Them
+
+    Completed: [Article](posts/2026-11-20-diagnose-nats-slow-consumers-bounded-backpressure/README.md) (20 November 2026).
 10. How to Stop Async JetStream Publishers from Overrunning Storage: Pending Limits, Publish Acks, and Client-Side Backpressure
 11. How to Configure NATS Mutual TLS in Docker Without Certificate SAN or Hostname Errors
 12. How to Isolate NATS Tenants with Accounts, JWT Credentials, Subject Permissions, and Imports/Exports
