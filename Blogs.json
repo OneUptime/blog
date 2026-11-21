@@ -827766,5 +827766,127 @@
       "Monitoring"
     ],
     "post": "2026-11-20-retain-stopped-container-metrics-cadvisor-prometheus"
+  },
+  {
+    "title": "Migrate cAdvisor Images to GHCR Without Guessing Release Tags",
+    "description": "Move cAdvisor deployments from GCR to GHCR using verified release tags, manifest digests, architecture checks, and a staged rollout with a retained rollback image.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Docker",
+      "Kubernetes",
+      "Monitoring",
+      "DevOps"
+    ],
+    "post": "2026-11-20-migrate-cadvisor-images-gcr-ghcr-release-tags"
+  },
+  {
+    "title": "Find the cAdvisor Version Embedded in a Kubernetes Release",
+    "description": "Trace a node's kubelet version to the exact Kubernetes dependency and vendored cAdvisor source, while accounting for patch releases, vendor builds, and runtime configuration.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Kubernetes",
+      "Monitoring",
+      "Observability"
+    ],
+    "post": "2026-11-20-identify-cadvisor-version-embedded-kubernetes"
+  },
+  {
+    "title": "Fix cAdvisor Reporting Only the Root Cgroup",
+    "description": "Trace root-only cAdvisor output through query filters, runtime discovery, host visibility, and collection flags before applying a narrowly scoped fix.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Docker",
+      "Linux",
+      "Prometheus",
+      "Monitoring"
+    ],
+    "post": "2026-11-20-fix-cadvisor-only-host-root-cgroup"
+  },
+  {
+    "title": "Restore Missing Container, Image, Pod, and Namespace Labels in cAdvisor",
+    "description": "Trace missing cAdvisor labels from runtime metadata through scraping and queries, then repair the right layer without inventing container identity.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Kubernetes",
+      "Docker",
+      "Prometheus",
+      "Monitoring"
+    ],
+    "post": "2026-11-20-restore-cadvisor-container-image-pod-namespace-labels"
+  },
+  {
+    "title": "Avoid Double-Counting Parent Cgroups in cAdvisor Memory Queries",
+    "description": "Choose a single cgroup accounting level for memory totals, exclude overlapping parents, and test cAdvisor queries against realistic label fixtures.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Kubernetes",
+      "Linux",
+      "Prometheus",
+      "Monitoring"
+    ],
+    "post": "2026-11-20-avoid-double-counting-parent-cgroups-cadvisor-memory"
+  },
+  {
+    "title": "Reconcile cAdvisor and Docker Stats CPU Percent on Multi-Core Hosts",
+    "description": "Compare Docker and cAdvisor CPU readings using the same container, denominator, and time window, with tested examples for multi-core hosts.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Docker",
+      "Linux",
+      "Prometheus",
+      "Monitoring"
+    ],
+    "post": "2026-11-20-reconcile-cadvisor-docker-stats-cpu-percent-multicore"
+  },
+  {
+    "title": "Monitor Container Restarts Without a cAdvisor Restart Counter",
+    "description": "Use Kubernetes restart counters or retained Docker lifecycle events instead of inferring exact restart counts from cAdvisor resource metrics.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Kubernetes",
+      "Docker",
+      "Prometheus",
+      "Alerting",
+      "Monitoring"
+    ],
+    "post": "2026-11-20-monitor-container-restarts-without-cadvisor-counter"
+  },
+  {
+    "title": "Correct Duplicate cAdvisor Metrics for Shared Network Namespaces",
+    "description": "Identify shared network counters, separate namespace overlap from duplicate scrapes, and select one verified source before calculating network rates.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Docker",
+      "Kubernetes",
+      "Networking",
+      "Prometheus",
+      "Monitoring"
+    ],
+    "post": "2026-11-20-correct-duplicate-cadvisor-shared-network-namespace-metrics"
+  },
+  {
+    "title": "Fix Prometheus Label-Length Errors from cAdvisor Device Paths",
+    "description": "Diagnose oversized cAdvisor device labels, choose a bounded scrape limit or a narrow sample filter, and verify recovery without merging device identities.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Prometheus",
+      "Docker",
+      "Monitoring",
+      "Troubleshooting"
+    ],
+    "post": "2026-11-20-fix-prometheus-label-length-cadvisor-device-paths"
+  },
+  {
+    "title": "Diagnose Zero CPU Load Average Values in cAdvisor",
+    "description": "Trace zero cAdvisor CPU load readings through metric selection, the optional load reader, kernel access, and query units before trusting the result.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Docker",
+      "Linux",
+      "Prometheus",
+      "Monitoring",
+      "Troubleshooting"
+    ],
+    "post": "2026-11-20-diagnose-zero-cadvisor-cpu-load-average-10s"
   }
 ]

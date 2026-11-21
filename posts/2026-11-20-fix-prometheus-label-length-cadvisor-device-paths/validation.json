@@ -1,0 +1,24 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-21",
+  "runtimeTestsPerformed": true,
+  "infrastructureDeploymentPerformed": false,
+  "sources": [
+    "https://github.com/prometheus/prometheus/blob/v3.7.3/scrape/scrape.go",
+    "https://prometheus.io/docs/prometheus/latest/querying/api/#targets",
+    "https://prometheus.io/docs/prometheus/latest/configuration/configuration/#scrape_config",
+    "https://github.com/google/cadvisor/blob/v0.55.1/metrics/prometheus.go"
+  ],
+  "tests": [
+    "Real local Prometheus 3.7.3 processes scraped a synthetic HTTP exporter with a 300-byte device path: 256-byte limit produced up=0 and the expected lastError; 512-byte limit accepted both filesystem samples and memory.",
+    "With the published narrow drop rule and limit 256, the real scrape succeeded, retaining /dev/sda and memory while excluding the long path.",
+    "All three complete fixture configurations passed matching promtool checks. Local servers stopped and temporary TSDB/configuration directories removed after testing.",
+    "Published shell snippet passed bash syntax checking. Four-edge Mermaid flow structurally checked without graphical rendering.",
+    "Social image generated and visually reviewed at 1280x720 with readable unclipped title."
+  ],
+  "limitations": [
+    "The exporter response was synthetic; no real cAdvisor, Docker storage driver or production Prometheus deployment was exercised.",
+    "Loopback plaintext was used only for the temporary local test; deployed authentication/TLS configuration was not tested.",
+    "The path-prefix exclusion is illustrative and requires actual sample/coverage review before use."
+  ]
+}

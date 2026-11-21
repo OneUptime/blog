@@ -1,0 +1,31 @@
+# Validation summary
+
+## Checks performed
+
+- Fetched official GHCR manifests directly: v0.53.0 and 0.55.1 succeeded; 0.53.0 and v0.55.1 returned HTTP404 during this review.
+- Verified response manifest SHA256 against registry digest headers; 0.55.1 index digest matches the article and Compose fragment, with Linux amd64 and arm64 entries.
+- Compose fragment passed official schema at commit 6b3a2a93e77c30ded1aa8264307e74d1208a6eae.
+- Shell examples passed bash syntax checks; Buildx inspect and Compose pull/up options source-reviewed.
+- Five-edge Mermaid structure checked; not graphically rendered.
+- Generated 1280x720 social image visually reviewed, readable and unclipped.
+
+## Limitations
+
+- No Docker CLI/daemon execution, image pull/run, Kubernetes rollout, cold-node test or internal mirror copy was performed.
+- Manifest digest verification is not signature verification or a claim about all release tag spellings.
+- Registry observations were made on 2026-11-20; selected references should be checked again before deployment.
+
+## Reviewed sources
+
+- https://github.com/google/cadvisor/blob/v0.55.1/README.md
+- https://github.com/google/cadvisor/releases/tag/v0.53.0
+- https://github.com/google/cadvisor/releases/tag/v0.55.1
+- https://github.com/google/cadvisor/pkgs/container/cadvisor
+- https://docs.docker.com/reference/cli/docker/buildx/imagetools/inspect/
+- https://kubernetes.io/docs/concepts/containers/images/
+- https://docs.docker.com/reference/cli/docker/compose/pull/
+- https://docs.docker.com/reference/cli/docker/compose/up/
+
+## Repository checks
+
+The repository validator passed for this post in an isolated fixture with its catalog entry, author list, tag allowlist, and social image. Shell examples, if present, passed bash syntax checking. The full existing catalog was not revalidated.

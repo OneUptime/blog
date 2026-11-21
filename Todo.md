@@ -1083,15 +1083,35 @@ Research: [OneUptime air-gapped alerting](https://oneuptime.com/enterprise/air-g
 
     Completed: [Article](posts/2026-11-20-retain-stopped-container-metrics-cadvisor-prometheus/README.md) (20 November 2026).
 20. Migrating cAdvisor Images from `gcr.io` to `ghcr.io` for v0.53 and Later
+
+    Completed: [Article](posts/2026-11-20-migrate-cadvisor-images-gcr-ghcr-release-tags/README.md) (20 November 2026).
 21. How to Determine Which cAdvisor Version Is Embedded in a Kubernetes Release
+
+    Completed: [Article](posts/2026-11-20-identify-cadvisor-version-embedded-kubernetes/README.md) (20 November 2026).
 22. How to Fix cAdvisor When It Reports Only the Host Root Cgroup
+
+    Completed: [Article](posts/2026-11-20-fix-cadvisor-only-host-root-cgroup/README.md) (20 November 2026).
 23. How to Restore Missing Container, Image, Pod, and Namespace Labels in cAdvisor
+
+    Completed: [Article](posts/2026-11-20-restore-cadvisor-container-image-pod-namespace-labels/README.md) (20 November 2026).
 24. How to Avoid Double-Counting Parent Cgroups in cAdvisor Memory Queries
+
+    Completed: [Article](posts/2026-11-20-avoid-double-counting-parent-cgroups-cadvisor-memory/README.md) (20 November 2026).
 25. How to Reconcile cAdvisor and Docker Stats CPU Percent on Multi-Core Hosts
+
+    Completed: [Article](posts/2026-11-20-reconcile-cadvisor-docker-stats-cpu-percent-multicore/README.md) (20 November 2026).
 26. How to Monitor Container Restarts When cAdvisor Has No Restart Counter
+
+    Completed: [Article](posts/2026-11-20-monitor-container-restarts-without-cadvisor-counter/README.md) (20 November 2026).
 27. How to Correct Duplicate cAdvisor Network Metrics for Shared Network Namespaces
+
+    Completed: [Article](posts/2026-11-20-correct-duplicate-cadvisor-shared-network-namespace-metrics/README.md) (20 November 2026).
 28. How to Fix Prometheus Label-Length Errors Caused by cAdvisor Device Paths
+
+    Completed: [Article](posts/2026-11-20-fix-prometheus-label-length-cadvisor-device-paths/README.md) (20 November 2026).
 29. How to Diagnose Zero `container_cpu_load_average_10s` Values in cAdvisor
+
+    Completed: [Article](posts/2026-11-20-diagnose-zero-cadvisor-cpu-load-average-10s/README.md) (20 November 2026).
 30. How to Diagnose Missing Container Names When cAdvisor Monitors Rootless Podman
 31. How to Run cAdvisor on Synology DSM and Diagnose Missing Filesystem Metrics
 32. How to Fix cAdvisor Container Discovery Failures Caused by inotify Limits

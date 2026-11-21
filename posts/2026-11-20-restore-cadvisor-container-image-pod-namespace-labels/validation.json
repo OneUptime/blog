@@ -1,0 +1,26 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-21",
+  "runtimeTestsPerformed": true,
+  "infrastructureDeploymentPerformed": false,
+  "sources": [
+    "https://github.com/google/cadvisor/blob/v0.55.1/metrics/prometheus.go",
+    "https://github.com/kubernetes/kubernetes/blob/v1.35.0/pkg/kubelet/server/server.go",
+    "https://docs.docker.com/reference/cli/docker/container/inspect/",
+    "https://github.com/google/cadvisor/blob/v0.55.1/cmd/cadvisor.go",
+    "https://prometheus.io/docs/prometheus/latest/configuration/configuration/",
+    "https://prometheus.io/docs/prometheus/latest/querying/operators/"
+  ],
+  "tests": [
+    "Prometheus 3.7.3 promtool accepted the complete fixture configuration containing the published metric relabel rules.",
+    "Actual Prometheus v0.307.3 relabel library passed four cases: missing destinations filled, existing destination preserved, absent metadata untouched, empty metadata untouched; original labels and identity retained.",
+    "Bash snippets passed syntax checks; Docker inspection options reviewed against official documentation.",
+    "Five-edge Mermaid flow structurally checked; not graphically rendered.",
+    "Social image generated and visually reviewed at 1280x720; title readable without clipping."
+  ],
+  "limitations": [
+    "No live Docker or Kubernetes workload, kubelet scrape, Prometheus reload or dashboard repair was performed.",
+    "Relabel fixtures test the supplied rules, not availability or correctness of metadata in an actual runtime.",
+    "Source review scoped to cAdvisor 0.55.1 and Kubernetes 1.35.0."
+  ]
+}

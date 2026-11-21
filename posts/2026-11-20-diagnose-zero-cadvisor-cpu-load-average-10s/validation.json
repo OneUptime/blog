@@ -1,0 +1,29 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-21",
+  "runtimeTestsPerformed": true,
+  "infrastructureDeploymentPerformed": false,
+  "sources": [
+    "https://github.com/google/cadvisor/blob/v0.55.1/metrics/prometheus.go",
+    "https://github.com/google/cadvisor/blob/v0.55.1/manager/container.go",
+    "https://docs.docker.com/reference/cli/docker/container/inspect/",
+    "https://docs.docker.com/reference/cli/docker/container/logs/",
+    "https://github.com/google/cadvisor/blob/v0.55.1/cmd/cadvisor.go",
+    "https://github.com/google/cadvisor/blob/v0.55.1/utils/cpuload/cpuload.go",
+    "https://github.com/google/cadvisor/blob/v0.55.1/utils/cpuload/netlink/reader.go",
+    "https://github.com/google/cadvisor/blob/v0.55.1/utils/cpuload/netlink/netlink.go",
+    "https://prometheus.io/docs/prometheus/latest/querying/functions/#rate"
+  ],
+  "tests": [
+    "Prometheus 3.7.3 evaluated six assertions across zero, 1500 milli-load and missing load gauge fixtures; CPU execution rate remained 1.5 cores independently.",
+    "Reviewed cAdvisor 0.55.1 optional reader default, load scaling, metric export, cgroup path access and taskstats netlink request sources.",
+    "Docker inspect/log snippets passed bash syntax checks and official command review.",
+    "Five-edge Mermaid diagnostic path structurally checked; not graphically rendered.",
+    "Generated 1280x720 social image visually reviewed with readable unclipped title."
+  ],
+  "limitations": [
+    "No Linux kernel load reader, cgroup/taskstats interface, Docker daemon or staged workload experiment was exercised.",
+    "No claim of universal cgroup v1/v2 support or a required capability set is made.",
+    "Synthetic query fixtures verify units and missing-series behavior, not whether the deployed reader collects data."
+  ]
+}
