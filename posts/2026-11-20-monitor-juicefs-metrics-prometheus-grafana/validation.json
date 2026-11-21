@@ -1,0 +1,26 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-21",
+  "runtimeTestsPerformed": true,
+  "sources": [
+    "https://github.com/juicedata/juicefs/blob/v1.4.2/cmd/mount.go",
+    "https://prometheus.io/docs/prometheus/latest/configuration/configuration/#scrape_config",
+    "https://prometheus.io/docs/prometheus/latest/querying/functions/#rate",
+    "https://github.com/juicedata/juicefs/blob/v1.4.2/pkg/meta/base.go",
+    "https://github.com/juicedata/juicefs/blob/v1.4.2/docs/en/reference/p8s_metrics.md",
+    "https://grafana.com/docs/grafana/latest/datasources/prometheus/configure/",
+    "https://github.com/juicedata/juicefs/blob/v1.4.2/docs/en/grafana_template.json"
+  ],
+  "tests": [
+    "Promtool3.7.3 check config passed exact scrape example",
+    "Four exact PromQL expressions passed promtool synthetic tests:2ops/s,50ms mean metadata latency,0.8lookup hit ratio,100GETbytes/s",
+    "JuiceFS1.4.2 metric registration, listener, metric reference and dashboard JSON reviewed",
+    "Seven-node/five-edge Mermaid structure, shell syntax and1280x720 social image reviewed"
+  ],
+  "limitations": [
+    "No live FUSE metrics scrape or Grafana UI/dashboard rendering performed",
+    "Synthetic series test query arithmetic only; no production metric coverage, alert delivery or TLS test",
+    "Initial decimal fixture exposed floating-point comparison rounding; replaced inputs with exact simple fixture, expressions unchanged",
+    "Mermaid not rendered"
+  ]
+}

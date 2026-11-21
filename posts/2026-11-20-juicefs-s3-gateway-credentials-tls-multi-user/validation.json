@@ -1,0 +1,25 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-21",
+  "runtimeTestsPerformed": true,
+  "sources": [
+    "https://github.com/juicedata/juicefs/blob/v1.4.2/pkg/gateway/gateway.go",
+    "https://github.com/juicedata/juicefs/blob/v1.4.2/docs/en/guide/gateway.md",
+    "https://nginx.org/en/docs/http/ngx_http_proxy_module.html",
+    "https://nginx.org/en/docs/http/configuring_https_servers.html",
+    "https://docs.aws.amazon.com/boto3/latest/guide/configuration.html"
+  ],
+  "tests": [
+    "JuiceFS1.4.2 disposable SQLite/file gateway on loopback; Boto3 1.40.0 signed PUT/GET/LIST passed; incorrect credentials403",
+    "Test client used when_required checksum configuration for upload compatibility; article read-only client syntax checked",
+    "Gateway credential, bucket and UID/GID source behavior reviewed",
+    "NGINX directive/source and brace structure reviewed, not nginx -t",
+    "Shell/Python syntax and seven-node/six-edge Mermaid structure checked",
+    "1280x720 social image visually reviewed"
+  ],
+  "limitations": [
+    "No TLS proxy, internal CA, delegated IAM policy, multi-instance refresh, multipart upload or production workload tested",
+    "Local gateway test used administrator credentials and HTTP loopback only",
+    "NGINX not executed; Mermaid not rendered"
+  ]
+}

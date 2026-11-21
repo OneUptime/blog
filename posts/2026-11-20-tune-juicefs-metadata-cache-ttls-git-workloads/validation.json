@@ -1,0 +1,22 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-21",
+  "runtimeTestsPerformed": true,
+  "sources": [
+    "https://git-scm.com/docs/git-status",
+    "https://github.com/juicedata/juicefs/blob/v1.4.2/cmd/flags.go",
+    "https://github.com/juicedata/juicefs/blob/v1.4.2/docs/en/guide/cache.md#consistency-exceptions",
+    "https://github.com/juicedata/juicefs/blob/v1.4.2/cmd/mount.go"
+  ],
+  "tests": [
+    "JuiceFS1.4.2 mount help and tagged cache/mount/flag definitions reviewed",
+    "Python observer on local temporary file observed old/new/absent/recreated states; rejected zero,301 and NaN durations",
+    "Six-node/six-edge Mermaid structure reviewed; shell syntax checked",
+    "1280x720 social image visually reviewed"
+  ],
+  "limitations": [
+    "No Linux FUSE mount or two-client JuiceFS visibility experiment executed",
+    "Local observer tests do not establish distributed cache consistency or performance",
+    "Mermaid structurally checked, not rendered"
+  ]
+}

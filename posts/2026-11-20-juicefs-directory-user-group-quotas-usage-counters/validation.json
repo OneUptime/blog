@@ -1,0 +1,22 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-21",
+  "runtimeTestsPerformed": true,
+  "sources": [
+    "https://github.com/juicedata/juicefs/blob/v1.4.2/docs/en/guide/quota.md",
+    "https://github.com/juicedata/juicefs/blob/v1.4.2/cmd/quota.go",
+    "https://github.com/juicedata/juicefs/blob/v1.4.2/docs/en/guide/quota.md#usage-accounting-scope"
+  ],
+  "tests": [
+    "Actual JuiceFS1.4.2 SQLite/file volume: directory creation/set/get/check/repair, user1000 and group100 set/get/check/repair, combined list and strict directory check passed",
+    "Verified rejection of UID0 and conflicting UID/path selectors",
+    "Reviewed pinned quota CLI, metadata implementation and accounting documentation",
+    "Six-node/eight-edge policy Mermaid structure and shell syntax reviewed;1280x720 image visually reviewed"
+  ],
+  "limitations": [
+    "No FUSE quota enforcement, concurrent clients, ownership transitions or Trash cleanup tested",
+    "Repair ran on consistent disposable counters; no induced mismatch or data-recovery test",
+    "Article project paths and larger directory budget source-verified; local test used a smaller dedicated quota tree",
+    "Mermaid not rendered"
+  ]
+}

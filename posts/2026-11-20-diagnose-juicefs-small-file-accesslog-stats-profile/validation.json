@@ -1,0 +1,23 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-21",
+  "runtimeTestsPerformed": true,
+  "sources": [
+    "https://github.com/juicedata/juicefs/blob/v1.4.2/docs/en/administration/fault_diagnosis_and_analysis.md#access-log",
+    "https://www.gnu.org/software/coreutils/manual/html_node/timeout-invocation.html",
+    "https://github.com/juicedata/juicefs/blob/v1.4.2/cmd/stats.go",
+    "https://github.com/juicedata/juicefs/blob/v1.4.2/cmd/profile.go"
+  ],
+  "tests": [
+    "JuiceFS1.4.2 profile --interval0 replayed four synthetic records with and without PID41 filter",
+    "Verified lookup count2 avg15000us total30000us; filtered read count1 avg4000us; unfiltered read count2 avg3000us",
+    "Pinned profile/stats CLI help and implementations plus diagnostic docs reviewed; GNU timeout status checked in retained9.7 source",
+    "Shell syntax, seven-node/seven-edge Mermaid structure checked",
+    "1280x720 social image visually reviewed"
+  ],
+  "limitations": [
+    "No live FUSE access-log stream, stats metrics, workload performance or cache tuning tested",
+    "Synthetic timings are illustrative, not a benchmark",
+    "Capture timeout command syntax/source reviewed, not executed on a live stream; Mermaid not rendered"
+  ]
+}

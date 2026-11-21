@@ -1458,15 +1458,35 @@ Research: [OneUptime air-gapped alerting](https://oneuptime.com/enterprise/air-g
 
     Completed: [Article](posts/2026-11-20-import-existing-s3-data-juicefs-sync/README.md) (20 November 2026).
 20. Exposing a JuiceFS Volume Through the S3 Gateway: Credentials, TLS, and Multi-User Limitations
+
+    Completed: [Article](posts/2026-11-20-juicefs-s3-gateway-credentials-tls-multi-user/README.md) (20 November 2026).
 21. How to Upgrade a Mounted JuiceFS Client In Place with Smooth FUSE Handover
+
+    Completed: [Article](posts/2026-11-20-upgrade-juicefs-client-smooth-fuse-handover/README.md) (20 November 2026).
 22. How to Rotate Expiring S3 STS Credentials in JuiceFS Without Unmounting Clients
+
+    Completed: [Article](posts/2026-11-20-rotate-juicefs-expiring-s3-sts-credentials/README.md) (20 November 2026).
 23. How to Mount JuiceFS as a Non-Root User with `user_allow_other` and a Writable Cache Directory
+
+    Completed: [Article](posts/2026-11-20-mount-juicefs-non-root-writable-cache/README.md) (20 November 2026).
 24. JuiceFS in Docker Compose: How to Propagate a FUSE Mount with `rshared` and `/dev/fuse`
+
+    Completed: [Article](posts/2026-11-20-juicefs-docker-compose-fuse-mount-propagation/README.md) (20 November 2026).
 25. How to Diagnose Slow Small-File Workloads in JuiceFS with `.accesslog`, `stats`, and `profile`
+
+    Completed: [Article](posts/2026-11-20-diagnose-juicefs-small-file-accesslog-stats-profile/README.md) (20 November 2026).
 26. How to Tune JuiceFS Metadata Cache TTLs for Git-Style Workloads Without Hiding Remote Changes
+
+    Completed: [Article](posts/2026-11-20-tune-juicefs-metadata-cache-ttls-git-workloads/README.md) (20 November 2026).
 27. How to Benchmark JuiceFS Metadata and Object-Storage Latency Separately with `bench` and `mdtest`
+
+    Completed: [Article](posts/2026-11-20-benchmark-juicefs-metadata-object-storage-latency/README.md) (20 November 2026).
 28. How to Monitor JuiceFS FUSE, Cache, Metadata, and Object-Store Metrics with Prometheus and Grafana
+
+    Completed: [Article](posts/2026-11-20-monitor-juicefs-metrics-prometheus-grafana/README.md) (20 November 2026).
 29. How to Set Directory, User, and Group Quotas in JuiceFS—and Repair Incorrect Usage Counters
+
+    Completed: [Article](posts/2026-11-20-juicefs-directory-user-group-quotas-usage-counters/README.md) (20 November 2026).
 30. How to Restore Accidentally Deleted JuiceFS Files with `juicefs restore --put-back`
 31. How to Distinguish Real JuiceFS Corruption from Leaked or Stale Objects with `fsck` and `gc`
 32. How to Defragment Randomly Rewritten JuiceFS Files with `juicefs compact`

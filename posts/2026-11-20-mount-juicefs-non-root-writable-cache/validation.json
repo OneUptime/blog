@@ -1,0 +1,23 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-21",
+  "runtimeTestsPerformed": false,
+  "localCodeTestsPerformed": true,
+  "sources": [
+    "https://docs.kernel.org/filesystems/fuse/fuse.html",
+    "https://github.com/juicedata/juicefs/blob/v1.4.2/docs/en/administration/troubleshooting.md",
+    "https://docs.python.org/3.11/library/tempfile.html",
+    "https://github.com/juicedata/juicefs/blob/v1.4.2/docs/en/reference/fuse_mount_options.md"
+  ],
+  "tests": [
+    "Python3.11 cache probe created/wrote/fsynced/removed a real temporary file; missing directory failed without artifacts",
+    "Pinned JuiceFS1.4.2 FUSE options, mount source/helper diagnostics and kernel FUSE model reviewed",
+    "Shell syntax and six-node/five-edge Mermaid structure checked",
+    "1280x720 social image visually reviewed"
+  ],
+  "limitations": [
+    "No Linux FUSE/device/helper, non-root mount, cross-user access or live metadata/storage tested",
+    "Local writable-cache test does not prove capacity or filesystem authorization",
+    "Mermaid not rendered"
+  ]
+}

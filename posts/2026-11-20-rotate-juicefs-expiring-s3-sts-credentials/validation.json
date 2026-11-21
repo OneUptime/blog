@@ -1,0 +1,24 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-21",
+  "runtimeTestsPerformed": true,
+  "sources": [
+    "https://docs.aws.amazon.com/IAM/latest/UserGuide/id_credentials_temp_use-resources.html",
+    "https://github.com/juicedata/juicefs/blob/v1.4.2/pkg/object/s3.go",
+    "https://docs.aws.amazon.com/sdk-for-go/v2/developer-guide/configure-gosdk.html",
+    "https://github.com/juicedata/juicefs/blob/v1.4.2/cmd/config.go",
+    "https://github.com/juicedata/juicefs/blob/v1.4.2/cmd/mount.go",
+    "https://github.com/juicedata/juicefs/blob/v1.4.2/pkg/meta/base.go"
+  ],
+  "tests": [
+    "JuiceFS1.4.2 sequential config updates with synthetic access/secret/token accepted on disposable SQLite/file volume; UUID/bucket/storage unchanged",
+    "Python3.11 lifetime guard: future accepted, short lifetime/expired/missing token/naive timestamp rejected; no credential values printed",
+    "Tagged config/storage reload/metadata refresh/S3 provider implementation reviewed",
+    "Shell syntax, seven-node/six-edge Mermaid structure and image visual review passed"
+  ],
+  "limitations": [
+    "File backend does not authenticate S3 credentials; no live STS or AWS role tested",
+    "No mounted client adoption, expiration boundary, distributed refresh or renewal service tested",
+    "Mermaid not rendered"
+  ]
+}

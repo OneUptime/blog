@@ -829164,5 +829164,116 @@
       "Storage"
     ],
     "post": "2026-11-20-import-existing-s3-data-juicefs-sync"
+  },
+  {
+    "title": "Expose JuiceFS Through an S3 Gateway with TLS and Scoped Access",
+    "description": "Configure a JuiceFS S3 gateway, preserve signed requests through TLS termination, and distinguish gateway IAM from filesystem permissions and bucket isolation.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "JuiceFS",
+      "S3",
+      "Security"
+    ],
+    "post": "2026-11-20-juicefs-s3-gateway-credentials-tls-multi-user"
+  },
+  {
+    "title": "Upgrade a Mounted JuiceFS Client with Smooth FUSE Handover",
+    "description": "Plan a JuiceFS client handover with matching FUSE options, a continuous open-file probe, retained binaries, and clear recovery criteria.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "JuiceFS",
+      "Linux",
+      "Storage"
+    ],
+    "post": "2026-11-20-upgrade-juicefs-client-smooth-fuse-handover"
+  },
+  {
+    "title": "Rotate Expiring S3 Credentials in JuiceFS Without Unmounting Clients",
+    "description": "Rotate a complete S3 temporary-credential set through JuiceFS configuration, distinguish SDK renewal from static secrets, and verify uncached access before expiry.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "JuiceFS",
+      "S3",
+      "Security"
+    ],
+    "post": "2026-11-20-rotate-juicefs-expiring-s3-sts-credentials"
+  },
+  {
+    "title": "Mount JuiceFS as a Non-Root User with a Writable Cache",
+    "description": "Prepare a non-root JuiceFS mount, separate cache permissions from filesystem access, and enable user_allow_other only when other local users need access.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "JuiceFS",
+      "Linux",
+      "Security"
+    ],
+    "post": "2026-11-20-mount-juicefs-non-root-writable-cache"
+  },
+  {
+    "title": "Propagate a JuiceFS FUSE Mount Between Docker Compose Services",
+    "description": "Share a JuiceFS mount through a dedicated Linux host path using rshared and rslave propagation, with scoped FUSE privileges and readiness checks.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "JuiceFS",
+      "Docker",
+      "Storage"
+    ],
+    "post": "2026-11-20-juicefs-docker-compose-fuse-mount-propagation"
+  },
+  {
+    "title": "Diagnose Slow JuiceFS Small-File Workloads with Access Logs and Stats",
+    "description": "Correlate JuiceFS operation profiles, metadata latency, cache traffic, and object requests to explain slow small-file jobs before changing tuning settings.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "JuiceFS",
+      "Performance",
+      "Troubleshooting"
+    ],
+    "post": "2026-11-20-diagnose-juicefs-small-file-accesslog-stats-profile"
+  },
+  {
+    "title": "Tune JuiceFS Metadata Caches for Git-Style Workloads Safely",
+    "description": "Tune JuiceFS metadata cache lifetimes with a two-client visibility test, separating faster repository scans from delayed remote file changes.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "JuiceFS",
+      "Git",
+      "Performance"
+    ],
+    "post": "2026-11-20-tune-juicefs-metadata-cache-ttls-git-workloads"
+  },
+  {
+    "title": "Separate JuiceFS Metadata and Object-Storage Benchmark Results",
+    "description": "Use JuiceFS bench, its metadata test, and objbench to distinguish mounted filesystem performance from metadata operations and object-storage requests.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "JuiceFS",
+      "Performance",
+      "Storage"
+    ],
+    "post": "2026-11-20-benchmark-juicefs-metadata-object-storage-latency"
+  },
+  {
+    "title": "Monitor JuiceFS with Prometheus and Grafana Across Storage Layers",
+    "description": "Scrape JuiceFS client metrics and build useful Grafana views for FUSE activity, metadata latency, cache hits, and object requests without misleading aggregates.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "JuiceFS",
+      "Prometheus",
+      "Grafana",
+      "Monitoring"
+    ],
+    "post": "2026-11-20-monitor-juicefs-metrics-prometheus-grafana"
+  },
+  {
+    "title": "Manage JuiceFS Directory, User, and Group Quotas Safely",
+    "description": "Set JuiceFS quotas by directory, UID, and GID, understand their accounting differences, and check or repair usage counters without changing file ownership.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "JuiceFS",
+      "Storage",
+      "Linux"
+    ],
+    "post": "2026-11-20-juicefs-directory-user-group-quotas-usage-counters"
   }
 ]

@@ -1,0 +1,24 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-21",
+  "runtimeTestsPerformed": false,
+  "localCodeTestsPerformed": true,
+  "sources": [
+    "https://github.com/juicedata/juicefs/blob/v1.4.2/docs/en/administration/upgrade.md",
+    "https://github.com/juicedata/juicefs/releases/tag/v1.4.2",
+    "https://docs.python.org/3.11/library/os.html#os.fsync",
+    "https://github.com/juicedata/juicefs/blob/v1.4.2/.github/scripts/command/graceful_upgrade.sh"
+  ],
+  "tests": [
+    "Python3.11.13 probe wrote/fsynced/read three fixed-width records on a temporary local filesystem",
+    "Existing-file creation refused without modifying bytes; invalid iteration count refused before creation",
+    "JuiceFS1.4.2 binary/help and tagged upgrade documentation/test script reviewed",
+    "Shell and six-node/six-edge Mermaid structure checked",
+    "1280x720 final image visually reviewed"
+  ],
+  "limitations": [
+    "No Linux FUSE handover, real client upgrade, supervisor integration or open-lock continuity tested",
+    "Local fsync/readback does not prove remote object durability",
+    "Mermaid not rendered"
+  ]
+}

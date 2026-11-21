@@ -1,0 +1,24 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-21",
+  "runtimeTestsPerformed": true,
+  "sources": [
+    "https://github.com/juicedata/juicefs/blob/v1.4.2/docs/en/benchmark/mdtest.md",
+    "https://github.com/juicedata/juicefs/blob/v1.4.2/cmd/mdtest.go",
+    "https://github.com/juicedata/juicefs/blob/v1.4.2/cmd/bench.go",
+    "https://github.com/juicedata/juicefs/blob/v1.4.2/cmd/objbench.go",
+    "https://github.com/juicedata/juicefs/blob/v1.4.2/docs/en/benchmark/performance_evaluation_guide.md#juicefs-objbench"
+  ],
+  "tests": [
+    "Actual JuiceFS1.4.2 bench on temporary local filesystem: 8MiB large file, five4KiB files, SKIP_DROP_CACHES=true",
+    "Actual mdtest on SQLite/file-backed test volume: two threads, two branches, depth1, five files, write0; verified30file creation and metadata dump",
+    "Actual objbench with file backend: 8MiB large object and five4KiB objects; supported functional/performance operations succeeded",
+    "CLI help and tagged bench/mdtest/objbench implementations reviewed; safe cache switch and retained mdtest tree documented",
+    "Seven-node/six-edge Mermaid and shell syntax reviewed; social image visually reviewed"
+  ],
+  "limitations": [
+    "No FUSE mounted-path, S3, distributed metadata service or remote performance benchmark run",
+    "Local objbench multipart unsupported and ownership test skipped without root; these are not claims of S3 coverage",
+    "Article larger staging workloads source-verified, not executed at those sizes; Mermaid not rendered"
+  ]
+}

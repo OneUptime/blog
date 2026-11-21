@@ -1,0 +1,26 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-21",
+  "runtimeTestsPerformed": false,
+  "localCodeTestsPerformed": true,
+  "sources": [
+    "https://docs.docker.com/engine/storage/bind-mounts/#configure-bind-propagation",
+    "https://man7.org/linux/man-pages/man8/mount.8.html",
+    "https://github.com/juicedata/juicefs-csi-driver/blob/v0.34.0/docker/ce.juicefs.Dockerfile",
+    "https://docs.docker.com/reference/compose-file/secrets/",
+    "https://docs.docker.com/reference/compose-file/interpolation/",
+    "https://github.com/juicedata/juicefs/blob/v1.4.2/docs/en/deployment/juicefs_on_docker.md#mount-juicefs-in-docker"
+  ],
+  "tests": [
+    "Official Compose2.39.4 DarwinARM64 binary SHA256 checked against release checksum; config --format json succeeded",
+    "Rendered rshared/rslave binds, mount-only SYS_ADMIN and FUSE device, healthy dependency and secret mapping verified",
+    "Explicit false create_host_path verified in source and normalized default omission inspected",
+    "Published CE1.4.2 image config inspected; versioned recipe reviewed",
+    "Shell and five-node/four-edge Mermaid structure checked;1280x720 image visually reviewed"
+  ],
+  "limitations": [
+    "No Docker daemon, Linux mount namespaces, FUSE mount, AppArmor or propagated recovery executed",
+    "Compose validation is configuration-only and cannot establish runtime mount visibility",
+    "Mermaid not rendered"
+  ]
+}
