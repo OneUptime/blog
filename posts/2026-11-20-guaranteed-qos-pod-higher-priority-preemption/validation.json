@@ -1,0 +1,24 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-21",
+  "runtimeTestsPerformed": true,
+  "sources": [
+    "https://kubernetes.io/docs/concepts/scheduling-eviction/pod-priority-preemption/#interactions-of-pod-priority-and-quality-of-service",
+    "https://kubernetes.io/docs/concepts/workloads/pods/pod-qos/",
+    "https://github.com/kubernetes/kubernetes/blob/v1.34.0/pkg/apis/core/v1/helper/qos/qos.go",
+    "https://github.com/kubernetes/kubernetes/blob/v1.34.0/pkg/scheduler/framework/plugins/defaultpreemption/default_preemption.go",
+    "https://kubernetes.io/docs/concepts/scheduling-eviction/node-pressure-eviction/",
+    "https://github.com/kubernetes/kubernetes/blob/v1.34.0/api/openapi-spec/swagger.json"
+  ],
+  "tests": [
+    "PriorityClass and Pod YAML validated against official Kubernetes1.34.0 OpenAPI definitions",
+    "Exact jq filter executed on representative Pod JSON: preserved Guaranteed QoS and numeric priority; missing fields remain null",
+    "Equal CPU/memory settings checked; shell syntax passed",
+    "Seven-node/five-edge Mermaid structure reviewed;1280x720 social image visually reviewed"
+  ],
+  "limitations": [
+    "Runtime test was jq only, not a Kubernetes workload",
+    "No live QoS assignment, admission or preemption experiment",
+    "No proof of workload suitability for stated resource sizes; Mermaid not rendered"
+  ]
+}

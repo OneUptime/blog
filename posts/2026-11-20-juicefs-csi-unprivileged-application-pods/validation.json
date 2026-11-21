@@ -1,0 +1,24 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-21",
+  "runtimeTestsPerformed": false,
+  "sources": [
+    "https://github.com/juicedata/charts/releases/tag/helm-chart-juicefs-csi-driver-0.34.0",
+    "https://github.com/juicedata/juicefs/blob/v1.4.2/docs/en/deployment/juicefs_on_docker.md",
+    "https://github.com/juicedata/juicefs-csi-driver/blob/v0.34.0/docs/en/security/permission.md",
+    "https://github.com/juicedata/juicefs-csi-driver/blob/v0.34.0/docs/en/guide/configurations.md#automatic-mount-point-recovery",
+    "https://kubernetes.io/docs/reference/kubectl/generated/kubectl_apply/",
+    "https://kubernetes.io/docs/concepts/security/pod-security-standards/"
+  ],
+  "tests": [
+    "Parsed exact Pod YAML and asserted numeric non-root identity, dropped capabilities, no privilege escalation, read-only root filesystem, no API token, hostPath or secret volume",
+    "Embedded shell and bash examples passed syntax checks",
+    "Rendered official chart0.34.0 with Helm3.17.3; confirmed privileged node containers and hostPath storage boundary",
+    "Seven-node six-edge Mermaid structure reviewed; social image visually reviewed at1280x720"
+  ],
+  "limitations": [
+    "No Kubernetes admission, PVC binding, actual container execution or JuiceFS access tested",
+    "No recovery, locking or workload migration tested",
+    "Mermaid not rendered"
+  ]
+}

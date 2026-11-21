@@ -1,0 +1,24 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-21",
+  "runtimeTestsPerformed": true,
+  "sources": [
+    "https://kubernetes.io/docs/concepts/workloads/pods/disruptions/#pod-disruption-conditions",
+    "https://github.com/kubernetes/kubernetes/blob/v1.34.0/pkg/scheduler/framework/preemption/preemption.go",
+    "https://github.com/kubernetes/kubernetes/blob/v1.34.0/pkg/scheduler/framework/plugins/defaultpreemption/default_preemption.go",
+    "https://github.com/kubernetes/kubernetes/blob/v1.34.0/pkg/kubelet/eviction/helpers.go",
+    "https://github.com/kubernetes/kubernetes/blob/v1.34.0/pkg/kubelet/eviction/eviction_manager.go",
+    "https://kubernetes.io/docs/concepts/scheduling-eviction/node-pressure-eviction/"
+  ],
+  "tests": [
+    "Exact jq filter ran against scheduler, kubelet, no-condition, and missing-status fixtures; preserved UID and distinct reasons",
+    "All shell blocks passed bash syntax checking",
+    "Reviewed Kubernetes1.34.0 scheduler condition insertion, eviction manager and resource ranking source",
+    "Seven-node/six-edge Mermaid structurally checked;1280x720 image visually reviewed"
+  ],
+  "limitations": [
+    "Only JSON inspection helper executed; no live cluster fault or evidence capture",
+    "Current state cannot reconstruct historical pressure without retained evidence",
+    "Diagram not rendered"
+  ]
+}

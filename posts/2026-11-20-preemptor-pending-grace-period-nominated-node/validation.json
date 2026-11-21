@@ -1,0 +1,23 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-21",
+  "runtimeTestsPerformed": true,
+  "sources": [
+    "https://kubernetes.io/docs/concepts/scheduling-eviction/pod-priority-preemption/#user-exposed-information",
+    "https://kubernetes.io/docs/concepts/workloads/pods/pod-lifecycle/#pod-phase",
+    "https://kubernetes.io/docs/concepts/workloads/pods/pod-lifecycle/#pod-termination",
+    "https://github.com/kubernetes/kubernetes/blob/v1.34.0/pkg/scheduler/framework/plugins/defaultpreemption/default_preemption.go",
+    "https://github.com/kubernetes/kubernetes/blob/v1.34.0/pkg/scheduler/framework/preemption/preemption.go"
+  ],
+  "tests": [
+    "Exact jq filter executed against nomination, assigned-but-image-waiting and missing-status JSON fixtures",
+    "Shell examples passed bash -n",
+    "Reviewed Kubernetes1.34.0 terminating-victim guard, nominated-node handling and evaluator source",
+    "Six-node/five-edge Mermaid checked structurally;1280x720 image visually reviewed"
+  ],
+  "limitations": [
+    "Runtime checks cover JSON extraction only",
+    "No cluster scheduling, termination timing, storage startup or force deletion tested",
+    "Diagram not rendered"
+  ]
+}

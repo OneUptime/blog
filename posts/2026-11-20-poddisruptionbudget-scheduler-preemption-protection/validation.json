@@ -1,0 +1,23 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-21",
+  "runtimeTestsPerformed": false,
+  "sources": [
+    "https://kubernetes.io/docs/concepts/workloads/pods/disruptions/",
+    "https://github.com/kubernetes/kubernetes/blob/v1.34.0/pkg/scheduler/framework/plugins/defaultpreemption/default_preemption.go",
+    "https://kubernetes.io/docs/concepts/scheduling-eviction/pod-priority-preemption/#non-preempting-priorityclass",
+    "https://kubernetes.io/docs/concepts/policy/resource-quotas/#resource-quota-per-priorityclass",
+    "https://github.com/kubernetes/kubernetes/blob/v1.34.0/api/openapi-spec/swagger.json"
+  ],
+  "tests": [
+    "Exact PriorityClass example validated using Kubernetes1.34.0 official OpenAPI definitions with Draft4Validator",
+    "Read-only command blocks passed bash -n",
+    "Reviewed1.34.0 lower-priority eligibility, PDB reprieve order and PreemptNever handling",
+    "Seven-node/six-edge Mermaid structurally checked;1280x720 social image visually reviewed"
+  ],
+  "limitations": [
+    "No Kubernetes scheduler or admission request executed",
+    "Capacity example is explanatory arithmetic, not a scheduler simulation",
+    "No live preemption, eviction or quota enforcement tested; diagram not rendered"
+  ]
+}

@@ -1,0 +1,22 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-21",
+  "runtimeTestsPerformed": true,
+  "sources": [
+    "https://github.com/kubernetes/kubernetes/blob/v1.34.0/pkg/scheduler/framework/preemption/preemption.go",
+    "https://github.com/kubernetes/api/blob/v0.34.0/events/v1/types.go",
+    "https://kubernetes.io/docs/concepts/workloads/pods/disruptions/#pod-disruption-conditions",
+    "https://kubernetes.io/docs/tasks/debug/debug-cluster/audit/"
+  ],
+  "tests": [
+    "Exact jq event extraction and UID joins executed on fixtures covering missing related reference, series timestamp, reused Pod name and absent UID",
+    "All shell blocks passed bash syntax checks",
+    "Reviewed Kubernetes1.34.0 event recorder primary/related references and normal versus waiting-Pod paths; api0.34.0 Event field definitions",
+    "Six-node/six-edge Mermaid structure checked;1280x720 social image visually reviewed"
+  ],
+  "limitations": [
+    "No live scheduler event, audit policy, event export or cluster API tested",
+    "Fixtures prove extraction behavior, not completeness of retained evidence",
+    "Diagram not rendered"
+  ]
+}

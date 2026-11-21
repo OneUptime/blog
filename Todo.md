@@ -1519,17 +1519,37 @@ Research: [OneUptime air-gapped alerting](https://oneuptime.com/enterprise/air-g
     Completed: [Article](posts/2026-11-20-recover-juicefs-csi-fuse-mount-crash/README.md) (20 November 2026).
 40. How to Avoid Privileged Application Pods by Choosing the JuiceFS CSI Driver over In-Container FUSE
 
+    Completed: [Article](posts/2026-11-20-juicefs-csi-unprivileged-application-pods/README.md) (20 November 2026).
+
 ## Preemption
 
 1. Why a PodDisruptionBudget Did Not Protect a Pod from Scheduler Preemption—and What Protection Actually Works
+
+    Completed: [Article](posts/2026-11-20-poddisruptionbudget-scheduler-preemption-protection/README.md) (20 November 2026).
 2. Why a `Guaranteed` QoS Pod Can Still Be Preempted by a Higher-Priority Pod
+
+    Completed: [Article](posts/2026-11-20-guaranteed-qos-pod-higher-priority-preemption/README.md) (20 November 2026).
 3. Scheduler Preemption vs. Node-Pressure Eviction: Which Policy Chose the Victim?
+
+    Completed: [Article](posts/2026-11-20-scheduler-preemption-node-pressure-eviction-victim/README.md) (20 November 2026).
 4. Why a Preemptor Stays Pending After Its Victims Terminate: Grace Periods and `nominatedNodeName`
+
+    Completed: [Article](posts/2026-11-20-preemptor-pending-grace-period-nominated-node/README.md) (20 November 2026).
 5. How Inter-Pod Affinity Can Make Kubernetes Preemption Impossible
+
+    Completed: [Article](posts/2026-11-20-inter-pod-affinity-preemption-impossible/README.md) (20 November 2026).
 6. Why Zone-Wide Anti-Affinity Needs Cross-Node Preemption—and Why the Default Scheduler Cannot Do It
+
+    Completed: [Article](posts/2026-11-20-zone-anti-affinity-cross-node-preemption/README.md) (20 November 2026).
 7. Why Preemption Cannot Fix Untolerated Taints, Unavailable Storage, or Impossible Node Affinity
+
+    Completed: [Article](posts/2026-11-20-preemption-taints-storage-node-affinity/README.md) (20 November 2026).
 8. Auditing Which Pod Preempted Which Victims with Events and the `DisruptionTarget` Condition
+
+    Completed: [Article](posts/2026-11-20-audit-preemptor-victims-events-disruptiontarget/README.md) (20 November 2026).
 9. Making Kubernetes Jobs Preemption-Safe with Checkpoints, Idempotent Retries, and Pod Failure Policies
+
+    Completed: [Article](posts/2026-11-20-kubernetes-jobs-preemption-checkpoints-retries/README.md) (20 November 2026).
 10. Protecting Stateful Quorums from Preemption When PDB Enforcement Is Only Best Effort
 11. Preventing Tenants from Claiming Cluster-Critical Priority with Admission Policy and PriorityClass-Scoped Quotas
 12. Rolling Out a New `globalDefault` PriorityClass Without Surprising Existing Pods

@@ -829388,5 +829388,116 @@
       "Troubleshooting"
     ],
     "post": "2026-11-20-recover-juicefs-csi-fuse-mount-crash"
+  },
+  {
+    "title": "Use JuiceFS CSI Without Privileged Application Pods",
+    "description": "Move JuiceFS mounting into managed CSI components, keep application containers unprivileged, and verify filesystem permissions without weakening workload policy.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "JuiceFS",
+      "Kubernetes",
+      "CSI",
+      "Security"
+    ],
+    "post": "2026-11-20-juicefs-csi-unprivileged-application-pods"
+  },
+  {
+    "title": "Why a PodDisruptionBudget Did Not Stop Scheduler Preemption",
+    "description": "Understand why a Kubernetes disruption budget is not a preemption veto, inspect the actual victim policy, and choose controls that address the cause.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Kubernetes",
+      "Troubleshooting",
+      "High Availability"
+    ],
+    "post": "2026-11-20-poddisruptionbudget-scheduler-preemption-protection"
+  },
+  {
+    "title": "Why Guaranteed QoS Pods Can Still Be Preempted",
+    "description": "Separate Kubernetes Guaranteed QoS from scheduling priority, inspect the admitted Pod, and diagnose preemption without changing resource limits blindly.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Kubernetes",
+      "Troubleshooting",
+      "Resource Management"
+    ],
+    "post": "2026-11-20-guaranteed-qos-pod-higher-priority-preemption"
+  },
+  {
+    "title": "Scheduler Preemption or Node-Pressure Eviction: Find the Cause",
+    "description": "Use Pod conditions, node evidence, and component logs to distinguish scheduler preemption from kubelet resource-pressure eviction before changing policy.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Kubernetes",
+      "Troubleshooting",
+      "Incident Management"
+    ],
+    "post": "2026-11-20-scheduler-preemption-node-pressure-eviction-victim"
+  },
+  {
+    "title": "Why a Preemptor Stays Pending After Victims Start Terminating",
+    "description": "Diagnose pending preemptors by separating nomination, victim shutdown, scheduling, and container startup without forcing unsafe deletion.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Kubernetes",
+      "Troubleshooting",
+      "Scheduling"
+    ],
+    "post": "2026-11-20-preemptor-pending-grace-period-nominated-node"
+  },
+  {
+    "title": "How Inter-Pod Affinity Can Block Kubernetes Preemption",
+    "description": "Diagnose required affinity to lower-priority Pods, understand the scheduler's removal simulation, and choose a placement rule that preserves real dependencies.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Kubernetes",
+      "Scheduling",
+      "Troubleshooting"
+    ],
+    "post": "2026-11-20-inter-pod-affinity-preemption-impossible"
+  },
+  {
+    "title": "Why Zone Anti-Affinity Can Defeat Kubernetes Preemption",
+    "description": "Trace zone-wide anti-affinity blockers across nodes, understand the default scheduler's local victim search, and choose an appropriate placement policy.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Kubernetes",
+      "Scheduling",
+      "Troubleshooting"
+    ],
+    "post": "2026-11-20-zone-anti-affinity-cross-node-preemption"
+  },
+  {
+    "title": "Why Preemption Cannot Fix Every Pending Kubernetes Pod",
+    "description": "Diagnose taints, impossible node selectors, and storage topology before raising Pod priority or removing workloads that cannot solve the placement failure.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Kubernetes",
+      "Scheduling",
+      "Troubleshooting"
+    ],
+    "post": "2026-11-20-preemption-taints-storage-node-affinity"
+  },
+  {
+    "title": "Audit Which Kubernetes Pod Preempted Which Victims",
+    "description": "Correlate scheduler preemption events, victim UIDs, related Pod references, and disruption conditions without mistaking a replacement Pod for the original.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Kubernetes",
+      "Troubleshooting",
+      "Incident Management"
+    ],
+    "post": "2026-11-20-audit-preemptor-victims-events-disruptiontarget"
+  },
+  {
+    "title": "Make Kubernetes Jobs Recover Safely from Preemption",
+    "description": "Combine durable checkpoints, duplicate-safe work, and Pod failure policies so Kubernetes Job retries recover progress without repeating harmful side effects.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Kubernetes",
+      "Batch Processing",
+      "Reliability"
+    ],
+    "post": "2026-11-20-kubernetes-jobs-preemption-checkpoints-retries"
   }
 ]

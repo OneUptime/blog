@@ -1,0 +1,25 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-21",
+  "runtimeTestsPerformed": true,
+  "sources": [
+    "https://docs.python.org/3.13/library/sqlite3.html#how-to-use-the-connection-context-manager",
+    "https://www.sqlite.org/lang_upsert.html",
+    "https://kubernetes.io/docs/tasks/job/pod-failure-policy/",
+    "https://github.com/kubernetes/kubernetes/blob/v1.34.0/pkg/controller/job/pod_failure_policy.go",
+    "https://kubernetes.io/docs/concepts/workloads/controllers/job/",
+    "https://github.com/kubernetes/kubernetes/blob/v1.34.0/api/openapi-spec/swagger.json"
+  ],
+  "tests": [
+    "Exact Python helper executed with Python3.11.13/SQLite3.54.1: repeated identical item produced one row, conflicting result rejected, uncommitted write discarded on close, committed state survived reopen",
+    "Job template validated against official Kubernetes1.34.0 schema; Never restart and Failed replacement settings checked",
+    "Reviewed failure-policy Ignore matching and deadline behavior; six-node/five-edge Mermaid checked structurally",
+    "1280x720 social image visually reviewed"
+  ],
+  "limitations": [
+    "Local database behavior only; no abrupt process-kill, power-loss, network filesystem or distributed durability test",
+    "No Kubernetes Job controller or preemption executed",
+    "Worker image and executable are explicit deployment placeholders; no external side effects tested",
+    "Diagram not rendered"
+  ]
+}

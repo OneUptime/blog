@@ -1,0 +1,24 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-21",
+  "runtimeTestsPerformed": false,
+  "sources": [
+    "https://kubernetes.io/docs/concepts/scheduling-eviction/pod-priority-preemption/#cross-node-preemption",
+    "https://kubernetes.io/docs/concepts/scheduling-eviction/assign-pod-node/#inter-pod-affinity-and-anti-affinity",
+    "https://kubernetes.io/docs/reference/access-authn-authz/admission-controllers/#limitpodhardantiaffinitytopology",
+    "https://github.com/kubernetes/kubernetes/blob/v1.34.0/pkg/scheduler/framework/plugins/interpodaffinity/filtering.go",
+    "https://github.com/kubernetes/kubernetes/blob/v1.34.0/pkg/scheduler/framework/plugins/defaultpreemption/default_preemption.go",
+    "https://kubernetes.io/docs/concepts/scheduling-eviction/topology-spread-constraints/",
+    "https://github.com/kubernetes/kubernetes/blob/v1.34.0/api/openapi-spec/swagger.json"
+  ],
+  "tests": [
+    "Exact Pod manifest validated against Kubernetes1.34.0 OpenAPI definitions; zone topology and namespace scope checked",
+    "Bash syntax passed; reviewed topology matching, local victim simulation and hard anti-affinity admission caveat",
+    "Five-node/five-edge Mermaid checked structurally;1280x720 image visually reviewed"
+  ],
+  "limitations": [
+    "No live API admission, scheduler execution, remote victim selection or relocation tested",
+    "Schema success does not imply admission allows zone-wide required anti-affinity",
+    "Diagram not rendered"
+  ]
+}

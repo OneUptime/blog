@@ -1,0 +1,22 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-21",
+  "runtimeTestsPerformed": false,
+  "sources": [
+    "https://kubernetes.io/docs/concepts/scheduling-eviction/assign-pod-node/#inter-pod-affinity-and-anti-affinity",
+    "https://github.com/kubernetes/kubernetes/blob/v1.34.0/pkg/scheduler/framework/plugins/defaultpreemption/default_preemption.go",
+    "https://kubernetes.io/docs/concepts/scheduling-eviction/pod-priority-preemption/#inter-pod-affinity-on-lower-priority-pods",
+    "https://github.com/kubernetes/kubernetes/blob/v1.34.0/api/openapi-spec/swagger.json"
+  ],
+  "tests": [
+    "Pod example validated against official Kubernetes1.34.0 OpenAPI schema",
+    "Reviewed same-namespace selector, non-self-matching labels, and illustrative capacity arithmetic",
+    "Bash syntax passed; source review confirmed all-eligible-removal filter precedes victim reprieve",
+    "Six-node/five-edge Mermaid checked structurally;1280x720 social image visually reviewed"
+  ],
+  "limitations": [
+    "No scheduler simulation or live preemption performed",
+    "Schema validation does not establish admission approval, dependency existence or schedulability",
+    "Diagram not rendered"
+  ]
+}

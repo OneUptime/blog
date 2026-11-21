@@ -1,0 +1,27 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-21",
+  "runtimeTestsPerformed": true,
+  "sources": [
+    "https://github.com/kubernetes/kubernetes/blob/v1.34.0/pkg/scheduler/framework/plugins/defaultpreemption/default_preemption.go",
+    "https://kubernetes.io/docs/concepts/scheduling-eviction/taint-and-toleration/",
+    "https://github.com/kubernetes/kubernetes/blob/v1.34.0/pkg/scheduler/framework/plugins/tainttoleration/taint_toleration.go",
+    "https://kubernetes.io/docs/concepts/scheduling-eviction/assign-pod-node/#node-affinity",
+    "https://github.com/kubernetes/kubernetes/blob/v1.34.0/pkg/scheduler/framework/plugins/nodeaffinity/node_affinity.go",
+    "https://kubernetes.io/docs/concepts/storage/persistent-volumes/#node-affinity",
+    "https://kubernetes.io/docs/concepts/storage/storage-classes/#volume-binding-mode",
+    "https://github.com/kubernetes/kubernetes/blob/v1.34.0/api/openapi-spec/swagger.json"
+  ],
+  "tests": [
+    "Toleration fragment validated against official Kubernetes1.34.0 Toleration schema",
+    "Exact jq taint extraction executed with present and absent taints; shell syntax passed",
+    "Reviewed taint and node-affinity filter unresolvable status, PV topology and delayed-binding documentation",
+    "Six-node/five-edge Mermaid structurally checked;1280x720 image visually reviewed"
+  ],
+  "limitations": [
+    "Runtime check only covered JSON extraction",
+    "No admission, scheduler, PVC provisioning or migration executed",
+    "Not all storage scheduling failures have the same preemption behavior; scope explicitly limited",
+    "Mermaid not rendered"
+  ]
+}
