@@ -1938,12 +1938,26 @@ Research: [OneUptime air-gapped alerting](https://oneuptime.com/enterprise/air-g
 
     Completed: [Article](posts/2026-11-20-cilium-primary-cni-multus-secondary-interfaces/README.md) (20 November 2026).
 13. How to Enforce NetworkPolicy on Multus Secondary Interfaces: Capabilities and Gaps
+
+    Completed: [Article](posts/2026-11-20-networkpolicy-multus-secondary-interface-gaps/README.md) (20 November 2026).
 14. How to Configure Source-Based Routing for Multus Pods with Two Default Gateways
+
+    Completed: [Article](posts/2026-11-20-multus-source-based-routing-multiple-interfaces/README.md) (20 November 2026).
 15. How to Diagnose MTU Mismatches Across Multus, VLAN, and Overlay Interfaces Before They Cause Silent Packet Loss
+
+    Completed: [Article](posts/2026-11-20-multus-vlan-overlay-mtu-mismatch-diagnosis/README.md) (20 November 2026).
 16. How to Migrate Multus from the Thin Plugin to the Thick Plugin and Verify the Daemon Socket
+
+    Completed: [Article](posts/2026-11-20-migrate-multus-thin-thick-plugin-daemon-socket/README.md) (20 November 2026).
 17. How to Scrape Multus Thick-Plugin Metrics and Alert on CNI ADD and DEL Failures
+
+    Completed: [Article](posts/2026-11-20-scrape-multus-thick-plugin-metrics-cni-failures/README.md) (20 November 2026).
 18. How to Clean Up Orphaned Multus Interfaces and CNI Cache After Failed Pod Deletion
+
+    Completed: [Article](posts/2026-11-20-clean-up-orphaned-multus-interfaces-cni-cache/README.md) (20 November 2026).
 19. How to Chain SR-IOV with Multus and Match Device-Plugin Resources to NetworkAttachmentDefinitions
+
+    Completed: [Article](posts/2026-11-20-chain-sriov-multus-device-plugin-resource-matching/README.md) (20 November 2026).
 20. How to Roll Out Multus Upgrades Without Breaking Existing Pods or the Primary CNI
 
 21. How to Receive External Multicast Traffic Through a Multus Secondary Network

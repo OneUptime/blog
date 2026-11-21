@@ -1,0 +1,27 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-21",
+  "runtimeTestsPerformed": false,
+  "sources": [
+    "https://www.github.com/nawazdhandala",
+    "https://man7.org/linux/man-pages/man8/ip-route.8.html",
+    "https://docs.cilium.io/en/stable/network/concepts/routing/",
+    "https://www.cni.dev/plugins/current/main/vlan/",
+    "https://github.com/containernetworking/plugins/blob/v1.8.0/plugins/main/vlan/vlan.go",
+    "https://man7.org/linux/man-pages/man8/ping.8.html",
+    "https://www.rfc-editor.org/rfc/rfc1191",
+    "https://www.rfc-editor.org/rfc/rfc8201",
+    "https://docs.kernel.org/networking/segmentation-offloads.html"
+  ],
+  "tests": [
+    "All shell examples passed bash -n",
+    "Verified IPv4 payload arithmetic and scoped VXLAN overhead example",
+    "Reviewed seven-node seven-edge Mermaid structure",
+    "Visually inspected generated 1280x720 social image; title fully visible"
+  ],
+  "limitations": [
+    "No live Linux probes, Kubernetes cluster, packet captures or network configuration changes",
+    "Actual tunnel overhead and fabric limits require deployment-specific verification",
+    "Mermaid structurally reviewed, not rendered"
+  ]
+}

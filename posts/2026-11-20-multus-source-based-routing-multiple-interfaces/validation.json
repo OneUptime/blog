@@ -1,0 +1,27 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-21",
+  "runtimeTestsPerformed": false,
+  "sources": [
+    "https://www.cni.dev/plugins/current/meta/sbr/",
+    "https://man7.org/linux/man-pages/man8/ip-rule.8.html",
+    "https://www.cni.dev/plugins/current/ipam/static/",
+    "https://github.com/containernetworking/plugins/blob/v1.8.0/plugins/meta/sbr/main.go",
+    "https://man7.org/linux/man-pages/man8/ip-route.8.html",
+    "https://curl.se/docs/manpage.html#--interface"
+  ],
+  "tests": [
+    "Parsed NAD and annotation YAML plus nested CNI JSON",
+    "Checked macvlan then sbr order, gateway within subnet, no explicit table and no Multus default-route override",
+    "All shell examples passed bash -n",
+    "Reviewed CNI plugins1.8.0 sbr automatic versus explicit-table implementation",
+    "Seven-node six-edge Mermaid structurally reviewed",
+    "Generated 1280x720 image visually inspected"
+  ],
+  "limitations": [
+    "No Linux namespace, policy rule, route, CNI chain, curl traffic or Kubernetes tests",
+    "Static-address example is for one reserved staging Pod",
+    "IPv6, application binding and return paths require deployment-specific acceptance tests",
+    "Mermaid not rendered"
+  ]
+}

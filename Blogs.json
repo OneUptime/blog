@@ -830854,5 +830854,82 @@
     ],
     "post": "2026-11-21-load-prometheus-rules-reload-without-restart",
     "readmePath": "posts/2026-11-21-load-prometheus-rules-reload-without-restart/README.md"
+  },
+  {
+    "title": "Enforce Policy on Multus Secondary Interfaces and Verify the Gaps",
+    "description": "Identify the enforcer for secondary-network traffic, scope a MultiNetworkPolicy example, and verify allowed and denied connections on the actual interface.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Multus",
+      "Kubernetes",
+      "Security"
+    ],
+    "post": "2026-11-20-networkpolicy-multus-secondary-interface-gaps"
+  },
+  {
+    "title": "Configure Source-Based Routing for Multus Pods with Two Gateways",
+    "description": "Keep the primary default route while routing traffic bound to a secondary address through its own gateway using the chained CNI sbr plugin.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Multus",
+      "Kubernetes",
+      "Networking"
+    ],
+    "post": "2026-11-20-multus-source-based-routing-multiple-interfaces"
+  },
+  {
+    "title": "Diagnose MTU Mismatches Across Multus, VLANs, and Overlays",
+    "description": "Measure the usable packet size on each Pod network path, account for encapsulation, and distinguish MTU failures from filtering, routing, and capture artifacts.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Multus",
+      "Kubernetes",
+      "Networking"
+    ],
+    "post": "2026-11-20-multus-vlan-overlay-mtu-mismatch-diagnosis"
+  },
+  {
+    "title": "Migrate Multus from Thin to Thick and Verify the Daemon Socket",
+    "description": "Plan a staged Multus thin-to-thick migration, verify the host-to-daemon socket mapping, and test new Pod attachment and deletion before expanding the rollout.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Multus",
+      "Kubernetes",
+      "Networking"
+    ],
+    "post": "2026-11-20-migrate-multus-thin-thick-plugin-daemon-socket"
+  },
+  {
+    "title": "Scrape Multus Thick-Plugin Metrics and Alert on CNI Failures",
+    "description": "Enable Multus daemon metrics, scrape each node, and build tested failure alerts while distinguishing HTTP request counters from individual CNI ADD and DEL operations.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Multus",
+      "Kubernetes",
+      "Prometheus"
+    ],
+    "post": "2026-11-20-scrape-multus-thick-plugin-metrics-cni-failures"
+  },
+  {
+    "title": "Clean Up Orphaned Multus Interfaces and CNI State Safely",
+    "description": "Investigate failed Multus Pod cleanup, distinguish cached configuration from IP allocations, and recover orphaned resources without deleting state used by live workloads.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Multus",
+      "Kubernetes",
+      "Troubleshooting"
+    ],
+    "post": "2026-11-20-clean-up-orphaned-multus-interfaces-cni-cache"
+  },
+  {
+    "title": "Match SR-IOV Device Resources to Multus Network Attachments",
+    "description": "Connect SR-IOV device allocation to Multus network attachments by matching resource names, choosing the correct driver mode, and verifying a single-VF staging workload.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Multus",
+      "Kubernetes",
+      "Networking"
+    ],
+    "post": "2026-11-20-chain-sriov-multus-device-plugin-resource-matching"
   }
 ]

@@ -1,0 +1,28 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-21",
+  "runtimeTestsPerformed": false,
+  "sources": [
+    "https://www.github.com/nawazdhandala",
+    "https://kubernetes.io/docs/concepts/extend-kubernetes/compute-storage-net/device-plugins/",
+    "https://github.com/k8snetworkplumbingwg/sriov-network-device-plugin/blob/v3.11.0/README.md",
+    "https://github.com/k8snetworkplumbingwg/multus-cni/blob/v4.3.1/pkg/k8sclient/k8sclient.go",
+    "https://www.cni.dev/plugins/current/ipam/static/",
+    "https://kubernetes.io/docs/concepts/extend-kubernetes/compute-storage-net/device-plugins/",
+    "https://github.com/k8snetworkplumbingwg/sriov-cni/blob/v2.10.0/README.md"
+  ],
+  "tests": [
+    "Parsed JSON device-pool fragment, NAD YAML/nested JSON and Pod YAML/annotation JSON",
+    "Asserted exact resource equality across device prefix/name, NAD annotation and Pod request/limit",
+    "Checked single attachment, valid reserved CIDR and absence of hard-coded deviceID",
+    "Shell examples passed bash -n",
+    "Eight-node seven-edge Mermaid structurally reviewed",
+    "Generated social image visually inspected"
+  ],
+  "limitations": [
+    "No hardware discovery, VF creation, driver binding, allocation, admission or traffic tests",
+    "Versions are source references, not a certified compatibility matrix",
+    "Static IPAM example limited to one reserved staging address",
+    "Mermaid not rendered"
+  ]
+}

@@ -1,0 +1,26 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-21",
+  "runtimeTestsPerformed": false,
+  "sources": [
+    "https://kubernetes.io/docs/concepts/services-networking/network-policies/",
+    "https://github.com/k8snetworkplumbingwg/multi-networkpolicy-iptables/blob/cbf2b11730b9fb0477d8d578129609df0c51f06b/README.md",
+    "https://docs.redhat.com/en/documentation/openshift_container_platform/4.18/html/multiple_networks/secondary-networks",
+    "https://github.com/k8snetworkplumbingwg/multi-networkpolicy/blob/a6d2c547f9f9dc756d285e7015fc32f7b6793f76/scheme.yml",
+    "https://kubernetes.io/docs/reference/kubectl/generated/kubectl_apply/"
+  ],
+  "tests": [
+    "Parsed two policies and checked same namespace/NAD, explicit ingress scope, empty baseline and named client TCP4317 allowance",
+    "Both objects passed local Draft4 validation using upstream v1beta1 CRD structural schema at a6d2c547f9f9dc756d285e7015fc32f7b6793f76",
+    "Shell syntax passed",
+    "Reviewed OpenShift4.18 support limits and upstream implementation description at cbf2b11730b9fb0477d8d578129609df0c51f06b",
+    "Seven-node seven-edge Mermaid structurally reviewed",
+    "Generated 1280x720 image visually inspected"
+  ],
+  "limitations": [
+    "No API-server dry run, policy installation, agent rules or traffic enforcement tests",
+    "Local structural-schema checks do not prove distribution admission compatibility or enforcement",
+    "Example is ingress-only and requires enabled supported secondary-network policy implementation",
+    "Mermaid not rendered"
+  ]
+}

@@ -1,0 +1,26 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-21",
+  "runtimeTestsPerformed": false,
+  "sources": [
+    "https://www.github.com/nawazdhandala",
+    "https://github.com/k8snetworkplumbingwg/multus-cni/blob/v4.3.1/docs/thick-plugin.md",
+    "https://github.com/k8snetworkplumbingwg/multus-cni/blob/v4.3.1/deployments/multus-daemonset-thick.yml",
+    "https://github.com/k8snetworkplumbingwg/multus-cni/blob/v4.3.1/pkg/server/api/socket.go",
+    "https://curl.se/docs/manpage.html#--unix-socket",
+    "https://github.com/k8snetworkplumbingwg/multus-cni/blob/v4.3.1/pkg/server/server.go",
+    "https://kubernetes.io/docs/tasks/administer-cluster/safely-drain-node/"
+  ],
+  "tests": [
+    "Parsed official v4.3.1 reference YAML and embedded JSON; asserted host /run to /host/run mapping and socketDir",
+    "Reviewed healthz/readyz implementation and socket basename in tagged source",
+    "All shell examples passed bash -n",
+    "Seven-node six-edge Mermaid structurally reviewed",
+    "Generated social image visually inspected"
+  ],
+  "limitations": [
+    "No live migration, socket connection, delegate execution, or Kubernetes API tests",
+    "Reference quickstart is not an upgrade procedure; deployment ownership and immutable image selection remain prerequisites",
+    "Mermaid not rendered"
+  ]
+}
