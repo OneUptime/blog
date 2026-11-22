@@ -1,0 +1,25 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-21",
+  "runtimeTestsPerformed": false,
+  "sources": [
+    "https://ydb.tech/docs/en/faq/all",
+    "https://github.com/ydb-platform/ydb/blob/26.2.1.16/ydb/docs/en/core/yql/reference/syntax/select/join.md",
+    "https://ydb.tech/docs/en/dev/secondary-indexes",
+    "https://ydb.tech/docs/en/yql/reference/syntax/select/join",
+    "https://ydb.tech/docs/en/yql/query_plans"
+  ],
+  "tests": [
+    "Reviewed YDB26.2.1.16 JOIN source and current index and query-plan documentation",
+    "SQLite adaptation preserved three inner-join rows before/after index creation, retained duplicate code matches and four left-join rows including unmatched code",
+    "Actual CLI2.35.0 sql help verified --explain, --stats full and --file",
+    "Seven-node six-edge Mermaid structurally checked",
+    "1280x720 generated social image visually reviewed"
+  ],
+  "limitations": [
+    "No YDB DDL, index build, query compilation, plan or benchmark performed",
+    "SQLite adaptation removes VIEW index and YQL Utf8 literal suffix and changes schema types; semantic fixture only",
+    "CLI help validation did not contact database",
+    "Mermaid not rendered"
+  ]
+}

@@ -1,0 +1,25 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-21",
+  "runtimeTestsPerformed": true,
+  "sources": [
+    "https://ydb.tech/docs/en/faq/errors",
+    "https://ydb.tech/docs/en/recipes/ydb-sdk/tx-control",
+    "https://github.com/ydb-platform/ydb-python-sdk/blob/3.35.0/ydb/query/transaction.py",
+    "https://github.com/ydb-platform/ydb-python-sdk/blob/3.35.0/ydb/query/session.py",
+    "https://ydb.tech/docs/en/reference/ydb-sdk/ydb-status-codes"
+  ],
+  "tests": [
+    "Executed actual SDK3.35.0 request builder locally: Serializable Read/Write begin plus commit_tx true/false serialized as expected",
+    "Reviewed transaction context entry/exit, execute commit flag, explicit commit/rollback and response consumption source",
+    "execute_once.py Python syntax checked",
+    "Nine-node ten-edge Mermaid structurally checked",
+    "1280x720 social image visually inspected"
+  ],
+  "limitations": [
+    "Protocol construction test sends no request and does not prove server-side transaction cleanup",
+    "No YDB transaction-limit incident reproduced, live query, rollback or commit tested",
+    "No concurrency or failure-injection benchmark",
+    "Mermaid not rendered"
+  ]
+}

@@ -1,0 +1,24 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-22",
+  "runtimeTestsPerformed": false,
+  "sources": [
+    "https://ydb.tech/docs/en/faq/known-issues",
+    "https://ydb.tech/docs/en/troubleshooting/performance/schemas/splits-merges",
+    "https://github.com/ydb-platform/ydb/blob/26.2.1.16/ydb/docs/en/core/concepts/datamodel/_includes/table.md",
+    "https://ydb.tech/docs/en/troubleshooting/performance/schemas/splits-merges"
+  ],
+  "tests": [
+    "Reviewed official pre-22.2 known issue and26.2.1.16 table partitioning source",
+    "CLI2.35.0 scheme describe help verified --stats, --partition-stats and --partition-boundaries; sql --file verified previously",
+    "All three shell examples passed bash -n",
+    "Seven-node seven-edge Mermaid structurally checked",
+    "1280x720 generated social image visually reviewed"
+  ],
+  "limitations": [
+    "No YDB connection, schema alteration, legacy reproduction or merge observation",
+    "No capacity, timing or rollback behavior measured",
+    "SQL source-reviewed, not server-compiled",
+    "Mermaid not rendered"
+  ]
+}

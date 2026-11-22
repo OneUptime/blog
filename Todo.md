@@ -2275,13 +2275,27 @@ Research: [OneUptime air-gapped alerting](https://oneuptime.com/enterprise/air-g
 
     Completed: [Article](posts/2026-11-20-ydb-transaction-locks-invalidated-read-sets-hot-rows/README.md) (20 November 2026).
 28. How to Prevent YDB’s “Exceeded Maximum Allowed Number of Active Transactions” Error
+
+    Completed: [Article](posts/2026-11-20-ydb-active-transactions-limit-lifecycle/README.md) (20 November 2026).
 29. How to Fix YDB “Datashard: Reply Size Limit Exceeded” on Large Reads and Joins
+
+    Completed: [Article](posts/2026-11-20-ydb-datashard-reply-size-large-reads-joins/README.md) (20 November 2026).
 30. How to Fix YDB “Datashard Program Size Limit Exceeded” During Batch Writes
+
+    Completed: [Article](posts/2026-11-20-ydb-datashard-program-size-batch-writes/README.md) (20 November 2026).
 37. How to Turn a Large YDB Join into an Index Lookup Join
+
+    Completed: [Article](posts/2026-11-20-ydb-large-join-index-lookup/README.md) (20 November 2026).
 38. How to Reduce YDB Transaction Latency by Combining Operations in One YQL Query
+
+    Completed: [Article](posts/2026-11-20-ydb-transaction-latency-combined-yql-query/README.md) (20 November 2026).
 40. How to Restore YDB Autopartition Merging on Pre-22.2 Row Tables by Setting a Minimum Partition Count
 
+    Completed: [Article](posts/2026-11-20-ydb-pre-22-2-row-table-partition-merging/README.md) (20 November 2026).
+
 43. How to Grant YDB Table and Directory Permissions to the Correct User or Group
+
+    Completed: [Article](posts/2026-11-20-ydb-table-directory-permissions-correct-principal/README.md) (20 November 2026).
 44. How to Trace Inherited YDB Permissions When Revoking Direct Access Is Not Enough
 48. How to Diagnose YDB JSON Filters That Do Not Use a JSON Index
 51. How to Set YDB Changefeed Retention for Consumers That Fall Behind

@@ -1,0 +1,24 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-21",
+  "runtimeTestsPerformed": false,
+  "sources": [
+    "https://ydb.tech/docs/en/faq/yql",
+    "https://github.com/ydb-platform/ydb/blob/26.2.1.16/ydb/docs/en/core/yql/reference/syntax/create_table/index.md",
+    "https://ydb.tech/docs/en/concepts/transactions",
+    "https://github.com/ydb-platform/ydb/blob/26.2.1.16/ydb/docs/en/core/yql/reference/syntax/expressions.md",
+    "https://ydb.tech/docs/en/concepts/query_execution/"
+  ],
+  "tests": [
+    "Reviewed official transaction efficiency, result-set, transaction-mode and26.2.1.16 named-expression/schema documentation",
+    "SQLite adaptation selected newest20 of25 orders, excluded other customer, verified count20 total31000, and empty aggregate count0/null",
+    "Seven-node six-edge Mermaid structurally checked",
+    "1280x720 generated social image visually reviewed"
+  ],
+  "limitations": [
+    "No YDB SQL compilation, query execution, plan or performance benchmark",
+    "SQLite adaptation tests selected-row and aggregate semantics only",
+    "No SDK multi-result handling or retry/concurrency test",
+    "Mermaid not rendered"
+  ]
+}

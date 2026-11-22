@@ -1,0 +1,25 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-21",
+  "runtimeTestsPerformed": false,
+  "sources": [
+    "https://ydb.tech/docs/en/faq/errors",
+    "https://ydb.tech/docs/en/yql/query_plans",
+    "https://github.com/ydb-platform/ydb/blob/26.2.1.16/ydb/docs/en/core/yql/reference/syntax/create_table/index.md",
+    "https://github.com/ydb-platform/ydb/blob/26.2.1.16/ydb/docs/en/core/dev/paging.md",
+    "https://ydb.tech/docs/en/yql/reference/syntax/select/join",
+    "https://ydb.tech/docs/en/concepts/transactions"
+  ],
+  "tests": [
+    "Reviewed official FAQ, query plans, JOIN and transaction documentation and26.2.1.16 pagination source",
+    "SQLite adaptation traversed205 tenant orders in100/100/5 pages, included ID0 and excluded another tenant",
+    "Seven-node six-edge Mermaid structurally checked",
+    "Generated1280x720 social image visually reviewed"
+  ],
+  "limitations": [
+    "No YDB query, schema, plan or shard-limit execution",
+    "SQLite adaptation checks cursor semantics only, not YQL compilation or YDB performance",
+    "No concurrent-write snapshot or restart test",
+    "Mermaid not rendered"
+  ]
+}

@@ -830844,18 +830844,6 @@
     "post": "2026-11-20-cilium-primary-cni-multus-secondary-interfaces"
   },
   {
-    "title": "How to Load Prometheus Rule Files and Reload Them Without Restarting the Server",
-    "description": "Load Prometheus recording and alerting rules, validate the files seen by the server, and verify a runtime reload without restarting Prometheus.",
-    "authorGitHubUsername": "nawazdhandala",
-    "tags": [
-      "Prometheus",
-      "Monitoring",
-      "Alerting"
-    ],
-    "post": "2026-11-21-load-prometheus-rules-reload-without-restart",
-    "readmePath": "posts/2026-11-21-load-prometheus-rules-reload-without-restart/README.md"
-  },
-  {
     "title": "Enforce Policy on Multus Secondary Interfaces and Verify the Gaps",
     "description": "Identify the enforcer for secondary-network traffic, scope a MultiNetworkPolicy example, and verify allowed and denied connections on the actual interface.",
     "authorGitHubUsername": "nawazdhandala",
@@ -832040,5 +832028,96 @@
       "Troubleshooting"
     ],
     "post": "2026-11-20-ydb-transaction-locks-invalidated-read-sets-hot-rows"
+  },
+  {
+    "title": "Prevent YDB Active-Transaction Limits with Explicit Lifetimes",
+    "description": "Find YDB transactions left open after successful queries or early returns, commit one-shot work explicitly, and verify cleanup across failure paths.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Database",
+      "Python",
+      "Troubleshooting"
+    ],
+    "post": "2026-11-20-ydb-active-transactions-limit-lifecycle"
+  },
+  {
+    "title": "Fix YDB Datashard Reply-Size Errors in Large Reads and Joins",
+    "description": "Diagnose YDB datashard reply-size failures, narrow wide reads, paginate by primary key, and inspect joins before increasing client limits.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Database",
+      "SQL",
+      "Performance",
+      "Troubleshooting"
+    ],
+    "post": "2026-11-20-ydb-datashard-reply-size-large-reads-joins"
+  },
+  {
+    "title": "Fix YDB Datashard Program-Size Errors During Batch Writes",
+    "description": "Reduce oversized YDB write transactions with byte-aware batching, preserve required atomicity, and choose bulk import only when its guarantees fit.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Database",
+      "SQL",
+      "Performance",
+      "Troubleshooting"
+    ],
+    "post": "2026-11-20-ydb-datashard-program-size-batch-writes"
+  },
+  {
+    "title": "Turn a Large YDB Join into a Targeted Index Lookup",
+    "description": "Give a YDB join a suitable indexed access path, keep its input small, preserve join semantics, and verify the chosen plan and read costs.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Database",
+      "SQL",
+      "Performance"
+    ],
+    "post": "2026-11-20-ydb-large-join-index-lookup"
+  },
+  {
+    "title": "Reduce YDB Round Trips with One Combined YQL Query",
+    "description": "Combine related YDB operations into one query to reduce client round trips while preserving transaction isolation, result handling, and retry boundaries.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Database",
+      "SQL",
+      "Performance"
+    ],
+    "post": "2026-11-20-ydb-transaction-latency-combined-yql-query"
+  },
+  {
+    "title": "Restore Partition Merging on Older YDB Row Tables",
+    "description": "Identify YDB row tables affected by the pre-22.2 merging issue, set an explicit minimum partition count, and verify behavior without forcing consolidation.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Database",
+      "Performance",
+      "Troubleshooting"
+    ],
+    "post": "2026-11-20-ydb-pre-22-2-row-table-partition-merging"
+  },
+  {
+    "title": "Grant YDB Permissions to the Right User or Group",
+    "description": "Match YDB grants to the authenticated identity and exact object path, distinguish connection and read rights, and verify access with the intended account.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Database",
+      "Security",
+      "Troubleshooting"
+    ],
+    "post": "2026-11-20-ydb-table-directory-permissions-correct-principal"
+  },
+  {
+    "title": "How to Load Prometheus Rule Files and Reload Them Without Restarting the Server",
+    "description": "Load Prometheus recording and alerting rules, validate the files seen by the server, and verify a runtime reload without restarting Prometheus.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Prometheus",
+      "Monitoring",
+      "Alerting"
+    ],
+    "post": "2026-11-21-load-prometheus-rules-reload-without-restart",
+    "readmePath": "posts/2026-11-21-load-prometheus-rules-reload-without-restart/README.md"
   }
 ]

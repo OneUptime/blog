@@ -1,0 +1,24 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-21",
+  "runtimeTestsPerformed": true,
+  "sources": [
+    "https://ydb.tech/docs/en/faq/errors",
+    "https://github.com/ydb-platform/ydb/blob/26.2.1.16/ydb/docs/en/core/yql/reference/syntax/upsert_into.md",
+    "https://ydb.tech/docs/en/recipes/ydb-sdk/upsert",
+    "https://ydb.tech/docs/en/recipes/ydb-sdk/bulk-upsert",
+    "https://ydb.tech/docs/en/reference/ydb-cli/export-import/import-file"
+  ],
+  "tests": [
+    "Executed Python batch helper: empty input, row cap, byte cap, UTF-8 accounting, input order, rejected oversized record and invalid budgets",
+    "Verified CLI2.35.0 import file csv flags using local binary help",
+    "Reviewed YDB26.2.1.16 UPSERT source, SDK recipe, program-size FAQ and non-atomic BulkUpsert semantics",
+    "Seven-node seven-edge Mermaid structurally checked",
+    "1280x720 generated social image visually reviewed"
+  ],
+  "limitations": [
+    "No YDB write, schema or query compilation, import, limit reproduction or recovery test",
+    "JSON estimate is not serialized YDB request or compiled-program size",
+    "Mermaid not rendered"
+  ]
+}

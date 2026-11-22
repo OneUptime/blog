@@ -1,0 +1,25 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-22",
+  "runtimeTestsPerformed": false,
+  "sources": [
+    "https://ydb.tech/docs/en/security/authorization",
+    "https://github.com/ydb-platform/ydb/blob/26.2.1.16/ydb/docs/en/core/yql/reference/_includes/permissions_list.md",
+    "https://github.com/ydb-platform/ydb/blob/26.2.1.16/ydb/docs/en/core/yql/reference/syntax/grant.md",
+    "https://ydb.tech/docs/en/reference/ydb-cli/commands/scheme-permissions",
+    "https://ydb.tech/docs/en/security/authentication"
+  ],
+  "tests": [
+    "Reviewed YDB26.2.1.16 GRANT and permission mappings and current authentication/authorization guidance",
+    "CLI2.35.0 help confirmed discovery whoami --groups, scheme describe --permissions and sql --file",
+    "All shell examples passed bash -n",
+    "Seven-node six-edge Mermaid structurally checked",
+    "Generated1280x720 social image visually reviewed"
+  ],
+  "limitations": [
+    "No authentication, grants, membership changes or live permission probes performed",
+    "SQL source-reviewed only, not server-compiled",
+    "Actual effective permissions and directory access must be tested with intended identity",
+    "Mermaid not rendered"
+  ]
+}
