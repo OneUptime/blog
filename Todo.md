@@ -1,5 +1,7 @@
 # Blog Post Ideas
 
+Research added on 23 November 2026: 200 new how-to ideas across 10 Topics.md entries covering OpenTelemetry, Kubernetes reliability, alerting, and disconnected operations. Reddit, Stack Overflow, and upstream community questions informed the titles and related follow-ups; popularity has not been measured. Each title includes research and primary documentation links. Check current versions when drafting from historical reports.
+
 Research added on 20 November 2026: 200 new how-to ideas across 10 topics from Topics.md, focused on observability, Kubernetes reliability, and disconnected operations. Community questions and related operational follow-ups informed the titles; popularity has not been measured. Source links accompany each new title. Historical issues and experimental features require version checks when drafting.
 
 ## Air-Gapped Observability and Monitoring
@@ -11997,3 +11999,823 @@ Research: [OneUptime air-gapped alerting](https://oneuptime.com/enterprise/air-g
 20. How to Verify a Zarf Package Contains Every Required Image Before Crossing the Air Gap
 
     Research: [Source 1](https://www.reddit.com/r/kubernetes/comments/1jjj4vp) · [Source 2](https://github.com/zarf-dev/zarf/discussions/2061) · [Documentation 1](https://docs.zarf.dev/commands/zarf_package_inspect_images/) · [Documentation 2](https://docs.zarf.dev/ref/deploy/).
+
+## OTLP
+
+1. How to Diagnose Unknown MetricsService and LogsService Errors from a Trace-Only OTLP Backend
+
+    Research: [Source](https://stackoverflow.com/questions/77305777/opentelemetry-collector-failing-to-export-to-jaeger-via-otlp) · [Documentation 1](https://opentelemetry.io/docs/specs/otlp/) · [Documentation 2](https://www.jaegertracing.io/docs/latest/architecture/apis/).
+
+2. How to Encode Bearer Tokens in OTLP Header Environment Variables Without Double Encoding
+
+    Research: [Source](https://github.com/open-telemetry/opentelemetry-python/issues/4492) · [Documentation](https://opentelemetry.io/docs/specs/otel/protocol/exporter/).
+
+3. How to Refresh Short-Lived OTLP Authentication Tokens with JavaScript Header Callbacks
+
+    Research: [Source](https://github.com/open-telemetry/opentelemetry-js/pull/5994) · [Documentation](https://github.com/open-telemetry/opentelemetry-js/blob/main/experimental/CHANGELOG.md).
+
+4. How to Diagnose Go OTLP Log Exporter Trust Failures with a Private Certificate Authority
+
+    Research: [Source](https://stackoverflow.com/questions/79572790/otlp-log-grpc-exporter-not-working-when-using-self-signed-certificate) · [Documentation](https://opentelemetry.io/docs/specs/otel/protocol/exporter/).
+
+5. How to Diagnose Python OTLP TLS Failures Behind Corporate Certificate Inspection
+
+    Research: [Source](https://github.com/open-telemetry/opentelemetry-python/issues/5880) · [Documentation](https://opentelemetry-python.readthedocs.io/en/latest/exporter/otlp/otlp.html).
+
+6. How to Detect OTLP Batches Lost Behind HTTP Redirects in Python Exporters
+
+    Research: [Source](https://github.com/open-telemetry/opentelemetry-python/issues/5865) · [Documentation](https://opentelemetry.io/docs/specs/otlp/).
+
+7. How to Investigate Node.js OTLP Exports That Outlast timeoutMillis During TCP Connection Setup
+
+    Research: [Source](https://github.com/open-telemetry/opentelemetry-js/issues/7243) · [Documentation](https://opentelemetry.io/docs/specs/otel/protocol/exporter/).
+
+8. How to Diagnose Browser OTLP Batches Lost When Page-Hide Exports Exceed the Keepalive Budget
+
+    Research: [Source](https://github.com/open-telemetry/opentelemetry-js/issues/7230) · [Documentation](https://github.com/open-telemetry/opentelemetry-js/blob/main/experimental/CHANGELOG.md).
+
+9. How to Measure Browser OTLP Payload Savings Before Switching from JSON to Protobuf
+
+    Research: [Source](https://github.com/open-telemetry/opentelemetry-js/issues/3118) · [Documentation](https://opentelemetry.io/docs/specs/otlp/).
+
+10. How to Validate bytesValue Encoding in Node.js OTLP JSON Log Payloads
+
+    Research: [Source](https://github.com/open-telemetry/opentelemetry-js/issues/6190) · [Documentation](https://protobuf.dev/programming-guides/json/).
+
+11. How to Preserve Nanosecond Timestamps When Building OTLP JSON Requests Manually
+
+    Research: [Source](https://stackoverflow.com/questions/72719361/send-traces-to-opentelemetry-collector) · [Documentation](https://opentelemetry.io/docs/specs/otlp/).
+
+12. How to Encode Trace IDs and Span IDs Correctly in a Custom OTLP JSON Client
+
+    Research: [Source](https://www.reddit.com/r/OpenTelemetry/comments/1coq4sj) · [Documentation](https://opentelemetry.io/docs/specs/otlp/).
+
+13. How to Replay Saved OTLP JSON Files with the Alpha File Receiver for Offline Investigation
+
+    Research: [Source](https://stackoverflow.com/questions/78563671/read-otlp-from-a-file-instead-of-http-grpc) · [Documentation](https://github.com/open-telemetry/opentelemetry-collector-contrib/blob/main/receiver/otlpjsonfilereceiver/README.md).
+
+14. How to Test an OTLP gRPC Endpoint with Explicit Protobuf Descriptors When Reflection Is Disabled
+
+    Research: [Source](https://stackoverflow.com/questions/74273230/how-to-send-a-trace-data-to-an-otlp-grpc-endpoint) · [Documentation 1](https://github.com/open-telemetry/opentelemetry-proto) · [Documentation 2](https://github.com/fullstorydev/grpcurl).
+
+15. How to Investigate Go OTLP Metric Loss After Transient EOF Errors
+
+    Research: [Source](https://github.com/open-telemetry/opentelemetry-go/issues/9471) · [Documentation](https://pkg.go.dev/go.opentelemetry.io/otel/exporters/otlp/otlpmetric/otlpmetrichttp).
+
+16. How to Configure a Node.js OTLP HTTP Exporter with a Custom Proxy Agent
+
+    Research: [Source](https://github.com/open-telemetry/opentelemetry-js/pull/5719) · [Documentation](https://github.com/open-telemetry/opentelemetry-js/blob/main/experimental/CHANGELOG.md).
+
+17. How to Audit Per-Signal TLS and Compression Settings When JavaScript Traces Work but Logs Fail
+
+    Research: [Source](https://github.com/open-telemetry/opentelemetry-js/pull/4971) · [Documentation](https://github.com/open-telemetry/opentelemetry-js/blob/main/experimental/CHANGELOG.md).
+
+18. How to Distinguish JavaScript OTLP JSON Exporter Packages from HTTP Protobuf Exporter Packages
+
+    Research: [Source](https://github.com/open-telemetry/opentelemetry-js/issues/3118) · [Documentation](https://github.com/open-telemetry/opentelemetry-js/blob/main/doc/3.x/migration-guide.md).
+
+19. How to Test OTLP JSON Forward Compatibility with Unknown Fields and Integer Enum Values
+
+    Research: [Source](https://stackoverflow.com/questions/72719361/send-traces-to-opentelemetry-collector) · [Documentation](https://github.com/open-telemetry/opentelemetry-proto/blob/main/docs/specification.md).
+
+20. How to Validate OTLP Signal Export Configuration After Moving Node.js SDK Settings into YAML
+
+    Research: [Source](https://github.com/open-telemetry/opentelemetry-js/pull/6814) · [Documentation](https://opentelemetry.io/docs/languages/sdk-configuration/declarative-configuration/).
+
+## Resource Attributes
+
+1. How to Migrate JavaScript Resource Construction to resourceFromAttributes in OpenTelemetry 2.x
+
+    Research: [Source](https://www.reddit.com/r/webdev/comments/1lduuc8/modern_approaches_to_tracing/) · [Documentation](https://github.com/open-telemetry/opentelemetry-js/blob/main/doc/upgrade-to-2.x.md).
+
+2. How to Preserve telemetry.sdk Attributes When Supplying a Custom JavaScript OpenTelemetry Resource
+
+    Research: [Source](https://stackoverflow.com/questions/77991192/how-to-retrieve-resource-attributes-whilst-using-opentelemetry-node-js-sdk) · [Documentation 1](https://github.com/open-telemetry/opentelemetry-js/blob/main/doc/upgrade-to-2.x.md) · [Documentation 2](https://opentelemetry.io/docs/specs/semconv/resource/).
+
+3. How to Diagnose OpenTelemetry Go Resource Creation Errors Caused by Conflicting Schema URLs
+
+    Research: [Source](https://github.com/open-telemetry/opentelemetry-go/issues/4476) · [Documentation](https://github.com/open-telemetry/opentelemetry-specification/blob/main/specification/resource/sdk.md).
+
+4. How to Wait for Asynchronous Resource Attributes in a Custom JavaScript OpenTelemetry Exporter
+
+    Research: [Source](https://github.com/open-telemetry/opentelemetry-js/issues/4638) · [Documentation](https://open-telemetry.github.io/opentelemetry-js/interfaces/_opentelemetry_resources.Resource.html).
+
+5. How to Investigate Unhandled Resource Detector Rejections After Upgrading to OpenTelemetry JavaScript 2.0
+
+    Research: [Source](https://github.com/open-telemetry/opentelemetry-js/issues/5539) · [Documentation](https://github.com/open-telemetry/opentelemetry-js/blob/main/CHANGELOG.md?plain=1).
+
+6. How to Share OpenTelemetry Resource Metadata with Application Logging Without a Global getResource API
+
+    Research: [Source](https://stackoverflow.com/questions/77991192/how-to-retrieve-resource-attributes-whilst-using-opentelemetry-node-js-sdk) · [Documentation 1](https://open-telemetry.github.io/opentelemetry-js/interfaces/_opentelemetry_resources.Resource.html) · [Documentation 2](https://opentelemetry.io/docs/languages/js/resources/).
+
+7. How to Represent Multiple Monitored Hosts with Separate Python MeterProvider Resources
+
+    Research: [Source](https://stackoverflow.com/questions/77447399/how-to-implement-opentelemetry-resource-in-python) · [Documentation](https://github.com/open-telemetry/opentelemetry-specification/blob/main/specification/resource/sdk.md).
+
+8. How to Keep Request Tenant IDs Out of Process-Wide OpenTelemetry Resources
+
+    Research: [Source](https://stackoverflow.com/questions/79072721/do-the-opentelemetry-spec-docs-recommend-require-otlp-consumer-behavior-for-attr) · [Documentation](https://opentelemetry.io/docs/specs/otel/resource/data-model/).
+
+9. How to Name Team Ownership Resource Attributes Without Colliding with OpenTelemetry Semantic Conventions
+
+    Research: [Source](https://www.reddit.com/r/OpenTelemetry/comments/1fubpcp) · [Documentation](https://opentelemetry.io/docs/specs/otel/common/attribute-naming/).
+
+10. How to Verify That a Telemetry Backend Preserves Custom OpenTelemetry Resource Attributes
+
+    Research: [Source](https://stackoverflow.com/questions/79072721/do-the-opentelemetry-spec-docs-recommend-require-otlp-consumer-behavior-for-attr) · [Documentation](https://opentelemetry.io/docs/specs/otel/resource/data-model/).
+
+11. How to Percent-Encode Commas and Equals Signs in OTEL_RESOURCE_ATTRIBUTES
+
+    Research: [Source](https://github.com/open-telemetry/opentelemetry-js/issues/3295) · [Documentation](https://github.com/open-telemetry/opentelemetry-specification/blob/main/specification/resource/sdk.md).
+
+12. How to Debug Resource Attribute Precedence Between Operator Environment Variables, Annotations, and Labels
+
+    Research: [Source](https://github.com/open-telemetry/opentelemetry-collector-contrib/issues/47534) · [Documentation](https://github.com/open-telemetry/opentelemetry-operator/blob/main/docs/auto-instrumentation/resource-attributes.md).
+
+13. How to Opt In to Kubernetes Label-Based Resource Attributes with the OpenTelemetry Operator
+
+    Research: [Source](https://github.com/open-telemetry/opentelemetry-collector-contrib/issues/47534) · [Documentation](https://github.com/open-telemetry/opentelemetry-operator/blob/main/docs/auto-instrumentation/resource-attributes.md).
+
+14. How to Investigate service.name Changing After a k8sattributes Processor Upgrade
+
+    Research: [Source](https://github.com/open-telemetry/opentelemetry-collector-contrib/issues/47534) · [Documentation](https://opentelemetry.io/docs/specs/semconv/non-normative/k8s-attributes/).
+
+15. How to Make JavaScript Resource Detector Merge Order Deterministic After an SDK Upgrade
+
+    Research: [Source](https://github.com/open-telemetry/opentelemetry-js/issues/1533) · [Documentation](https://github.com/open-telemetry/opentelemetry-js/blob/main/doc/upgrade-to-2.x.md).
+
+16. How to Carry OTEL_RESOURCE_ATTRIBUTES into OpenTelemetry Declarative Configuration Explicitly
+
+    Research: [Source](https://github.com/open-telemetry/opentelemetry-go/issues/9430) · [Documentation](https://opentelemetry.io/docs/languages/sdk-configuration/declarative-configuration/).
+
+17. How to Diagnose Missing Prometheus target_info Series from OpenTelemetry Resource Identity
+
+    Research: [Source](https://www.reddit.com/r/OpenTelemetry/comments/1m79ia2) · [Documentation](https://prometheus.io/docs/guides/opentelemetry/).
+
+18. How to Preserve Original OpenTelemetry Service Identity Labels Alongside Prometheus job and instance
+
+    Research: [Source](https://www.reddit.com/r/OpenTelemetry/comments/1m79ia2) · [Documentation](https://prometheus.io/docs/guides/opentelemetry/).
+
+19. How to Avoid Assigning Collector Host Metadata to Telemetry from Remote Applications
+
+    Research: [Source](https://stackoverflow.com/questions/77447399/how-to-implement-opentelemetry-resource-in-python) · [Documentation](https://opentelemetry.io/docs/specs/otel/resource/).
+
+20. How to Test Resource Attribute Types When Moving Configuration from Code to Environment Variables
+
+    Research: [Source](https://stackoverflow.com/questions/79072721/do-the-opentelemetry-spec-docs-recommend-require-otlp-consumer-behavior-for-attr) · [Documentation](https://github.com/open-telemetry/opentelemetry-specification/blob/main/specification/resource/sdk.md).
+
+## Span Links
+
+1. How to Evaluate Link-Aware Sampling for .NET Producer and Consumer Traces
+
+    Research: [Source](https://github.com/open-telemetry/opentelemetry-dotnet/issues/4345) · [Documentation](https://github.com/open-telemetry/opentelemetry-specification/blob/main/specification/trace/sdk.md).
+
+2. How to Estimate Sampling Amplification When a Batch Links to Many Independently Sampled Traces
+
+    Research: [Source](https://github.com/open-telemetry/opentelemetry-specification/issues/2918) · [Documentation](https://github.com/open-telemetry/opentelemetry-specification/blob/main/specification/trace/sdk.md).
+
+3. How to Add Links Discovered After a Java Span Starts Without Expecting Head Sampling to Change
+
+    Research: [Source](https://stackoverflow.com/questions/77268484/opentelemetry-unable-to-link-spans-with-trace-in-a-straightforward-clean-way/78718689) · [Documentation](https://javadoc.io/static/io.opentelemetry/opentelemetry-api/1.67.0/io/opentelemetry/api/trace/Span.html).
+
+4. How to Detect Dropped Span Links When Batch Size Exceeds the SDK Link Limit
+
+    Research: [Source](https://github.com/open-telemetry/opentelemetry-specification/discussions/4130) · [Documentation](https://github.com/open-telemetry/opentelemetry-specification/blob/main/specification/trace/sdk.md).
+
+5. How to Budget Attributes Per Span Link When Recording Per-Message Metadata
+
+    Research: [Source](https://github.com/open-telemetry/opentelemetry-js/pull/6479) · [Documentation](https://github.com/open-telemetry/opentelemetry-specification/blob/main/specification/trace/sdk.md).
+
+6. How to Choose Parentage for a Message Handler Running Inside an Existing HTTP Server Span
+
+    Research: [Source](https://github.com/open-telemetry/opentelemetry.io/discussions/5632) · [Documentation](https://opentelemetry.io/docs/specs/semconv/messaging/messaging-spans/).
+
+7. How to Create Per-Message Span Links for a Producer That Publishes a Batch
+
+    Research: [Source](https://github.com/open-telemetry/opentelemetry.io/discussions/5632) · [Documentation](https://opentelemetry.io/docs/specs/semconv/messaging/messaging-spans/).
+
+8. How to Link Batch Acknowledgement Spans to the Messages They Settle
+
+    Research: [Source](https://github.com/open-telemetry/opentelemetry.io/discussions/5632) · [Documentation](https://opentelemetry.io/docs/specs/semconv/messaging/messaging-spans/).
+
+9. How to Correlate Connection Pool Setup with Request Traces Using Span Links
+
+    Research: [Source](https://github.com/open-telemetry/opentelemetry-specification/discussions/4130) · [Documentation](https://opentelemetry.io/docs/concepts/signals/traces/).
+
+10. How to Trace Retry Attempts Separated by Long Backoff Using Linked Traces
+
+    Research: [Source](https://github.com/open-telemetry/opentelemetry-specification/discussions/4130) · [Documentation](https://opentelemetry.io/docs/concepts/signals/traces/).
+
+11. How to Search a Long-Running Workflow by Correlation ID While Keeping Independent Trace IDs
+
+    Research: [Source](https://github.com/open-telemetry/opentelemetry-js/discussions/4831) · [Documentation](https://github.com/open-telemetry/opentelemetry-specification/blob/main/specification/trace/api.md?plain=1).
+
+12. How to Preserve W3C Producer Context as Span Links in an SQS-Triggered Python Lambda
+
+    Research: [Source](https://stackoverflow.com/questions/76125310/aws-lambda-sqs-opentelemetry-python-link-field-value-can-i-configure-it-to-be) · [Documentation 1](https://opentelemetry-python-contrib.readthedocs.io/en/latest/instrumentation/aws_lambda/aws_lambda.html) · [Documentation 2](https://github.com/open-telemetry/opentelemetry-specification/blob/main/specification/trace/api.md?plain=1).
+
+13. How to Verify Span Link Direction Before Building Reverse Trace Navigation
+
+    Research: [Source](https://github.com/open-telemetry/opentelemetry-specification/discussions/4130) · [Documentation](https://github.com/open-telemetry/opentelemetry-specification/blob/main/specification/trace/api.md?plain=1).
+
+14. How to Test Whether a Trace Backend Can Navigate Links Across Independently Retained Traces
+
+    Research: [Source](https://github.com/open-telemetry/opentelemetry-js/discussions/4831) · [Documentation](https://opentelemetry.io/docs/concepts/signals/traces/).
+
+15. How to Attach Message Identifiers to Span Links Instead of Overwriting Batch Span Attributes
+
+    Research: [Source](https://github.com/open-telemetry/opentelemetry.io/discussions/5632) · [Documentation](https://opentelemetry.io/docs/specs/semconv/messaging/messaging-spans/).
+
+16. How to Keep Links to Unsampled Producer Contexts When Recording a New Consumer Trace
+
+    Research: [Source](https://github.com/open-telemetry/opentelemetry-specification/issues/2918) · [Documentation](https://github.com/open-telemetry/opentelemetry-specification/blob/main/specification/trace/api.md?plain=1).
+
+17. How to Test That an OpenTelemetry Exporter Preserves Link TraceState and Remote Flags
+
+    Research: [Source](https://github.com/open-telemetry/opentelemetry-rust/blob/main/opentelemetry-sdk/CHANGELOG.md) · [Documentation](https://github.com/open-telemetry/opentelemetry-go/blob/main/exporters/otlp/otlptrace/internal/tracetransform/span.go).
+
+18. How to Link Untrusted Incoming Trace Context at a Public Go HTTP Endpoint
+
+    Research: [Source](https://github.com/open-telemetry/opentelemetry-specification/issues/207) · [Documentation 1](https://pkg.go.dev/go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp#WithPublicEndpoint) · [Documentation 2](https://open-telemetry.github.io/opentelemetry-js/interfaces/_opentelemetry_api._opentelemetry_api.Link.html).
+
+19. How to Restore Persisted Job Context as a Span Link After a Worker Restart
+
+    Research: [Source](https://github.com/open-telemetry/opentelemetry-specification/issues/3548) · [Documentation](https://opentelemetry.io/docs/concepts/signals/traces/).
+
+20. How to Keep a Batch Handler Span as the Parent While Linking Each Item to Its Producer
+
+    Research: [Source](https://github.com/open-telemetry/opentelemetry.io/discussions/5632) · [Documentation](https://opentelemetry.io/docs/specs/semconv/messaging/messaging-spans/).
+
+## Prometheus Operator
+
+1. How to Calculate Prometheus Pod Counts from Operator Shards and Replicas
+
+    Research: [Source](https://stackoverflow.com/questions/75470182/prometheus-operator-what-is-the-difference-between-shards-and-replicas) · [Documentation](https://prometheus-operator.dev/docs/platform/sharding/).
+
+2. How to Keep Cluster-Wide Recording Rules Correct After Enabling Prometheus Operator Sharding
+
+    Research: [Source](https://stackoverflow.com/questions/75470182/prometheus-operator-what-is-the-difference-between-shards-and-replicas) · [Documentation](https://prometheus-operator.dev/docs/platform/high-availability/).
+
+3. How to Keep Scaled-Down Prometheus Shards Queryable with the Beta Shard Retention Policy
+
+    Research: [Source](https://stackoverflow.com/questions/75470182/prometheus-operator-what-is-the-difference-between-shards-and-replicas) · [Documentation](https://prometheus-operator.dev/docs/platform/sharding/).
+
+4. How to Scrape a Singleton Exporter from Every Prometheus Operator Shard
+
+    Research: [Source](https://stackoverflow.com/questions/75470182/prometheus-operator-what-is-the-difference-between-shards-and-replicas) · [Documentation](https://prometheus-operator.dev/docs/platform/sharding/).
+
+5. How to Expand Operator-Managed Prometheus PVCs While Pausing StatefulSet Reconciliation
+
+    Research: [Source](https://stackoverflow.com/questions/40335179/can-a-persistent-volume-be-resized?noredirect=1) · [Documentation](https://github.com/prometheus-operator/prometheus-operator/blob/main/Documentation/platform/storage.md).
+
+6. How to Diagnose Prometheus Volume Permission Errors Through the Operator Security Context
+
+    Research: [Source](https://www.reddit.com/r/kubernetes/comments/16ypzus) · [Documentation](https://github.com/prometheus-operator/prometheus-operator/blob/main/Documentation/platform/storage.md).
+
+7. How to Choose retentionSize Headroom for an Operator-Managed Prometheus Volume
+
+    Research: [Source](https://www.reddit.com/r/PrometheusMonitoring/comments/y0es9p) · [Documentation 1](https://prometheus.io/docs/prometheus/latest/storage/) · [Documentation 2](https://prometheus-operator.dev/docs/api-reference/api/).
+
+8. How to Keep Prometheus Operator CRDs and Chart Versions Aligned During Multi-Version Upgrades
+
+    Research: [Source](https://www.reddit.com/r/kubernetes/comments/17bnw02) · [Documentation](https://github.com/prometheus-community/helm-charts/blob/main/charts/kube-prometheus-stack/README.md).
+
+9. How to Break the cert-manager and Prometheus Operator CRD Dependency Cycle in Terraform
+
+    Research: [Source](https://www.reddit.com/r/Terraform/comments/t846fx) · [Documentation 1](https://github.com/prometheus-community/helm-charts/blob/main/charts/kube-prometheus-stack/README.md) · [Documentation 2](https://prometheus-operator.dev/docs/platform/webhook/).
+
+10. How to Investigate a Failed Prometheus Admission Certificate Creation Hook Before Retrying Helm
+
+    Research: [Source](https://stackoverflow.com/questions/75875162/failed-pre-install-job-failed-backofflimitexceeded-when-install-prometheus-hel) · [Documentation 1](https://prometheus-operator.dev/docs/platform/webhook/) · [Documentation 2](https://github.com/prometheus-community/helm-charts/blob/main/charts/kube-prometheus-stack/values.yaml).
+
+11. How to Remove Empty PrometheusRule Groups When Disabling kube-prometheus-stack Alerts
+
+    Research: [Source](https://www.reddit.com/r/PrometheusMonitoring/comments/1ci098f) · [Documentation 1](https://github.com/prometheus-community/helm-charts/blob/main/charts/kube-prometheus-stack/README.md) · [Documentation 2](https://prometheus-operator.dev/docs/api-reference/api/).
+
+12. How to Diagnose Experimental PromQL Functions Rejected by the Operator Admission Webhook
+
+    Research: [Source](https://github.com/prometheus-operator/prometheus-operator/issues/7099) · [Documentation 1](https://prometheus-operator.dev/docs/platform/webhook/) · [Documentation 2](https://github.com/prometheus-operator/prometheus-operator/blob/main/CHANGELOG.md).
+
+13. How to Trace Prometheus Config-Reloader HTTP 500 Errors Back to the Generated Configuration
+
+    Research: [Source](https://github.com/prometheus-operator/prometheus-operator/issues/4705) · [Documentation 1](https://prometheus-operator.dev/docs/platform/troubleshooting/) · [Documentation 2](https://github.com/prometheus-operator/prometheus-operator/blob/main/cmd/prometheus-config-reloader/main.go).
+
+14. How to Alert When Prometheus Operator Reconciliation Succeeds but Config Reloading Stalls
+
+    Research: [Source](https://github.com/prometheus-operator/prometheus-operator/issues/4705) · [Documentation](https://github.com/prometheus-operator/kube-prometheus/blob/main/manifests/prometheusOperator-prometheusRule.yaml).
+
+15. How to Identify Secret-Driven Reconciliation Storms in Prometheus Operator
+
+    Research: [Source](https://github.com/k3s-io/k3s/issues/1108) · [Documentation 1](https://prometheus-operator.dev/docs/platform/troubleshooting/) · [Documentation 2](https://github.com/prometheus-operator/prometheus-operator/blob/main/cmd/operator/main.go).
+
+16. How to Find Why a ScrapeConfig Resource Is Missing from an Operator-Generated Prometheus Configuration
+
+    Research: [Source](https://www.reddit.com/r/PrometheusMonitoring/comments/1alm89k) · [Documentation](https://prometheus-operator.dev/docs/developer/scrapeconfig/).
+
+17. How to Fix additionalScrapeConfigs Map-versus-List Errors in kube-prometheus-stack
+
+    Research: [Source](https://stackoverflow.com/questions/73180547/issue-with-adding-the-additional-scrapeconfigs-in-kube-prometheus-stack/73186354) · [Documentation 1](https://prometheus-operator.dev/docs/api-reference/api/) · [Documentation 2](https://github.com/prometheus-community/helm-charts/blob/main/charts/kube-prometheus-stack/values.yaml).
+
+18. How to Preserve Multiline Scrape Configuration When Passing Helm Values from CI
+
+    Research: [Source](https://stackoverflow.com/questions/74993545/configuring-additionalscrapeconfigs-using-helm-set-on-the-command-line) · [Documentation](https://github.com/prometheus-community/helm-charts/blob/main/charts/kube-prometheus-stack/values.yaml).
+
+19. How to Find an Unexpected Kubernetes Scrape Pool Created by additionalScrapeConfigs
+
+    Research: [Source](https://stackoverflow.com/questions/77022433/how-to-disable-the-k8s-scrape-pool-for-some-containers-prometheus-operator) · [Documentation 1](https://prometheus-operator.dev/docs/api-reference/api/) · [Documentation 2](https://prometheus-operator.dev/docs/platform/troubleshooting/).
+
+20. How to Stabilize Dashboard Queries Across Prometheus Operator HA Replicas
+
+    Research: [Source](https://www.reddit.com/r/kubernetes/comments/1f7qf7l) · [Documentation](https://prometheus-operator.dev/docs/platform/high-availability/).
+
+## Kube-state-metrics
+
+1. How to Restore Missing Node Labels in kube-state-metrics Without Enabling Every Label
+
+    Research: [Source](https://github.com/grafana/k8s-monitoring-helm/issues/687) · [Documentation](https://github.com/kubernetes/kube-state-metrics/blob/main/docs/developer/cli-arguments.md).
+
+2. How to Join Application Ownership Labels onto Pod State Metrics Without Replacing Scrape Labels
+
+    Research: [Source](https://stackoverflow.com/questions/52994392/how-to-get-a-pods-labels-in-prometheus-when-pulling-the-metrics-from-kube-state) · [Documentation 1](https://github.com/kubernetes/kube-state-metrics/blob/main/docs/metrics/workload/pod-metrics.md) · [Documentation 2](https://prometheus.io/docs/prometheus/latest/querying/operators/).
+
+3. How to Resolve kube-state-metrics Label Names That Acquire conflict Suffixes
+
+    Research: [Source](https://github.com/grafana/k8s-monitoring-helm/issues/687) · [Documentation](https://github.com/kubernetes/kube-state-metrics/blob/main/README.md).
+
+4. How to Detect kube-state-metrics Being Scraped Twice Through Annotations and ServiceMonitors
+
+    Research: [Source](https://github.com/prometheus-community/helm-charts/issues/2181) · [Documentation](https://github.com/kubernetes/kube-state-metrics/blob/main/README.md).
+
+5. How to Deduplicate Node Capacity from Multiple kube-state-metrics Replicas Before Summing
+
+    Research: [Source](https://www.reddit.com/r/PrometheusMonitoring/comments/1in157u) · [Documentation](https://prometheus.io/docs/prometheus/latest/querying/operators/).
+
+6. How to Count Running Pods Correctly When kube_pod_status_phase Includes Zero-Valued Series
+
+    Research: [Source](https://stackoverflow.com/questions/76492125/confusion-regarding-kubernetes-pod-status-metrics) · [Documentation](https://github.com/kubernetes/kube-state-metrics/blob/main/docs/metrics/workload/pod-metrics.md).
+
+7. How to Update Terminating-Pod Alerts for Sparse kube_pod_status_reason Series in kube-state-metrics 2.20
+
+    Research: [Source](https://stackoverflow.com/questions/53817837) · [Documentation 1](https://github.com/kubernetes/kube-state-metrics/blob/main/docs/metrics/workload/pod-metrics.md) · [Documentation 2](https://github.com/kubernetes/kube-state-metrics/releases).
+
+8. How to Recover Missing CronJob Metrics Dropped by Managed Prometheus Collection Filters
+
+    Research: [Source](https://stackoverflow.com/questions/77728930/google-managed-prometheus-not-collecting-metrics-from-gke-cronjobs) · [Documentation 1](https://github.com/kubernetes/kube-state-metrics/blob/main/docs/metrics/workload/cronjob-metrics.md) · [Documentation 2](https://github.com/kubernetes/kube-state-metrics/blob/main/docs/developer/cli-arguments.md).
+
+9. How to Resolve CronJob Failure Alerts After a Newer Execution Succeeds
+
+    Research: [Source](https://stackoverflow.com/questions/58474678/how-to-cleanup-failed-cronjob-spawned-jobs-once-a-more-recent-job-passes) · [Documentation 1](https://github.com/kubernetes/kube-state-metrics/blob/main/docs/metrics/workload/job-metrics.md) · [Documentation 2](https://github.com/kubernetes/kube-state-metrics/blob/main/docs/metrics/workload/cronjob-metrics.md).
+
+10. How to Alert on Active Kubernetes Jobs That Exceed Their Runtime Budget
+
+    Research: [Source](https://stackoverflow.com/questions/74188261/kubernetes-cronjob-prometheus-alerts) · [Documentation](https://github.com/kubernetes/kube-state-metrics/blob/main/docs/metrics/workload/job-metrics.md).
+
+11. How to Handle CronJobs That Have Never Succeeded in kube-state-metrics Dashboards
+
+    Research: [Source](https://stackoverflow.com/questions/74188261/kubernetes-cronjob-prometheus-alerts) · [Documentation 1](https://github.com/kubernetes/kube-state-metrics/blob/main/docs/metrics/workload/cronjob-metrics.md) · [Documentation 2](https://github.com/kubernetes/kube-state-metrics/blob/main/internal/store/cronjob.go).
+
+12. How to Run kube-state-metrics for a Single Namespace with Matching RBAC Scope
+
+    Research: [Source](https://www.reddit.com/r/elasticsearch/comments/1da6x6q) · [Documentation 1](https://github.com/kubernetes/kube-state-metrics/blob/main/docs/developer/cli-arguments.md) · [Documentation 2](https://github.com/kubernetes/kube-state-metrics/blob/main/README.md).
+
+13. How to Scrape kube-state-metrics Self-Metrics to Diagnose List and Watch Failures
+
+    Research: [Source](https://www.reddit.com/r/kubernetes/comments/1iq94yg) · [Documentation](https://github.com/kubernetes/kube-state-metrics/blob/main/README.md).
+
+14. How to Fix Removed Kubernetes API Errors from an Outdated kube-state-metrics Image
+
+    Research: [Source](https://stackoverflow.com/questions/78708680/eks-kube-state-metrics-errors-after-upgrading-the-cluster) · [Documentation](https://github.com/kubernetes/kube-state-metrics/blob/main/README.md).
+
+15. How to Configure kube-state-metrics Automatic Shards from StatefulSet Pod Identity
+
+    Research: [Source](https://www.reddit.com/r/PrometheusMonitoring/comments/11qxazl) · [Documentation 1](https://github.com/kubernetes/kube-state-metrics/blob/main/README.md) · [Documentation 2](https://github.com/kubernetes/kube-state-metrics/blob/main/docs/developer/cli-arguments.md).
+
+16. How to Detect Missing kube-state-metrics Shards by Checking Shard Ordinals
+
+    Research: [Source](https://www.reddit.com/r/PrometheusMonitoring/comments/11qxazl) · [Documentation](https://github.com/kubernetes/kube-state-metrics/blob/main/jsonnet/kube-state-metrics-mixin/alerts.libsonnet).
+
+17. How to Reduce kube-state-metrics Scrape Payloads by Filtering Metrics at the Exporter
+
+    Research: [Source](https://www.reddit.com/r/PrometheusMonitoring/comments/11qxazl) · [Documentation](https://github.com/kubernetes/kube-state-metrics/blob/main/docs/developer/cli-arguments.md).
+
+18. How to Preserve Unscheduled Pod Metrics When Using kube-state-metrics DaemonSet Sharding
+
+    Research: [Source](https://www.reddit.com/r/PrometheusMonitoring/comments/11qxazl) · [Documentation](https://github.com/kubernetes/kube-state-metrics/blob/main/README.md).
+
+19. How to Recover Historical Pod Placement from Prometheus After Kubernetes Deletes the Pod
+
+    Research: [Source](https://stackoverflow.com/questions/39553259/how-to-get-history-of-pods-run-on-kubernetes-node/48085715) · [Documentation 1](https://github.com/kubernetes/kube-state-metrics/blob/main/docs/metrics/workload/pod-metrics.md) · [Documentation 2](https://github.com/kubernetes/kube-state-metrics/blob/main/README.md).
+
+20. How to Distinguish Deployment Age from Container Restart Time in kube-state-metrics
+
+    Research: [Source](https://stackoverflow.com/questions/62511870/get-deployment-age-or-last-restart-time-for-a-pod-using-prometheus-on-grafana) · [Documentation 1](https://github.com/kubernetes/kube-state-metrics/blob/main/docs/metrics/workload/pod-metrics.md) · [Documentation 2](https://github.com/kubernetes/kube-state-metrics/blob/main/docs/metrics/workload/deployment-metrics.md).
+
+## Readiness Probes
+
+1. How to Fix a Kubernetes Readiness Probe When the Application Only Binds to localhost
+
+    Research: [Source](https://stackoverflow.com/questions/61303668/kubernetes-readiness-probe-failed-dial-tcp-10-244-0-105000-connect-connectio) · [Documentation 1](https://kubernetes.io/docs/concepts/workloads/pods/probes/) · [Documentation 2](https://kubernetes.io/docs/tasks/configure-pod-container/configure-liveness-readiness-startup-probes/).
+
+2. How to Correct a Readiness Probe That Uses a Service NodePort Instead of the Container Port
+
+    Research: [Source](https://stackoverflow.com/questions/75060490/readiness-probe-failing-for-pod) · [Documentation](https://kubernetes.io/docs/tasks/configure-pod-container/configure-liveness-readiness-startup-probes/).
+
+3. How to Make an Exec Readiness Probe Fail When curl Receives an HTTP Error
+
+    Research: [Source](https://stackoverflow.com/questions/66064514/kubernetes-http-health-check-not-working-as-expected-500-response-is-ignored) · [Documentation 1](https://kubernetes.io/docs/tasks/configure-pod-container/configure-liveness-readiness-startup-probes/) · [Documentation 2](https://curl.se/docs/manpage.html).
+
+4. How to Use Pipes in Exec Readiness Probes Without Passing Shell Syntax to curl
+
+    Research: [Source](https://stackoverflow.com/questions/58932210/kubernetes-how-to-pass-pipe-character-in-readiness-probe-command/58932820) · [Documentation](https://kubernetes.io/docs/tasks/configure-pod-container/configure-liveness-readiness-startup-probes/).
+
+5. How to Replace Missing grpc_health_probe Binaries with Native Kubernetes gRPC Readiness Checks
+
+    Research: [Source](https://stackoverflow.com/questions/75367341/probes-not-found-on-path?noredirect=1) · [Documentation](https://kubernetes.io/docs/tasks/configure-pod-container/configure-liveness-readiness-startup-probes/).
+
+6. How to Set a Readiness Probe Host Header Without Sending the Probe Through Public DNS
+
+    Research: [Source](https://stackoverflow.com/questions/74265227/kubernetes-health-probes-with-wildcard-hosts-and-certificates) · [Documentation](https://kubernetes.io/docs/concepts/workloads/pods/probes/).
+
+7. How to Detect Readiness Probe False Positives Caused by Cross-Host Redirects
+
+    Research: [Source](https://stackoverflow.com/questions/56539630/kubernetes-readiness-check-does-not-correctly-set-http-host-header) · [Documentation](https://kubernetes.io/docs/concepts/workloads/pods/probes/).
+
+8. How to Fix HTTP-to-HTTPS Scheme Mismatches in Kubernetes Readiness Probes
+
+    Research: [Source](https://stackoverflow.com/questions/57225183/kubernetes-http-health-check-fails-with-http-server-gave-http-response-to-http) · [Documentation 1](https://kubernetes.io/docs/concepts/workloads/pods/probes/) · [Documentation 2](https://kubernetes.io/docs/tasks/configure-pod-container/configure-liveness-readiness-startup-probes/).
+
+9. How to Log Which Dependency Failed a Readiness Check Without Relying on Pod Events Alone
+
+    Research: [Source](https://stackoverflow.com/questions/68534861/get-the-readiness-probe-logs) · [Documentation](https://kubernetes.io/docs/concepts/workloads/pods/probes/).
+
+10. How to Tune Consecutive Failure Thresholds for Intermittent Readiness Timeouts
+
+    Research: [Source](https://stackoverflow.com/questions/74714076/how-does-the-failurethreshold-work-in-liveness-readiness-probes-does-it-have/74716367) · [Documentation](https://kubernetes.io/docs/concepts/workloads/pods/probes/).
+
+11. How to Require Multiple Successful Readiness Checks Before Restoring Traffic to a Recovered Pod
+
+    Research: [Source](https://stackoverflow.com/questions/67963991/is-probing-of-a-pod-retried-after-a-readiness-probe-fails) · [Documentation](https://kubernetes.io/docs/concepts/workloads/pods/probes/).
+
+12. How to Compare Current EndpointSlice Readiness with Historical Probe Failure Events
+
+    Research: [Source](https://stackoverflow.com/questions/59419074/readiness-probe-failed-but-still-running-and-endpoint-doesnt-remove-the-pod-id) · [Documentation](https://kubernetes.io/docs/concepts/services-networking/endpoint-slices/).
+
+13. How to Break a StatefulSet Bootstrap Deadlock Caused by Quorum-Based Readiness Checks
+
+    Research: [Source](https://stackoverflow.com/questions/50971333/readiness-probe-for-statefulset-not-individual-pod-container) · [Documentation 1](https://kubernetes.io/docs/concepts/workloads/controllers/statefulset/) · [Documentation 2](https://kubernetes.io/docs/concepts/services-networking/dns-pod-service/).
+
+14. How to Test Whether a Shared Redis Outage Makes Every Application Pod Unready
+
+    Research: [Source](https://www.reddit.com/r/kubernetes/comments/11q6et5) · [Documentation](https://kubernetes.io/docs/concepts/workloads/pods/probes/).
+
+15. How to Diagnose Single-Replica Rollout Downtime When Readiness Checks Pass
+
+    Research: [Source](https://stackoverflow.com/questions/53668964/kubernetes-0-downtime-using-readiness-probe-and-rollback-strategy-not-working) · [Documentation](https://kubernetes.io/docs/concepts/workloads/controllers/deployment/).
+
+16. How to Test What Happens to Existing Connections When a Pod Becomes Unready
+
+    Research: [Source](https://www.reddit.com/r/devops/comments/1bvujwp) · [Documentation 1](https://kubernetes.io/docs/concepts/workloads/pods/probes/) · [Documentation 2](https://kubernetes.io/docs/concepts/workloads/pods/pod-termination/).
+
+17. How to Inspect Ready and Serving EndpointSlice Conditions During Pod Termination
+
+    Research: [Source](https://www.reddit.com/r/devops/comments/1bvujwp) · [Documentation 1](https://kubernetes.io/docs/concepts/services-networking/endpoint-slices/) · [Documentation 2](https://kubernetes.io/docs/concepts/workloads/pods/pod-termination/).
+
+18. How to Investigate Readiness Timeouts During CPU-Intensive Spring Boot Workloads
+
+    Research: [Source](https://stackoverflow.com/questions/76737587/actuator-enpoint-not-responding-under-heavy-load-on-openshift) · [Documentation 1](https://kubernetes.io/docs/concepts/workloads/pods/probes/) · [Documentation 2](https://docs.spring.io/spring-boot/reference/actuator/endpoints.html).
+
+19. How to Use Separate gRPC Health Service Names for Readiness and Liveness Checks
+
+    Research: [Source](https://stackoverflow.com/questions/75367341/probes-not-found-on-path?noredirect=1) · [Documentation 1](https://kubernetes.io/docs/concepts/workloads/pods/probes/) · [Documentation 2](https://kubernetes.io/docs/tasks/configure-pod-container/configure-liveness-readiness-startup-probes/).
+
+20. How to Account for Readiness initialDelaySeconds After a Startup Probe Succeeds
+
+    Research: [Source](https://stackoverflow.com/questions/48572691/what-is-the-default-value-of-initialdelayseconds/56664299) · [Documentation 1](https://kubernetes.io/docs/concepts/workloads/pods/probes/) · [Documentation 2](https://kubernetes.io/docs/tasks/configure-pod-container/configure-liveness-readiness-startup-probes/).
+
+## RKE2
+
+1. How to Disable Default Registry Fallback for Explicitly Mirrored Registries in Air-Gapped RKE2
+
+    Research: [Source](https://www.reddit.com/r/rancher/comments/17efy1i) · [Documentation](https://docs.rke2.io/install/private_registry).
+
+2. How to Verify RKE2 Uses a Private Mirror When Image Names Still Show docker.io
+
+    Research: [Source](https://www.reddit.com/r/rancher/comments/17efy1i) · [Documentation](https://docs.rke2.io/install/private_registry).
+
+3. How to Find the Real RKE2 Mirror Error When Pod Events Only Show an Upstream Pull Failure
+
+    Research: [Source](https://www.reddit.com/r/rancher/comments/1guba82) · [Documentation](https://docs.rke2.io/install/private_registry).
+
+4. How to Break the RKE2 Bootstrap Dependency on a Registry Hosted Inside the Same Cluster
+
+    Research: [Source](https://github.com/rancher/rke2/discussions/6807) · [Documentation 1](https://docs.rke2.io/install/airgap) · [Documentation 2](https://docs.rke2.io/install/registry_mirror).
+
+5. How to Diagnose RKE2 Startup Failure After Enabling an Unconfigured Embedded Registry
+
+    Research: [Source](https://github.com/rancher/rke2/issues/9755) · [Documentation](https://docs.rke2.io/install/registry_mirror).
+
+6. How to Supply Rancher System Agent Installer Images Before RKE2 Embedded Mirroring Is Available
+
+    Research: [Source](https://github.com/rancher/rke2/issues/8376) · [Documentation](https://docs.rke2.io/install/registry_mirror).
+
+7. How to Reduce RKE2 Restart Delays Caused by Reimporting Unchanged Air-Gap Image Archives
+
+    Research: [Source](https://www.reddit.com/r/rancher/comments/17va99x) · [Documentation](https://docs.rke2.io/install/airgap).
+
+8. How to Reimport Pruned RKE2 Images When Conditional Air-Gap Imports Skip an Unchanged Archive
+
+    Research: [Source](https://www.reddit.com/r/kubernetes/comments/1aph4g6) · [Documentation 1](https://docs.rke2.io/install/airgap) · [Documentation 2](https://docs.rke2.io/add-ons/import-images).
+
+9. How to Check an RKE2 Offline Bundle for Missing Cilium and vSphere Image Archives
+
+    Research: [Source](https://www.reddit.com/r/kubernetes/comments/1rwy7dw/air_gapped_on_premise_deployments/) · [Documentation](https://docs.rke2.io/install/airgap).
+
+10. How to Stage System Upgrade Controller Images for an Air-Gapped RKE2 Upgrade
+
+    Research: [Source](https://www.reddit.com/r/kubernetes/comments/1puejip/airgapped_remote_baremetal_kubernetes_setup/) · [Documentation 1](https://docs.rke2.io/install/airgap) · [Documentation 2](https://docs.rke2.io/upgrades/automated_upgrade/).
+
+11. How to Prepare SELinux Package Dependencies for an Offline RKE2 Tarball Installation
+
+    Research: [Source](https://www.reddit.com/r/kubernetes/comments/14nrw9t) · [Documentation 1](https://docs.rke2.io/install/methods) · [Documentation 2](https://docs.rke2.io/install/airgap).
+
+12. How to Diagnose an RKE2 Air-Gap Archive Built for the Wrong Node Architecture
+
+    Research: [Source](https://slack-archive.rancher.com/t/34314242/hey-i-have-an-rke2-issue-shipped-from-harvester-1-8-2-i-m-go) · [Documentation](https://docs.rke2.io/install/airgap).
+
+13. How to Verify RKE2 Binary and Image Archive Checksums Before an Offline Installation
+
+    Research: [Source](https://www.reddit.com/r/kubernetes/comments/14nrw9t) · [Documentation](https://github.com/rancher/rke2/blob/master/install.sh).
+
+14. How to Preload New Workload Images into a Running RKE2 Node Without Restarting It
+
+    Research: [Source](https://www.reddit.com/r/kubernetes/comments/1aph4g6) · [Documentation](https://docs.rke2.io/add-ons/import-images).
+
+15. How to Observe RKE2 Peer Image Sharing Through Spegel Supervisor Metrics
+
+    Research: [Source](https://github.com/rancher/rke2/issues/8376) · [Documentation](https://docs.rke2.io/install/registry_mirror).
+
+16. How to Diagnose RKE2 Peer Image Pull Delays When Ports 5001 and 9345 Are Blocked
+
+    Research: [Source](https://www.reddit.com/r/kubernetes/comments/1aph4g6) · [Documentation](https://docs.rke2.io/install/registry_mirror).
+
+17. How to Diagnose RKE2 Add-On Upgrades Stuck on a Missing Helm Job Image
+
+    Research: [Source](https://github.com/rancher/rke2/discussions/5549) · [Documentation 1](https://docs.rke2.io/helm) · [Documentation 2](https://docs.rke2.io/reference/server_config).
+
+18. How to Preserve RKE2 Add-On Image Overrides When Packaged Manifests Are Regenerated
+
+    Research: [Source](https://github.com/rancher/rke2/discussions/5549) · [Documentation 1](https://docs.rke2.io/helm) · [Documentation 2](https://docs.rke2.io/install/packaged_components).
+
+19. How to Migrate RKE2 Image Delivery from Air-Gap Tarballs to a Private Registry in Stages
+
+    Research: [Source](https://github.com/rancher/rke2/discussions/5549) · [Documentation 1](https://docs.rke2.io/install/private_registry) · [Documentation 2](https://docs.rke2.io/add-ons/import-images).
+
+20. How to Find RKE2 Nodes Missing Registry Credentials After a Successful Air-Gap Bootstrap
+
+    Research: [Source](https://www.reddit.com/r/rancher/comments/1guba82) · [Documentation](https://docs.rke2.io/install/private_registry).
+
+## cert-manager
+
+1. How to Diagnose an Expired Certificate Still Served After cert-manager Updates the TLS Secret
+
+    Research: [Source](https://stackoverflow.com/questions/62878666/kubernetes-cert-manager-issue) · [Documentation 1](https://cert-manager.io/docs/usage/certificate/) · [Documentation 2](https://cert-manager.io/docs/faq/).
+
+2. How to Rename Mounted cert-manager Keystore Files While Preserving Secret Updates
+
+    Research: [Source](https://stackoverflow.com/questions/78539915/proper-way-to-mount-some-files-from-secret-with-specified-name) · [Documentation](https://kubernetes.io/docs/concepts/configuration/secret/).
+
+3. How to Reissue cert-manager Leaf Certificates After Replacing a CA Issuer Secret
+
+    Research: [Source](https://github.com/cert-manager/cert-manager/issues/2478) · [Documentation 1](https://cert-manager.io/docs/configuration/ca/) · [Documentation 2](https://cert-manager.io/docs/faq/).
+
+4. How to Detect cert-manager Leaf Certificates That Outlive Their Issuing CA
+
+    Research: [Source](https://github.com/cert-manager/cert-manager/issues/2478) · [Documentation](https://cert-manager.io/docs/configuration/ca/).
+
+5. How to Preserve Old and New Root CAs During a cert-manager Trust Bundle Migration
+
+    Research: [Source](https://github.com/cert-manager/cert-manager/discussions/8472) · [Documentation 1](https://cert-manager.io/docs/trust/) · [Documentation 2](https://cert-manager.io/docs/trust/trust-manager/).
+
+6. How to Give cert-manager Clients CA Trust Without Exposing a Server Private Key
+
+    Research: [Source](https://www.reddit.com/r/kubernetes/comments/11iwklo) · [Documentation](https://cert-manager.io/docs/trust/).
+
+7. How to Locate a cert-manager ClusterIssuer CA Secret When the Cluster Resource Namespace Changes
+
+    Research: [Source](https://www.reddit.com/r/kubernetes/comments/117fdy6) · [Documentation 1](https://cert-manager.io/docs/configuration/ca/) · [Documentation 2](https://cert-manager.io/docs/configuration/).
+
+8. How to Diagnose cert-manager CertificateRequests That Are Approved but Still Waiting for an Issuer
+
+    Research: [Source](https://stackoverflow.com/questions/63346728/issuing-certificate-as-secret-does-not-exist/78478912) · [Documentation](https://cert-manager.io/docs/troubleshooting/).
+
+9. How to Separate cert-manager Webhook Network Timeouts from TLS Handshake Failures
+
+    Research: [Source](https://stackoverflow.com/questions/73831927/internal-error-occurred-failed-to-call-webhook) · [Documentation](https://cert-manager.io/docs/troubleshooting/webhook/).
+
+10. How to Diagnose cert-manager Webhook Certificates That Unexpectedly Identify an EKS Fargate Node
+
+    Research: [Source](https://stackoverflow.com/questions/65193374/error-from-server-internalerror-error-when-creating-v2-0-0-full-yaml-inter) · [Documentation](https://cert-manager.io/docs/troubleshooting/webhook/).
+
+11. How to Diagnose cert-manager Webhook CA Expiry Separately from Application Certificate Expiry
+
+    Research: [Source](https://github.com/cert-manager/cert-manager/issues/7617) · [Documentation](https://cert-manager.io/docs/troubleshooting/webhook/).
+
+12. How to Restore cert-manager TLS Secrets Before Certificates to Avoid Unnecessary Reissuance
+
+    Research: [Source](https://stackoverflow.com/questions/62878666/kubernetes-cert-manager-issue) · [Documentation](https://cert-manager.io/docs/devops-tips/backup/).
+
+13. How to Unblock a cert-manager Restore When the Webhook Starts Before Its RBAC Resources
+
+    Research: [Source](https://stackoverflow.com/questions/73831927/internal-error-occurred-failed-to-call-webhook) · [Documentation](https://cert-manager.io/docs/devops-tips/backup/).
+
+14. How to Calculate cert-manager Renewal Timing from the Issued Certificate Instead of the Requested Duration
+
+    Research: [Source](https://stackoverflow.com/questions/75541042/cert-manager-renewbefore-notafter-timing-different-from-kubernetes-hosts-machine) · [Documentation](https://cert-manager.io/docs/usage/certificate/).
+
+15. How to Avoid cert-manager Renewal Loops When a Private Issuer Returns Shorter-Lived Certificates
+
+    Research: [Source](https://stackoverflow.com/questions/72268468/cert-manager-letsencrypt-only-accepting-default-value-for-certificate-ignoring) · [Documentation](https://cert-manager.io/docs/usage/certificate/).
+
+16. How to Diagnose a cert-manager Certificate That Is Ready but Fails CA Name-Constraint Validation
+
+    Research: [Source](https://www.reddit.com/r/kubernetes/comments/1n26fcu) · [Documentation 1](https://cert-manager.io/docs/usage/certificate/) · [Documentation 2](https://cert-manager.io/docs/configuration/ca/).
+
+17. How to Keep Kubernetes API CA Trust Separate from cert-manager Application Certificate Trust
+
+    Research: [Source](https://stackoverflow.com/questions/56282750/where-can-i-find-the-location-of-letsencrypt-files-in-my-aks-cluster-cert-cha) · [Documentation 1](https://cert-manager.io/docs/trust/) · [Documentation 2](https://kubernetes.io/docs/concepts/configuration/secret/).
+
+18. How to Diagnose Missing PKCS12 Truststores in cert-manager trust-manager Bundle Targets
+
+    Research: [Source](https://github.com/cert-manager/trust-manager/issues/800) · [Documentation](https://cert-manager.io/docs/trust/trust-manager/).
+
+19. How to Restrict cert-manager CA Bundle Distribution to Opted-In Namespaces
+
+    Research: [Source](https://www.reddit.com/r/kubernetes/comments/11iwklo) · [Documentation](https://cert-manager.io/docs/trust/trust-manager/).
+
+20. How to Trigger cert-manager Reissuance After Restore When CertificateRequest History Is Missing
+
+    Research: [Source](https://stackoverflow.com/questions/73538617/cert-manager-automatic-renewal-isnt-checking-certificals-with-a-due-renewal-tim) · [Documentation 1](https://cert-manager.io/docs/faq/) · [Documentation 2](https://cert-manager.io/docs/devops-tips/backup/).
+
+## CoreDNS
+
+1. How to Distinguish CoreDNS Search-Suffix NXDOMAIN Responses from Failed Application Lookups
+
+    Research: [Source](https://www.reddit.com/r/kubernetes/comments/duj86x) · [Documentation 1](https://kubernetes.io/docs/tasks/administer-cluster/dns-debugging-resolution/) · [Documentation 2](https://coredns.io/plugins/log/).
+
+2. How to Reproduce CoreDNS A and AAAA Lookup Failures That nslookup Does Not Show
+
+    Research: [Source](https://github.com/coredns/coredns/issues/8390) · [Documentation 1](https://coredns.io/plugins/log/) · [Documentation 2](https://coredns.io/plugins/cache/).
+
+3. How to Compare CoreDNS Replicas to Isolate DNS Failures to One Kubernetes Node
+
+    Research: [Source](https://www.reddit.com/r/kubernetes/comments/16xqs0w) · [Documentation](https://kubernetes.io/docs/tasks/administer-cluster/dns-debugging-resolution/).
+
+4. How to Diagnose CoreDNS Waiting on Kubernetes by Separating API Routing from RBAC Failures
+
+    Research: [Source](https://github.com/coredns/coredns/issues/5035) · [Documentation 1](https://coredns.io/plugins/kubernetes/) · [Documentation 2](https://kubernetes.io/docs/tasks/administer-cluster/dns-debugging-resolution/).
+
+5. How to Restore CoreDNS Service Discovery When EndpointSlice List and Watch Permissions Are Missing
+
+    Research: [Source](https://github.com/coredns/coredns/issues/5035) · [Documentation](https://kubernetes.io/docs/tasks/administer-cluster/dns-debugging-resolution/).
+
+6. How to Test CoreDNS Behavior During Kubernetes API Outages Without Restarting Its Pods
+
+    Research: [Source](https://github.com/coredns/coredns/issues/4199) · [Documentation](https://coredns.io/plugins/kubernetes/).
+
+7. How to Check Upstream DNS Resolution When CoreDNS Health and Readiness Endpoints Are Green
+
+    Research: [Source](https://www.reddit.com/r/kubernetes/comments/1l3taht) · [Documentation 1](https://coredns.io/plugins/health/) · [Documentation 2](https://coredns.io/plugins/ready/) · [Documentation 3](https://coredns.io/plugins/forward/).
+
+8. How to Make CoreDNS Retry a Second Upstream After a SERVFAIL Response
+
+    Research: [Source](https://github.com/coredns/coredns/issues/7118) · [Documentation](https://coredns.io/plugins/forward/).
+
+9. How to Identify CoreDNS REFUSED Responses Caused by Forwarding Concurrency Limits
+
+    Research: [Source](https://www.reddit.com/r/kubernetes/comments/1cx6hi1) · [Documentation](https://coredns.io/plugins/forward/).
+
+10. How to Bound Stale CoreDNS Answers During an Upstream DNS Outage
+
+    Research: [Source](https://www.reddit.com/r/kubernetes/comments/1l3taht) · [Documentation](https://coredns.io/plugins/cache/).
+
+11. How to Compare Immediate and Verify Modes for CoreDNS Stale-Cache Latency
+
+    Research: [Source](https://github.com/coredns/coredns/issues/7384) · [Documentation](https://coredns.io/plugins/cache/).
+
+12. How to Diagnose CoreDNS Returning NXDOMAIN After a Previously Missing Service Is Created
+
+    Research: [Source](https://github.com/coredns/coredns/issues/3586) · [Documentation 1](https://coredns.io/plugins/cache/) · [Documentation 2](https://coredns.io/plugins/kubernetes/).
+
+13. How to Measure CoreDNS Recovery Delays Caused by Cached SERVFAIL Responses
+
+    Research: [Source](https://www.reddit.com/r/kubernetes/comments/1l3taht) · [Documentation](https://coredns.io/plugins/cache/).
+
+14. How to Recover CoreDNS Metrics After a Failed Reload While DNS Queries Still Work
+
+    Research: [Source](https://www.reddit.com/r/kubernetes/comments/165t2ar) · [Documentation 1](https://coredns.io/plugins/metrics/) · [Documentation 2](https://coredns.io/plugins/reload/).
+
+15. How to Verify Every CoreDNS Replica Loaded the Intended Corefile After a ConfigMap Change
+
+    Research: [Source](https://www.reddit.com/r/kubernetes/comments/1rtqcnl/help_k3s_coredns_does_not_refresh_automatically/) · [Documentation](https://coredns.io/plugins/reload/).
+
+16. How to Log Only CoreDNS Error and Denial Responses During a DNS Incident
+
+    Research: [Source](https://www.reddit.com/r/kubernetes/comments/165t2ar) · [Documentation](https://coredns.io/plugins/log/).
+
+17. How to Trace Missing DNS Queries from a Pod to the CoreDNS Service and Endpoint IPs
+
+    Research: [Source](https://stackoverflow.com/questions/67126354/how-do-i-debug-this-kubernetes-coredns-error) · [Documentation](https://kubernetes.io/docs/tasks/administer-cluster/dns-debugging-resolution/).
+
+18. How to Set CoreDNS Upstream Health-Check Queries for a Disconnected Private DNS Zone
+
+    Research: [Source](https://www.reddit.com/r/kubernetes/comments/1l3taht) · [Documentation](https://coredns.io/plugins/forward/).
+
+19. How to Test CoreDNS TCP Fallback When Large DNS Responses Fail Behind a Firewall
+
+    Research: [Source](https://stackoverflow.com/questions/68293862/dns-server-in-kubernetes-for-translate-lan-hosts) · [Documentation 1](https://coredns.io/plugins/forward/) · [Documentation 2](https://www.rfc-editor.org/rfc/rfc7766).
+
+20. How to Use CoreDNS Local Health Latency to Distinguish Process Saturation from Slow Upstream DNS
+
+    Research: [Source](https://www.reddit.com/r/kubernetes/comments/1cx6hi1) · [Documentation 1](https://coredns.io/plugins/health/) · [Documentation 2](https://coredns.io/plugins/forward/).
+
+## Alertmanager
+
+1. How to Schedule Recurring Alertmanager Maintenance Windows in a Local Time Zone
+
+    Research: [Source](https://stackoverflow.com/questions/63718859/dont-alert-using-prometheus-alertmanager-at-particular-time-maintance-window-i) · [Documentation](https://prometheus.io/docs/alerting/latest/configuration/).
+
+2. How to Configure Alertmanager Mute Intervals That Cross Midnight
+
+    Research: [Source](https://stackoverflow.com/questions/76637560/alertmanager-how-to-receive-alert-only-during-a-time-interval) · [Documentation](https://prometheus.io/docs/alerting/latest/configuration/).
+
+3. How to Exclude Critical Alerts from an Alertmanager Maintenance Silence
+
+    Research: [Source](https://github.com/prometheus/alertmanager/issues/1682) · [Documentation](https://prometheus.io/docs/alerting/latest/configuration/).
+
+4. How to Create a Maintenance Silence Once Across an Alertmanager HA Cluster
+
+    Research: [Source](https://www.reddit.com/r/PrometheusMonitoring/comments/bjym0z) · [Documentation](https://github.com/prometheus/alertmanager/blob/main/docs/high_availability.md).
+
+5. How to Preserve Alertmanager Silences When Replacing a Container
+
+    Research: [Source](https://github.com/prometheus/alertmanager/issues/1673) · [Documentation](https://github.com/prometheus/alertmanager/blob/main/app/app.go).
+
+6. How to Check Alertmanager Silence Snapshot Compatibility Before a Version Rollback
+
+    Research: [Source](https://github.com/prometheus/alertmanager/issues/5326) · [Documentation](https://github.com/prometheus/alertmanager/blob/main/CHANGELOG.md).
+
+7. How to Validate Alertmanager Matcher Quoting Before Enabling UTF-8 Strict Mode
+
+    Research: [Source](https://github.com/prometheus/alertmanager/issues/5042) · [Documentation 1](https://prometheus.io/docs/alerting/latest/configuration/) · [Documentation 2](https://github.com/prometheus/alertmanager/blob/main/README.md).
+
+8. How to Diagnose Alertmanager Silence Forms That Reject Dotted OpenTelemetry Labels
+
+    Research: [Source](https://github.com/prometheus/alertmanager/issues/5042) · [Documentation](https://github.com/prometheus/alertmanager/blob/main/CHANGELOG.md).
+
+9. How to Show Per-Alert Runbook Links When Alertmanager CommonAnnotations Is Empty
+
+    Research: [Source 1](https://stackoverflow.com/questions/55426634/commonannotations-not-working-for-alertmanager) · [Source 2](https://stackoverflow.com/questions/39389463/using-alert-annotations-in-an-alertmanager-receiver/39411209) · [Documentation](https://prometheus.io/docs/alerting/latest/notifications/).
+
+10. How to Test Alertmanager Notification Templates with Sample Firing and Resolved Alerts
+
+    Research: [Source](https://stackoverflow.com/questions/78900743/how-to-prometheus-alerts-activeat-or-startat-time-get-in-mail-notification-messa) · [Documentation](https://github.com/prometheus/alertmanager/blob/main/README.md).
+
+11. How to Display Alert Start Times in the On-Call Team's Time Zone in Alertmanager Emails
+
+    Research: [Source](https://stackoverflow.com/questions/78900743/how-to-prometheus-alerts-activeat-or-startat-time-get-in-mail-notification-messa) · [Documentation](https://prometheus.io/docs/alerting/latest/notifications/).
+
+12. How to Detect Alertmanager Webhook Payload Truncation with truncatedAlerts
+
+    Research: [Source](https://www.reddit.com/r/PrometheusMonitoring/comments/1deumye) · [Documentation](https://github.com/prometheus/alertmanager/blob/main/notify/webhook/webhook.go).
+
+13. How to Handle Zero EndsAt Timestamps in Firing Alertmanager Webhooks
+
+    Research: [Source](https://github.com/prometheus/alertmanager/issues/3341) · [Documentation](https://prometheus.io/docs/alerting/latest/notifications/).
+
+14. How to Deliver Alertmanager Email Through an Internal SMTP Relay with a Private CA
+
+    Research: [Source 1](https://github.com/prometheus/alertmanager/issues/193) · [Source 2](https://github.com/prometheus/alertmanager/issues/3709) · [Documentation](https://prometheus.io/docs/alerting/latest/configuration/).
+
+15. How to Load Alertmanager SMTP Passwords from Mounted Secret Files in Docker
+
+    Research: [Source](https://stackoverflow.com/questions/79468928/how-to-fetch-env-values-to-assign-alertmanager-yml-file-not-a-valid-value/79469050) · [Documentation](https://prometheus.io/docs/alerting/latest/configuration/).
+
+16. How to Render Environment Variables in Alertmanager Configuration Before Container Startup
+
+    Research: [Source](https://stackoverflow.com/questions/79468928/how-to-fetch-env-values-to-assign-alertmanager-yml-file-not-a-valid-value/79469050) · [Documentation 1](https://prometheus.io/docs/alerting/latest/configuration/) · [Documentation 2](https://github.com/prometheus/alertmanager/blob/main/README.md).
+
+17. How to Fix Alertmanager API 404 Errors Caused by Reverse Proxy Path Prefixes
+
+    Research: [Source](https://www.reddit.com/r/PrometheusMonitoring/comments/14audyr) · [Documentation](https://github.com/prometheus/alertmanager/blob/main/README.md).
+
+18. How to Verify Which Alertmanager Routes Remain Active After a Failed Configuration Reload
+
+    Research: [Source](https://stackoverflow.com/questions/76637586/how-do-i-verify-a-configuration-change-on-a-bitnami-kube-prometheus-deployment) · [Documentation 1](https://prometheus.io/docs/alerting/latest/management_api/) · [Documentation 2](https://prometheus.io/docs/alerting/latest/configuration/) · [Documentation 3](https://github.com/prometheus/alertmanager/blob/main/README.md).
+
+19. How to Distinguish Silenced and Inhibited Alerts with the Alertmanager v2 API
+
+    Research: [Source](https://www.reddit.com/r/PrometheusMonitoring/comments/ftqsyg) · [Documentation](https://github.com/prometheus/alertmanager/blob/main/api/v2/openapi.yaml).
+
+20. How to Keep Custom Alertmanager API Alerts Firing with Periodic Refreshes
+
+    Research: [Source](https://github.com/prometheus/alertmanager/issues/3341) · [Documentation](https://prometheus.io/docs/alerting/latest/alerts_api/).
