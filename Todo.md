@@ -1,5 +1,7 @@
 # Blog Post Ideas
 
+Research added on 24 November 2026: 200 new how-to ideas across 10 Topics.md entries covering OpenTelemetry, Kubernetes reliability, offline software delivery, and synthetic monitoring. Recurring Reddit, Stack Overflow, and upstream community questions informed the titles and related follow-ups; popularity has not been measured. Each title includes research and primary documentation links. Check current versions when drafting from historical reports.
+
 Research added on 23 November 2026: 200 new how-to ideas across 10 Topics.md entries covering OpenTelemetry, Kubernetes reliability, alerting, and disconnected operations. Reddit, Stack Overflow, and upstream community questions informed the titles and related follow-ups; popularity has not been measured. Each title includes research and primary documentation links. Check current versions when drafting from historical reports.
 
 Research added on 20 November 2026: 200 new how-to ideas across 10 topics from Topics.md, focused on observability, Kubernetes reliability, and disconnected operations. Community questions and related operational follow-ups informed the titles; popularity has not been measured. Source links accompany each new title. Historical issues and experimental features require version checks when drafting.
@@ -6837,6 +6839,86 @@ Research: [OneUptime air-gapped alerting](https://oneuptime.com/enterprise/air-g
 19. How to Switch Kubernetes Contexts and Namespaces Safely Across Helmfile Environments
 20. How to Migrate Helmfile v0 Configurations to v1.1 and Helm 4 Without Breaking Deployments
 
+21. How to Diagnose Stale OCI Chart Versions in Helmfile Caches Across Argo CD Replicas
+
+    Research: [Source](https://github.com/helmfile/helmfile/issues/2766) · [Documentation 1](https://github.com/helmfile/helmfile/blob/main/docs/configuration.md) · [Documentation 2](https://github.com/helmfile/helmfile/blob/main/docs/cli.md).
+
+22. How to Diagnose Helmfile OCI Registry 401 Errors When Repository Refresh Is Skipped
+
+    Research: [Source](https://github.com/helmfile/helmfile/issues/1847) · [Documentation 1](https://github.com/helmfile/helmfile/blob/main/docs/configuration.md) · [Documentation 2](https://github.com/helmfile/helmfile/blob/main/docs/cli.md).
+
+23. How to Handle Helmfile Provenance Checks That Fail on Unpacked OCI Charts
+
+    Research: [Source](https://github.com/helmfile/helmfile/issues/1659) · [Documentation 1](https://github.com/helmfile/helmfile/blob/main/docs/configuration.md) · [Documentation 2](https://helm.sh/docs/topics/provenance/).
+
+24. How to Fix Incorrect Kubernetes Version Checks During Helmfile Diffs
+
+    Research: [Source](https://github.com/helmfile/helmfile/issues/2275) · [Documentation 1](https://github.com/helmfile/helmfile/blob/main/docs/configuration.md) · [Documentation 2](https://github.com/databus23/helm-diff/blob/master/README.md).
+
+25. How to Render ServiceMonitor Resources with Helmfile API Capabilities in Argo CD
+
+    Research: [Source](https://github.com/helmfile/helmfile/issues/2014) · [Documentation 1](https://github.com/helmfile/helmfile/blob/main/docs/configuration.md) · [Documentation 2](https://argo-cd.readthedocs.io/en/stable/operator-manual/config-management-plugins/).
+
+26. How to Enable Helm lookup Calls During Helmfile Diff with Server-Side Dry Runs
+
+    Research: [Source](https://github.com/helmfile/helmfile/pull/1833) · [Documentation 1](https://github.com/helmfile/helmfile/blob/main/docs/configuration.md) · [Documentation 2](https://helm.sh/docs/chart_template_guide/functions_and_pipelines/).
+
+27. How to Inspect Helmfile Merged Values to Diagnose Chart Schema Validation Errors
+
+    Research: [Source](https://github.com/helmfile/helmfile/issues/1947) · [Documentation 1](https://github.com/helmfile/helmfile/blob/main/docs/cli.md) · [Documentation 2](https://helm.sh/docs/topics/charts/).
+
+28. How to Pass Comma-Containing Values to Helmfile Through a State Values File
+
+    Research: [Source](https://github.com/helmfile/helmfile/issues/1900) · [Documentation 1](https://github.com/helmfile/helmfile/blob/main/docs/cli.md) · [Documentation 2](https://github.com/helmfile/helmfile/blob/main/docs/writing-helmfile.md).
+
+29. How to Preserve Numeric-Looking Helmfile Values as Strings for Strict Chart Schemas
+
+    Research: [Source](https://github.com/helmfile/helmfile/issues/1801) · [Documentation 1](https://github.com/helmfile/helmfile/blob/main/docs/configuration.md) · [Documentation 2](https://github.com/helmfile/helmfile/blob/main/docs/writing-helmfile.md).
+
+30. How to Diagnose Missing Helmfile Plugins When HELM_PLUGINS Contains Multiple Paths
+
+    Research: [Source](https://github.com/helmfile/helmfile/issues/2411) · [Documentation 1](https://github.com/helmfile/helmfile/blob/main/docs/cli.md) · [Documentation 2](https://helm.sh/docs/topics/plugins/).
+
+31. How to Shorten Large Helmfile Diffs with Context and Output Filters
+
+    Research: [Source](https://github.com/helmfile/helmfile/discussions/2224) · [Documentation 1](https://github.com/helmfile/helmfile/blob/main/docs/configuration.md) · [Documentation 2](https://github.com/databus23/helm-diff/blob/master/README.md).
+
+32. How to Pass Release Names to a Shared Helmfile Post-Renderer
+
+    Research: [Source](https://github.com/helmfile/helmfile/issues/2580) · [Documentation 1](https://github.com/helmfile/helmfile/blob/main/docs/configuration.md) · [Documentation 2](https://github.com/helmfile/helmfile/blob/main/docs/writing-helmfile.md).
+
+33. How to Reset Stale Helmfile Release Values When a Chart Adds New Defaults
+
+    Research: [Source](https://github.com/helm/helm/issues/3655) · [Documentation 1](https://github.com/helmfile/helmfile/blob/main/docs/configuration.md) · [Documentation 2](https://helm.sh/docs/helm/helm_upgrade/).
+
+34. How to Set Helmfile Timeout Overrides Without Confusing CLI Flags and Release Settings
+
+    Research: [Source](https://github.com/helmfile/helmfile/issues/1543) · [Documentation 1](https://github.com/helmfile/helmfile/blob/main/docs/cli.md) · [Documentation 2](https://github.com/helmfile/helmfile/blob/main/docs/configuration.md).
+
+35. How to Share Helmfile Timeout Defaults Across Nested State Files
+
+    Research: [Source](https://github.com/helmfile/helmfile/issues/581) · [Documentation 1](https://github.com/helmfile/helmfile/blob/main/docs/shared-configuration-across-teams.md) · [Documentation 2](https://github.com/helmfile/helmfile/blob/main/docs/writing-helmfile.md).
+
+36. How to Plan Helmfile Teardown Order for Releases with Dependencies
+
+    Research: [Source](https://github.com/roboll/helmfile/issues/2108) · [Documentation 1](https://github.com/helmfile/helmfile/blob/main/docs/releases.md) · [Documentation 2](https://github.com/helmfile/helmfile/blob/main/docs/cli.md).
+
+37. How to Keep Disabled Helmfile Releases from Unexpectedly Pulling in Dependencies
+
+    Research: [Source](https://github.com/helmfile/helmfile/issues/1464) · [Documentation 1](https://github.com/helmfile/helmfile/blob/main/docs/releases.md) · [Documentation 2](https://github.com/helmfile/helmfile/blob/main/docs/writing-helmfile.md).
+
+38. How to Route Helmfile Diff Flags Without Passing Them to helm list
+
+    Research: [Source](https://github.com/helmfile/helmfile/issues/1095) · [Documentation 1](https://github.com/helmfile/helmfile/blob/main/docs/configuration.md) · [Documentation 2](https://github.com/helmfile/helmfile/blob/main/docs/cli.md).
+
+39. How to Bound Long-Running Helmfile Hook Processes During CI Cancellation
+
+    Research: [Source](https://github.com/helmfile/helmfile/issues/2771) · [Documentation 1](https://github.com/helmfile/helmfile/blob/main/docs/hooks.md) · [Documentation 2](https://www.gnu.org/software/coreutils/manual/html_node/timeout-invocation.html).
+
+40. How to Diagnose Secrets Exposed as Plain Values in Helmfile Diff Output
+
+    Research: [Source](https://github.com/helmfile/helmfile/issues/2738) · [Documentation 1](https://github.com/helmfile/helmfile/blob/main/docs/advanced-features.md) · [Documentation 2](https://github.com/databus23/helm-diff/blob/master/README.md).
+
 ## Events
 
 1. How to Filter Kubernetes Warning Events for One Resource with `kubectl events --for`
@@ -12819,3 +12901,741 @@ Research: [OneUptime air-gapped alerting](https://oneuptime.com/enterprise/air-g
 20. How to Keep Custom Alertmanager API Alerts Firing with Periodic Refreshes
 
     Research: [Source](https://github.com/prometheus/alertmanager/issues/3341) · [Documentation](https://prometheus.io/docs/alerting/latest/alerts_api/).
+
+## Baggage
+
+1. How to Replace Activity.AddBaggage with the OpenTelemetry Baggage API in .NET
+
+    Research: [Source](https://github.com/open-telemetry/opentelemetry-dotnet/issues/5660) · [Documentation](https://github.com/open-telemetry/opentelemetry-dotnet/blob/main/src/OpenTelemetry.Api/README.md).
+
+2. How to Test .NET Baggage Isolation Between Parallel Tasks After an SDK Upgrade
+
+    Research: [Source](https://github.com/open-telemetry/opentelemetry-dotnet/issues/7449) · [Documentation 1](https://github.com/open-telemetry/opentelemetry-dotnet/blob/main/src/OpenTelemetry.Api/README.md) · [Documentation 2](https://github.com/open-telemetry/opentelemetry-dotnet/blob/main/RELEASENOTES.md).
+
+3. How to Return Baggage Enrichment from Awaited .NET Helpers to Their Caller
+
+    Research: [Source](https://github.com/open-telemetry/opentelemetry-dotnet/issues/7449) · [Documentation](https://github.com/open-telemetry/opentelemetry-dotnet/blob/main/src/OpenTelemetry.Api/README.md).
+
+4. How to Activate Baggage for Browser Fetch Calls with OpenTelemetry context.with
+
+    Research: [Source](https://stackoverflow.com/questions/79303448/how-to-add-a-default-baggage-header-to-all-fetch-requests-in-opentelemetry-for-b) · [Documentation](https://opentelemetry.io/docs/languages/js/context/).
+
+5. How to Keep W3C Trace Headers When Adding a Baggage Propagator in JavaScript
+
+    Research: [Source](https://stackoverflow.com/questions/79303448/how-to-add-a-default-baggage-header-to-all-fetch-requests-in-opentelemetry-for-b) · [Documentation](https://opentelemetry.io/docs/specs/otel/context/api-propagators/).
+
+6. How to Copy Only Approved Baggage Keys into Java Auto-Instrumented Spans
+
+    Research: [Source](https://stackoverflow.com/questions/71617845/using-baggage-with-opentelemetry-java-automaton-tools) · [Documentation](https://opentelemetry.io/docs/concepts/signals/baggage/).
+
+7. How to Diagnose Baggage Added After a Java Span Starts That Is Missing from That Span
+
+    Research: [Source](https://stackoverflow.com/questions/74761054/opentelemetry-custom-traceid-addition) · [Documentation](https://opentelemetry.io/docs/languages/java/api/).
+
+8. How to Trace Missing Baggage in WebFlux Logs Across WebClient Thread Changes
+
+    Research: [Source](https://github.com/open-telemetry/opentelemetry-java-instrumentation/discussions/10112) · [Documentation](https://github.com/open-telemetry/opentelemetry-java-instrumentation/blob/main/instrumentation/logback/logback-mdc-1.0/library/README.md).
+
+9. How to Map OpenTelemetry Baggage to Logback MDC Fields with the baggage Prefix
+
+    Research: [Source](https://github.com/open-telemetry/opentelemetry-java-instrumentation/discussions/10112) · [Documentation](https://github.com/open-telemetry/opentelemetry-java-instrumentation/blob/main/instrumentation/logback/logback-mdc-1.0/library/README.md).
+
+10. How to Keep Business Correlation IDs in Baggage Without Replacing OpenTelemetry Trace IDs
+
+    Research: [Source](https://stackoverflow.com/questions/74761054/opentelemetry-custom-traceid-addition) · [Documentation](https://opentelemetry.io/docs/specs/otel/baggage/api/).
+
+11. How to Round-Trip Baggage Values Containing Equals Signs Across JavaScript Services
+
+    Research: [Source](https://github.com/open-telemetry/opentelemetry-js/pull/3975) · [Documentation](https://www.w3.org/TR/baggage/).
+
+12. How to Audit Baggage Key Casing Before Upgrading OpenTelemetry .NET
+
+    Research: [Source](https://github.com/open-telemetry/opentelemetry-dotnet/issues/7449) · [Documentation](https://github.com/open-telemetry/opentelemetry-dotnet/blob/main/RELEASENOTES.md).
+
+13. How to Validate Baggage Values Before Turning Them into Metric Dimensions
+
+    Research: [Source](https://github.com/open-telemetry/opentelemetry-specification/issues/1490) · [Documentation](https://opentelemetry.io/docs/concepts/signals/baggage/).
+
+14. How to Apply an Application Baggage Schema at Service Ingress
+
+    Research: [Source](https://github.com/open-telemetry/opentelemetry-specification/issues/1490) · [Documentation](https://opentelemetry.io/docs/specs/otel/baggage/api/).
+
+15. How to Verify Java Baggage Size Limits Before Accepting Custom Transport Metadata
+
+    Research: [Source](https://github.com/open-telemetry/opentelemetry-java/security/advisories/GHSA-rcgg-9c38-7xpx) · [Documentation](https://www.w3.org/TR/baggage/).
+
+16. How to Diagnose Go Baggage Parse Errors That Amplify Application Logs
+
+    Research: [Source](https://github.com/open-telemetry/opentelemetry-go/security/advisories/GHSA-5wrp-cwcj-q835) · [Documentation](https://pkg.go.dev/go.opentelemetry.io/otel/baggage).
+
+17. How to Restore the Previous Python Baggage Context After Request-Scoped Enrichment
+
+    Research: [Source](https://github.com/open-telemetry/opentelemetry-specification/issues/1490) · [Documentation 1](https://opentelemetry-python.readthedocs.io/en/latest/api/baggage.html) · [Documentation 2](https://opentelemetry.io/docs/languages/python/propagation/).
+
+18. How to Keep Go Baggage Changes Local to One Branch of a Request
+
+    Research: [Source](https://github.com/open-telemetry/opentelemetry-specification/issues/1490) · [Documentation](https://pkg.go.dev/go.opentelemetry.io/otel/baggage).
+
+19. How to Check That Baggage Still Reaches Downstream Services When Traces Are Unsampled
+
+    Research: [Source](https://www.reddit.com/r/OpenTelemetry/comments/1cayelv) · [Documentation](https://www.w3.org/TR/baggage/).
+
+20. How to Verify Baggage Header Truncation After Upgrading OpenTelemetry JavaScript
+
+    Research: [Source](https://github.com/open-telemetry/opentelemetry-js/security/advisories/GHSA-8988-4f7v-96qf) · [Documentation](https://github.com/open-telemetry/opentelemetry-js/blob/main/CHANGELOG.md).
+
+## Context Propagation
+
+1. How to Forward W3C Trace Context Through a Python Relay Without Recording a Local Span
+
+    Research: [Source](https://github.com/open-telemetry/opentelemetry-specification/issues/4271) · [Documentation 1](https://opentelemetry-python.readthedocs.io/en/latest/api/propagate.html) · [Documentation 2](https://opentelemetry.io/docs/languages/python/propagation/).
+
+2. How to Check Trace Context in Python Timer Callbacks That Run After Request Completion
+
+    Research: [Source](https://stackoverflow.com/questions/70772036/is-it-possible-to-get-open-telemetry-tracing-in-python-to-record-spans-that-happ) · [Documentation](https://opentelemetry-python-contrib.readthedocs.io/en/latest/instrumentation/threading/threading.html).
+
+3. How to Start Independent Root Traces for Long-Running Python Background Tasks
+
+    Research: [Source](https://stackoverflow.com/questions/76430578/creating-a-top-level-span-in-python-opentelemetry) · [Documentation](https://opentelemetry.io/docs/languages/python/instrumentation/).
+
+4. How to Keep Rust OpenTelemetry Context Active Only While an Async Future Is Polled
+
+    Research: [Source](https://github.com/open-telemetry/opentelemetry-rust-contrib/issues/791) · [Documentation 1](https://docs.rs/opentelemetry/latest/opentelemetry/trace/trait.FutureExt.html) · [Documentation 2](https://docs.rs/opentelemetry/latest/opentelemetry/context/struct.Context.html).
+
+5. How to Read Trace Context in a Python Logging Filter Without Ending the Active Span
+
+    Research: [Source](https://stackoverflow.com/questions/77699651/how-to-log-opentelemetry-data-with-python-logger-in-an-async-app) · [Documentation](https://opentelemetry.io/docs/languages/python/instrumentation/).
+
+6. How to Restore Java Trace Context Inside CompletableFuture.handle Callbacks
+
+    Research: [Source](https://stackoverflow.com/questions/79169830/opentelemetry-missing-trace) · [Documentation](https://opentelemetry.io/docs/languages/java/api/).
+
+7. How to Prevent Java Trace Context from Remaining on Reused Executor Threads
+
+    Research: [Source](https://stackoverflow.com/questions/79169830/opentelemetry-missing-trace) · [Documentation](https://opentelemetry.io/docs/languages/java/api/).
+
+8. How to Carry OpenTelemetry Context Through Kotlin Coroutine Suspension Points
+
+    Research: [Source](https://github.com/open-telemetry/opentelemetry-java-instrumentation/issues/2748) · [Documentation](https://github.com/open-telemetry/opentelemetry-java/tree/main/extensions/kotlin).
+
+9. How to Keep Gin Request Context Synchronized with Newly Created OpenTelemetry Spans
+
+    Research: [Source](https://stackoverflow.com/questions/72707748/how-can-i-pass-a-context-context-via-gins-context) · [Documentation](https://opentelemetry.io/docs/languages/go/instrumentation/).
+
+10. How to Diagnose Split Go gRPC Traces When OTEL_PROPAGATORS Is Set but No Propagator Is Registered
+
+    Research: [Source](https://stackoverflow.com/questions/76603368/unify-spans-of-different-services-with-opentelemetry) · [Documentation](https://pkg.go.dev/go.opentelemetry.io/otel/propagation).
+
+11. How to Resolve Conflicting B3 and W3C Sampling Headers in Spring Boot Requests
+
+    Research: [Source](https://stackoverflow.com/questions/79020551/springboot-3-micrometer-tracing-issue) · [Documentation](https://opentelemetry.io/docs/specs/otel/context/api-propagators/).
+
+12. How to Test Case-Insensitive Header Extraction in a Custom OpenTelemetry HTTP Carrier
+
+    Research: [Source](https://stackoverflow.com/questions/76603368/unify-spans-of-different-services-with-opentelemetry) · [Documentation](https://opentelemetry.io/docs/specs/otel/context/api-propagators/).
+
+13. How to Remove Stale Trace Context When Reusing Message Carriers for New Requests
+
+    Research: [Source](https://stackoverflow.com/questions/72668718/how-to-create-context-using-traceid-in-open-telemetry) · [Documentation](https://opentelemetry.io/docs/specs/otel/context/api-propagators/).
+
+14. How to Make Manual Node.js Spans the Active Parent of Automatically Instrumented Calls
+
+    Research: [Source](https://www.reddit.com/r/OpenTelemetry/comments/14dab9x) · [Documentation](https://opentelemetry.io/docs/languages/js/context/).
+
+15. How to Diagnose OpenTelemetry Context Lost When NestJS Observables Are Subscribed
+
+    Research: [Source](https://stackoverflow.com/questions/79139132/opentelemetry-context-propagation-in-nestjs-app) · [Documentation](https://opentelemetry.io/docs/languages/js/context/).
+
+16. How to Design Browser Trace Parents When Telemetry Starts Before Application Bootstrap
+
+    Research: [Source](https://stackoverflow.com/questions/79701951/otel-context-propagation-for-auto-instrumentation-in-a-multi-stage-bootstrap-env) · [Documentation](https://opentelemetry.io/docs/languages/js/getting-started/browser/).
+
+17. How to Diagnose Python OpenTelemetry Detach Errors After an Async Stream Is Cancelled
+
+    Research: [Source 1](https://github.com/openlit/openlit/issues/1369) · [Source 2](https://github.com/agentscope-ai/agentscope/issues/2076) · [Documentation](https://docs.python.org/3/library/contextvars.html).
+
+18. How to Close Instrumented Python Async Generators in Their Original Context with aclosing
+
+    Research: [Source](https://github.com/Azure/azure-sdk-for-python/issues/44884) · [Documentation](https://docs.python.org/3/library/contextlib.html#contextlib.aclosing).
+
+19. How to Distinguish Missing .NET ActivitySource Registration from Broken Trace Context
+
+    Research: [Source](https://stackoverflow.com/questions/77760137/opentelemetry-net-startactivespan-does-not-do-anything-while-built-in-spans-are) · [Documentation](https://opentelemetry.io/docs/languages/dotnet/instrumentation/).
+
+20. How to Replace Trace-ID-Only SQS Metadata with a Complete OpenTelemetry Parent Context
+
+    Research: [Source](https://stackoverflow.com/questions/72668718/how-to-create-context-using-traceid-in-open-telemetry) · [Documentation](https://opentelemetry.io/docs/languages/java/api/).
+
+## Metric Temporality
+
+1. How to Choose initial_value Behavior for OpenTelemetry Counters During Application Scale-Up
+
+    Research: [Source](https://github.com/open-telemetry/opentelemetry-collector-contrib/issues/20770) · [Documentation](https://raw.githubusercontent.com/open-telemetry/opentelemetry-collector-contrib/main/processor/cumulativetodeltaprocessor/README.md).
+
+2. How to Fix Cumulative-to-Delta Values That Stay Cumulative Because max_staleness Has No Unit
+
+    Research: [Source](https://github.com/open-telemetry/opentelemetry-collector-contrib/issues/44901) · [Documentation](https://raw.githubusercontent.com/open-telemetry/opentelemetry-collector-contrib/main/processor/cumulativetodeltaprocessor/README.md).
+
+3. How to Size Metric Conversion State Retention for Infrequently Updated Counters
+
+    Research: [Source](https://github.com/open-telemetry/opentelemetry-collector-contrib/issues/31016) · [Documentation](https://raw.githubusercontent.com/open-telemetry/opentelemetry-collector-contrib/main/processor/cumulativetodeltaprocessor/README.md).
+
+4. How to Diagnose Missing PromQL Increases After Delta-to-Cumulative Series Become Stale
+
+    Research: [Source](https://github.com/open-telemetry/opentelemetry-collector-contrib/issues/45053) · [Documentation](https://opentelemetry.io/docs/specs/otel/metrics/data-model/).
+
+5. How to Plan Collector Restarts for Log Counters Built with Delta-to-Cumulative Conversion
+
+    Research: [Source](https://github.com/open-telemetry/opentelemetry-collector-contrib/issues/47086) · [Documentation](https://raw.githubusercontent.com/open-telemetry/opentelemetry-collector-contrib/main/processor/deltatocumulativeprocessor/README.md).
+
+6. How to Bound Stream Counts in the Alpha OpenTelemetry Delta-to-Cumulative Processor
+
+    Research: [Source](https://github.com/open-telemetry/opentelemetry-collector-contrib/issues/31016) · [Documentation](https://raw.githubusercontent.com/open-telemetry/opentelemetry-collector-contrib/main/processor/deltatocumulativeprocessor/README.md).
+
+7. How to Find Exponential Histogram Memory Growth During Delta-to-Cumulative Conversion
+
+    Research: [Source](https://github.com/open-telemetry/opentelemetry-collector-contrib/issues/33277) · [Documentation](https://github.com/open-telemetry/opentelemetry-collector-contrib/pull/36874).
+
+8. How to Investigate Exponential Histogram Panics in Older OpenTelemetry Conversion Pipelines
+
+    Research: [Source](https://github.com/open-telemetry/opentelemetry-collector-contrib/issues/42163) · [Documentation](https://github.com/open-telemetry/opentelemetry-collector-contrib/pull/44738).
+
+9. How to Verify Inactive Java Counter Series Stop Exporting After Switching to Delta Temporality
+
+    Research: [Source](https://stackoverflow.com/questions/78462200/open-telemetry-equivalent-of-statsd-metric-expiry) · [Documentation](https://opentelemetry.io/docs/specs/otel/metrics/sdk_exporters/otlp/).
+
+10. How to Compare DELTA and LOWMEMORY Temporality for Observable Counters
+
+    Research: [Source](https://stackoverflow.com/questions/78462200/open-telemetry-equivalent-of-statsd-metric-expiry) · [Documentation](https://opentelemetry.io/docs/specs/otel/metrics/sdk_exporters/otlp/).
+
+11. How to Interpret UpDownCounters That Remain Cumulative Under a DELTA Export Preference
+
+    Research: [Source](https://stackoverflow.com/questions/78462200/open-telemetry-equivalent-of-statsd-metric-expiry) · [Documentation](https://opentelemetry.io/docs/specs/otel/metrics/sdk_exporters/otlp/).
+
+12. How to Trace Per-Request PHP Counter Resets Through a Collector Metrics Pipeline
+
+    Research: [Source](https://stackoverflow.com/questions/73449831/opentelemetry-counter-in-laravel-php) · [Documentation](https://opentelemetry.io/docs/specs/otel/metrics/data-model/).
+
+13. How to Evaluate Prometheus Experimental OTLP Delta Ingestion for Short-Lived PHP Workers
+
+    Research: [Source](https://stackoverflow.com/questions/73449831/opentelemetry-counter-in-laravel-php) · [Documentation](https://prometheus.io/docs/guides/opentelemetry/).
+
+14. How to Check Gauge Passthrough When Adding the Alpha Delta-to-Cumulative Processor
+
+    Research: [Source](https://github.com/open-telemetry/opentelemetry-collector-contrib/issues/35284) · [Documentation](https://github.com/open-telemetry/opentelemetry-collector-contrib/pull/35372).
+
+15. How to Diagnose False Counter Resets Caused by Missing Scope Attributes in Conversion State
+
+    Research: [Source](https://github.com/open-telemetry/opentelemetry-collector-contrib/issues/52162) · [Documentation](https://github.com/open-telemetry/opentelemetry-collector-contrib/pull/52163).
+
+16. How to Convert Signal-to-Metrics Counts for a Cumulative Backend Without Invalid Connector Settings
+
+    Research: [Source](https://github.com/open-telemetry/opentelemetry-collector-contrib/issues/45484) · [Documentation](https://github.com/open-telemetry/opentelemetry-collector-contrib/blob/main/connector/signaltometricsconnector/README.md).
+
+17. How to Separate Gauge Expiration from Counter Temporality in OpenTelemetry .NET
+
+    Research: [Source](https://stackoverflow.com/questions/75612838/reset-system-diagnostics-metrics-observablegauge) · [Documentation](https://opentelemetry.io/docs/specs/otel/metrics/sdk/).
+
+18. How to Check Counter Start Timestamps Before Treating Container Restarts as Metric Loss
+
+    Research: [Source](https://www.reddit.com/r/OpenTelemetry/comments/1p7u50n/metrics_reset_on_container_restart/) · [Documentation](https://opentelemetry.io/docs/specs/otel/metrics/data-model/).
+
+19. How to Compare PromQL Rate Results Before and After Moving Temporality Conversion into a Collector
+
+    Research: [Source](https://github.com/open-telemetry/opentelemetry-collector-contrib/issues/45053) · [Documentation](https://prometheus.io/docs/prometheus/latest/querying/functions/).
+
+20. How to Inspect Dropped Datapoints and Tracked Streams in Cumulative-to-Delta Self-Metrics
+
+    Research: [Source](https://github.com/open-telemetry/opentelemetry-collector-contrib/issues/45927) · [Documentation 1](https://github.com/open-telemetry/opentelemetry-collector-contrib/releases) · [Documentation 2](https://github.com/open-telemetry/opentelemetry-collector-contrib/blob/main/processor/cumulativetodeltaprocessor/documentation.md).
+
+## KEDA
+
+1. How to Trace KEDA FailedGetExternalMetric Errors Through the Kubernetes Aggregation API
+
+    Research: [Source](https://stackoverflow.com/questions/73880792/keda-autoscaling-not-working-client-timeout-exceeded-while-awaiting-headers) · [Documentation](https://keda.sh/docs/2.20/troubleshooting/).
+
+2. How to Detect Missing Prometheus Series Before KEDA Treats Them as Zero Load
+
+    Research: [Source](https://github.com/kedacore/keda/issues/3065) · [Documentation](https://keda.sh/docs/2.20/scalers/prometheus/).
+
+3. How to Reduce Prometheus Query Load with KEDA useCachedMetrics
+
+    Research: [Source](https://github.com/kedacore/keda/discussions/5269) · [Documentation](https://keda.sh/docs/2.20/concepts/scaling-deployments/).
+
+4. How to Measure KEDA Scale-Up Delay Across Scraping, Polling, and Pod Startup
+
+    Research: [Source](https://www.reddit.com/r/kubernetes/comments/1m2ddqj) · [Documentation 1](https://keda.sh/docs/2.20/reference/scaledobject-spec/) · [Documentation 2](https://keda.sh/docs/2.20/scalers/prometheus/).
+
+5. How to Choose Separate Activation and Scaling Thresholds for KEDA Prometheus Triggers
+
+    Research: [Source](https://github.com/kedacore/keda/discussions/7257) · [Documentation 1](https://keda.sh/docs/2.20/concepts/scaling-deployments/) · [Documentation 2](https://keda.sh/docs/2.20/scalers/prometheus/).
+
+6. How to Force KEDA Workload Activation During a Zero-Replica Deployment Rollout
+
+    Research: [Source](https://github.com/kedacore/keda/discussions/7257) · [Documentation](https://keda.sh/docs/2.20/concepts/scaling-deployments/).
+
+7. How to Test KEDA Fallback Replicas During a Prometheus Outage
+
+    Research: [Source](https://github.com/kedacore/keda/issues/4249) · [Documentation](https://keda.sh/docs/2.20/reference/scaledobject-spec/).
+
+8. How to Configure Per-Trigger Failover with KEDA 2.20 Scaling Modifiers
+
+    Research: [Source](https://github.com/kedacore/keda/discussions/7366) · [Documentation](https://keda.sh/docs/2.20/reference/scaledobject-spec/).
+
+9. How to Diagnose KEDA Formula Type Errors in Composite Scaling Metrics
+
+    Research: [Source](https://github.com/kedacore/keda/issues/8270) · [Documentation 1](https://keda.sh/docs/2.20/reference/scaledobject-spec/) · [Documentation 2](https://github.com/kedacore/keda/blob/main/pkg/scaling/modifiers/formula.go).
+
+10. How to Verify KEDA Pause State Against the Deployment Replica Count
+
+    Research: [Source](https://github.com/kedacore/keda/issues/7231) · [Documentation 1](https://keda.sh/docs/2.20/concepts/scaling-deployments/) · [Documentation 2](https://github.com/kedacore/keda/releases).
+
+11. How to Suspend KEDA Scale-In During Incident Recovery While Keeping Scale-Out Enabled
+
+    Research: [Source](https://github.com/kedacore/keda/discussions/7444) · [Documentation](https://keda.sh/docs/2.20/concepts/scaling-deployments/).
+
+12. How to Distinguish KEDA Cooldown from HPA Scale-Down Stabilization
+
+    Research: [Source](https://www.reddit.com/r/kubernetes/comments/1n5o1ot) · [Documentation 1](https://keda.sh/docs/2.20/reference/scaledobject-spec/) · [Documentation 2](https://kubernetes.io/docs/tasks/run-application/horizontal-pod-autoscale/).
+
+13. How to Validate Cron and Load Triggers Together Before Scheduling KEDA Scale-to-Zero
+
+    Research: [Source](https://github.com/kedacore/keda/issues/7861) · [Documentation 1](https://keda.sh/docs/2.20/reference/scaledobject-spec/) · [Documentation 2](https://keda.sh/docs/2.20/scalers/cron/).
+
+14. How to Interpret Milli-Unit Kafka Lag Values in a KEDA-Managed HPA
+
+    Research: [Source](https://github.com/kedacore/keda/discussions/4466) · [Documentation 1](https://keda.sh/docs/2.20/scalers/apache-kafka/) · [Documentation 2](https://kubernetes.io/docs/reference/kubernetes-api/common-definitions/quantity/).
+
+15. How to Recover KEDA Kafka Activation When a Consumer Group Has No Committed Offsets
+
+    Research: [Source](https://www.reddit.com/r/devops/comments/10fgtwb) · [Documentation](https://keda.sh/docs/2.20/scalers/apache-kafka/).
+
+16. How to Diagnose Idle Kafka Consumers After KEDA Scales Beyond Useful Partition Parallelism
+
+    Research: [Source](https://www.reddit.com/r/apachekafka/comments/1g6kv7m) · [Documentation](https://keda.sh/docs/2.20/scalers/apache-kafka/).
+
+17. How to Reduce Kafka Rebalance Churn Caused by KEDA Scale-Down Decisions
+
+    Research: [Source](https://github.com/kedacore/keda/discussions/4742) · [Documentation 1](https://keda.sh/docs/2.20/scalers/apache-kafka/) · [Documentation 2](https://keda.sh/docs/2.20/reference/scaledobject-spec/).
+
+18. How to Investigate Uneven Kafka Partition Lag Before Increasing KEDA Replicas
+
+    Research: [Source](https://stackoverflow.com/questions/73869810/reason-on-uneven-lag-on-kafka-partitions/73934515) · [Documentation](https://keda.sh/docs/2.20/scalers/apache-kafka/).
+
+19. How to Compare Default and Eager KEDA ScaledJob Strategies with a Queue Replay
+
+    Research: [Source](https://github.com/kedacore/keda/issues/6416) · [Documentation](https://keda.sh/docs/2.20/reference/scaledjob-spec/).
+
+20. How to Account for Pending Jobs When Checking KEDA ScaledJob Concurrency Limits
+
+    Research: [Source](https://github.com/kedacore/keda/issues/7329) · [Documentation 1](https://keda.sh/docs/2.20/reference/scaledjob-spec/) · [Documentation 2](https://github.com/kedacore/keda/releases).
+
+## Network Policies
+
+1. How to Combine Namespace and Pod Selectors Without Accidentally Broadening NetworkPolicy Access
+
+    Research: [Source](https://stackoverflow.com/questions/50977229/kubernetes-network-policy-for-communication-between-services/55582548) · [Documentation 1](https://kubernetes.io/docs/concepts/services-networking/network-policies/) · [Documentation 2](https://kubernetes.io/docs/reference/kubernetes-api/policy-resources/network-policy-v1/).
+
+2. How to Fix Cross-Namespace NetworkPolicy Selectors That Match No Exporter Pods
+
+    Research: [Source](https://stackoverflow.com/questions/66778344/networkpolicy-in-kubernetes-doesnt-match-on-podselector) · [Documentation 1](https://kubernetes.io/docs/concepts/services-networking/network-policies/) · [Documentation 2](https://kubernetes.io/docs/reference/kubernetes-api/policy-resources/network-policy-v1/).
+
+3. How to Check Both Egress and Ingress Policies When OTLP Connections Time Out
+
+    Research: [Source](https://stackoverflow.com/questions/71253417/kubernetes-network-policy-allowing-traffic-to-service-over-specific-port-only) · [Documentation](https://kubernetes.io/docs/concepts/services-networking/network-policies/).
+
+4. How to Permit Prometheus Scrapes from a Monitoring Namespace Without Opening Application Ports
+
+    Research: [Source](https://stackoverflow.com/questions/49817558/context-deadline-exceeded-prometheus) · [Documentation 1](https://kubernetes.io/docs/concepts/services-networking/network-policies/) · [Documentation 2](https://kubernetes.io/docs/reference/kubernetes-api/policy-resources/network-policy-v1/).
+
+5. How to Test DNS over TCP After Adding a UDP-Only Kubernetes Egress Rule
+
+    Research: [Source](https://stackoverflow.com/questions/65424614/kubernetes-networkpolicies-blocking-dns) · [Documentation 1](https://kubernetes.io/docs/concepts/services-networking/network-policies/) · [Documentation 2](https://kubernetes.io/docs/concepts/services-networking/dns-pod-service/).
+
+6. How to Diagnose NetworkPolicy DNS Failures When Pods Use NodeLocal DNSCache
+
+    Research: [Source](https://www.reddit.com/r/kubernetes/comments/1xjas5o/defaultdeny_networkpolicy_silently_breaks_dns_and/) · [Documentation 1](https://kubernetes.io/docs/concepts/services-networking/network-policies/) · [Documentation 2](https://kubernetes.io/docs/tasks/administer-cluster/nodelocaldns/).
+
+7. How to Match NetworkPolicy Ports to a Service TargetPort Translation
+
+    Research: [Source](https://stackoverflow.com/questions/71253417/kubernetes-network-policy-allowing-traffic-to-service-over-specific-port-only) · [Documentation 1](https://kubernetes.io/docs/concepts/services-networking/service/) · [Documentation 2](https://kubernetes.io/docs/reference/kubernetes-api/policy-resources/network-policy-v1/).
+
+8. How to Trace Kubernetes API Egress Through Service NAT Before Writing NetworkPolicy Rules
+
+    Research: [Source](https://stackoverflow.com/questions/50102943/how-to-allow-access-to-kubernetes-api-using-egress-network-policy) · [Documentation 1](https://kubernetes.io/docs/concepts/services-networking/network-policies/) · [Documentation 2](https://kubernetes.io/docs/concepts/services-networking/service/).
+
+9. How to Replace Service Label Selectors with Backend Pod Selectors in NetworkPolicy
+
+    Research: [Source](https://stackoverflow.com/questions/66423222/kubernetes-networkpolicy-limit-egress-traffic-to-service) · [Documentation 1](https://kubernetes.io/docs/concepts/services-networking/service/) · [Documentation 2](https://kubernetes.io/docs/reference/kubernetes-api/policy-resources/network-policy-v1/).
+
+10. How to Retest Established Connections After Tightening Kubernetes Network Policies
+
+    Research: [Source](https://stackoverflow.com/questions/66743550/kubernetes-networkpolicy-is-this-a-stateful-firewall) · [Documentation](https://kubernetes.io/docs/concepts/services-networking/network-policies/).
+
+11. How to Validate NetworkPolicy Reply Traffic Without Opening Ephemeral Ports
+
+    Research: [Source](https://stackoverflow.com/questions/66743550/kubernetes-networkpolicy-is-this-a-stateful-firewall) · [Documentation 1](https://kubernetes.io/docs/concepts/services-networking/network-policies/) · [Documentation 2](https://kubernetes.io/docs/reference/kubernetes-api/policy-resources/network-policy-v1/).
+
+12. How to Replace Ping with TCP Probes When Testing Kubernetes NetworkPolicy Isolation
+
+    Research: [Source](https://stackoverflow.com/questions/68208770/networkpolicy-doesnt-block-all-the-pods-communication) · [Documentation 1](https://kubernetes.io/docs/concepts/services-networking/network-policies/) · [Documentation 2](https://kubernetes.io/docs/tasks/administer-cluster/declare-network-policy/).
+
+13. How to Find Allow-All Policies That Defeat a Kubernetes Default-Deny Baseline
+
+    Research: [Source](https://stackoverflow.com/questions/49124314/conflicting-networkpolicies-in-kubernetes) · [Documentation 1](https://kubernetes.io/docs/concepts/services-networking/network-policies/) · [Documentation 2](https://kubernetes.io/docs/reference/kubernetes-api/policy-resources/network-policy-v1/).
+
+14. How to Place CronJob Labels on Pod Templates So Network Policies Select Scheduled Workloads
+
+    Research: [Source](https://stackoverflow.com/questions/66478086/kubernetes-cronjob-labeling-with-a-network-policy) · [Documentation 1](https://kubernetes.io/docs/concepts/workloads/controllers/cron-jobs/) · [Documentation 2](https://kubernetes.io/docs/reference/kubernetes-api/policy-resources/network-policy-v1/).
+
+15. How to Use Immutable Namespace Name Labels in Cross-Namespace NetworkPolicy Rules
+
+    Research: [Source](https://stackoverflow.com/questions/70485011/limit-access-of-services-deployed-in-kubernetes-namespace/70485296) · [Documentation 1](https://kubernetes.io/docs/reference/labels-annotations-taints/) · [Documentation 2](https://kubernetes.io/docs/reference/kubernetes-api/policy-resources/network-policy-v1/).
+
+16. How to Prove NetworkPolicy Enforcement with Allowed and Denied Connection Tests
+
+    Research: [Source](https://stackoverflow.com/questions/59534752/how-to-verify-cluster-network-policy-configuration-support) · [Documentation](https://kubernetes.io/docs/tasks/administer-cluster/declare-network-policy/).
+
+17. How to Choose a DNS-Aware Egress Policy When Kubernetes NetworkPolicy Cannot Select Hostnames
+
+    Research: [Source](https://stackoverflow.com/questions/70677205/is-it-possible-to-allow-egress-traffic-by-hostname) · [Documentation 1](https://kubernetes.io/docs/concepts/services-networking/network-policies/) · [Documentation 2](https://docs.cilium.io/en/stable/security/dns/).
+
+18. How to Keep IP and Port Pairs Separate in Kubernetes NetworkPolicy Egress Rules
+
+    Research: [Source](https://stackoverflow.com/questions/72363085/how-to-set-egress-ipblock-for-multiple-ips-and-ports) · [Documentation](https://kubernetes.io/docs/reference/kubernetes-api/policy-resources/network-policy-v1/).
+
+19. How to Distinguish Kubelet Probe Traffic from Application Dependency Failures Under NetworkPolicy
+
+    Research: [Source](https://stackoverflow.com/questions/64378694/kubernetes-health-checks-failing-with-network-policies-enabled) · [Documentation 1](https://kubernetes.io/docs/concepts/services-networking/network-policies/) · [Documentation 2](https://kubernetes.io/docs/tasks/configure-pod-container/configure-liveness-readiness-startup-probes/).
+
+20. How to Reproduce Ingress Timeouts That Disappear During kubectl Port-Forward Tests
+
+    Research: [Source](https://stackoverflow.com/questions/75493597/nginx-ingress-getting-504-gateway-time-out) · [Documentation 1](https://kubernetes.io/docs/concepts/services-networking/network-policies/) · [Documentation 2](https://kubernetes.io/docs/tasks/access-application-cluster/port-forward-access-application-cluster/).
+
+## K3s
+
+1. How to Reduce Air-Gapped K3s Restart Delays with Conditional Image Imports
+
+    Research: [Source](https://github.com/k3s-io/k3s/issues/15026) · [Documentation](https://docs.k3s.io/add-ons/import-images).
+
+2. How to Reimport Pruned K3s Images When an Unchanged Air-Gap Archive Is Skipped
+
+    Research: [Source](https://github.com/k3s-io/k3s/issues/15026) · [Documentation 1](https://docs.k3s.io/add-ons/import-images) · [Documentation 2](https://docs.k3s.io/installation/airgap).
+
+3. How to Diagnose K3s Air-Gap Import Errors Caused by Duplicate Registry Retagging
+
+    Research: [Source](https://github.com/k3s-io/k3s/issues/14482) · [Documentation 1](https://docs.k3s.io/installation/airgap) · [Documentation 2](https://github.com/k3s-io/k3s/blob/main/pkg/agent/containerd/containerd.go).
+
+4. How to Find Preloaded K3s Images Missing from the Kubernetes Containerd Namespace
+
+    Research: [Source](https://github.com/k3s-io/k3s/discussions/10443) · [Documentation 1](https://docs.k3s.io/add-ons/import-images) · [Documentation 2](https://docs.k3s.io/advanced).
+
+5. How to Verify Air-Gap Image Coverage Before Rescheduling K3s Pods to Another Node
+
+    Research: [Source](https://github.com/k3s-io/k3s/discussions/10443) · [Documentation 1](https://docs.k3s.io/add-ons/import-images) · [Documentation 2](https://kubernetes.io/docs/concepts/containers/images/).
+
+6. How to Stage K3s System Images Before an Offline system-upgrade-controller Rollout
+
+    Research: [Source](https://github.com/k3s-io/k3s/issues/12022) · [Documentation 1](https://docs.k3s.io/installation/airgap) · [Documentation 2](https://docs.k3s.io/upgrades/automated).
+
+7. How to Pin Offline K3s Upgrade Plans Without Depending on an Internet Release Channel
+
+    Research: [Source](https://www.reddit.com/r/kubernetes/comments/1foobm6) · [Documentation 1](https://docs.k3s.io/upgrades/automated) · [Documentation 2](https://docs.k3s.io/installation/airgap).
+
+8. How to Diagnose an Offline K3s Upgrade That Still Starts the Previous Binary
+
+    Research: [Source](https://slack-archive.rancher.com/t/34413414/hi-everyone-i-have-a-question-regarding-upgrading-our-k3s-se) · [Documentation 1](https://docs.k3s.io/upgrades/manual) · [Documentation 2](https://docs.k3s.io/installation/configuration).
+
+9. How to Provide a Default Route for K3s Nodes on an Isolated Network
+
+    Research: [Source](https://github.com/k3s-io/k3s/issues/11640) · [Documentation 1](https://docs.k3s.io/installation/airgap) · [Documentation 2](https://docs.k3s.io/installation/requirements).
+
+10. How to Diagnose Internal DNS Failures on K3s Hosts Without Upstream Nameservers
+
+    Research: [Source](https://github.com/k3s-io/k3s/discussions/7306) · [Documentation 1](https://docs.k3s.io/installation/airgap) · [Documentation 2](https://docs.k3s.io/advanced).
+
+11. How to Separate Registry CA Trust Errors from Authentication Failures in K3s
+
+    Research: [Source](https://github.com/k3s-io/k3s/discussions/3830) · [Documentation](https://docs.k3s.io/installation/private-registry).
+
+12. How to Verify Which Image Registries K3s Spegel Nodes Advertise to Their Peers
+
+    Research: [Source](https://github.com/k3s-io/k3s/discussions/13456) · [Documentation](https://docs.k3s.io/installation/registry-mirror).
+
+13. How to Diagnose K3s Spegel Image Availability After the Only Seed Node Restarts
+
+    Research: [Source](https://slack-archive.rancher.com/t/33115165/i-m-getting-imagepullbackoff-on-agent-node-single-node-works) · [Documentation](https://docs.k3s.io/installation/registry-mirror).
+
+14. How to Migrate K3s Runtime Customizations to a Containerd Version 3 Template
+
+    Research: [Source](https://github.com/k3s-io/k3s/issues/3378) · [Documentation 1](https://docs.k3s.io/advanced) · [Documentation 2](https://github.com/k3s-io/k3s/blob/main/pkg/agent/templates/templates.go).
+
+15. How to Resolve Duplicate TOML Tables in K3s Containerd Template Extensions
+
+    Research: [Source](https://github.com/k3s-io/k3s/issues/10551) · [Documentation 1](https://docs.k3s.io/advanced) · [Documentation 2](https://github.com/k3s-io/k3s/blob/main/pkg/agent/templates/templates.go).
+
+16. How to Match the Original K3s Server Token to an etcd Snapshot Recovery
+
+    Research: [Source](https://github.com/k3s-io/k3s/issues/4522) · [Documentation 1](https://docs.k3s.io/datastore/backup-restore) · [Documentation 2](https://docs.k3s.io/cli/etcd-snapshot).
+
+17. How to Restore a Local K3s etcd Snapshot When S3 Backup Settings Are Still Enabled
+
+    Research: [Source](https://github.com/k3s-io/k3s/discussions/8242) · [Documentation](https://docs.k3s.io/cli/etcd-snapshot).
+
+18. How to Scrape K3s Supervisor Metrics Without Duplicating Embedded Component Series
+
+    Research: [Source](https://github.com/k3s-io/k3s/issues/9951) · [Documentation](https://docs.k3s.io/reference/metrics).
+
+19. How to Alert on K3s Certificate Expiration from Supervisor Metrics
+
+    Research: [Source](https://github.com/k3s-io/k3s/issues/9951) · [Documentation 1](https://docs.k3s.io/reference/metrics) · [Documentation 2](https://docs.k3s.io/cli/certificate).
+
+20. How to Compare Critical K3s Server Flags Before Adding a High-Availability Member
+
+    Research: [Source](https://github.com/k3s-io/k3s/issues/12745) · [Documentation 1](https://docs.k3s.io/installation/configuration) · [Documentation 2](https://docs.k3s.io/cli/server).
+
+## Sigstore
+
+1. How to Diagnose Sigstore TUF Network Calls During Key-Based Cosign Verification
+
+    Research: [Source](https://github.com/sigstore/cosign/issues/4550) · [Documentation 1](https://github.com/sigstore/cosign/blob/main/doc/cosign_verify-blob.md) · [Documentation 2](https://github.com/sigstore/cosign/blob/main/doc/cosign_trusted-root_create.md).
+
+2. How to Diagnose Missing Local Cosign Signatures After Signing with Upload Disabled
+
+    Research: [Source](https://github.com/sigstore/cosign/issues/5110) · [Documentation 1](https://github.com/sigstore/cosign/blob/main/doc/cosign_save.md) · [Documentation 2](https://github.com/sigstore/cosign/blob/main/doc/cosign_sign.md) · [Documentation 3](https://github.com/sigstore/cosign/blob/main/doc/cosign_verify.md).
+
+3. How to Test Cosign Offline Verification of an OCI Index Separately from Its Platform Images
+
+    Research: [Source](https://github.com/sigstore/cosign/issues/4937) · [Documentation 1](https://github.com/sigstore/cosign/blob/main/doc/cosign_verify.md) · [Documentation 2](https://github.com/sigstore/cosign/blob/main/doc/cosign_save.md).
+
+4. How to Convert Legacy Cosign Blob Bundles Without Assuming Image Bundles Use the Same Migration Path
+
+    Research: [Source](https://github.com/sigstore/cosign/issues/5138) · [Documentation 1](https://github.com/sigstore/cosign/blob/main/doc/cosign_bundle_create.md) · [Documentation 2](https://github.com/sigstore/cosign/blob/main/doc/cosign_verify-blob.md).
+
+5. How to Check Sigstore Bundle Compatibility Before Changing a Cosign Signing Configuration
+
+    Research: [Source](https://github.com/sigstore/cosign/issues/4831) · [Documentation 1](https://github.com/sigstore/cosign/blob/main/doc/cosign_signing-config_create.md) · [Documentation 2](https://github.com/sigstore/cosign/blob/main/doc/cosign_sign.md).
+
+6. How to Diagnose Cosign Verification Timeouts Caused by Large Attestation Bundles
+
+    Research: [Source](https://github.com/sigstore/cosign/issues/5154) · [Documentation 1](https://github.com/sigstore/cosign/blob/main/doc/cosign_verify.md) · [Documentation 2](https://github.com/sigstore/cosign/blob/main/doc/cosign_verify-attestation.md).
+
+7. How to Handle Multiple Cosign Attestations After Moving to the Sigstore Bundle Format
+
+    Research: [Source](https://github.com/sigstore/cosign/issues/5164) · [Documentation 1](https://github.com/sigstore/cosign/blob/main/doc/cosign_attest.md) · [Documentation 2](https://github.com/sigstore/cosign/blob/main/doc/cosign_verify-attestation.md).
+
+8. How to Select the Correct Predicate Type When Cosign Attestation Verification Finds No Match
+
+    Research: [Source](https://github.com/sigstore/cosign/issues/2264) · [Documentation](https://github.com/sigstore/cosign/blob/main/doc/cosign_verify-attestation.md).
+
+9. How to Publish Syft-Generated SBOMs in a Cosign Attestation Format Consumers Recognize
+
+    Research: [Source](https://github.com/sigstore/cosign/issues/4773) · [Documentation 1](https://github.com/sigstore/cosign/blob/main/doc/cosign_attest.md) · [Documentation 2](https://github.com/anchore/syft/blob/main/README.md).
+
+10. How to Diagnose Cosign Rekor Conflicts After a Signature Upload Fails
+
+    Research: [Source](https://github.com/sigstore/cosign/issues/4711) · [Documentation 1](https://github.com/sigstore/cosign/blob/main/doc/cosign_sign.md) · [Documentation 2](https://github.com/sigstore/rekor/blob/main/README.md).
+
+11. How to Audit Certificate and Timestamp Authorities Inside a Sigstore Trusted Root File
+
+    Research: [Source](https://github.com/sigstore/cosign/issues/5168) · [Documentation 1](https://github.com/sigstore/cosign/blob/main/doc/cosign_trusted-root_create.md) · [Documentation 2](https://github.com/sigstore/protobuf-specs/blob/main/protos/sigstore_trustroot.proto).
+
+12. How to Diagnose Certificate Transparency Requirements When Cosign Uses a Private CA
+
+    Research: [Source](https://github.com/sigstore/cosign/issues/5168) · [Documentation 1](https://github.com/sigstore/cosign/blob/main/doc/cosign_trusted-root_create.md) · [Documentation 2](https://github.com/sigstore/cosign/blob/main/doc/cosign_verify-blob.md).
+
+13. How to Include a Private Timestamp Authority in Cosign Verification Trust Material
+
+    Research: [Source](https://github.com/sigstore/cosign/issues/4847) · [Documentation 1](https://github.com/sigstore/cosign/blob/main/doc/cosign_trusted-root_create.md) · [Documentation 2](https://github.com/sigstore/cosign/blob/main/pkg/cosign/verify.go).
+
+14. How to Test Cosign Signing and Verification Before Migrating to Rekor v2
+
+    Research: [Source](https://github.com/sigstore/cosign/issues/4684) · [Documentation 1](https://github.com/sigstore/cosign/blob/main/doc/cosign_signing-config_create.md) · [Documentation 2](https://github.com/sigstore/cosign/releases).
+
+15. How to Diagnose Cosign P-384 Blob Signatures That Fail Verification with the Matching Key
+
+    Research: [Source](https://github.com/sigstore/cosign/issues/5092) · [Documentation 1](https://github.com/sigstore/cosign/blob/main/doc/cosign_sign-blob.md) · [Documentation 2](https://github.com/sigstore/cosign/blob/main/doc/cosign_verify-blob.md).
+
+16. How to Diagnose Cosign Azure Key Vault Signing Failures at Envelope Verification
+
+    Research: [Source](https://github.com/sigstore/cosign/issues/4915) · [Documentation 1](https://github.com/sigstore/cosign/blob/main/doc/cosign_sign.md) · [Documentation 2](https://docs.sigstore.dev/cosign/signing/signing_with_containers/).
+
+17. How to Verify Release-Channel Claims in Sigstore Blob Attestations
+
+    Research: [Source](https://github.com/sigstore/cosign/issues/5169) · [Documentation 1](https://github.com/sigstore/cosign/blob/main/doc/cosign_attest-blob.md) · [Documentation 2](https://github.com/sigstore/cosign/blob/main/doc/cosign_verify-blob-attestation.md).
+
+18. How to Enforce Repository Allowlisting Separately from a Sigstore Bundle Digest Check
+
+    Research: [Source](https://github.com/sigstore/cosign/issues/5014) · [Documentation 1](https://github.com/sigstore/cosign/blob/main/specs/SIGNATURE_SPEC.md) · [Documentation 2](https://github.com/in-toto/attestation/blob/main/spec/v1/statement.md).
+
+19. How to Inventory Cosign Commands That Can Read OCI Referrers Before Migrating a Pipeline
+
+    Research: [Source](https://github.com/sigstore/cosign/issues/4335) · [Documentation 1](https://github.com/sigstore/cosign/blob/main/CHANGELOG.md) · [Documentation 2](https://github.com/sigstore/cosign/releases).
+
+20. How to Test Sigstore Policy Controller Bundle Policies Before Enforcing Them
+
+    Research: [Source](https://github.com/sigstore/policy-controller/issues/1406) · [Documentation 1](https://github.com/sigstore/policy-controller/blob/main/docs/api-types/index.md) · [Documentation 2](https://docs.sigstore.dev/policy-controller/overview/).
+
+## Artifact Promotion
+
+1. How to Constrain Artifactory Build Promotion to the Intended Source Repository
+
+    Research: [Source](https://stackoverflow.com/questions/62345615/artifactory-cloud-how-to-copy-an-artifact-without-messing-up-the-repo-path-in) · [Documentation 1](https://docs.jfrog.com/integrations/reference/promoteBuild) · [Documentation 2](https://jfrog.com/help/r/how-does-build-promotion-work).
+
+2. How to Preview the Artifact Set Before Promoting an Artifactory Build
+
+    Research: [Source](https://stackoverflow.com/questions/17939324/promoting-a-specific-build-in-artifactory-to-a-different-repository) · [Documentation 1](https://docs.jfrog.com/integrations/reference/promoteBuild) · [Documentation 2](https://docs.jfrog.com/artifactory/docs/build-integration).
+
+3. How to Promote Artifactory Build Dependencies by Scope for an Offline Release
+
+    Research: [Source](https://www.reddit.com/r/devops/comments/dsi4p7) · [Documentation 1](https://docs.jfrog.com/integrations/reference/promoteBuild) · [Documentation 2](https://docs.jfrog.com/integrations/docs/about-build-info).
+
+4. How to Preserve Staging Artifacts When Artifactory Promotion Defaults to Moving Them
+
+    Research: [Source](https://stackoverflow.com/questions/17939324/promoting-a-specific-build-in-artifactory-to-a-different-repository) · [Documentation 1](https://docs.jfrog.com/artifactory/docs/build-integration) · [Documentation 2](https://docs.jfrog.com/integrations/docs/manage-builds).
+
+5. How to Record an Artifactory Release Approval Without Copying Its Artifacts
+
+    Research: [Source](https://www.reddit.com/r/devops/comments/i9oy68) · [Documentation 1](https://docs.jfrog.com/integrations/reference/promoteBuild) · [Documentation 2](https://docs.jfrog.com/integrations/docs/about-build-info).
+
+6. How to Diagnose Artifactory Promotion Failures Caused by Custom Repository Layouts
+
+    Research: [Source](https://stackoverflow.com/questions/46809900/how-to-promote-build-and-match-custom-layout-in-artifactory) · [Documentation 1](https://docs.jfrog.com/integrations/reference/promoteBuild) · [Documentation 2](https://docs.jfrog.com/artifactory/docs/repository-layouts).
+
+7. How to Handle Maven Classifier and Version Changes Before Artifact Promotion
+
+    Research: [Source](https://stackoverflow.com/questions/60695488/set-classifier-for-maven-artifacts-promoting-builds-in-jfrog-artifactory-using-j) · [Documentation 1](https://docs.jfrog.com/integrations/reference/promoteBuild) · [Documentation 2](https://maven.apache.org/guides/mini/guide-naming-conventions.html).
+
+8. How to Promote Debian Packages Between Distributions Using Artifactory Properties
+
+    Research: [Source](https://stackoverflow.com/questions/53372132/jenkins-artifatory-pipeline-how-to-promote-a-debian-package-from-a-testing-dis) · [Documentation 1](https://docs.jfrog.com/artifactory/docs/debian-repositories) · [Documentation 2](https://docs.jfrog.com/integrations/reference/promoteBuild).
+
+9. How to Address Artifactory Build Numbers Containing Slashes in Promotion API Requests
+
+    Research: [Source](https://stackoverflow.com/questions/77545689/how-can-i-escape-in-build-number-for-jfrog-cli-promote-build-command/77573783) · [Documentation 1](https://docs.jfrog.com/integrations/reference/promoteBuild) · [Documentation 2](https://docs.jfrog.com/integrations/docs/jfrog-cli-command-reference).
+
+10. How to Promote a Selected Historical Jenkins Build Instead of the Latest Successful Run
+
+    Research: [Source](https://stackoverflow.com/questions/60602786/manual-promotion-of-pipeline-results-in-jenkins/61203600) · [Documentation 1](https://docs.jfrog.com/integrations/docs/about-build-info) · [Documentation 2](https://docs.jfrog.com/artifactory/docs/build-integration).
+
+11. How to Keep Artifactory Build Retention from Deleting Promoted Rollback Candidates
+
+    Research: [Source](https://www.reddit.com/r/devops/comments/1c8af1q) · [Documentation 1](https://docs.jfrog.com/integrations/docs/manage-builds) · [Documentation 2](https://docs.jfrog.com/artifactory/docs/build-integration).
+
+12. How to Reconcile an Artifactory Promotion That Stops After Copying Only Some Artifacts
+
+    Research: [Source](https://stackoverflow.com/questions/62345615/artifactory-cloud-how-to-copy-an-artifact-without-messing-up-the-repo-path-in) · [Documentation 1](https://docs.jfrog.com/integrations/reference/promoteBuild) · [Documentation 2](https://docs.jfrog.com/integrations/docs/about-build-info).
+
+13. How to Diagnose ORAS Promotion Authentication Between Two Projects on the Same Registry
+
+    Research: [Source](https://github.com/oras-project/oras/issues/1892) · [Documentation 1](https://oras.land/docs/commands/oras_cp/) · [Documentation 2](https://github.com/oras-project/oras/releases/tag/v1.4.0).
+
+14. How to Diagnose MANIFEST_UNKNOWN During Recursive ORAS Image Promotion
+
+    Research: [Source](https://github.com/oras-project/oras/issues/2148) · [Documentation 1](https://oras.land/docs/commands/oras_cp/) · [Documentation 2](https://github.com/oras-project/oras-go/issues/1396).
+
+15. How to Audit the OCI Referrer Graph Before Approving an Artifact Promotion
+
+    Research: [Source](https://github.com/oras-project/oras/issues/2148) · [Documentation 1](https://oras.land/docs/commands/oras_discover/) · [Documentation 2](https://github.com/opencontainers/distribution-spec/blob/main/spec.md).
+
+16. How to Preserve Source Image Names Alongside Experimental ORAS Backup Archives
+
+    Research: [Source](https://github.com/oras-project/oras/issues/1893) · [Documentation 1](https://oras.land/docs/commands/oras_backup/) · [Documentation 2](https://oras.land/docs/how_to_guides/backup-restore/).
+
+17. How to Rehearse an Air-Gapped Artifact Import with Experimental ORAS Restore Dry Runs
+
+    Research: [Source](https://github.com/oras-project/oras/issues/1893) · [Documentation 1](https://oras.land/docs/commands/oras_restore/) · [Documentation 2](https://oras.land/docs/commands/oras_backup/).
+
+18. How to Configure Separate Internal CA Trust for ORAS Promotion Source and Destination Registries
+
+    Research: [Source](https://github.com/oras-project/oras/issues/2118) · [Documentation 1](https://oras.land/docs/commands/oras_cp/) · [Documentation 2](https://oras.land/docs/commands/oras_login/).
+
+19. How to Distinguish Retagged OCI Evidence from New Referrer Artifacts During Promotion
+
+    Research: [Source](https://github.com/oras-project/oras/issues/1436) · [Documentation 1](https://oras.land/docs/commands/oras_tag/) · [Documentation 2](https://github.com/opencontainers/distribution-spec/blob/main/spec.md).
+
+20. How to Carry Signed Approval Evidence for Raw Binaries Through Artifact Promotion
+
+    Research: [Source](https://www.reddit.com/r/devops/comments/1bsxyyf) · [Documentation 1](https://github.com/sigstore/cosign/blob/main/doc/cosign_attest-blob.md) · [Documentation 2](https://github.com/sigstore/cosign/blob/main/doc/cosign_verify-blob-attestation.md).
+
+## Synthetic Monitoring
+
+1. How to Detect SSO Outages with Fresh-Session Synthetic Login Checks
+
+    Research: [Source 1](https://www.reddit.com/r/devops/comments/1wt0v99/need_guidance_on_running_scripted_browser/) · [Source 2](https://www.reddit.com/r/Playwright/comments/1qcp9bw/how_do_you_handle_login_flows_in_your_playwright/) · [Documentation 1](https://playwright.dev/docs/auth) · [Documentation 2](https://playwright.dev/docs/browser-contexts).
+
+2. How to Refresh Expired Playwright Authentication State in Scheduled Synthetic Checks
+
+    Research: [Source 1](https://www.reddit.com/r/Playwright/comments/1fexpzz) · [Source 2](https://stackoverflow.com/questions/76761603/playwright-authentication-data-is-not-being-passed-to-the-context-from-the-stat) · [Documentation](https://playwright.dev/docs/auth).
+
+3. How to Isolate Test Accounts for Synthetic Checks Running from Multiple Locations
+
+    Research: [Source 1](https://www.reddit.com/r/devops/comments/1wt0v99/need_guidance_on_running_scripted_browser/) · [Source 2](https://www.reddit.com/r/Playwright/comments/1xhuukl/running_our_playwright_checkout_test_against/) · [Documentation](https://playwright.dev/docs/auth).
+
+4. How to Monitor Payment Iframe Readiness Without Submitting a Real Charge
+
+    Research: [Source](https://www.reddit.com/r/Playwright/comments/1xhuukl/running_our_playwright_checkout_test_against/) · [Documentation 1](https://playwright.dev/docs/frames) · [Documentation 2](https://playwright.dev/docs/test-assertions).
+
+5. How to Fail Synthetic GraphQL Checks on Resolver Errors Returned with HTTP 200
+
+    Research: [Source 1](https://stackoverflow.com/questions/79541667/how-to-measure-availability-of-a-graphql-endpoint) · [Source 2](https://stackoverflow.com/questions/70773094/curl-graphql-command-failing-with-200) · [Documentation 1](https://www.graphql.org/learn/debug-errors/) · [Documentation 2](https://playwright.dev/docs/api-testing).
+
+6. How to Verify Live WebSocket Messages in Playwright Synthetic Checks
+
+    Research: [Source](https://www.reddit.com/r/Playwright/comments/1wsech7/web_socket_calls_automation/) · [Documentation 1](https://playwright.dev/docs/api/class-websocket) · [Documentation 2](https://playwright.dev/docs/network).
+
+7. How to Replace networkidle Waits with Application Readiness Assertions in Synthetic Monitors
+
+    Research: [Source 1](https://stackoverflow.com/questions/74903580/how-to-increase-the-waiting-time-on-networkidle-in-playwright) · [Source 2](https://www.reddit.com/r/Playwright/comments/1nq1gnc) · [Documentation 1](https://playwright.dev/docs/api/class-page) · [Documentation 2](https://playwright.dev/docs/test-assertions).
+
+8. How to Detect Missing JavaScript Bundles in Browser Synthetic Checks
+
+    Research: [Source](https://www.reddit.com/r/Playwright/comments/1e6lyjg/page_load_behavior_varies/) · [Documentation 1](https://playwright.dev/docs/api/class-request) · [Documentation 2](https://playwright.dev/docs/api/class-page).
+
+9. How to Catch Login Redirects That Make Synthetic HTTP Checks Report a False Success
+
+    Research: [Source 1](https://www.reddit.com/r/devops/comments/1wt0v99/need_guidance_on_running_scripted_browser/) · [Source 2](https://stackoverflow.com/questions/76761603/playwright-authentication-data-is-not-being-passed-to-the-context-from-the-stat) · [Documentation 1](https://playwright.dev/docs/api/class-page) · [Documentation 2](https://playwright.dev/docs/test-assertions).
+
+10. How to Mask Sensitive Fields in Synthetic Monitor Failure Screenshots
+
+    Research: [Source](https://github.com/microsoft/playwright/issues/20375) · [Documentation 1](https://playwright.dev/docs/api/class-page#page-screenshot) · [Documentation 2](https://oneuptime.com/docs/en/monitor/synthetic-monitor).
+
+11. How to Inspect Failed Synthetic Runs with Playwright Traces Kept on a Private Host
+
+    Research: [Source 1](https://www.reddit.com/r/QualityAssurance/comments/16uw5bq) · [Source 2](https://www.reddit.com/r/devops/comments/1wt0v99/need_guidance_on_running_scripted_browser/) · [Documentation 1](https://playwright.dev/docs/trace-viewer) · [Documentation 2](https://playwright.dev/docs/test-use-options).
+
+12. How to Set Separate Navigation, Assertion, and Run Timeouts for Browser Synthetic Checks
+
+    Research: [Source 1](https://stackoverflow.com/questions/74903580/how-to-increase-the-waiting-time-on-networkidle-in-playwright) · [Source 2](https://www.reddit.com/r/devops/comments/1wt0v99/need_guidance_on_running_scripted_browser/) · [Documentation 1](https://playwright.dev/docs/test-timeouts) · [Documentation 2](https://playwright.dev/docs/api/class-page).
+
+13. How to Preserve First-Attempt Failures When Retrying Playwright Synthetic Checks
+
+    Research: [Source 1](https://www.reddit.com/r/Playwright/comments/1y3f7uo/running_playwright_tests_as_production_monitors/) · [Source 2](https://www.reddit.com/r/devops/comments/1wt0v99/need_guidance_on_running_scripted_browser/) · [Documentation 1](https://playwright.dev/docs/test-retries) · [Documentation 2](https://playwright.dev/docs/api/class-testresult).
+
+14. How to Diagnose Synthetic Checks Blocked by a CDN in Only One Region
+
+    Research: [Source](https://www.reddit.com/r/grafana/comments/w0p5v2) · [Documentation](https://grafana.com/docs/grafana-cloud/observe-and-act/testing/synthetic-monitoring/analyze-results/troubleshoot-checks/).
+
+15. How to Diagnose Chromium Memory Crashes in Kubernetes Synthetic Monitoring Runners
+
+    Research: [Source 1](https://github.com/microsoft/playwright-python/issues/2463) · [Source 2](https://github.com/microsoft/playwright/issues/38489) · [Documentation 1](https://playwright.dev/docs/docker) · [Documentation 2](https://playwright.dev/docs/api/class-page#page-event-crash).
+
+16. How to Validate Playwright Browser and Package Versions Before Updating Offline Synthetic Runners
+
+    Research: [Source 1](https://www.reddit.com/r/Playwright/comments/1tsyddy/playwright_browsers_freezing_github_actions/) · [Source 2](https://www.reddit.com/r/Playwright/comments/1via8d3/playwright_reached_100_but_the_browser_executable/) · [Documentation 1](https://playwright.dev/docs/docker) · [Documentation 2](https://playwright.dev/docs/browsers).
+
+17. How to Prevent Zombie Browser Processes in Long-Running Synthetic Check Containers
+
+    Research: [Source](https://www.reddit.com/r/Playwright/comments/1d42ko4) · [Documentation 1](https://playwright.dev/docs/docker) · [Documentation 2](https://playwright.dev/docs/api/class-browser).
+
+18. How to Remove API Mocks When Reusing Playwright CI Tests as Production Synthetic Monitors
+
+    Research: [Source 1](https://www.reddit.com/r/Playwright/comments/1y3f7uo/running_playwright_tests_as_production_monitors/) · [Source 2](https://www.reddit.com/r/Playwright/comments/1xhuukl/running_our_playwright_checkout_test_against/) · [Documentation 1](https://playwright.dev/docs/mock) · [Documentation 2](https://playwright.dev/docs/api/class-browsercontext).
+
+19. How to Clean Up Test Records After Failed Production Synthetic Transactions
+
+    Research: [Source 1](https://www.reddit.com/r/Playwright/comments/1xhuukl/running_our_playwright_checkout_test_against/) · [Source 2](https://www.reddit.com/r/devops/comments/1wt0v99/need_guidance_on_running_scripted_browser/) · [Documentation 1](https://playwright.dev/docs/api-testing) · [Documentation 2](https://playwright.dev/docs/test-fixtures).
+
+20. How to Investigate Missing Synthetic Results When a Grafana Private Probe Still Reports Ready
+
+    Research: [Source](https://www.reddit.com/r/grafana/comments/opnarn) · [Documentation 1](https://grafana.com/docs/grafana-cloud/observe-and-act/testing/synthetic-monitoring/set-up/set-up-private-probes/set-up/) · [Documentation 2](https://grafana.com/docs/grafana-cloud/observe-and-act/testing/synthetic-monitoring/set-up/set-up-private-probes/troubleshoot/).
