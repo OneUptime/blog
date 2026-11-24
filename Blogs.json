@@ -832893,5 +832893,124 @@
       "Audit Logging"
     ],
     "post": "2026-11-24-eks-podevictionfailure-pdb-audit-logs"
+  },
+  {
+    "title": "Resolve CoreDNS Add-on Upgrades That Conflict with a PDB",
+    "description": "Diagnose CoreDNS add-on budget conflicts, preserve DNS customizations, and plan a controlled handoff to an EKS-managed PodDisruptionBudget.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Kubernetes",
+      "Amazon EKS",
+      "CoreDNS",
+      "PodDisruptionBudget"
+    ],
+    "post": "2026-11-24-eks-coredns-addon-pdb-upgrade-conflict"
+  },
+  {
+    "title": "Change an ECK PDB Without the Operator Reverting It",
+    "description": "Put a durable disruption-budget override in the Elasticsearch resource, preview a guarded patch, and distinguish ECK defaults from disabling budget management.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Kubernetes",
+      "ECK",
+      "Elasticsearch",
+      "PodDisruptionBudget"
+    ],
+    "post": "2026-11-24-eck-pdb-operator-reverts-edit"
+  },
+  {
+    "title": "Diagnose Shard Health Blocking an ECK Node Drain",
+    "description": "Trace a blocked ECK drain from the disruption budget to unassigned shards, interpret allocation decisions, and verify recovery before continuing maintenance.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Kubernetes",
+      "ECK",
+      "Elasticsearch",
+      "PodDisruptionBudget"
+    ],
+    "post": "2026-11-24-eck-node-drain-elasticsearch-shard-health"
+  },
+  {
+    "title": "Separate Elasticsearch Master and Data Node PDBs in ECK",
+    "description": "Choose ECK-managed role budgets or separate NodeSet budgets, verify their selectors, and plan maintenance without losing sight of Elasticsearch health.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Kubernetes",
+      "ECK",
+      "Elasticsearch",
+      "PodDisruptionBudget"
+    ],
+    "post": "2026-11-25-eck-separate-master-data-pdbs"
+  },
+  {
+    "title": "Avoid False PDB Alerts for a Protected CloudNativePG Primary",
+    "description": "Separate intentional primary protection from unhealthy Pods, write a tested Prometheus alert, and preserve CloudNativePG safeguards during maintenance.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Kubernetes",
+      "CloudNativePG",
+      "PostgreSQL",
+      "Prometheus",
+      "PodDisruptionBudget"
+    ],
+    "post": "2026-11-25-cloudnativepg-protected-primary-pdb-alerts"
+  },
+  {
+    "title": "Wait for PDB Reconciliation Before Automated Evictions",
+    "description": "Build a bounded PDB readiness check, reject stale policy observations, and let the eviction API make the final decision without bypassing protection.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Kubernetes",
+      "PodDisruptionBudget",
+      "Automation",
+      "Troubleshooting"
+    ],
+    "post": "2026-11-25-wait-pdb-reconciliation-before-automated-evictions"
+  },
+  {
+    "title": "Distinguish PDB Rejections from Broad Tolerations in EKS Upgrades",
+    "description": "Use eviction responses, Pod identities, and scheduling policy to tell a blocked EKS drain from workloads returning to a retiring node.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Kubernetes",
+      "Amazon EKS",
+      "PodDisruptionBudget",
+      "Troubleshooting"
+    ],
+    "post": "2026-11-25-eks-upgrade-pdb-rejections-broad-tolerations"
+  },
+  {
+    "title": "Coordinate Maintenance Across Clusters with Local PDBs",
+    "description": "Combine namespace-scoped disruption budgets with shared maintenance coordination, fleet health checks, and recovery gates across Kubernetes clusters.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Kubernetes",
+      "PodDisruptionBudget",
+      "GitHub Action",
+      "Automation"
+    ],
+    "post": "2026-11-25-coordinate-multicluster-maintenance-pdbs"
+  },
+  {
+    "title": "Roll Out a SpiceDB Schema Migration Without Breaking Existing Access",
+    "description": "Rehearse a relation migration with preserved access, negative checks, controlled backfill, and a cleanup boundary that makes rollback risks explicit.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "SpiceDB",
+      "Authorization",
+      "Database Migration"
+    ],
+    "post": "2026-11-25-spicedb-schema-migration-existing-relationships"
+  },
+  {
+    "title": "Guarantee Read-After-Write Authorization with SpiceDB ZedTokens",
+    "description": "Carry write tokens into permission checks, verify grants and revocations, and preserve the freshness requirement through application storage and caches.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "SpiceDB",
+      "Authorization",
+      "Consistency"
+    ],
+    "post": "2026-11-25-spicedb-read-after-write-zedtokens"
   }
 ]

@@ -1,0 +1,31 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-24",
+  "runtimeTestsPerformed": true,
+  "sources": [
+    "https://kubernetes.io/docs/concepts/overview/working-with-objects/names/",
+    "https://github.com/elastic/cloud-on-k8s/blob/v3.2.0/pkg/controller/elasticsearch/pdb/reconcile_default.go",
+    "https://github.com/elastic/cloud-on-k8s/blob/v3.2.0/pkg/apis/common/v1/common.go",
+    "https://www.elastic.co/docs/deploy-manage/deploy/cloud-on-k8s/pod-disruption-budget",
+    "https://kubernetes.io/docs/tasks/run-application/configure-pdb/",
+    "https://kubernetes.io/docs/tasks/manage-kubernetes-objects/update-api-object-kubectl-patch/",
+    "https://www.rfc-editor.org/rfc/rfc6902#section-4.1",
+    "https://github.com/elastic/cloud-on-k8s/blob/v3.2.0/pkg/controller/elasticsearch/pdb/reconcile_with_roles.go",
+    "https://www.rfc-editor.org/rfc/rfc7396#section-2"
+  ],
+  "tests": [
+    "Reviewed tagged ECK3.2.0 default and role-aware PDB reconciliation, common template type and official Elasticsearch CRD; official version/license guidance and Kubernetes/RFC patch semantics",
+    "Ran eight upstream ECK3.2.0 subtests: default PDB creation, no-op, update and disabling/deletion; disabled/default template, inherited labels and custom specification; fake Kubernetes clients only",
+    "Installed official ECK3.2.0 Elasticsearch CRD in disposable Kubernetes1.34.0 API; executed all three exact shell blocks with fixture Elasticsearch, owned PDB and three Pod objects",
+    "Exact JSON Patch preview replaced old maxUnavailable with minAvailable2, retained template annotation and unrelated Elasticsearch specification, and left stored resourceVersion unchanged",
+    "API rejected incorrect UID and resourceVersion tests; dry-run merge with empty template retained old fields, JSON Patch whole-field empty replacement produced an empty template, and merge-null removed the field",
+    "Three bash blocks passed syntax; seven-node/seven-edge Mermaid structurally checked; generated1280x720 social image visually reviewed"
+  ],
+  "limitations": [
+    "No live Elasticsearch, ECK operator loop, admission webhook, Kubernetes disruption controller, kubelet, scheduler, eviction or data availability test",
+    "Upstream reconciliation tests use fake Kubernetes clients; local API checks used the real CRD with no ECK webhook and do not demonstrate full operator or health behavior",
+    "Elasticsearch9.1.0 was only a fixture resource field; no image was pulled or application started",
+    "Article custom availability floor must be reviewed against actual node roles, shard placement, health, license and scaling behavior; template acceptance is not an availability guarantee",
+    "Mermaid structurally checked, not rendered"
+  ]
+}

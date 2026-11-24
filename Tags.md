@@ -17467,6 +17467,7 @@
 - Sphinx
 - SPI
 - SPICE
+- SpiceDB
 - Spider
 - SPIFFE
 - Spike Arrest

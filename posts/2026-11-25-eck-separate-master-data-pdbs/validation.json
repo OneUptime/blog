@@ -1,0 +1,29 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-25",
+  "runtimeTestsPerformed": true,
+  "sources": [
+    "https://www.elastic.co/docs/deploy-manage/deploy/cloud-on-k8s/pod-disruption-budget",
+    "https://github.com/elastic/cloud-on-k8s/blob/v3.2.0/pkg/controller/elasticsearch/pdb/reconcile_with_roles.go",
+    "https://www.elastic.co/docs/deploy-manage/distributed-architecture/clusters-nodes-shards/node-roles",
+    "https://github.com/elastic/cloud-on-k8s/blob/v3.2.0/pkg/apis/common/v1/common.go",
+    "https://kubernetes.io/docs/tasks/manage-kubernetes-objects/update-api-object-kubectl-patch/",
+    "https://kubernetes.io/docs/tasks/run-application/configure-pdb/",
+    "https://github.com/kubernetes/kubernetes/blob/v1.34.0/pkg/registry/core/pod/storage/eviction.go"
+  ],
+  "tests": [
+    "Reviewed ECK3.2.0 license selection, connected-role grouping, health allowances, external disable behavior and documented NodeSet labels; Kubernetes1.34 eviction source and PDB semantics",
+    "Ran 41 upstream ECK3.2.0 subtests across role-specific reconciliation, expected budgets, role grouping and allowed disruptions; fake-client/source-policy tests passed",
+    "Executed all three exact bash blocks against disposable Kubernetes1.34.0 API with official ECK3.2.0 CRD and six fixture Pods",
+    "Both exact external PDB manifests passed strict server dry-run; verified no budget was persisted before explicitly creating test fixtures; disable fragment accepted on an ES resource without prior override and dry-run left resource unchanged",
+    "Kubernetes selector evaluation confirmed three Pods per budget and exactly one matching budget per fixture Pod; PDB counts were manually seeded",
+    "Three bash blocks passed syntax; seven-node/six-edge Mermaid structurally checked; generated1280x720 image visually reviewed"
+  ],
+  "limitations": [
+    "No ECK operator, Elasticsearch process, scheduler, kubelet or disruption controller ran; upstream reconciliation tests use fake clients",
+    "Seeded PDB status does not establish live readiness, shard redundancy, master voting safety or maintenance concurrency",
+    "No actual license switch, policy migration, Pod eviction, drain or database operation was performed",
+    "The empty fragment API check started with an absent override; it does not establish that a merge patch clears an existing override, which the article explicitly cautions against",
+    "Mermaid structurally checked, not rendered"
+  ]
+}

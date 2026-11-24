@@ -1,0 +1,31 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-25",
+  "runtimeTestsPerformed": true,
+  "sources": [
+    "https://docs.aws.amazon.com/eks/latest/userguide/managed-node-update-behavior.html",
+    "https://docs.aws.amazon.com/cli/latest/reference/eks/describe-update.html",
+    "https://docs.aws.amazon.com/eks/latest/userguide/control-plane-logs.html",
+    "https://github.com/kubernetes/kubernetes/blob/v1.34.0/pkg/registry/core/pod/storage/eviction.go",
+    "https://github.com/kubernetes/kubernetes/blob/v1.34.0/staging/src/k8s.io/api/core/v1/toleration.go",
+    "https://github.com/kubernetes/kubernetes/blob/v1.34.0/pkg/scheduler/framework/plugins/nodeunschedulable/node_unschedulable.go",
+    "https://kubernetes.io/docs/concepts/scheduling-eviction/taint-and-toleration/",
+    "https://kubernetes.io/docs/concepts/workloads/pods/disruptions/",
+    "https://kubernetes.io/docs/concepts/workloads/controllers/daemonset/"
+  ],
+  "tests": [
+    "Reviewed AWS managed-node update phases and documented all-taint/PDB failure paths; Kubernetes1.34.0 toleration matching, NodeUnschedulable filter and eviction implementation; audit logging and DaemonSet documentation",
+    "Executed six cases using Kubernetes0.34.0 core API ToleratesTaint implementation: all-effect wildcard, NoSchedule wildcard, NoExecute-only wildcard, narrow dedicated key, explicit unschedulable key, and dedicated-taint match",
+    "Executed both exact kubectl/jq inspection blocks against disposable Kubernetes1.34.0 API with a cordoned Node, Pod, Deployment and PDB fixtures",
+    "Exact narrow template fragment passed strict API server dry-run against the fixture Deployment; verified resulting selector/toleration and unchanged stored template",
+    "AWSCLI2.38.1 exact describe-update command and JMESPath projection executed using unsigned loopback endpoint fixture; verified request path and PodEvictionFailure output; no AWS request",
+    "Three bash blocks passed syntax; eight-node/seven-edge Mermaid structurally checked; generated1280x720 image visually reviewed"
+  ],
+  "limitations": [
+    "No live EKS upgrade, scheduler, kubelet, Deployment rollout, eviction or replacement-Pod placement ran",
+    "Toleration matching tests exercise the official matching method, not the full scheduling framework; other placement filters and custom schedulers were source-discussed only",
+    "API objects and their placement were seeded; no CloudWatch logs were queried and no AWS account was accessed",
+    "AWS rePost research URL returned403; primary AWS user guide supplied supported failure behavior; the Todo discussion was context only, not technical authority",
+    "Mermaid structurally checked, not rendered"
+  ]
+}

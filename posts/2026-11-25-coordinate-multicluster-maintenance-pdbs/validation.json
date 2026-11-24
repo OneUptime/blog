@@ -1,0 +1,29 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-25",
+  "runtimeTestsPerformed": true,
+  "sources": [
+    "https://kubernetes.io/docs/reference/kubernetes-api/policy/pod-disruption-budget-v1/",
+    "https://github.com/kubernetes/kubernetes/blob/v1.34.0/pkg/registry/core/pod/storage/eviction.go",
+    "https://kubernetes.io/docs/concepts/workloads/pods/disruptions/",
+    "https://docs.github.com/en/actions/how-tos/write-workflows/choose-when-workflows-run/control-workflow-concurrency",
+    "https://docs.github.com/en/actions/reference/workflows-and-actions/workflow-syntax",
+    "https://kubernetes.io/docs/concepts/scheduling-eviction/api-eviction/"
+  ],
+  "tests": [
+    "Reviewed namespaced Kubernetes PDB API/eviction behavior, disruption limits, GitHub repository-scoped concurrency defaults and workflow syntax",
+    "Exact workflow passed actionlint1.7.7 with the declared custom self-hosted runner label; embedded Bash passed bash syntax",
+    "Executed exact embedded preflight against two independently started Kubernetes1.34.0 APIs with separately created namespace identities and manually seeded PDB status",
+    "Five cases passed: both healthy succeeds; unhealthy second cluster, stale second budget, two contexts targeting the same API, and missing second budget all fail",
+    "Duplicate identity guard uses an explicit error/exit and was retested after discovering compound-test errexit behavior in local Bash3.2",
+    "Six-node/seven-edge Mermaid structurally checked; generated1280x720 image visually reviewed"
+  ],
+  "limitations": [
+    "No GitHub workflow was dispatched; concurrency and queue semantics were documentation-verified, not live service-tested",
+    "Disposable APIs had no disruption controllers, scheduler, kubelets or workloads; PDB counts were explicitly seeded",
+    "No drain, eviction, cloud upgrade, actual capacity test, load balancing, recovery gate or distributed coordinator was executed",
+    "The published workflow is read-only preflight, not a complete production maintenance implementation; durable recovery state remains a described operational requirement",
+    "Todo video source was unavailable; no claims were attributed to its unseen content",
+    "Mermaid structurally checked, not rendered"
+  ]
+}

@@ -1,0 +1,30 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-25",
+  "runtimeTestsPerformed": true,
+  "sources": [
+    "https://github.com/cloudnative-pg/cloudnative-pg/blob/v1.27.0/pkg/specs/poddisruptionbudget.go",
+    "https://github.com/cloudnative-pg/cloudnative-pg/discussions/3865",
+    "https://github.com/cloudnative-pg/cloudnative-pg/blob/v1.27.0/pkg/utils/labels_annotations.go",
+    "https://github.com/kubernetes/kube-state-metrics/blob/v2.16.0/docs/metrics/policy/poddisruptionbudget-metrics.md",
+    "https://prometheus.io/docs/prometheus/latest/configuration/alerting_rules/",
+    "https://prometheus.io/docs/prometheus/latest/querying/operators/",
+    "https://prometheus.io/docs/prometheus/latest/configuration/unit_testing_rules/",
+    "https://prometheus.io/docs/prometheus/latest/querying/functions/#absent_over_time",
+    "https://cloudnative-pg.io/docs/1.27/kubernetes_upgrade/"
+  ],
+  "tests": [
+    "Reviewed CNPG1.27.0 primary and replica PDB construction, role labels, maintenance documentation and upstream false-warning report; checked kube-state-metrics2.16.0 metric names and labels",
+    "Prometheus3.7.3 promtool check rules and exact published unit test passed",
+    "Seven expanded promtool scenarios passed: healthy protected primary with zero allowance, persistent primary deficit, short dip, recovery, replica deficit, unrelated PDB deficit, and missing data with exact absent_over_time expression",
+    "Executed both exact kubectl/jq inspection blocks against disposable Kubernetes1.34.0 API with official CNPG1.27.0 Cluster CRD, three fixture Pods, primary PDB and explicitly seeded status",
+    "Three bash blocks syntax checked; all three executed locally (two API fixture inspections and one promtool block)",
+    "Nine-node/seven-edge Mermaid structurally checked; generated1280x720 image visually reviewed with three-line title"
+  ],
+  "limitations": [
+    "No CNPG operator, PostgreSQL database, live kube-state-metrics exporter, running Prometheus server or Alertmanager delivery was tested",
+    "Promtool used synthetic samples; database availability, metric collection, labels in deployment and notification routing require integration checks",
+    "API statuses and owner references were seeded, not produced by controllers; no switchover, node drain or live eviction occurred",
+    "Mermaid structurally checked, not rendered"
+  ]
+}

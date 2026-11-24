@@ -2536,40 +2536,62 @@ Research: [OneUptime air-gapped alerting](https://oneuptime.com/enterprise/air-g
 
 33. How to Resolve CoreDNS Add-on Upgrades That Conflict with an Existing PodDisruptionBudget
 
+    Completed: [Article](posts/2026-11-24-eks-coredns-addon-pdb-upgrade-conflict/README.md) (24 November 2026).
+
     Research: [Source](https://www.reddit.com/r/aws/comments/tg2b57) · [Documentation](https://docs.aws.amazon.com/eks/latest/userguide/managing-coredns.html).
 
 34. How to Change an ECK PodDisruptionBudget Without the Operator Reverting the Edit
+
+    Completed: [Article](posts/2026-11-24-eck-pdb-operator-reverts-edit/README.md) (24 November 2026).
 
     Research: [Source](https://discuss.elastic.co/t/poddisruptionbudget-was-restarting/273914) · [Documentation](https://www.elastic.co/docs/deploy-manage/deploy/cloud-on-k8s/pod-disruption-budget).
 
 35. How to Diagnose Elasticsearch Shard Health Blocking an ECK Node Drain
 
+    Completed: [Article](posts/2026-11-24-eck-node-drain-elasticsearch-shard-health/README.md) (24 November 2026).
+
     Research: [Source](https://discuss.elastic.co/t/eck-elasticsearch-performing-full-restart-of-es-nodes/312798) · [Documentation](https://www.elastic.co/docs/deploy-manage/deploy/cloud-on-k8s/pod-disruption-budget).
 
 36. How to Separate Elasticsearch Master and Data Node Disruption Budgets in ECK
+
+    Completed: [Article](posts/2026-11-25-eck-separate-master-data-pdbs/README.md) (25 November 2026).
 
     Research: [Source](https://discuss.elastic.co/t/eck-elasticsearch-performing-full-restart-of-es-nodes/312798) · [Documentation](https://www.elastic.co/docs/deploy-manage/deploy/cloud-on-k8s/pod-disruption-budget).
 
 37. How to Avoid False PDB Alerts for the Protected CloudNativePG Primary
 
+    Completed: [Article](posts/2026-11-25-cloudnativepg-protected-primary-pdb-alerts/README.md) (25 November 2026).
+
     Research: [Source](https://github.com/cloudnative-pg/cloudnative-pg/discussions/3865) · [Documentation](https://cloudnative-pg.io/docs/current/kubernetes_upgrade/).
 
 38. How to Wait for PodDisruptionBudget Reconciliation Before Starting Automated Evictions
+
+    Completed: [Article](posts/2026-11-25-wait-pdb-reconciliation-before-automated-evictions/README.md) (25 November 2026).
 
     Research: [Source](https://github.com/kubernetes/kubernetes/issues/35324) · [Documentation](https://kubernetes.io/docs/reference/kubernetes-api/policy/pod-disruption-budget-v1/).
 
 39. How to Distinguish PDB Rejections from Broad Tolerations During an EKS Node Upgrade
 
+    Completed: [Article](posts/2026-11-25-eks-upgrade-pdb-rejections-broad-tolerations/README.md) (25 November 2026).
+
     Research: [Source](https://www.reddit.com/r/kubernetes/comments/1khaah7) · [Documentation](https://repost.aws/knowledge-center/eks-node-group-update-failures).
 
 40. How to Coordinate Maintenance Across Clusters When PodDisruptionBudgets Are Namespace-Scoped
+
+    Completed: [Article](posts/2026-11-25-coordinate-multicluster-maintenance-pdbs/README.md) (25 November 2026).
 
     Research: [Source](https://www.youtube.com/watch?v=2IPf_AyKSsU) · [Documentation](https://kubernetes.io/docs/concepts/workloads/pods/disruptions/).
 
 ## SpiceDB
 
 10. How to Roll Out a SpiceDB Schema Migration Without Invalidating Existing Relationships
+
+    Completed: [Article](posts/2026-11-25-spicedb-schema-migration-existing-relationships/README.md) (25 November 2026).
+
 15. How to Guarantee Read-After-Write Authorization with ZedTokens and `at_least_as_fresh`
+
+    Completed: [Article](posts/2026-11-25-spicedb-read-after-write-zedtokens/README.md) (25 November 2026).
+
 16. Why `fully_consistent` May Still Miss a Recent CockroachDB Write—and How a ZedToken Fixes It
 17. How to Prevent Concurrent Relationship Writers from Reintroducing Revoked Access with Preconditions
 18. How to Keep Application Data and SpiceDB Relationships in Sync with Transactions, Outbox Events, or CQRS

@@ -1,0 +1,35 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-24",
+  "runtimeTestsPerformed": true,
+  "sources": [
+    "https://github.com/elastic/cloud-on-k8s/blob/v3.2.0/pkg/controller/elasticsearch/pdb/reconcile_default.go",
+    "https://www.elastic.co/docs/deploy-manage/deploy/cloud-on-k8s/pod-disruption-budget",
+    "https://www.elastic.co/docs/deploy-manage/deploy/cloud-on-k8s/update-strategy",
+    "https://www.elastic.co/docs/explore-analyze/query-filter/tools/console",
+    "https://www.elastic.co/docs/api/elasticsearch/operation/operation-cluster-health",
+    "https://www.elastic.co/docs/api/elasticsearch/operation/operation-cat-shards",
+    "https://www.elastic.co/docs/troubleshoot/elasticsearch/red-yellow-cluster-status",
+    "https://www.elastic.co/docs/api/elasticsearch/operation/operation-cluster-allocation-explain",
+    "https://github.com/elastic/elasticsearch/blob/v9.1.0/rest-api-spec/src/main/resources/rest-api-spec/api/cluster.allocation_explain.json",
+    "https://www.elastic.co/docs/troubleshoot/elasticsearch/cluster-allocation-api-examples",
+    "https://www.elastic.co/docs/reference/elasticsearch/configuration-reference/cluster-level-shard-allocation-routing-settings",
+    "https://github.com/elastic/elasticsearch/blob/v9.1.0/rest-api-spec/src/main/resources/rest-api-spec/api/cluster.health.json",
+    "https://github.com/elastic/elasticsearch/blob/v9.1.0/rest-api-spec/src/main/resources/rest-api-spec/api/cat.shards.json"
+  ],
+  "tests": [
+    "Reviewed ECK3.2.0 single-budget health/topology calculation and current license/version distinctions; official Elasticsearch health, allocation explanations, CAT permissions, placement controls and Console request syntax",
+    "Ran nine upstream ECK3.2.0 allowedDisruptionsForSinglePDB tests: absent/yellow/red/unknown health, green health, single node and green with singleton master/data/ingest roles",
+    "Checked all four HTTP snippets against official Elasticsearch9.1.0 REST specs for methods, exact paths, supported query parameters and parameter types; allocation explanation JSON body structure matched source and API documentation",
+    "Executed all three exact kubectl/jq shell blocks against disposable Kubernetes1.34.0 API with official ECK3.2.0 CRD, explicitly seeded yellow cluster status, three Ready Pod/container statuses and PDB currentHealthy3 desiredHealthy3 disruptionsAllowed0",
+    "Read-only Pod/PVC inspection ran against local fixtures; no scheduling, allocation or storage recovery was simulated",
+    "Three shell blocks passed bash syntax; eight-node/seven-edge Mermaid structurally checked; generated1280x720 image visually reviewed with two-line title"
+  ],
+  "limitations": [
+    "No Elasticsearch or Kibana process, live REST request, authentication/RBAC integration, ECK reconciliation loop or real shard allocation was run",
+    "HTTP checks were source/specification checks, not live endpoint execution or Kibana parser tests",
+    "Kubernetes and Elasticsearch resource status were manually seeded; API inspection tests do not demonstrate controller propagation, actual Pod readiness or data redundancy",
+    "No node drain, eviction, disk-pressure repair, volume operation or recovery was performed; exact recovery choices require real allocation evidence",
+    "Mermaid structurally checked, not rendered"
+  ]
+}

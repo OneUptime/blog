@@ -1,0 +1,35 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-24",
+  "runtimeTestsPerformed": true,
+  "sources": [
+    "https://docs.aws.amazon.com/eks/latest/userguide/managing-coredns.html",
+    "https://github.com/kubernetes/kubernetes/blob/v1.34.0/pkg/registry/core/pod/storage/eviction.go",
+    "https://docs.aws.amazon.com/cli/latest/reference/eks/describe-addon.html",
+    "https://docs.aws.amazon.com/eks/latest/userguide/kubernetes-field-management.html",
+    "https://docs.aws.amazon.com/cli/latest/reference/eks/describe-addon-versions.html",
+    "https://docs.aws.amazon.com/cli/latest/reference/eks/describe-addon-configuration.html",
+    "https://aws.amazon.com/blogs/containers/recent-changes-to-the-coredns-add-on/",
+    "https://aws.amazon.com/blogs/containers/amazon-eks-add-ons-advanced-configuration/",
+    "https://docs.aws.amazon.com/cli/latest/reference/eks/update-addon.html",
+    "https://docs.aws.amazon.com/eks/latest/userguide/coredns-add-on-update.html",
+    "https://coredns.io/plugins/ready/"
+  ],
+  "tests": [
+    "Reviewed official EKS CoreDNS upgrade, managed PDB settings and lifecycle, server-side field ownership, complete configurationValues behavior, AWS CLI commands and CoreDNS ready plugin documentation",
+    "Disposable Kubernetes1.34.0 API: server-side apply by a second manager changing an owned minAvailable field returned409; forced dry-run adding maxUnavailable beside retained minAvailable returned422; original budget resourceVersion unchanged",
+    "Ran all six exact shell blocks with the target-version placeholder substituted in the test; kubectl1.34.0 against local API fixtures and AWSCLI2.38.1 through a loopback unsigned HTTP fixture",
+    "Verified AWS request paths, compatible-version query, schema string extraction, update request configurationValues file serialization and OVERWRITE parameter; no AWS calls",
+    "Verified jq retained corefile, replicaCount and resources while replacing old minAvailable with maxUnavailable; absent/null configuration treated as empty object; array and YAML string inputs rejected rather than silently discarded",
+    "Deployment rollout status was explicitly seeded for read-only kubectl observation; snapshots retained legacy field-manager information",
+    "Six shell blocks passed bash syntax; seven-node/seven-edge Mermaid structurally checked;1280x720 social image visually reviewed with three-line title"
+  ],
+  "limitations": [
+    "No live EKS configuration/schema discovery, add-on update, CoreDNS process, DNS queries, kubelet, scheduler or rollout controller ran",
+    "Loopback schema was deliberately a transport fixture, not an actual retrieved EKS build schema; tests do not establish target schema acceptance or upgrade compatibility",
+    "The fixture used v1.13.2-eksbuild.75 from the current official Kubernetes1.34 table only as a request value; article requires readers to discover and pin a compatible exact build",
+    "Local server-side apply errors demonstrate Kubernetes field ownership and API validity, not the internal EKS OVERWRITE implementation or an end-to-end ownership transfer",
+    "An initial loopback handler path was corrected from the official API reference before successful checks; article commands were unchanged",
+    "Mermaid structurally checked, not rendered"
+  ]
+}

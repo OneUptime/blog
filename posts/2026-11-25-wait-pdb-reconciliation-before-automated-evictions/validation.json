@@ -1,0 +1,28 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-25",
+  "runtimeTestsPerformed": true,
+  "sources": [
+    "https://kubernetes.io/docs/reference/kubernetes-api/policy/pod-disruption-budget-v1/",
+    "https://github.com/kubernetes/kubernetes/issues/35324",
+    "https://github.com/kubernetes/kubernetes/blob/v1.34.0/pkg/registry/core/pod/storage/eviction.go",
+    "https://github.com/kubernetes/kubernetes/blob/v1.34.0/pkg/controller/disruption/disruption.go",
+    "https://kubernetes.io/docs/reference/kubectl/generated/kubectl_create/",
+    "https://kubernetes.io/docs/concepts/scheduling-eviction/api-eviction/"
+  ],
+  "tests": [
+    "Reviewed Kubernetes1.34.0 policy API types, disruption-controller expected-count and generation handling, eviction stale-generation rejection, UID preconditions and dry-run paths; read original observed-generation issue",
+    "Eight exact wait-script fixture cases passed: ready, stale-to-current, missing-to-current, zero expected Pods timeout, zero allowance timeout, changed generation, replacement UID and API failure",
+    "Executed all three exact bash blocks against disposable Kubernetes1.34.0 API with three Ready-status fixture Pods and a PDB; manually updated PDB status after a delay so the waiter observed a transition",
+    "API returned429 for a separate UID-preconditioned dry-run eviction with stale PDB status; exact published raw kubectl eviction preview succeeded once status was current",
+    "Verified target Pod UID and absence of deletion timestamp, stored allowance1 and empty disruptedPods map after preview",
+    "Three bash blocks syntax checked; eight-node/eight-edge Mermaid structurally checked; generated1280x720 image visually reviewed"
+  ],
+  "limitations": [
+    "No disruption controller, scheduler, kubelet or live application ran; Pod readiness and PDB status transitions were explicitly seeded",
+    "Mock read sequences exercised wait control flow; they do not model network failures or all Kubernetes controller races",
+    "No actual eviction, node drain, recovery, RBAC restriction or concurrent maintenance was performed; local API used administrative test credentials",
+    "A successful preflight or dry-run reserves no future allowance and proves no application-level disruption safety",
+    "Mermaid structurally checked, not rendered"
+  ]
+}

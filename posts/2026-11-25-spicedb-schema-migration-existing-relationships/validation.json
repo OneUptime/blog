@@ -1,0 +1,32 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-25",
+  "runtimeTestsPerformed": true,
+  "sources": [
+    "https://authzed.com/docs/spicedb/modeling/migrating-schema",
+    "https://github.com/authzed/spicedb/releases/tag/v1.57.1",
+    "https://github.com/authzed/zed/releases/tag/v1.2.1",
+    "https://github.com/authzed/zed/blob/v1.2.1/internal/commands/schema.go",
+    "https://github.com/authzed/zed/blob/v1.2.1/internal/commands/relationship.go",
+    "https://authzed.com/docs/spicedb/concepts/schema",
+    "https://authzed.com/docs/spicedb/concepts/consistency",
+    "https://authzed.com/docs/spicedb/ops/data/writing-relationships",
+    "https://authzed.com/docs/spicedb/modeling/validation-testing-debugging"
+  ],
+  "tests": [
+    "Official SpiceDB1.57.1 and zed1.2.1 macOSARM64 release archives downloaded; SHA256 values matched official release checksums",
+    "Reviewed official schema migration/type safety, schema language, atomic relationship updates, consistency and validation documentation; downloaded pinned zed schema/relationship/permission command source and checked CLI help",
+    "Four exact schema files passed zed1.2.1 validate; this checks schema syntax, with zero static relationship assertions in those files",
+    "Executed all six exact Bash blocks against SpiceDB1.57.1 in-memory server over locally generated certificate-verified TLS using isolated credentials; no insecure or verification-bypass flags",
+    "Ten explicit permission results matched expected allow/deny pairs across original, expanded, backfilled, cutover and final schemas",
+    "Premature old-relation removal rejected because reader relationship still existed; repeated TOUCH succeeded; final export contained viewer only; a writer to retired reader relation was rejected",
+    "Six bash blocks passed syntax; seven-node/six-edge Mermaid structurally checked; generated1280x720 image visually reviewed"
+  ],
+  "limitations": [
+    "Runtime fixture had one document, one grant, one unrelated denied subject, no concurrent application writers, no caveats and no expiring relationships",
+    "No production datastore, large backfill, online dual-write integration, distributed transaction, replication or performance testing was performed",
+    "Production ordering and revocation-race controls are described requirements, not implemented or demonstrated by the serial CLI lab",
+    "Official release checksum verification was performed; separate artifact signature verification was not",
+    "Mermaid structurally checked, not rendered"
+  ]
+}
