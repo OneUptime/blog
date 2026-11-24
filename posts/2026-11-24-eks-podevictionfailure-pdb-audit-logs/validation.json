@@ -1,0 +1,34 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-24",
+  "runtimeTestsPerformed": true,
+  "sources": [
+    "https://docs.aws.amazon.com/eks/latest/userguide/managed-node-update-behavior.html",
+    "https://docs.aws.amazon.com/cli/latest/reference/eks/describe-update.html",
+    "https://docs.aws.amazon.com/eks/latest/userguide/control-plane-logs.html",
+    "https://docs.aws.amazon.com/cli/latest/reference/eks/describe-cluster.html",
+    "https://docs.aws.amazon.com/AmazonCloudWatch/latest/logs/CWL_QuerySyntax.html",
+    "https://docs.aws.amazon.com/AmazonCloudWatch/latest/logs/CWL_QuerySyntax-operations-functions.html",
+    "https://www.repost.aws/knowledge-center/eks-node-group-update-failures",
+    "https://github.com/kubernetes/kubernetes/blob/v1.34.0/pkg/registry/core/pod/storage/eviction.go",
+    "https://github.com/kubernetes/kubernetes/blob/v1.34.0/staging/src/k8s.io/apiserver/pkg/apis/audit/v1/types.go",
+    "https://kubernetes.io/docs/tasks/run-application/configure-pdb/",
+    "https://kubernetes.io/docs/concepts/overview/working-with-objects/labels/"
+  ],
+  "tests": [
+    "Reviewed EKS managed-node update failure behavior and control-plane log delivery; CloudWatch Logs Insights QL jsonParse, fields, filters, sort and limits; Kubernetes1.34.0 eviction and audit source",
+    "Ran disposable Kubernetes1.34.0 API with RequestResponse auditing for pods/eviction; seeded Pod/PDB state, observed real429 stale-status response,429 zero-budget response,500 overlapping-PDB response and201 successful dry-run response",
+    "All four eviction requests were dry-run requests with Pod UID preconditions; original Pod remained present and nonterminating; no workload controllers ran",
+    "Executed exact jq extraction against four actual API audit events: selected three failures with correct names/counts and excluded success; tested responseStatus-only fallback by removing responseObject from one retained event",
+    "Executed exact kubectl/jq current-state inspection block against local API fixtures",
+    "AWSCLI2.38.1 executed both article commands with loopback endpoint and unsigned fixture responses; verified paths, nodegroup query parameter and JMESPath projections; no AWS service calls",
+    "Four bash blocks passed syntax; seven-node/seven-edge Mermaid structurally checked; generated1280x720 social image visually reviewed with three-line title"
+  ],
+  "limitations": [
+    "No EKS node-group update, managed drain, AWS credentials, CloudWatch API or Logs Insights execution; QL was source reviewed only",
+    "Local audit policy intentionally records eviction request and response bodies; EKS audit retention and recorded fields may differ",
+    "Pod readiness and PDB status were explicitly seeded; there was no disruption controller, kubelet, scheduler or application",
+    "AWS CLI output-skeleton check for describe-cluster failed on unrelated generated default values; replaced with successful local HTTP fixture checks rather than changing article commands",
+    "Mermaid structurally checked, not rendered"
+  ]
+}

@@ -1,0 +1,37 @@
+# Technical validation
+
+Read-only inspections and a guarded template preview were executed against local API fixtures. Official node-affinity matching was exercised separately from full scheduling.
+
+## Checks performed
+
+- Reviewed Kubernetes1.34.0 placement and StatefulSet behavior, hard affinity conjunctions, PDB counting, PV node-affinity constraints and the historical drain issue
+- Executed all four exact shell blocks with kubectl1.34.0/jq1.6 against a disposable API containing StatefulSet, Pod, Node, PDB, PVC and PV fixtures
+- Exact guarded JSON Patch server preview expanded the hostname allowlist, preserved zone rule, disk nodeSelector and required Pod anti-affinity, and left stored StatefulSet resourceVersion unchanged
+- Seven cases using official component-helpers0.34.0 node-affinity matcher confirmed the new host label match while wrong zone, wrong/missing disk label and unlisted host still failed
+- Reordered existing expressions in the API fixture and verified the patch test rejected the changed assumption
+- Four shell blocks passed syntax; JSON Patch parsed; nine-node/seven-edge Mermaid structurally checked
+- Generated1280x720 social image and visually inspected two-line title and branding without clipping
+
+## Sources checked
+
+- https://kubernetes.io/docs/tasks/administer-cluster/safely-drain-node/
+- https://kubernetes.io/docs/concepts/workloads/pods/disruptions/
+- https://github.com/kubernetes/kubernetes/blob/v1.34.0/pkg/controller/disruption/disruption.go
+- https://kubernetes.io/docs/concepts/scheduling-eviction/assign-pod-node/#node-affinity
+- https://kubernetes.io/docs/concepts/storage/persistent-volumes/#node-affinity
+- https://kubernetes.io/docs/reference/kubectl/generated/kubectl_patch/
+- https://kubernetes.io/docs/concepts/workloads/controllers/statefulset/#update-strategies
+- https://github.com/kubernetes/kubernetes/issues/91141
+- https://github.com/kubernetes/component-helpers/blob/v0.34.0/scheduling/corev1/nodeaffinity/nodeaffinity.go
+- https://kubernetes.io/docs/reference/kubectl/generated/kubectl_get/
+
+## Limitations
+
+- No scheduler, StatefulSet controller, disruption controller, kubelet or CSI storage driver ran; API objects were fixtures and no real volume was mounted
+- The node-affinity helper checks node labels and required node affinity, not Pod anti-affinity, taints, capacity, cordon behavior, storage feasibility or complete scheduling eligibility
+- No real node drain, member recreation, replication catch-up or application recovery was performed; the runbook requires a verified destination and workload-specific maintenance procedure
+- Mermaid diagram was checked structurally but not rendered
+
+## Repository checks
+
+The repository validator passed for this post in an isolated fixture with its catalog entry, author list, tag allowlist, and social image. Shell examples, if present, passed bash syntax checking. The full existing catalog was not revalidated.

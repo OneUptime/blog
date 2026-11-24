@@ -1,0 +1,40 @@
+# Technical validation
+
+The article separates source-reviewed KubeVirt behavior from local Kubernetes API and Pod-selection tests.
+
+## Checks performed
+
+- Reviewed Kubernetes1.34.0 custom-controller scale lookup and KubeVirt1.6.0 VMI versus VMPool CRD generation, pool ownership, eviction webhook and removal of legacy VMI-owned PDBs
+- Executed three complete shell blocks plus the Pod-owner read from a fourth against a disposable Kubernetes1.34.0 API using kubectl1.34.0/jq1.6; VMI/VM/CRD reads were source and syntax reviewed only
+- Exact launcher grouping query selected four of five fixture Pods, exposed two Pods sharing one VMI UID and flagged one missing controlling VMI owner
+- Exact corrected PDB preview removed maxUnavailable and emitted integer minAvailable2 using a seeded last-applied configuration; stored PDB resourceVersion and spec remained unchanged
+- With explicitly seeded PDB status and Ready Pod fixtures, dry-run eviction succeeded with one budget and was rejected for multiple matching budgets; no Pod was removed
+- Five shell blocks passed bash syntax and seven-node/six-edge Mermaid diagram was structurally checked
+- Generated1280x720 social image and visually reviewed three-line title and branding without clipping
+
+## Sources checked
+
+- https://github.com/kubevirt/kubevirt/blob/v1.6.0/pkg/virt-api/webhooks/validating-webhook/admitters/pod-eviction-admitter.go
+- https://github.com/kubevirt/kubevirt/blob/v1.6.0/pkg/virt-controller/watch/pool/pool.go
+- https://github.com/kubernetes/kubernetes/blob/v1.34.0/pkg/controller/disruption/disruption.go
+- https://github.com/kubevirt/kubevirt/blob/v1.6.0/pkg/virt-operator/resource/generate/components/crds.go
+- https://kubernetes.io/docs/tasks/run-application/configure-pdb/#arbitrary-workloads-and-arbitrary-selectors
+- https://kubevirt.io/user-guide/compute/live_migration/#migration-status
+- https://github.com/kubernetes/kubernetes/blob/v1.34.0/pkg/registry/core/pod/storage/eviction.go
+- https://github.com/kubevirt/kubevirt/blob/v1.6.0/pkg/virt-controller/watch/drain/disruptionbudget/disruptionbudget.go
+- https://github.com/kubevirt/kubevirt/issues/18063
+- https://www.kubernetes.dev/resources/keps/981/
+- https://kubevirt.io/user-guide/cluster_admin/node_maintenance/
+- https://kubernetes.io/docs/reference/kubectl/generated/kubectl_apply/
+- https://kubernetes.io/docs/reference/kubectl/generated/kubectl_get/
+
+## Limitations
+
+- No KubeVirt operator, VMI, VM, guest, hypervisor, migration or disruption controller ran; direct Pod owner references and status were fixtures
+- No full KubeVirt CRD admission or KubeVirt webhook execution was tested; tagged implementation review supports those claims
+- PDB Pod health does not measure guest application capacity or distinct running guests during migration; the proposed floor requires workload-specific review
+- Mermaid syntax was structurally checked but the diagram was not rendered
+
+## Repository checks
+
+The repository validator passed for this post in an isolated fixture with its catalog entry, author list, tag allowlist, and social image. Shell examples, if present, passed bash syntax checking. The full existing catalog was not revalidated.

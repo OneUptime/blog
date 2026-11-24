@@ -1,0 +1,38 @@
+# Technical validation
+
+The readiness state logic and Kubernetes API preview were executed locally. Application capacity and controller behavior are explicitly outside those tests.
+
+## Checks performed
+
+- Reviewed Kubernetes1.34.0 PDB Ready-condition counting versus ReplicaSet availability and minReadySeconds handling, plus startup/readiness and readiness-gate documentation
+- Extracted and executed exact Python class with Python3.15.0 using a controlled clock; verified initial failure, healthy hold duration, freshness expiry, reset after a sampling gap, reset after failure, zero hold, and two invalid configurations
+- Executed exact kubectl1.34.0 strategic patch preview against disposable Kubernetes1.34.0 API with pre-existing exec probes; HTTP handlers replaced old handlers while image, sidecar and liveness remained intact
+- Verified stored Deployment resourceVersion and minReadySeconds unchanged after preview; strict API dry-run rejected unsupported PDB.spec.minReadySeconds
+- Three shell blocks passed bash syntax; Python compiled; seven-node/six-edge Mermaid structurally checked
+- Generated1280x720 social image and visually reviewed three-line title and branding without clipping
+
+## Sources checked
+
+- https://kubernetes.io/docs/concepts/workloads/controllers/deployment/#min-ready-seconds
+- https://github.com/kubernetes/kubernetes/blob/v1.34.0/pkg/controller/disruption/disruption.go
+- https://github.com/kubernetes/kubernetes/blob/v1.34.0/pkg/controller/replicaset/replica_set_utils.go
+- https://docs.python.org/3/library/time.html#time.monotonic
+- https://docs.python.org/3/library/threading.html#lock-objects
+- https://kubernetes.io/docs/tasks/configure-pod-container/configure-liveness-readiness-startup-probes/
+- https://kubernetes.io/docs/tasks/manage-kubernetes-objects/update-api-object-kubectl-patch/
+- https://v1-34.docs.kubernetes.io/docs/tasks/configure-pod-container/configure-liveness-readiness-startup-probes/#configure-probes
+- https://kubernetes.io/docs/concepts/workloads/pods/pod-lifecycle/#pod-readiness-gate
+- https://github.com/kubernetes/community/issues/194
+- https://github.com/kubernetes/kubernetes/blob/v1.34.0/pkg/api/v1/pod/util.go
+
+## Limitations
+
+- No kubelet, readiness HTTP server, application warm-up task, traffic load, Deployment controller or disruption controller ran; controller semantics were source reviewed
+- Python timing tests used an injected clock without wall-clock waiting; this validates state transitions, not production check latency, HTTP integration or process aggregation
+- Two observation watch commands were source/syntax reviewed rather than exercised against running workload Pods; API preview validates configuration only
+- The example samples health and cannot prove continuous health between checks; deployment-specific health contracts and timings need staging validation
+- Mermaid was structurally checked but not rendered
+
+## Repository checks
+
+The repository validator passed for this post in an isolated fixture with its catalog entry, author list, tag allowlist, and social image. Shell examples, if present, passed bash syntax checking. The full existing catalog was not revalidated.

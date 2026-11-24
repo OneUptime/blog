@@ -832771,5 +832771,127 @@
       "Troubleshooting"
     ],
     "post": "2026-11-24-remove-orphaned-pdb-helm-hooks"
+  },
+  {
+    "title": "Fix Helm PDB Values That Set Both Availability Limits",
+    "description": "Trace conflicting PDB limits through Helm value merging, correct inherited settings, and validate rendered manifests without confusing zero with an unset value.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Kubernetes",
+      "Helm",
+      "PodDisruptionBudget",
+      "Troubleshooting"
+    ],
+    "post": "2026-11-24-fix-helm-pdb-minavailable-maxunavailable-values"
+  },
+  {
+    "title": "Fix PDB Expected-Pod-Count Errors Caused by Job Pods",
+    "description": "Diagnose CalculateExpectedPodCountFailed when a PDB selects Job Pods, trace controller ownership, and narrow the policy without creating a protection gap.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Kubernetes",
+      "PodDisruptionBudget",
+      "Kubernetes jobs",
+      "Troubleshooting"
+    ],
+    "post": "2026-11-24-pdb-calculateexpectedpodcountfailed-job-pods"
+  },
+  {
+    "title": "Configure RayCluster PDBs Without a Scale Subresource",
+    "description": "Protect RayCluster head and worker Pods with integer availability floors, verify their selectors, and understand autoscaling and maintenance limits.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Kubernetes",
+      "KubeRay",
+      "PodDisruptionBudget",
+      "Troubleshooting"
+    ],
+    "post": "2026-11-24-raycluster-pdb-without-scale-subresource"
+  },
+  {
+    "title": "Diagnose KubeVirt VMPool Evictions Blocked by PDB Scale Lookups",
+    "description": "Trace KubeVirt Pod ownership to diagnose PDB scale failures, distinguish migration delays, and assess an integer availability floor without bypassing VM safety.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Kubernetes",
+      "KubeVirt",
+      "PodDisruptionBudget",
+      "Troubleshooting"
+    ],
+    "post": "2026-11-24-kubevirt-vmpool-pdb-scale-lookup-evictions"
+  },
+  {
+    "title": "Fix Vault Standby Readiness That Exhausts a PDB",
+    "description": "Diagnose healthy Vault standbys marked unready, correct the Helm health-probe path, and restore meaningful disruption allowance without hiding sealed nodes.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Kubernetes",
+      "Vault",
+      "Helm",
+      "PodDisruptionBudget",
+      "OpenShift"
+    ],
+    "post": "2026-11-24-vault-standby-readiness-pdb-budget"
+  },
+  {
+    "title": "Unblock StatefulSet Drains Stalled by Node Affinity",
+    "description": "Find why a StatefulSet replacement stays Pending during drain, check node and volume constraints, and preview a narrow affinity repair without weakening its PDB.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Kubernetes",
+      "StatefulSet",
+      "Node Affinity",
+      "PodDisruptionBudget",
+      "Troubleshooting"
+    ],
+    "post": "2026-11-24-statefulset-drain-node-affinity-pending-replacement"
+  },
+  {
+    "title": "Investigate Drain Retries for a Recreated StatefulSet Pod",
+    "description": "Compare Pod UIDs and node assignments when kubectl drain keeps retrying a reused StatefulSet name, then restart the drain from a verified current inventory.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Kubernetes",
+      "StatefulSet",
+      "PodDisruptionBudget",
+      "Troubleshooting"
+    ],
+    "post": "2026-11-24-kubectl-drain-retries-statefulset-pod-moved-nodes"
+  },
+  {
+    "title": "Account for Application Warm-Up in PodDisruptionBudgets",
+    "description": "Make readiness reflect application warm-up instead of relying on Deployment minReadySeconds, with a tested stability window and a guarded probe preview.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Kubernetes",
+      "PodDisruptionBudget",
+      "Python",
+      "Troubleshooting"
+    ],
+    "post": "2026-11-24-pdb-application-warmup-minreadyseconds"
+  },
+  {
+    "title": "Include ALB Target Health in PDBs with Readiness Gates",
+    "description": "Connect ALB target registration to Pod readiness, verify injected gates, and keep a PDB from counting replacement Pods before the load balancer can use them.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Kubernetes",
+      "AWS ALB",
+      "PodDisruptionBudget",
+      "Troubleshooting"
+    ],
+    "post": "2026-11-24-alb-target-health-pdb-readiness-gates"
+  },
+  {
+    "title": "Find the PDB Behind an EKS PodEvictionFailure with Audit Logs",
+    "description": "Trace failed EKS node-group evictions through audit events, identify the responsible disruption budget, and separate historical evidence from current Pod state.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Kubernetes",
+      "Amazon EKS",
+      "PodDisruptionBudget",
+      "Audit Logging"
+    ],
+    "post": "2026-11-24-eks-podevictionfailure-pdb-audit-logs"
   }
 ]

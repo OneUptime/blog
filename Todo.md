@@ -2476,41 +2476,61 @@ Research: [OneUptime air-gapped alerting](https://oneuptime.com/enterprise/air-g
 
 23. How to Fix Helm Values That Render Both minAvailable and maxUnavailable in a PodDisruptionBudget
 
+    Completed: [Article](posts/2026-11-24-fix-helm-pdb-minavailable-maxunavailable-values/README.md) (24 November 2026).
+
     Research: [Source](https://github.com/cert-manager/cert-manager/issues/6118) · [Documentation](https://kubernetes.io/docs/tasks/run-application/configure-pdb/).
 
 24. How to Fix CalculateExpectedPodCountFailed When a PodDisruptionBudget Matches Job Pods
+
+    Completed: [Article](posts/2026-11-24-pdb-calculateexpectedpodcountfailed-job-pods/README.md) (24 November 2026).
 
     Research: [Source](https://github.com/kubernetes/kubernetes/issues/129625) · [Documentation](https://kubernetes.io/docs/tasks/run-application/configure-pdb/).
 
 25. How to Configure PodDisruptionBudgets for RayCluster Pods Without a Scale Subresource
 
+    Completed: [Article](posts/2026-11-24-raycluster-pdb-without-scale-subresource/README.md) (24 November 2026).
+
     Research: [Source](https://github.com/ray-project/kuberay/issues/2662) · [Documentation](https://kubernetes.io/docs/tasks/run-application/configure-pdb/).
 
 26. How to Diagnose KubeVirt VMPool Evictions Blocked by PodDisruptionBudget Scale Lookups
+
+    Completed: [Article](posts/2026-11-24-kubevirt-vmpool-pdb-scale-lookup-evictions/README.md) (24 November 2026).
 
     Research: [Source](https://github.com/kubevirt/kubevirt/issues/18063) · [Documentation](https://www.kubernetes.dev/resources/keps/981/).
 
 27. How to Fix Vault Standby Readiness Responses That Exhaust a PodDisruptionBudget
 
+    Completed: [Article](posts/2026-11-24-vault-standby-readiness-pdb-budget/README.md) (24 November 2026).
+
     Research: [Source](https://github.com/hashicorp/vault-helm/issues/1173) · [Documentation](https://developer.hashicorp.com/vault/api-docs/system/health).
 
 28. How to Unblock a StatefulSet Drain When Node Affinity Prevents Its Replacement Pod from Scheduling
+
+    Completed: [Article](posts/2026-11-24-statefulset-drain-node-affinity-pending-replacement/README.md) (24 November 2026).
 
     Research: [Source](https://github.com/kubernetes/kubernetes/issues/91141) · [Documentation](https://kubernetes.io/docs/tasks/administer-cluster/safely-drain-node/).
 
 29. How to Investigate kubectl drain Retrying a StatefulSet Pod That Has Already Moved Nodes
 
+    Completed: [Article](posts/2026-11-24-kubectl-drain-retries-statefulset-pod-moved-nodes/README.md) (24 November 2026).
+
     Research: [Source](https://github.com/kubernetes/kubernetes/issues/138229) · [Documentation](https://github.com/kubernetes/kubectl/blob/master/pkg/drain/drain.go).
 
 30. How to Account for Application Warm-Up in PodDisruptionBudgets When minReadySeconds Does Not Apply
+
+    Completed: [Article](posts/2026-11-24-pdb-application-warmup-minreadyseconds/README.md) (24 November 2026).
 
     Research: [Source](https://github.com/kubernetes/community/issues/194) · [Documentation 1](https://kubernetes.io/docs/tasks/run-application/configure-pdb/) · [Documentation 2](https://kubernetes.io/docs/concepts/workloads/controllers/deployment/).
 
 31. How to Include ALB Target Health in PodDisruptionBudget Decisions with Readiness Gates
 
+    Completed: [Article](posts/2026-11-24-alb-target-health-pdb-readiness-gates/README.md) (24 November 2026).
+
     Research: [Source](https://github.com/aws/containers-roadmap/issues/2511) · [Documentation](https://kubernetes-sigs.github.io/aws-load-balancer-controller/latest/deploy/pod_readiness_gate/).
 
 32. How to Identify the PodDisruptionBudget Behind an EKS PodEvictionFailure Using Audit Logs
+
+    Completed: [Article](posts/2026-11-24-eks-podevictionfailure-pdb-audit-logs/README.md) (24 November 2026).
 
     Research: [Source](https://www.reddit.com/r/kubernetes/comments/1khaah7) · [Documentation](https://repost.aws/knowledge-center/eks-node-group-update-failures).
 
