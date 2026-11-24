@@ -2799,15 +2799,45 @@ Research: [OneUptime air-gapped alerting](https://oneuptime.com/enterprise/air-g
     Completed: [Article](posts/2026-11-25-pgbadger-no-new-entries-stale-last-parsed-rotation/README.md) (25 November 2026).
 
 10. pgBadger `-j` vs `-J`: Parallelize One Huge Log or Hundreds of Small Logs?
+
+    Completed: [Article](posts/2026-11-25-pgbadger-j-jobs-parallel-large-many-logs/README.md) (25 November 2026).
+
 11. How to Stop pgBadger from Exhausting Memory on Busy PostgreSQL Logs
+
+    Completed: [Article](posts/2026-11-25-pgbadger-memory-busy-postgresql-logs/README.md) (25 November 2026).
+
 12. How to Anonymize SQL Literals Before Sharing a pgBadger Report
+
+    Completed: [Article](posts/2026-11-25-pgbadger-anonymize-sql-literals-sharing-reports/README.md) (25 November 2026).
+
 13. How to Exclude Health Checks, `pg_dump`, Migrations, and Other Noise from pgBadger
+
+    Completed: [Article](posts/2026-11-25-pgbadger-exclude-health-checks-backups-migrations/README.md) (25 November 2026).
+
 14. How to Slice a pgBadger Report by Database, User, Application, Client, PID, or Session
+
+    Completed: [Article](posts/2026-11-25-pgbadger-slice-database-user-application-client-session/README.md) (25 November 2026).
+
 15. Slowest, Most Frequent, or Most Total Time: Which pgBadger Query Ranking Should You Fix First?
+
+    Completed: [Article](posts/2026-11-25-pgbadger-query-rankings-slowest-frequent-total-time/README.md) (25 November 2026).
+
 16. How to Find Queries Spilling to Disk with pgBadger and `log_temp_files`
+
+    Completed: [Article](posts/2026-11-25-pgbadger-find-disk-spills-log-temp-files/README.md) (25 November 2026).
+
 17. How to Diagnose Lock Waits, Deadlocks, and Cancelled Queries with pgBadger
+
+    Completed: [Article](posts/2026-11-25-pgbadger-lock-waits-deadlocks-cancelled-queries/README.md) (25 November 2026).
+
 18. How to Audit Autovacuum and Autoanalyze Activity with pgBadger
+
+    Completed: [Article](posts/2026-11-25-pgbadger-audit-autovacuum-autoanalyze/README.md) (25 November 2026).
+
 19. How to Correlate PostgreSQL Checkpoint Spikes with Query Latency in pgBadger
+
+    Completed: [Article](posts/2026-11-25-pgbadger-checkpoint-spikes-query-latency/README.md) (25 November 2026).
+
 20. How to Export pgBadger JSON, Raw CSV, and Normalized Query Fingerprints into an Observability Pipeline
 
 21. How to Build a Monthly pgBadger Report from Existing Binary Data

@@ -1,0 +1,28 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-25",
+  "runtimeTestsPerformed": true,
+  "sources": [
+    "https://www.postgresql.org/docs/18/routine-vacuuming.html",
+    "https://www.postgresql.org/docs/18/runtime-config-logging.html",
+    "https://www.postgresql.org/docs/18/monitoring-stats.html",
+    "https://www.postgresql.org/docs/18/progress-reporting.html",
+    "https://www.postgresql.org/docs/18/sql-createtable.html#SQL-CREATETABLE-STORAGE-PARAMETERS",
+    "https://www.postgresql.org/docs/18/runtime-config-vacuum.html",
+    "https://github.com/darold/pgbadger/blob/v13.3/README",
+    "https://github.com/darold/pgbadger/blob/v13.3/pgbadger"
+  ],
+  "tests": [
+    "Disposable PostgreSQL14.17 Unix-socket instance: inserted2000/deleted1500 lab rows with table-specific thresholds, observed actual automatic vacuum and analyze completion",
+    "Exact article SHOW, table audit, progress and relation-options SQL executed; audit showed500 live/0 dead/0 modified estimates and automatic counters1/1 with timestamps",
+    "pgBadger13.3/Perl5.34.1 HTML had one automatic vacuum/one automatic analyze and expected table; exact article shell invocation generated report",
+    "Ordinary statement-duration logging stayed disabled; temporary cluster stopped; progress queries returned0 rows after completion",
+    "Six-node five-edge Mermaid structural check and visual1280x720 two-line image inspection passed"
+  ],
+  "limitations": [
+    "Runtime14.17 is a disclosed older fixture; PostgreSQL18 documentation reviewed, not executed",
+    "No production tuning, wraparound pressure, retained snapshots, worker saturation or active progress phase tested",
+    "Fixture thresholds deliberately accelerate tiny test; no recommendation to reuse them in production",
+    "HTML content checked programmatically, not browser-reviewed; Mermaid not rendered"
+  ]
+}

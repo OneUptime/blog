@@ -1,0 +1,24 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-25",
+  "runtimeTestsPerformed": true,
+  "sources": [
+    "https://www.postgresql.org/docs/18/runtime-config-logging.html",
+    "https://www.postgresql.org/docs/18/libpq-envars.html",
+    "https://www.postgresql.org/docs/18/functions-admin.html",
+    "https://www.postgresql.org/docs/18/app-psql.html",
+    "https://github.com/darold/pgbadger/blob/v13.3/README",
+    "https://github.com/darold/pgbadger/blob/v13.3/pgbadger"
+  ],
+  "tests": [
+    "pgBadger13.3 under Perl5.34.1: synthetic12-execution/1-error fixture parsed without filtering, by application names, by exact query regex, and with both filters; retained counts12/9/8/6 and events1/0/1/0",
+    "Near-match SQL, unnamed connections, multiline probe, broad pattern, trailing blank regex and escaped application-name punctuation tested; blank rule retained8 executions but removed the event",
+    "Exact final article shell block generated focused HTML after adapting executable and input paths; rule file contents verified",
+    "Six-node six-edge Mermaid structural check and visually inspected1280x720 social image passed"
+  ],
+  "limitations": [
+    "Synthetic PostgreSQL standard-error input only; no live database, backups, migration, pool or psql connection command executed",
+    "Not an exhaustive filter or log-format compatibility test; blank-pattern observation is fixture-specific, not a universal query-removal claim",
+    "Generated HTML was not visually browser-reviewed; Mermaid checked structurally only"
+  ]
+}

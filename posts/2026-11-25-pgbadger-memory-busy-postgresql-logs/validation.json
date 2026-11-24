@@ -1,0 +1,26 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-25",
+  "runtimeTestsPerformed": true,
+  "sources": [
+    "https://docs.kernel.org/admin-guide/cgroup-v2.html",
+    "https://github.com/darold/pgbadger/blob/v13.3/pgbadger",
+    "https://raw.githubusercontent.com/darold/pgbadger/v13.3/README",
+    "https://github.com/darold/pgbadger/blob/v13.3/README",
+    "https://pgbadger.darold.net/documentation.html",
+    "https://www.freedesktop.org/software/systemd/man/latest/systemd.resource-control.html"
+  ],
+  "tests": [
+    "pgBadger13.3 Perl5.34.1 fixture of500 executions across100 query shapes; retained binary structures inspected using trusted local Storable files",
+    "Default retained300 group samples, -s1 retained100, -s0 retained0 while each kept500 executions/100 groups; -t1 retained100 groups and300 samples but reduced slowest collection20to1",
+    "Unique comments with --keep-comments increased groups100to500; -m100 collapsed distinguishing table suffixes into1 group while executions stayed500",
+    "Exact bounded database HTML and incremental --no-week commands executed with local fixture paths; daily HTML exists and no week directory generated",
+    "Shell syntax, six-node five-edge Mermaid structure and visually inspected1280x720 image passed"
+  ],
+  "limitations": [
+    "No actual OOM, Linux cgroup, systemd resource limit or production memory benchmark tested",
+    "Binary structure sizes are not peak-memory measurements; no universal capacity or RAM reduction claim",
+    "Small synthetic standard-error workload only; no real database or production high-cardinality scale test",
+    "HTML existence checked without browser visual review; Mermaid structural only"
+  ]
+}

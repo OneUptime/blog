@@ -833596,5 +833596,125 @@
       "Logging"
     ],
     "post": "2026-11-25-pgbadger-no-new-entries-stale-last-parsed-rotation"
+  },
+  {
+    "title": "pgBadger -j vs -J: Choose Parallelism for Large or Many Log Files",
+    "description": "Choose pgBadger workers for one large log or many archives, verify actual splitting, and compare report accuracy before increasing concurrency.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "PostgreSQL",
+      "PgBadger",
+      "Performance",
+      "Parallelism"
+    ],
+    "post": "2026-11-25-pgbadger-j-jobs-parallel-large-many-logs"
+  },
+  {
+    "title": "Stop pgBadger from Exhausting Memory on Busy PostgreSQL Logs",
+    "description": "Diagnose pgBadger memory pressure, reduce retained samples and report scope, and avoid settings that hide queries while appearing to fix resource use.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "PostgreSQL",
+      "PgBadger",
+      "Performance",
+      "Troubleshooting"
+    ],
+    "post": "2026-11-25-pgbadger-memory-busy-postgresql-logs"
+  },
+  {
+    "title": "Anonymize SQL Literals Before Sharing a pgBadger Report",
+    "description": "Use pgBadger literal anonymization, test what remains visible, and review the final HTML without exposing raw logs, binary data, or error details.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "PostgreSQL",
+      "PgBadger",
+      "Data Privacy",
+      "Security"
+    ],
+    "post": "2026-11-25-pgbadger-anonymize-sql-literals-sharing-reports"
+  },
+  {
+    "title": "Exclude Health Checks, Backups, and Migrations from pgBadger",
+    "description": "Filter routine PostgreSQL activity from pgBadger with application names and precise query patterns, while retaining a complete view for incident analysis.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "PostgreSQL",
+      "PgBadger",
+      "Logging",
+      "Performance"
+    ],
+    "post": "2026-11-25-pgbadger-exclude-health-checks-backups-migrations"
+  },
+  {
+    "title": "Slice pgBadger Reports by Database, User, Application, Client, or Session",
+    "description": "Narrow pgBadger reports to a workload or backend, verify combined filters, and handle a tested session-filter limitation in version 13.3.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "PostgreSQL",
+      "PgBadger",
+      "Troubleshooting",
+      "Logging"
+    ],
+    "post": "2026-11-25-pgbadger-slice-database-user-application-client-session"
+  },
+  {
+    "title": "Which pgBadger Query Ranking Should You Fix First?",
+    "description": "Choose between pgBadger's slowest, most frequent and total-time query rankings using a reproducible example and an evidence-based tuning workflow.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "PostgreSQL",
+      "PgBadger",
+      "Performance",
+      "Troubleshooting"
+    ],
+    "post": "2026-11-25-pgbadger-query-rankings-slowest-frequent-total-time"
+  },
+  {
+    "title": "Find Queries Spilling to Disk with pgBadger and log_temp_files",
+    "description": "Trace PostgreSQL temporary-file activity to queries with pgBadger, confirm the responsible plan operations, and test memory changes without global tuning guesses.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "PostgreSQL",
+      "PgBadger",
+      "Performance",
+      "Troubleshooting"
+    ],
+    "post": "2026-11-25-pgbadger-find-disk-spills-log-temp-files"
+  },
+  {
+    "title": "Diagnose Lock Waits, Deadlocks, and Cancellations with pgBadger",
+    "description": "Separate PostgreSQL lock waits, deadlocks and timeout cancellations using pgBadger events, preserved log details and a read-only live blocker query.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "PostgreSQL",
+      "PgBadger",
+      "Troubleshooting",
+      "Database Monitoring"
+    ],
+    "post": "2026-11-25-pgbadger-lock-waits-deadlocks-cancelled-queries"
+  },
+  {
+    "title": "Audit PostgreSQL Autovacuum and Autoanalyze with pgBadger",
+    "description": "Audit automatic PostgreSQL maintenance with pgBadger logs, table statistics and progress views, while distinguishing missing records from missing work.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "PostgreSQL",
+      "PgBadger",
+      "Database Monitoring",
+      "Performance"
+    ],
+    "post": "2026-11-25-pgbadger-audit-autovacuum-autoanalyze"
+  },
+  {
+    "title": "Correlate PostgreSQL Checkpoints with Query Latency in pgBadger",
+    "description": "Compare checkpoint intervals with query latency in pgBadger, interpret write and sync times, and gather evidence before changing checkpoint settings.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "PostgreSQL",
+      "PgBadger",
+      "Performance",
+      "Troubleshooting"
+    ],
+    "post": "2026-11-25-pgbadger-checkpoint-spikes-query-latency"
   }
 ]

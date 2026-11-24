@@ -1,0 +1,23 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-25",
+  "runtimeTestsPerformed": true,
+  "sources": [
+    "https://github.com/darold/pgbadger/blob/v13.3/README",
+    "https://github.com/darold/pgbadger/blob/v13.3/pgbadger",
+    "https://www.postgresql.org/docs/18/runtime-config-logging.html",
+    "https://www.postgresql.org/docs/18/pgstatstatements.html",
+    "https://www.postgresql.org/docs/18/using-explain.html"
+  ],
+  "tests": [
+    "Exact article generator executed under Python3.11.13; produced1051 synthetic records; second run refused overwrite without changing input",
+    "pgBadger13.3/Perl5.34.1 HTML command executed and text assertions confirmed3 normalized groups/10seconds, export slowest, lookup most frequent, batch greatest total time",
+    "100ms threshold control retained51 executions/2 groups/8seconds and changed most frequent winner to batch",
+    "Eight-node nine-edge Mermaid structurally checked; generated1280x720 two-line image visually inspected"
+  ],
+  "limitations": [
+    "No live PostgreSQL or production workload; synthetic durations are input values, not measured performance",
+    "No optimization, query plan execution or pg_stat_statements collection performed; comparisons and savings are illustrative",
+    "HTML parsed programmatically without visual browser review; Mermaid not rendered"
+  ]
+}

@@ -1,0 +1,29 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-25",
+  "runtimeTestsPerformed": true,
+  "sources": [
+    "https://www.postgresql.org/docs/18/explicit-locking.html",
+    "https://www.postgresql.org/docs/18/runtime-config-locks.html",
+    "https://www.postgresql.org/docs/18/runtime-config-client.html",
+    "https://www.postgresql.org/docs/18/runtime-config-logging.html",
+    "https://www.postgresql.org/docs/18/functions-info.html",
+    "https://www.postgresql.org/docs/18/monitoring-stats.html",
+    "https://www.postgresql.org/docs/18/errcodes-appendix.html",
+    "https://github.com/darold/pgbadger/blob/v13.3/README",
+    "https://github.com/darold/pgbadger/blob/v13.3/pgbadger"
+  ],
+  "tests": [
+    "Disposable PostgreSQL14.17 Unix-socket instance generated successful wait/acquire, lock timeout, statement timeout and two-session row deadlock; rolled back test transactions and stopped cluster",
+    "Exact read-only article blocker query returned waiter with Lock/relation and expected holder; preserved snapshot",
+    "pgBadger13.3/Perl5.34.1 text and HTML retained all event causes and associated SQL; initial expected cancellation count1 was disproved by actual headline0, and article explicitly reports that limitation",
+    "Exact article parser command generated HTML after executable/input path substitution; SHOW examples documentation-reviewed",
+    "Four-node four-edge Mermaid cycle structurally checked;1280x720 three-line social image visually inspected"
+  ],
+  "limitations": [
+    "Older14.17 runtime is a disclosed lab fixture; PostgreSQL18 docs reviewed,18 not executed",
+    "No production incident, prepared transaction, parallel lock group, explicit user cancellation, retries or administrative termination tested",
+    "Headline cancellation count did not reflect actual timeout; no claim that all parser statistics were correct",
+    "No HTML browser visual review; Mermaid not rendered"
+  ]
+}

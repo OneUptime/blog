@@ -1,0 +1,25 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-25",
+  "runtimeTestsPerformed": true,
+  "sources": [
+    "https://www.postgresql.org/docs/18/sql-syntax-lexical.html",
+    "https://github.com/darold/pgbadger/blob/v13.3/README",
+    "https://github.com/darold/pgbadger/blob/v13.3/pgbadger",
+    "https://docs.python.org/3.11/library/html.parser.html",
+    "https://docs.python.org/3.11/library/html.html"
+  ],
+  "tests": [
+    "pgBadger13.3 Perl5.34.1 generated plain/anonymized HTML and anonymized binary output from synthetic canary logs; all expected baseline markers confirmed present",
+    "HTML --anonymize --nocomment removed ordinary string, numeric, block-comment and statement-string markers; dollar-quoted value, line comment, identifier, connection metadata, constraint and error detail remained",
+    "Binary output retained original ordinary string despite --anonymize; article limits claims to tested HTML cases",
+    "Exact Python3.11.13 checker detected surviving and tag-split/entity-encoded markers, rejected an empty pattern list, returned no match for masked marker and printed only pattern numbers",
+    "Shell syntax, six-node five-edge Mermaid structure and visually inspected1280x720 image passed"
+  ],
+  "limitations": [
+    "All input was artificial; no production report, personal data or credentials used or shared",
+    "Canary tests are not exhaustive SQL redaction assurance; no prepared-protocol, JSON/CSV, every literal syntax or linked-asset coverage",
+    "HTML inspected programmatically via source/text, not visual browser review; checker does not identify unknown secrets or every encoding",
+    "Mermaid structurally checked, not browser-rendered"
+  ]
+}

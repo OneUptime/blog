@@ -1,0 +1,25 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-25",
+  "runtimeTestsPerformed": true,
+  "sources": [
+    "https://www.postgresql.org/docs/18/wal-configuration.html",
+    "https://www.postgresql.org/docs/18/runtime-config-wal.html",
+    "https://www.postgresql.org/docs/18/runtime-config-logging.html",
+    "https://www.postgresql.org/docs/18/monitoring-stats.html#MONITORING-PG-STAT-CHECKPOINTER-VIEW",
+    "https://github.com/darold/pgbadger/blob/v13.3/README",
+    "https://github.com/darold/pgbadger/blob/v13.3/pgbadger"
+  ],
+  "tests": [
+    "pgBadger13.3/Perl5.34.1 with JSON::XS4.02 parsed fifteen synthetic queries and two checkpoints into HTML/JSON/text",
+    "Assertions verified query count15, duration720ms, minute means10/200/10/10/10ms and two checkpoint starts with7seconds write/.8seconds sync/8seconds total/200 buffers",
+    "Exact article --average1 --histo-average5 shell command generated HTML after path substitution",
+    "PostgreSQL18 SQL view/column names and units documentation-reviewed; no PostgreSQL18 execution claimed",
+    "Seven-node six-edge Mermaid structural check and visual1280x720 three-line image review passed"
+  ],
+  "limitations": [
+    "Synthetic input tests parsing and arithmetic, not causal storage behavior or a performance benchmark",
+    "No live checkpoint, query load, storage measurements, database configuration changes or PostgreSQL18 SQL execution",
+    "No live chart browser inspection; HTML/JSON content checked programmatically; Mermaid not rendered"
+  ]
+}

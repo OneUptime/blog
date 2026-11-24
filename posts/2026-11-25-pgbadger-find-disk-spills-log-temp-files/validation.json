@@ -1,0 +1,29 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-25",
+  "runtimeTestsPerformed": true,
+  "sources": [
+    "https://www.postgresql.org/docs/18/runtime-config-logging.html",
+    "https://www.postgresql.org/docs/18/runtime-config-resource.html",
+    "https://www.postgresql.org/docs/18/sql-explain.html",
+    "https://www.postgresql.org/docs/18/sql-set.html",
+    "https://www.postgresql.org/docs/18/functions-srf.html",
+    "https://www.postgresql.org/docs/14/runtime-config-logging.html",
+    "https://www.postgresql.org/docs/14/sql-set.html",
+    "https://github.com/darold/pgbadger/blob/v13.3/README",
+    "https://github.com/darold/pgbadger/blob/v13.3/pgbadger"
+  ],
+  "tests": [
+    "Executed exact SQL in disposable PostgreSQL14.17 Unix-socket-only instance:64kB work_mem produced external merge, temporary blocks and two file records1425408/1400000 bytes",
+    "Repeated with8MB transaction-local work_mem:quicksort and no additional temporary-file records; SHOW confirmed original4MB/-1/0/2 settings after rollback",
+    "pgBadger13.3/Perl5.34.1 parsed real captured logs; verified two files and2825408 total bytes attributed to probe while ordinary timed query count stayed0",
+    "Exact article parser invocation generated HTML after input/executable path adaptation; temporary database stopped in finally cleanup",
+    "Six-node five-edge Mermaid structure and visual1280x720 two-line image inspection passed"
+  ],
+  "limitations": [
+    "Actual lab runtime14.17 is an older fixture, not deployment recommendation; PostgreSQL18 docs reviewed but18 not executed",
+    "No production instance or user tables; no parallel worker attribution, hash-spill tuning, managed database configuration or concurrency benchmark tested",
+    "File sizes and memory threshold are lab-specific; no performance speedup claim",
+    "HTML not visually browser-reviewed; Mermaid structurally checked only"
+  ]
+}

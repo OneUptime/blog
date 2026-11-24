@@ -1,0 +1,23 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-25",
+  "runtimeTestsPerformed": true,
+  "sources": [
+    "https://www.postgresql.org/docs/18/runtime-config-logging.html",
+    "https://www.postgresql.org/docs/18/libpq-connect.html#LIBPQ-PARAMKEYWORDS",
+    "https://github.com/darold/pgbadger/blob/v13.3/README",
+    "https://github.com/darold/pgbadger/blob/v13.3/pgbadger"
+  ],
+  "tests": [
+    "pgBadger13.3/Perl5.34.1 parsed eight synthetic records; database/user/application/client counts7/1/6/2, combined intersection3, repeated and comma-separated app alternatives7",
+    "PID81 selected3 records across two lifetimes; bounded time selected intended2; exact table markers checked, and boundary behavior prompted use of bounds encompassing known records",
+    "Documented include-session value selected0 instead of intended2; include-session1 selected7 corresponding line counters; source traced session storage to t_session_line, distinct from t_session_id",
+    "All article Bash parser commands executed against fixture after executable and input path substitution and generated HTML, including deliberately failing session-selection case",
+    "Six-node six-edge Mermaid structural check and visual1280x720 three-line social image inspection passed"
+  ],
+  "limitations": [
+    "No live PostgreSQL server or connection pool; standard-error synthetic logs only",
+    "Session limitation scoped to tested13.3 path, not every release or format; no exact session isolation workaround asserted",
+    "Not exhaustive event-category coverage; HTML not browser visually inspected and Mermaid not rendered"
+  ]
+}

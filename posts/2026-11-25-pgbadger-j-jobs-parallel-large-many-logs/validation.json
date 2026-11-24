@@ -1,0 +1,25 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-25",
+  "runtimeTestsPerformed": true,
+  "sources": [
+    "https://raw.githubusercontent.com/darold/pgbadger/v13.3/README",
+    "https://github.com/darold/pgbadger/blob/v13.3/README",
+    "https://github.com/darold/pgbadger/blob/v13.3/pgbadger",
+    "https://github.com/darold/pgbadger/releases/tag/v13.3",
+    "https://www.man7.org/linux/man-pages/man1/time.1.html"
+  ],
+  "tests": [
+    "pgBadger13.3 Perl5.34.1 parsed19265254-byte fixture with24000 timed statements, multiline SQL and four backend PIDs",
+    "Serial, -j4 on one large plain file, -J4 on four plain files and -J4 on four gzip files all returned24000 executions,24seconds total and one normalized group",
+    "Verbose boundaries verified four chunks for the large file and one chunk for an80010-byte100-query file; -J4 on one small file did not split it",
+    "Exact Bash timing loop executed with paths and executable adapted to the100-record fixture: workers1/2/4 each counted100 and /usr/bin/time -p emitted timing fields",
+    "Shell snippets and six-node five-edge Mermaid structure passed;1280x720 social image visually inspected"
+  ],
+  "limitations": [
+    "Synthetic functional checks on macOS, not production performance benchmarks or memory-capacity measurements",
+    "Only stderr text and local gzip inputs exercised; no CSV, remote SSH, stdin, arbitrary boundary placement or prepared-protocol equivalence tests",
+    "Report outputs tested as text; HTML rendering not browser-reviewed; Mermaid structural only",
+    "Timing loop used small fixture to verify execution, not to recommend a worker count for real workloads"
+  ]
+}
