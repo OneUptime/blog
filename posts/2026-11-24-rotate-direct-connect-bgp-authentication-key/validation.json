@@ -1,0 +1,32 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-24",
+  "runtimeTestsPerformed": true,
+  "sources": [
+    "https://docs.aws.amazon.com/directconnect/latest/APIReference/API_UpdateVirtualInterfaceAttributes.html",
+    "https://docs.aws.amazon.com/directconnect/latest/APIReference/API_DeleteBGPPeer.html",
+    "https://docs.aws.amazon.com/directconnect/latest/UserGuide/add-peer-to-vif.html",
+    "https://github.com/aws/aws-cli/blob/2.42.1/awscli/botocore/data/directconnect/2012-10-25/service-2.json",
+    "https://docs.aws.amazon.com/cli/latest/reference/directconnect/describe-virtual-interfaces.html",
+    "https://docs.python.org/3/library/getpass.html",
+    "https://docs.python.org/3/library/os.html",
+    "https://docs.aws.amazon.com/directconnect/latest/APIReference/API_NewBGPPeer.html",
+    "https://docs.aws.amazon.com/directconnect/latest/UserGuide/resiliency_toolkit.html",
+    "https://docs.aws.amazon.com/cli/latest/reference/directconnect/delete-bgp-peer.html",
+    "https://docs.aws.amazon.com/cli/latest/reference/directconnect/create-bgp-peer.html",
+    "https://docs.aws.amazon.com/directconnect/latest/UserGuide/ts-layer-3.html"
+  ],
+  "tests": [
+    "Reviewed official API request schemas: no authKey update parameter, last-peer deletion prohibition, address-family behavior and peer creation",
+    "Three operation shapes passed AWSCLI2.42.1 model with botocore1.40.76; unsupported authKey update correctly rejected",
+    "Article Python helper executed locally with mocked getpass input: 6/80 boundaries, invalid lengths, mismatched confirmation, fatal echo warning, JSON escaping,0600 permissions and no existing-file overwrite",
+    "Three JMESPath1.1.0 filters executed for lifecycle/status fixtures, empty collection and key/router-config exclusion",
+    "Shell syntax and nine-node/eight-edge Mermaid structure passed",
+    "Generated1280x720 image visually reviewed: legible title without clipping"
+  ],
+  "limitations": [
+    "No AWS CLI/API calls, peer deletion/creation, router changes, live BGP reset, traffic migration or application verification performed",
+    "Helper tests used mock input; terminal echo behavior was source reviewed rather than tested interactively; no real secrets used",
+    "Model validation does not enforce live last-peer constraints, permissions or topology suitability; Mermaid not rendered"
+  ]
+}

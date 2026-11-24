@@ -1,0 +1,29 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-24",
+  "runtimeTestsPerformed": true,
+  "sources": [
+    "https://docs.aws.amazon.com/directconnect/latest/UserGuide/monitoring-cloudwatch.html",
+    "https://docs.aws.amazon.com/AmazonCloudWatch/latest/monitoring/Statistics-definitions.html",
+    "https://docs.aws.amazon.com/cli/latest/reference/cloudwatch/list-metrics.html",
+    "https://docs.aws.amazon.com/cli/latest/reference/cloudwatch/get-metric-data.html",
+    "https://docs.aws.amazon.com/AmazonCloudWatch/latest/monitoring/using-metric-math.html",
+    "https://docs.aws.amazon.com/directconnect/latest/UserGuide/viewing-metrics.html",
+    "https://docs.aws.amazon.com/cli/latest/reference/cloudwatch/put-metric-alarm.html",
+    "https://docs.aws.amazon.com/AmazonCloudWatch/latest/monitoring/alarms-and-missing-data.html",
+    "https://docs.aws.amazon.com/directconnect/latest/UserGuide/monitoring-overview.html",
+    "https://github.com/aws/aws-cli/blob/2.42.1/awscli/botocore/data/cloudwatch/2010-08-01/service-2.json"
+  ],
+  "tests": [
+    "Official Direct Connect metrics/dimensions/publication cadence and CloudWatch statistics, request, math and missing-data semantics reviewed",
+    "JSON and three request shapes checked against AWSCLI2.42.1 CloudWatch model using botocore1.40.76",
+    "Evaluated arithmetic AST for both utilization expressions across five rate cases; verified references, statistic and period",
+    "JMESPath1.1.0 query retained full optical and IPv6 BGP dimension sets and handled empty discovery",
+    "Bash syntax, seven-node six-edge Mermaid structure, and generated1280x720 image visual review passed"
+  ],
+  "limitations": [
+    "No AWS CLI process, metric retrieval, hosted math evaluation, alarm creation, alarm-state evaluation or notification performed",
+    "Arithmetic checks do not run the CloudWatch expression engine or reproduce missing-data evaluation behavior",
+    "No live link, optics, router, traffic, capacity or application validation; Mermaid not rendered"
+  ]
+}

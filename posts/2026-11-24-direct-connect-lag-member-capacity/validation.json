@@ -1,0 +1,33 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-24",
+  "runtimeTestsPerformed": true,
+  "sources": [
+    "https://docs.aws.amazon.com/directconnect/latest/UserGuide/lags.html",
+    "https://docs.aws.amazon.com/directconnect/latest/UserGuide/resiliency_toolkit.html",
+    "https://www.cisco.com/c/en/us/support/docs/lan-switching/etherchannel/12023-4.html",
+    "https://docs.aws.amazon.com/directconnect/latest/UserGuide/vif-rate-limiters.html",
+    "https://github.com/aws/aws-cli/blob/2.42.1/awscli/botocore/data/directconnect/2012-10-25/service-2.json",
+    "https://docs.aws.amazon.com/cli/latest/reference/directconnect/describe-lags.html",
+    "https://docs.aws.amazon.com/cli/latest/reference/directconnect/create-lag.html",
+    "https://repost.aws/knowledge-center/troubleshoot-lacp-issues-direct-connect",
+    "https://docs.aws.amazon.com/directconnect/latest/UserGuide/create-lag.html",
+    "https://docs.aws.amazon.com/cli/latest/reference/directconnect/update-lag.html",
+    "https://docs.aws.amazon.com/directconnect/latest/UserGuide/associate-connection-with-lag.html",
+    "https://docs.aws.amazon.com/cli/latest/reference/directconnect/associate-connection-with-lag.html",
+    "https://docs.aws.amazon.com/directconnect/latest/UserGuide/disassociate-connection-from-lag.html"
+  ],
+  "tests": [
+    "Reviewed official LAG member/endpoint restrictions, minimum-link behavior, connection/VIF migration, MACsec considerations, LACP and vendor load balancing",
+    "Four API shapes passed AWSCLI2.42.1 tagged model using botocore1.40.76",
+    "Four JMESPath1.1.0 projections executed over zero-to-four members, down member, empty collections and key-material exclusion",
+    "Decimal capacity table and minimum-member ceiling arithmetic verified",
+    "Bash syntax and eight-node/ten-edge Mermaid structure passed",
+    "Generated1280x720 social image visually inspected, legible and unclipped"
+  ],
+  "limitations": [
+    "No AWS CLI/API calls, port ordering, LAG creation, association, threshold change or customer-router configuration executed",
+    "No LACP negotiation, load distribution, MACsec transition, member-loss, BGP or application failover tests performed",
+    "Capacity arithmetic is a planning example, not a throughput guarantee; model checks do not validate endpoint capacity or authorization; Mermaid not rendered"
+  ]
+}

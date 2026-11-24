@@ -1,0 +1,31 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-24",
+  "runtimeTestsPerformed": true,
+  "sources": [
+    "https://docs.aws.amazon.com/directconnect/latest/UserGuide/hosted-vif.html",
+    "https://docs.aws.amazon.com/directconnect/latest/UserGuide/WorkingWithConnections.html",
+    "https://github.com/aws/aws-cli/blob/2.42.1/awscli/botocore/data/directconnect/2012-10-25/service-2.json",
+    "https://docs.aws.amazon.com/cli/latest/reference/sts/get-caller-identity.html",
+    "https://docs.aws.amazon.com/cli/latest/reference/directconnect/allocate-private-virtual-interface.html",
+    "https://docs.aws.amazon.com/cli/latest/reference/directconnect/describe-virtual-interfaces.html",
+    "https://docs.aws.amazon.com/cli/latest/reference/directconnect/describe-direct-connect-gateways.html",
+    "https://docs.aws.amazon.com/directconnect/latest/APIReference/API_ConfirmPrivateVirtualInterface.html",
+    "https://docs.aws.amazon.com/directconnect/latest/UserGuide/accepthostedvirtualinterface.html",
+    "https://docs.aws.amazon.com/directconnect/latest/UserGuide/virtualgateways.html",
+    "https://docs.aws.amazon.com/service-authorization/latest/reference/list_directconnect.html",
+    "https://aws.amazon.com/directconnect/pricing/pay-as-you-go/"
+  ],
+  "tests": [
+    "Reviewed official hosted connection versus VIF terminology, allocation and confirmation, destination ownership, router download access and gateway associations",
+    "Four Direct Connect request shapes validated against AWSCLI2.42.1 tagged model with botocore1.40.76",
+    "Five JMESPath1.1.0 projections executed for identity, interface lifecycle, mismatched gateway ownership, empty collections and authentication-material exclusion",
+    "JSON parsing, VLAN range, shell syntax and Mermaid structure of nine nodes and nine edges passed",
+    "Generated1280x720 social image visually inspected: legible title, no clipping"
+  ],
+  "limitations": [
+    "No AWS CLI/API calls, resource allocation, acceptance, IAM policy evaluation, router changes or cross-account deployment executed",
+    "No live route exchange, application test, physical maintenance or billing verification; model checks cannot prove service authorization or gateway suitability",
+    "Mermaid structurally checked, not rendered"
+  ]
+}

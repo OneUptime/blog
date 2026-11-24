@@ -1,0 +1,34 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-24",
+  "runtimeTestsPerformed": true,
+  "sources": [
+    "https://docs.aws.amazon.com/directconnect/latest/UserGuide/hosted_connection.html",
+    "https://docs.aws.amazon.com/directconnect/latest/UserGuide/WorkingWithConnections.html",
+    "https://docs.aws.amazon.com/directconnect/latest/APIReference/API_UpdateConnection.html",
+    "https://github.com/aws/aws-cli/blob/2.42.1/awscli/botocore/data/directconnect/2012-10-25/service-2.json",
+    "https://docs.aws.amazon.com/cli/latest/reference/directconnect/describe-connections.html",
+    "https://docs.aws.amazon.com/cli/latest/reference/directconnect/describe-virtual-interfaces.html",
+    "https://docs.aws.amazon.com/directconnect/latest/UserGuide/connection_options.html",
+    "https://docs.aws.amazon.com/cli/latest/reference/directconnect/confirm-connection.html",
+    "https://docs.aws.amazon.com/directconnect/latest/UserGuide/limits.html",
+    "https://docs.aws.amazon.com/directconnect/latest/UserGuide/WorkingWithVirtualInterfaces.html",
+    "https://docs.aws.amazon.com/directconnect/latest/APIReference/API_AllocateHostedConnection.html",
+    "https://docs.aws.amazon.com/directconnect/latest/UserGuide/monitoring-cloudwatch.html",
+    "https://docs.aws.amazon.com/cli/latest/reference/cloudwatch/list-metrics.html",
+    "https://aws.amazon.com/directconnect/pricing/pay-as-you-go/",
+    "https://github.com/aws/aws-cli/blob/2.42.1/awscli/botocore/data/cloudwatch/2010-08-01/service-2.json"
+  ],
+  "tests": [
+    "Reviewed official partner resize capability, hosted sizes, one-VIF quota, connection acceptance, policing and metric semantics",
+    "Four request shapes passed AWSCLI2.42.1 tagged models using botocore1.40.76; unsupported bandwidth on UpdateConnection rejected",
+    "Three JMESPath1.1.0 projections executed for before/after bandwidth, ordering, missing partner field, dual-stack status, empty responses, exact metric dimensions and secret exclusion",
+    "Shell syntax and nine-node/nine-edge Mermaid structure passed",
+    "Generated1280x720 social image visually inspected, legible without clipping"
+  ],
+  "limitations": [
+    "No AWS CLI/API calls, partner orders, hosted resize, acceptance, replacement VIF, routing migration or traffic executed",
+    "No throughput, packet-loss, application, failover or billing test; actual partner resize availability and disruption must be confirmed for the service",
+    "Models verify request shape only; Mermaid not rendered"
+  ]
+}

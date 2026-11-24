@@ -1,0 +1,30 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-24",
+  "runtimeTestsPerformed": true,
+  "sources": [
+    "https://aws.amazon.com/blogs/networking-and-content-delivery/introducing-aws-direct-connect-sitelink/",
+    "https://aws.amazon.com/directconnect/faqs/",
+    "https://docs.aws.amazon.com/directconnect/latest/UserGuide/WorkingWithVirtualInterfaces.html",
+    "https://github.com/aws/aws-cli/blob/2.42.1/awscli/botocore/data/directconnect/2012-10-25/service-2.json",
+    "https://docs.aws.amazon.com/cli/latest/reference/directconnect/describe-virtual-interfaces.html",
+    "https://docs.aws.amazon.com/reference-architecture-diagrams/latest/electronics-hpc/routing-scenarios-with-aws-direct-connect-sitelink.html",
+    "https://docs.aws.amazon.com/cli/latest/reference/directconnect/update-virtual-interface-attributes.html",
+    "https://docs.aws.amazon.com/whitepapers/latest/building-scalable-secure-multi-vpc-network-infrastructure/direct-connect.html",
+    "https://docs.aws.amazon.com/directconnect/latest/UserGuide/bgp-route-visibility.html",
+    "https://docs.aws.amazon.com/cli/latest/reference/directconnect/list-virtual-interface-routes.html"
+  ],
+  "tests": [
+    "Reviewed official SiteLink topology and duplicate-route restriction, Regional routing effects, router/gateway route exchange and route-list direction/pagination",
+    "Seven request variants across three operations passed AWSCLI2.42.1 tagged model with botocore1.40.76",
+    "Four JMESPath1.1.0 projections executed for flags/missing values, secret exclusion, route directions, structured AS paths, pagination tokens and empty results",
+    "Python ipaddress confirmed separate example site networks and their common broad-summary overlap",
+    "Shell syntax and six-node/six-edge Mermaid structure passed",
+    "Generated1280x720 social image visually reviewed: legible and unclipped"
+  ],
+  "limitations": [
+    "No AWS CLI/API calls, SiteLink enablement, router policy updates, BGP route exchange or live route retrieval executed",
+    "No packet forwarding, duplicate-route failure reproduction, WAN failover, Regional path selection or application tests performed",
+    "Models test syntax and shapes only; route fixtures are illustrative, not observations of AWS internal route-selection behavior; Mermaid not rendered"
+  ]
+}

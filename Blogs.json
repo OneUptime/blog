@@ -832403,5 +832403,133 @@
       "Encryption"
     ],
     "post": "2026-11-24-encrypt-hosted-direct-connect-ipsec"
+  },
+  {
+    "title": "Monitor Direct Connect Health and Capacity with CloudWatch",
+    "description": "Build Direct Connect monitoring with the right metric dimensions, directional utilization, error statistics, optical baselines, and explicit missing-data handling.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "AWS",
+      "Direct Connect",
+      "CloudWatch",
+      "Monitoring",
+      "Alerting"
+    ],
+    "post": "2026-11-24-monitor-direct-connect-cloudwatch-signals"
+  },
+  {
+    "title": "Limit Direct Connect VIF Traffic on a Shared Dedicated Port",
+    "description": "Apply Direct Connect VIF rate limits with a port-wide capacity plan, account for ingress policing location, and verify drops and application behavior.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "AWS",
+      "Direct Connect",
+      "Networking",
+      "Performance",
+      "Monitoring"
+    ],
+    "post": "2026-11-24-direct-connect-vif-rate-limiters-shared-port"
+  },
+  {
+    "title": "Operate a Cross-Account Hosted Direct Connect VIF",
+    "description": "Allocate and accept a hosted Direct Connect VIF across AWS accounts, verify gateway ownership, and coordinate routing, maintenance, and incident response.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "AWS",
+      "Direct Connect",
+      "Networking",
+      "Security",
+      "Routing"
+    ],
+    "post": "2026-11-24-cross-account-hosted-vif-ownership"
+  },
+  {
+    "title": "Rotate a Direct Connect BGP Key with a Controlled Peer Replacement",
+    "description": "Plan Direct Connect BGP key rotation around peer replacement, alternate-path validation, protected key input, and explicit recovery checks.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "AWS",
+      "Direct Connect",
+      "Networking",
+      "Security",
+      "Routing"
+    ],
+    "post": "2026-11-24-rotate-direct-connect-bgp-authentication-key"
+  },
+  {
+    "title": "Upgrade a Hosted Direct Connect Connection: Resize or Replace?",
+    "description": "Decide whether a partner can resize your hosted Direct Connect connection, prepare replacement when needed, and verify capacity without losing a recovery path.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "AWS",
+      "Direct Connect",
+      "Networking",
+      "Performance",
+      "Routing"
+    ],
+    "post": "2026-11-24-upgrade-hosted-direct-connect-connection"
+  },
+  {
+    "title": "Build a Direct Connect LAG That Can Survive Member Loss",
+    "description": "Size Direct Connect LAGs for degraded capacity, set minimum links deliberately, and plan disruptive member changes without stranding traffic.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "AWS",
+      "Direct Connect",
+      "Networking",
+      "Performance",
+      "High Availability"
+    ],
+    "post": "2026-11-24-direct-connect-lag-member-capacity"
+  },
+  {
+    "title": "Connect Sites with Direct Connect SiteLink Without Route Conflicts",
+    "description": "Connect two on-premises sites through Direct Connect SiteLink, inspect accepted and advertised routes, and catch duplicate advertisements before traffic fails.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "AWS",
+      "Direct Connect",
+      "Networking",
+      "Routing",
+      "Troubleshooting"
+    ],
+    "post": "2026-11-24-direct-connect-sitelink-duplicate-route-black-holes"
+  },
+  {
+    "title": "Reach S3 over Direct Connect: Public VIF, PrivateLink, or VPN?",
+    "description": "Compare public VIF access, S3 interface endpoints, and VPN over Direct Connect, then verify DNS, routing, encryption boundaries, and object access.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "AWS",
+      "Direct Connect",
+      "S3",
+      "Networking",
+      "Security"
+    ],
+    "post": "2026-11-24-s3-direct-connect-public-vif-privatelink-vpn"
+  },
+  {
+    "title": "Calculate a PodDisruptionBudget for Safe Concurrent Drains",
+    "description": "Calculate a Kubernetes disruption budget from application capacity, failure reserve, and concurrent Pod evictions, then verify the assumptions before maintenance.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Kubernetes",
+      "PodDisruptionBudget",
+      "High Availability",
+      "Capacity Planning"
+    ],
+    "post": "2026-11-24-calculate-poddisruptionbudget-replicas-drain-concurrency"
+  },
+  {
+    "title": "Why a PodDisruptionBudget Shows Zero Allowed Disruptions",
+    "description": "Read every PodDisruptionBudget status field to distinguish exhausted capacity, pending evictions, stale observations, and controller errors before changing a budget.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Kubernetes",
+      "PodDisruptionBudget",
+      "Troubleshooting",
+      "High Availability"
+    ],
+    "post": "2026-11-24-poddisruptionbudget-zero-allowed-disruptions-status"
   }
 ]

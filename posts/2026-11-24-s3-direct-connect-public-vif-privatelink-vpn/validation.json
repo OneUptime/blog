@@ -1,0 +1,36 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-24",
+  "runtimeTestsPerformed": true,
+  "sources": [
+    "https://docs.aws.amazon.com/directconnect/latest/UserGuide/WorkingWithVirtualInterfaces.html",
+    "https://docs.aws.amazon.com/AmazonS3/latest/userguide/privatelink-interface-endpoints.html",
+    "https://docs.aws.amazon.com/directconnect/latest/UserGuide/routing-and-bgp.html",
+    "https://docs.aws.amazon.com/directconnect/latest/UserGuide/using-cli.html",
+    "https://docs.aws.amazon.com/AmazonS3/latest/userguide/security-best-practices.html",
+    "https://docs.aws.amazon.com/vpc/latest/privatelink/create-interface-endpoint.html",
+    "https://aws.amazon.com/blogs/storage/introducing-private-dns-support-for-amazon-s3-with-aws-privatelink/",
+    "https://docs.aws.amazon.com/vpc/latest/privatelink/vpc-endpoints-s3.html",
+    "https://docs.aws.amazon.com/reference-architecture-diagrams/latest/traffic-encryption-direct-connect/encryption-vpn-to-vpc.html",
+    "https://docs.aws.amazon.com/vpn/latest/s2svpn/vpn-limits.html",
+    "https://docs.aws.amazon.com/cli/latest/reference/ec2/describe-vpc-endpoints.html",
+    "https://docs.aws.amazon.com/cli/latest/reference/s3api/head-object.html",
+    "https://docs.aws.amazon.com/vpc/latest/privatelink/vpc-endpoints-access.html",
+    "https://aws.amazon.com/privatelink/pricing/",
+    "https://aws.amazon.com/vpn/pricing/",
+    "https://github.com/aws/aws-cli/blob/2.42.1/awscli/botocore/data/ec2/2016-11-15/service-2.json",
+    "https://github.com/aws/aws-cli/blob/2.42.1/awscli/botocore/data/s3/2006-03-01/service-2.json"
+  ],
+  "tests": [
+    "Reviewed official public VIF, S3 gateway/interface endpoint, DNS, VPN-over-public-VIF, policy and pricing boundaries",
+    "Two request shapes passed AWSCLI2.42.1 tagged EC2/S3 models with botocore1.40.76",
+    "Two JMESPath1.1.0 projections executed for endpoint type/state/privateDNS/interface inventory/empty/policy-exclusion and zero-byte object metadata",
+    "HTTPS endpoint URL structure checked against documented literal bucket prefix; shell syntax and eight-node/eight-edge Mermaid structure passed",
+    "Generated1280x720 social image visually inspected, title legible without clipping"
+  ],
+  "limitations": [
+    "No AWS CLI/API calls, endpoint creation, DNS lookup, TLS handshake, S3 object request or VPN setup performed",
+    "No routing-path evidence, tunnel throughput, failure rehearsal or IAM/endpoint policy evaluation collected",
+    "URL check confirms example structure only, not existence or resolution of placeholder names; model checks are not live service validation; Mermaid not rendered"
+  ]
+}

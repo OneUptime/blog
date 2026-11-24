@@ -2373,18 +2373,38 @@ Research: [OneUptime air-gapped alerting](https://oneuptime.com/enterprise/air-g
 
     Completed: [Article](posts/2026-11-24-encrypt-hosted-direct-connect-ipsec/README.md) (24 November 2026).
 13. Monitor Direct Connect in CloudWatch: Link State, Throughput, MAC Errors, and Optical Levels
+
+    Completed: [Article](posts/2026-11-24-monitor-direct-connect-cloudwatch-signals/README.md) (24 November 2026).
 14. Stop One Direct Connect VIF from Saturating a Shared Dedicated Port with VIF Rate Limiters
+
+    Completed: [Article](posts/2026-11-24-direct-connect-vif-rate-limiters-shared-port/README.md) (24 November 2026).
 15. Accept and Operate a Cross-Account Hosted VIF Without Confusing Connection and VIF Ownership
+
+    Completed: [Article](posts/2026-11-24-cross-account-hosted-vif-ownership/README.md) (24 November 2026).
 16. How to Rotate a Direct Connect VIF BGP Authentication Key with a Controlled Session Reset
+
+    Completed: [Article](posts/2026-11-24-rotate-direct-connect-bgp-authentication-key/README.md) (24 November 2026).
 17. Upgrade a Hosted Direct Connect Connection: What the Partner Can Resize and When to Replace It
+
+    Completed: [Article](posts/2026-11-24-upgrade-hosted-direct-connect-connection/README.md) (24 November 2026).
 18. Build and Modify a Direct Connect LAG Without Overcommitting Member Links
+
+    Completed: [Article](posts/2026-11-24-direct-connect-lag-member-capacity/README.md) (24 November 2026).
 19. Connect Two On-Premises Sites with Direct Connect SiteLink and Avoid Duplicate-Route Black Holes
+
+    Completed: [Article](posts/2026-11-24-direct-connect-sitelink-duplicate-route-black-holes/README.md) (24 November 2026).
 20. Reach Amazon S3 over Direct Connect: Public VIF, PrivateLink, or VPN over a Public VIF?
+
+    Completed: [Article](posts/2026-11-24-s3-direct-connect-public-vif-privatelink-vpn/README.md) (24 November 2026).
 
 ## PodDisruptionBudgets
 
 1. How to Calculate a PodDisruptionBudget from Replica Count, Failure Tolerance, and Drain Concurrency
+
+    Completed: [Article](posts/2026-11-24-calculate-poddisruptionbudget-replicas-drain-concurrency/README.md) (24 November 2026).
 2. Why Is `ALLOWED DISRUPTIONS` Zero? How to Read Every PodDisruptionBudget Status Field
+
+    Completed: [Article](posts/2026-11-24-poddisruptionbudget-zero-allowed-disruptions-status/README.md) (24 November 2026).
 3. How Kubernetes Rounds Percentage PDBs—and Why `minAvailable` and `maxUnavailable` Behave Oppositely at One Replica
 4. Why `kubectl delete pod` Bypasses Your PodDisruptionBudget but `kubectl drain` Does Not
 5. How `unhealthyPodEvictionPolicy: AlwaysAllow` Unblocks Node Drains—and What Recovery Protection You Give Up
