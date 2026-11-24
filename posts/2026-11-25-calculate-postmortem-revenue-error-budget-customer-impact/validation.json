@@ -1,0 +1,25 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-25",
+  "runtimeTestsPerformed": true,
+  "sources": [
+    "https://sre.google/workbook/implementing-slos/",
+    "https://developers.google.com/analytics/devguides/collection/ga4/reference/events#purchase",
+    "https://sre.google/workbook/alerting-on-slos/",
+    "https://docs.python.org/3.13/library/decimal.html"
+  ],
+  "tests": [
+    "Reviewed official Google SRE SLO/error-budget and burn-rate guidance, GA4 purchase transaction identifiers, and Python Decimal documentation",
+    "Executed the exact published Python block with Python3.9.6; all nine printed results matched independently specified expected values",
+    "Verified six invalid budget inputs raise ValueError; checked zero failures, negative recovery rejection, zero modeled revenue gap and a negative unused allowance for an overspent budget",
+    "Reconciled synthetic cohort arithmetic:100 recovered within window plus20 later equals120, leaving30 of150 unresolved; later20 deducted once from revenue baseline",
+    "Editorial review separates request/customer denominators, fixed completed SLO period, observed counts, retrospective budget, and hypothetical revenue sensitivity range",
+    "Generated1280x720 social image opened and visually reviewed; three-line title fits"
+  ],
+  "limitations": [
+    "All inputs are fictional aggregates; no production analytics, customer identities, raw-event joins, accounting records or real revenue baseline were examined",
+    "Tests verify arithmetic and input guards, not event deduplication, incident attribution, customer coverage or validity of a business counterfactual",
+    "Revenue range is sensitivity analysis, not a confidence interval or measured accounting loss",
+    "No Mermaid added because tables and the executable calculation convey the quantities directly"
+  ]
+}

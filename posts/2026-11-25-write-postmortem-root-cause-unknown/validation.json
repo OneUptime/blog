@@ -1,0 +1,21 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-25",
+  "runtimeTestsPerformed": false,
+  "sources": [
+    "https://sre.google/sre-book/postmortem-culture/",
+    "https://www.atlassian.com/incident-management/handbook/postmortems",
+    "https://docs.pagerduty.com/ops-guides/postmortem-best-practices/step-by-step"
+  ],
+  "tests": [
+    "Reviewed official Google SRE postmortem culture, Atlassian unknown-cause guidance, and PagerDuty evidence-backed timeline process",
+    "Editorial review distinguishes observed failure, mitigation and unconfirmed cause; the incident and action proposals are explicitly fictional",
+    "Checked timeline ordering and its22-minute impact window, request-versus-customer distinction, and consistent recovery times",
+    "Six-node/five-edge Mermaid structurally checked; generated1280x720 image visually inspected with three-line title fitting"
+  ],
+  "limitations": [
+    "Process article with an illustrative incident; no real incident records, interviews, production systems or live operational experiments were analyzed",
+    "Proposed monitoring, queue-limit and runbook actions are examples requiring local design and validation",
+    "No executable application code is included; Mermaid structurally checked, not rendered"
+  ]
+}

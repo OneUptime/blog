@@ -1,0 +1,28 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-25",
+  "runtimeTestsPerformed": true,
+  "sources": [
+    "https://authzed.com/docs/spicedb/concepts/consistency#fully-consistent",
+    "https://github.com/authzed/spicedb/blob/v1.57.1/pkg/middleware/consistency/consistency.go",
+    "https://github.com/authzed/spicedb/blob/v1.57.1/internal/datastore/crdb/crdb.go",
+    "https://github.com/authzed/spicedb/blob/v1.57.1/internal/datastore/crdb/reader.go",
+    "https://www.cockroachlabs.com/docs/stable/functions-and-operators#system-info-functions",
+    "https://www.cockroachlabs.com/docs/stable/as-of-system-time",
+    "https://www.cockroachlabs.com/blog/clock-management-cockroachdb/",
+    "https://github.com/authzed/zed/blob/v1.2.1/internal/commands/relationship.go",
+    "https://github.com/authzed/zed/blob/v1.2.1/internal/commands/permission.go"
+  ],
+  "tests": [
+    "Reviewed official Authzed CockroachDB exception, CockroachDB timestamp/historical-read documentation, and tagged SpiceDB1.57.1 driver, snapshot reader and consistency middleware",
+    "Reused checksum-verified official SpiceDB1.57.1 and zed1.2.1 binaries; exact schema passed zed validate with no static assertions",
+    "Executed all three exact Bash blocks against disposable in-memory SpiceDB with certificate-verified TLS; fully consistent and token-bearing grant checks both returned HAS_PERMISSION",
+    "Three shell blocks passed syntax; seven-node/six-edge Mermaid structurally checked",
+    "Generated1280x720 social image opened and visually reviewed; three-line title fits"
+  ],
+  "limitations": [
+    "No CockroachDB server or multi-node cluster was run; local success verifies CLI/token flow, not the documented clock-skew failure",
+    "No clock-offset injection, overlap strategy experiment, SQL performance measurement or application cache/persistence test",
+    "Diagram uses illustrative revision numbers and was structurally checked, not rendered"
+  ]
+}

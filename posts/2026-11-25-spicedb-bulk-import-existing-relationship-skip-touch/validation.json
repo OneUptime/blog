@@ -1,0 +1,26 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-25",
+  "runtimeTestsPerformed": true,
+  "sources": [
+    "https://github.com/authzed/authzed-go/blob/v1.9.0/v1/retryable_client.go",
+    "https://github.com/authzed/api/blob/e89c0a673a7e234081ed186bd91dd8a30e3e2b03/authzed/api/v1/permission_service.proto",
+    "https://authzed.com/docs/spicedb/ops/data/bulk-operations",
+    "https://pkg.go.dev/google.golang.org/grpc@v1.80.0/credentials#NewClientTLSFromFile",
+    "https://github.com/authzed/zed/blob/v1.2.1/internal/cmd/import.go",
+    "https://authzed.com/docs/spicedb/ops/data/writing-relationships"
+  ],
+  "tests": [
+    "Reviewed authzed-go1.9.0 RetryableBulkImportRelationships, raw bulk API transaction contract, tagged zed1.2.1 import path and gRPC1.80.0 TLS helper",
+    "Executed exact module setup/run shell block and complete published Go program with Go1.25.8, authzed-go1.9.0 and gRPC1.80.0 against SpiceDB1.57.1 memory datastore with certificate-verified TLS",
+    "All three raw mixed-batch bulk calls returned AlreadyExists; subsequent Fail produced error and Bob denied, Skip produced nil and Bob denied, Touch produced nil and Bob allowed",
+    "go vet ./... passed; shell syntax passed; seven-node/six-edge Mermaid structurally checked",
+    "Generated1280x720 social image opened and visually inspected; three-line title fits without clipping"
+  ],
+  "limitations": [
+    "Two relationships per trial on an in-memory datastore; no production SQL backend, large load, lost-response/network retry injection or clock-skew test",
+    "Single-request TOUCH fallback and configured write-limit discussion were source reviewed; oversized fallback request was not executed",
+    "Caveat replacement, concurrent revocation, immutable partition verification and durable checkpoint storage were not integration-tested",
+    "Mermaid structurally checked, not rendered"
+  ]
+}

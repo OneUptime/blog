@@ -1,0 +1,23 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-25",
+  "runtimeTestsPerformed": false,
+  "sources": [
+    "https://www.etsy.com/codeascraft/blameless-postmortems",
+    "https://sre.google/sre-book/postmortem-culture/",
+    "https://extfiles.etsy.com/DebriefingFacilitationGuide.pdf",
+    "https://docs.pagerduty.com/ops-guides/postmortem-best-practices/step-by-step"
+  ],
+  "tests": [
+    "Reviewed official Etsy blameless-postmortem account and facilitation guide, Google SRE postmortem guidance, and PagerDuty review workflow",
+    "Editorial review checked event time versus availability, accessible/noticed/understood distinctions, original fictional scenario, decision constraints and limits of the proposed evidence-packet exercise",
+    "Seven-node/five-edge Mermaid structurally checked; no path feeds the later15:40 export into the12:08 decision",
+    "Generated1280x720 image opened and visually inspected; title fits without clipping"
+  ],
+  "limitations": [
+    "No real incident, responder interview or cognitive-bias experiment was conducted",
+    "Proposed review exercise is a facilitation technique, not a validated statistical test or proof of an optimal decision",
+    "Example dashboard, runbook and access improvements were not implemented or operationally tested",
+    "No application code included; Mermaid structurally checked, not rendered"
+  ]
+}

@@ -1,0 +1,28 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-25",
+  "runtimeTestsPerformed": true,
+  "sources": [
+    "https://authzed.com/blog/the-dual-write-problem",
+    "https://authzed.com/docs/spicedb/concepts/relationships",
+    "https://docs.aws.amazon.com/prescriptive-guidance/latest/cloud-design-patterns/transactional-outbox.html",
+    "https://docs.python.org/3.13/library/sqlite3.html#how-to-use-the-connection-context-manager",
+    "https://www.sqlite.org/lang_transaction.html",
+    "https://authzed.com/docs/spicedb/ops/data/writing-relationships",
+    "https://github.com/authzed/api/blob/e89c0a673a7e234081ed186bd91dd8a30e3e2b03/authzed/api/v1/permission_service.proto"
+  ],
+  "tests": [
+    "Reviewed Authzed dual-write/integration documentation, AWS transactional outbox guidance, Python sqlite3 transaction handling, SQLite transactions and official SpiceDB API request fields",
+    "Executed all four exact Python blocks together with Python3.9.6 SQLite3.54.0 and SpiceDB1.57.1 memory datastore over certificate-verified HTTPS; output was 2 2 PERMISSIONSHIP_NO_PERMISSION",
+    "Injected outbox insert failure via SQLite trigger; application version and desired access rolled back and event count stayed unchanged",
+    "Injected remote delivery outage; row remained pending and applied version did not advance",
+    "Simulated crash after successful remote grant before acknowledgment; confirmed grant existed remotely while event remained pending, replayed grant then queued revocation, final token-constrained check denied access",
+    "Python code compiled; seven-node/six-edge Mermaid structurally checked; generated1280x720 image visually inspected"
+  ],
+  "limitations": [
+    "Single document, user and delivery worker; no multiworker ownership/fencing, distributed queue, SQL server or production load test",
+    "The post-write crash is a deliberate exception at the failure boundary, not an operating-system kill or disk-loss test",
+    "Production request gating, inherited permissions, external writer coordination, CQRS replay and reconciliation are explained requirements, not implemented integrations",
+    "SpiceDB memory datastore used; no PostgreSQL/CockroachDB backend exercised; Mermaid not rendered"
+  ]
+}

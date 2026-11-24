@@ -1,0 +1,24 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-25",
+  "runtimeTestsPerformed": true,
+  "sources": [
+    "https://github.com/authzed/api/blob/e89c0a673a7e234081ed186bd91dd8a30e3e2b03/authzed/api/v1/permission_service.proto",
+    "https://authzed.com/docs/spicedb/api/http-api",
+    "https://github.com/authzed/spicedb/blob/v1.57.1/internal/services/v1/preconditions.go",
+    "https://github.com/authzed/spicedb/blob/v1.57.1/internal/services/v1/relationships.go"
+  ],
+  "tests": [
+    "Reviewed official API contract at e89c0a673a7e234081ed186bd91dd8a30e3e2b03 and SpiceDB1.57.1 precondition/transaction implementation",
+    "Exact schema passed zed1.2.1 validate with no static assertions; all three published Python blocks compiled and executed together on Python3.9.6 against SpiceDB1.57.1 memory datastore over certificate-verified HTTPS",
+    "Observed specific precondition-failure reason for stale writer and NO_PERMISSION at revocation token afterward",
+    "Eight simultaneous two-writer trials each produced one successful generation transition and one specific precondition rejection; both grant and revoke won in observed trials; explicit revocation retry after grant wins yielded final denial in all eight",
+    "Seven-node/six-edge Mermaid structurally checked; generated1280x720 image visually reviewed with two-line title fitting"
+  ],
+  "limitations": [
+    "In-memory server only; no PostgreSQL, CockroachDB or production distributed transaction stress test",
+    "Application marker convention is demonstrated, not a built-in cardinality constraint; all writer participation, external database versioning, inherited permissions and repair tools require integration validation",
+    "No ambiguous network-commit recovery or durable queue implementation tested",
+    "Mermaid structurally checked, not rendered"
+  ]
+}

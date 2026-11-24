@@ -1,0 +1,21 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-25",
+  "runtimeTestsPerformed": false,
+  "sources": [
+    "https://docs.pagerduty.com/ops-guides/howie-guide/interview",
+    "https://extfiles.etsy.com/DebriefingFacilitationGuide.pdf",
+    "https://sre.google/sre-book/postmortem-culture/"
+  ],
+  "tests": [
+    "Reviewed official PagerDuty Howie interview guide, Etsy facilitation guide and Google SRE blameless-postmortem guidance",
+    "Editorial review checked five leading-versus-neutral prompt pairs and original fictional note example for unsupported assumptions",
+    "Verified separation of initial recollection, presented artifact, prompted addition, independent record and unresolved question; no claim that interviewing guarantees uncontaminated memory",
+    "Seven-node/seven-edge Mermaid structurally checked; generated1280x720 image visually inspected with title fitting"
+  ],
+  "limitations": [
+    "No real responder interviews, recordings, psychological experiment or production incident analysis performed",
+    "Interview prompts and note conventions are proposed practical guidance, not a validated forensic protocol",
+    "No executable application code included; Mermaid structurally checked, not rendered"
+  ]
+}

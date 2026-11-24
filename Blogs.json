@@ -833012,5 +833012,120 @@
       "Consistency"
     ],
     "post": "2026-11-25-spicedb-read-after-write-zedtokens"
+  },
+  {
+    "title": "Why SpiceDB Fully Consistent Reads Can Miss CockroachDB Writes",
+    "description": "Understand SpiceDB's CockroachDB revision selection, carry a write token into checks, and investigate stale authorization without relying on sleeps.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "SpiceDB",
+      "CockroachDB",
+      "Authorization",
+      "Consistency"
+    ],
+    "post": "2026-11-25-spicedb-cockroachdb-fully-consistent-read-after-write"
+  },
+  {
+    "title": "Stop Stale SpiceDB Writers from Restoring Revoked Access",
+    "description": "Use atomic relationship preconditions and a changing generation marker to reject stale SpiceDB updates without silently undoing a revocation.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "SpiceDB",
+      "Authorization",
+      "Optimistic Concurrency"
+    ],
+    "post": "2026-11-25-spicedb-concurrent-writers-revoked-access-preconditions"
+  },
+  {
+    "title": "Keep Application Data and SpiceDB in Sync with an Outbox",
+    "description": "Compare synchronous writes, transactional outboxes, and CQRS, then rehearse ordered permission updates and recovery without claiming cross-database atomicity.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "SpiceDB",
+      "Transactional Outbox",
+      "CQRS",
+      "Authorization"
+    ],
+    "post": "2026-11-25-sync-application-data-spicedb-outbox-cqrs"
+  },
+  {
+    "title": "Bootstrap Millions of SpiceDB Relationships from Legacy RBAC",
+    "description": "Plan a large RBAC migration with a tested role model, bounded import transactions, durable progress records, change capture, and authorization comparisons.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "SpiceDB",
+      "RBAC",
+      "Data Migration",
+      "Authorization"
+    ],
+    "post": "2026-11-25-bootstrap-spicedb-relationships-legacy-rbac"
+  },
+  {
+    "title": "Resume SpiceDB Bulk Imports When Relationships Already Exist",
+    "description": "Reproduce duplicate failures, compare Skip and TOUCH recovery, and avoid marking a mixed batch complete when its missing relationships were never written.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "SpiceDB",
+      "Data Migration",
+      "Go",
+      "Authorization"
+    ],
+    "post": "2026-11-25-spicedb-bulk-import-existing-relationship-skip-touch"
+  },
+  {
+    "title": "Write a Useful Postmortem When the Root Cause Is Still Unknown",
+    "description": "Document confirmed impact and recovery, label unresolved causes honestly, and assign useful investigation and reliability work without inventing certainty.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Postmortem",
+      "Incident Response",
+      "SRE"
+    ],
+    "post": "2026-11-25-write-postmortem-root-cause-unknown"
+  },
+  {
+    "title": "Correct a Postmortem That Named the Wrong Root Cause",
+    "description": "Replace an unsupported causal claim with a clear evidence record, calibrated confidence, useful rejected hypotheses, and a traceable correction.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Postmortem",
+      "Root Cause Analysis",
+      "Incident Response"
+    ],
+    "post": "2026-11-25-correct-postmortem-root-cause-hypotheses"
+  },
+  {
+    "title": "Prevent Hindsight Bias in Incident Postmortems",
+    "description": "Reconstruct the information available at each decision, separate event time from discovery time, and improve response systems without rewriting history.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Postmortem",
+      "Incident Response",
+      "SRE"
+    ],
+    "post": "2026-11-25-prevent-hindsight-bias-incident-postmortems"
+  },
+  {
+    "title": "Interview Incident Responders Without Leading Their Answers",
+    "description": "Use neutral prompts, preserve independent accounts, and label artifact-prompted additions so an incident interview does not quietly manufacture agreement.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Postmortem",
+      "Incident Response",
+      "SRE"
+    ],
+    "post": "2026-11-25-interview-incident-responders-recollections"
+  },
+  {
+    "title": "Calculate Revenue, Error Budget, and Customer Impact After an Incident",
+    "description": "Calculate incident impact with explicit denominators, deduplicated customer counts, error-budget arithmetic, and revenue estimates that account for recovery.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Postmortem",
+      "Error Budget",
+      "Business Impact",
+      "SLO"
+    ],
+    "post": "2026-11-25-calculate-postmortem-revenue-error-budget-customer-impact"
   }
 ]

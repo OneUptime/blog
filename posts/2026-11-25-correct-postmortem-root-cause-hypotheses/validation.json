@@ -1,0 +1,22 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-25",
+  "runtimeTestsPerformed": false,
+  "sources": [
+    "https://sre.google/workbook/postmortem-culture/",
+    "https://docs.pagerduty.com/ops-guides/postmortem-best-practices/step-by-step",
+    "https://www.etsy.com/codeascraft/blameless-postmortems",
+    "https://docs.pagerduty.com/ops-guides/incident-response-guide/postmortem-template"
+  ],
+  "tests": [
+    "Reviewed official Google SRE workbook, PagerDuty timeline/review guidance and template, and Etsy blameless-postmortem explanation",
+    "Editorially checked original fictional incident, six-event timeline, evidence E1-E4 and hypotheses H1-H4 for consistent references and appropriately narrow conclusions",
+    "Reviewed distinctions between observation and explanation, confidence and probability, contradicted initiating claim and unresolved amplification, and mitigation correlation versus isolated experiment",
+    "Verified metadata constraints and normalized candidate-title uniqueness through integration; generated1280x720 image visually inspected with two-line title fitting"
+  ],
+  "limitations": [
+    "Original fictional case and proposed ledger conventions; no real incident, interview, production log or staging reproduction was analyzed",
+    "Confidence labels are practical editorial conventions, not a calibrated statistical system",
+    "No executable code or Mermaid is included; evidence and hypothesis tables provide the relevant comparison"
+  ]
+}
