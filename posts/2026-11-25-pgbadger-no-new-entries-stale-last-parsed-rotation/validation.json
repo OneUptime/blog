@@ -1,0 +1,25 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-25",
+  "runtimeTestsPerformed": true,
+  "sources": [
+    "https://github.com/darold/pgbadger/blob/v13.3/README",
+    "https://github.com/darold/pgbadger/blob/v13.3/pgbadger",
+    "https://www.postgresql.org/docs/18/runtime-config-logging.html",
+    "https://docs.python.org/3.11/library/pathlib.html"
+  ],
+  "tests": [
+    "pgBadger13.3 Perl5.34.1: stateless fixture parsed2; copied future state skipped input with no report; zero-offset copy still parsed0",
+    "Shorter replacement with newer timestamp parsed1, demonstrating that changed size alone is not failure",
+    "Disposable populated archive replay after deleting only copied state doubled4 to8; original synthetic archive remained4",
+    "Separate replacement built4 and retry stayed4; retained binary counts inspected locally",
+    "Exact Python helper under3.11.13 printed timestamp/offset without SQL, preserved source hash and rejected malformed offset; shell syntax passed",
+    "Six-node five-edge Mermaid structure passed;1280x720 image generated and visually inspected"
+  ],
+  "limitations": [
+    "No live PostgreSQL, scheduler, logrotate or production reporting archive accessed",
+    "Fixture tests use standard-error text, sequential records and isolated directories; no production same-timestamp, timezone or multi-source recovery guarantee",
+    "Report parser tests generated text and incremental HTML; HTML appearance and Mermaid were not browser-rendered",
+    "Full historical recovery depends on retained complete raw logs; article does not claim HTML reconstructs missing data"
+  ]
+}

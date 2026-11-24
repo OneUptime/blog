@@ -1,0 +1,27 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-25",
+  "runtimeTestsPerformed": true,
+  "sources": [
+    "https://www.postgresql.org/docs/18/runtime-config-logging.html",
+    "https://man.openbsd.org/ssh_config",
+    "https://man.openbsd.org/ssh",
+    "https://github.com/darold/pgbadger/blob/v13.3/pgbadger",
+    "https://github.com/darold/pgbadger/blob/v13.3/README",
+    "https://www.gnu.org/software/gzip/manual/html_node/Invoking-gzip.html",
+    "https://www.gnu.org/software/bash/manual/html_node/Pipelines.html"
+  ],
+  "tests": [
+    "pgBadger13.3 Perl5.34.1 remote path exercised using a local SSH command substitute and real gzip archive: two queries parsed and remote gunzip invocation observed",
+    "Filename with space failed built-in remote enumeration; article uses simple filename and discloses this tested constraint",
+    "Apple gzip487.0.1 and Bash3.2.57 pipeline: good input published two-query report, corrupt CRC returned1 and remote command exit42 propagated without replacing previous report",
+    "Installed OpenSSH10.3p1 read-only configuration expansion accepted exact example flags; all shell blocks passed syntax checks",
+    "Six-node five-edge Mermaid structural validation passed;1280x720 social image visually inspected"
+  ],
+  "limitations": [
+    "SSH command substitute executes commands locally and does not test authentication, host keys, network transport or remote account access",
+    "Text report fixtures only; no real database, live rotation, network interruption or production HTML visual review",
+    "Examples scope stderr text and gzip only; other compression readers and CSV/JSON not exercised",
+    "Mermaid structurally checked, not browser-rendered"
+  ]
+}

@@ -1,0 +1,25 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-25",
+  "runtimeTestsPerformed": true,
+  "sources": [
+    "https://mlflow.org/docs/latest/ml/model-registry/workflow/",
+    "https://www.postgresql.org/docs/18/continuous-archiving.html",
+    "https://qdrant.tech/documentation/snapshots/",
+    "https://docs.docker.com/reference/cli/docker/image/pull/#pull-an-image-by-digest-immutable-identifier",
+    "https://kubernetes.io/docs/concepts/workloads/controllers/deployment/#rolling-back-a-deployment",
+    "https://kubernetes.io/docs/concepts/configuration/configmap/#immutable-configmaps",
+    "https://docs.python.org/3.11/library/hashlib.html"
+  ],
+  "tests": [
+    "Exact Python gate executed under Python3.11.13 using synthetic manifests and replica reports; two matching replicas accepted",
+    "Each of five component mismatches, failed readiness, failed smoke check, release mismatch, empty reports, duplicate replica, wrong approved digest and incomplete manifest rejected",
+    "Article Python exactly matches tested script; shell syntax passed; seven-node six-edge Mermaid structural check passed",
+    "Generated1280x720 social image and visually inspected three title lines; no clipping"
+  ],
+  "limitations": [
+    "No live model, database restoration, traffic switch, Kubernetes deployment or registry mutation tested",
+    "Gate validates report consistency only; authenticated report collection, actual artifact verification, report freshness and complete replica coverage are deployment adapter responsibilities",
+    "No distributed transaction or production rollback claim; Mermaid not browser-rendered"
+  ]
+}

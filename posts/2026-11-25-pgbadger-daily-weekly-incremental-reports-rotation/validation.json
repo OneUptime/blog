@@ -1,0 +1,26 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-25",
+  "runtimeTestsPerformed": true,
+  "sources": [
+    "https://github.com/darold/pgbadger/blob/v13.3/README",
+    "https://raw.githubusercontent.com/darold/pgbadger/v13.3/README",
+    "https://github.com/darold/pgbadger/blob/v13.3/pgbadger",
+    "https://www.postgresql.org/docs/18/runtime-config-logging.html",
+    "https://github.com/logrotate/logrotate/blob/3.22.0/logrotate.8.in",
+    "https://github.com/util-linux/util-linux/blob/v2.41.2/sys-utils/flock.1.adoc"
+  ],
+  "tests": [
+    "pgBadger13.3 Perl5.34.1 incremental fixture: first2, repeat2, append3, rotation4, rotation-repeat4, compressed-old-repeat4; counts read from trusted fixture binary statistics",
+    "Late older input left total4; duplicate copies on a fresh run counted4 instead of2, demonstrating stated limits",
+    "Generated November23/24 daily pages, ISO week48 page and linked main index; --rebuild succeeded from retained binary files",
+    "Exact --logfile-list interface rerun retained total4; article shell syntax checked",
+    "Six-node six-edge Mermaid structure passed; generated1280x720 social image visually inspected"
+  ],
+  "limitations": [
+    "No production PostgreSQL, actual logrotate, scheduler, Linux flock execution or contention tested",
+    "Single serial stream and small standard-error fixtures only; no CSV/JSON, distributed source ordering or same-timestamp boundary guarantee",
+    "Count and HTML-link checks are structural; no browser review of generated pgBadger reports or Mermaid",
+    "Archive backup/publish and retention policies are operational guidance, not implemented automation"
+  ]
+}

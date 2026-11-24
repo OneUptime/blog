@@ -1,0 +1,31 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-25",
+  "runtimeTestsPerformed": true,
+  "sources": [
+    "https://www.postgresql.org/docs/18/monitoring-stats.html",
+    "https://github.com/darold/pgbadger/blob/v13.3/README",
+    "https://www.postgresql.org/docs/18/runtime-config-locks.html",
+    "https://www.postgresql.org/docs/18/functions-info.html#FUNCTIONS-INFO-SESSION",
+    "https://www.postgresql.org/docs/18/runtime-config-logging.html#GUC-LOG-TEMP-FILES",
+    "https://www.postgresql.org/docs/18/runtime-config-vacuum.html",
+    "https://www.postgresql.org/docs/18/runtime-config-logging.html#GUC-LOG-AUTOVACUUM-MIN-DURATION",
+    "https://www.postgresql.org/docs/18/runtime-config-logging.html#GUC-LOG-CHECKPOINTS",
+    "https://www.postgresql.org/docs/18/functions-admin.html#FUNCTIONS-ADMIN-SIGNAL",
+    "https://www.postgresql.org/docs/18/view-pg-settings.html",
+    "https://github.com/darold/pgbadger/blob/v13.3/pgbadger"
+  ],
+  "tests": [
+    "pgBadger13.3 Perl5.34.1 and disposable Unix-socket-only PostgreSQL14.17: generated real lock contention, two temporary files, automatic vacuum/analyze and explicit plus shutdown checkpoints with ordinary duration logging disabled",
+    "Exact article blocker query returned blocked reader with Lock/relation wait and blocker PID",
+    "Extracted exact routine configuration, reloaded via pg_reload_conf, verified all selected pg_settings including10MB as10240kB and1s as1000ms; pending_restart false",
+    "Text output verified lock/temp detail and zero ordinary timed queries; HTML content verified automatic vacuum/analyze and two checkpoint counts",
+    "Article shell syntax passed; five-node four-edge Mermaid structural check; generated1280x720 social image visually reviewed with title fitting"
+  ],
+  "limitations": [
+    "Runtime tests used PostgreSQL14.17 as installed disposable fixture; PostgreSQL18 documentation reviewed without executing18",
+    "Diagnostic event thresholds lowered only in isolated cluster, then normal article thresholds reloaded; no production overhead measurement or recommendation that these thresholds suit every workload",
+    "HTML content assertions only, not browser rendering; generated social image visually inspected; Mermaid structurally checked only",
+    "No managed-service configuration, external log forwarding or cross-version parser coverage tested"
+  ]
+}

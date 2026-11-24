@@ -1,0 +1,29 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-25",
+  "runtimeTestsPerformed": true,
+  "sources": [
+    "https://www.postgresql.org/docs/18/runtime-config-logging.html#RUNTIME-CONFIG-LOGGING-JSONLOG",
+    "https://cloudnative-pg.io/docs/1.29/postgresql_conf/",
+    "https://docs.cloud.google.com/sql/docs/postgres/logging",
+    "https://cloudnative-pg.io/docs/1.29/logging/",
+    "https://kubernetes.io/docs/reference/kubectl/generated/kubectl_logs/",
+    "https://docs.cloud.google.com/sdk/gcloud/reference/logging/read",
+    "https://jqlang.org/manual/v1.7/",
+    "https://github.com/darold/pgbadger/blob/v13.3/pgbadger",
+    "https://github.com/darold/pgbadger/blob/v13.3/README"
+  ],
+  "tests": [
+    "pgBadger13.3 Perl5.34.1 jq1.7.1: native JSON, CloudNativePG envelope and Cloud Logging textPayload fixtures each yielded2 queries/2 groups/32ms with quoted identifiers and multiline SQL preserved",
+    "Exact three article jq filters reproduced tested compact streams; all three generated HTML files contained both SQL probes",
+    "Cloud SQL filter rejected empty arrays,10000-entry capped export, unexpected payload and non-array input",
+    "Official pgBadger13.3 Cloud SQL and CNPG fixtures parsed with positive counts1 and400 respectively",
+    "All shell blocks passed syntax checks; six-node five-edge Mermaid structural check; generated1280x720 image visually reviewed with two fitting title lines"
+  ],
+  "limitations": [
+    "No live Kubernetes, CloudNativePG or Cloud SQL instance accessed; capture commands and flags reviewed in official documentation only",
+    "No IAM, actual export pagination/retention, late-arrival completeness or production log-transformation test",
+    "Synthetic fixtures cover selected quoted/multiline cases, not every JSON escape, payload layout, timestamp tie or customized prefix",
+    "HTML content checked without browser rendering; Mermaid only structurally checked"
+  ]
+}

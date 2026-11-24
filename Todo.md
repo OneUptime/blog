@@ -2758,17 +2758,46 @@ Research: [OneUptime air-gapped alerting](https://oneuptime.com/enterprise/air-g
 
 20. How to Roll Back Weights, Code, Prompt, Data, and Configuration with One Versioned Model Manifest
 
+    Completed: [Article](posts/2026-11-25-rollback-model-release-manifest-weights-code-prompt-data-config/README.md) (25 November 2026).
+
 ## pgBadger
 
 1. pgBadger Parsed the File but Found Zero Queries: Fix `log_line_prefix`, Format Detection, and Query Logging
+
+    Completed: [Article](posts/2026-11-25-pgbadger-zero-queries-log-prefix-format-query-logging/README.md) (25 November 2026).
+
 2. How to Capture Locks, Temp Files, Autovacuum, and Checkpoints for pgBadger Without Logging Every Statement
+
+    Completed: [Article](posts/2026-11-25-pgbadger-locks-temp-autovacuum-checkpoints-without-query-logging/README.md) (25 November 2026).
+
 3. `log_min_duration_statement` vs `log_duration` vs `log_statement`: Which Input Produces a Trustworthy pgBadger Report?
+
+    Completed: [Article](posts/2026-11-25-pgbadger-duration-statement-logging-report-accuracy/README.md) (25 November 2026).
+
 4. How to Parse PostgreSQL `jsonlog` from CloudNativePG and Cloud SQL with pgBadger
+
+    Completed: [Article](posts/2026-11-25-pgbadger-jsonlog-cloudnativepg-cloud-sql/README.md) (25 November 2026).
+
 5. How to Build Gap-Free pgBadger Reports from Rotating Amazon RDS and CloudWatch Logs
+
+    Completed: [Article](posts/2026-11-25-pgbadger-gap-free-rds-cloudwatch-rotated-logs/README.md) (25 November 2026).
+
 6. How to Run pgBadger Directly Against `journalctl` Without Copying PostgreSQL Logs to a Temporary File
+
+    Completed: [Article](posts/2026-11-25-pgbadger-journalctl-without-temporary-log-files/README.md) (25 November 2026).
+
 7. How to Analyze Remote and Compressed PostgreSQL Logs over SSH with pgBadger
+
+    Completed: [Article](posts/2026-11-25-pgbadger-remote-compressed-postgresql-logs-ssh/README.md) (25 November 2026).
+
 8. How to Generate Daily and Weekly Incremental pgBadger Reports Without Counting Rotated Logs Twice
+
+    Completed: [Article](posts/2026-11-25-pgbadger-daily-weekly-incremental-reports-rotation/README.md) (25 November 2026).
+
 9. pgBadger Says “No New Entries Since Last Run”: Repairing Stale `--last-parsed` State After Rotation
+
+    Completed: [Article](posts/2026-11-25-pgbadger-no-new-entries-stale-last-parsed-rotation/README.md) (25 November 2026).
+
 10. pgBadger `-j` vs `-J`: Parallelize One Huge Log or Hundreds of Small Logs?
 11. How to Stop pgBadger from Exhausting Memory on Busy PostgreSQL Logs
 12. How to Anonymize SQL Literals Before Sharing a pgBadger Report

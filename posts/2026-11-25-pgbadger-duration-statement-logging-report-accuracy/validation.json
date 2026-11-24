@@ -1,0 +1,27 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-25",
+  "runtimeTestsPerformed": true,
+  "sources": [
+    "https://www.postgresql.org/docs/18/runtime-config-logging.html#GUC-LOG-MIN-DURATION-STATEMENT",
+    "https://github.com/darold/pgbadger/blob/v13.3/README",
+    "https://www.postgresql.org/docs/18/runtime-config-logging.html#GUC-LOG-DURATION",
+    "https://pgbadger.darold.net/documentation.html",
+    "https://github.com/darold/pgbadger/blob/v13.3/pgbadger",
+    "https://www.postgresql.org/docs/18/protocol-flow.html#PROTOCOL-FLOW-EXT-QUERY",
+    "https://github.com/darold/pgbadger/releases/tag/v13.3"
+  ],
+  "tests": [
+    "pgBadger13.3 and Perl5.34.1 analyzed real logs from fresh PostgreSQL14.17 sessions for seven logging combinations; one fast and one30ms sleep query per connection; sampling disabled",
+    "Observed combined2/2 total/normalized, duration-only2/0, statement-only2/2 with0ms, threshold1/1, mixed2/1, separate4/2 and all-three4/2 under default parsing",
+    "--log-duration corrected separate and all-three fixtures to2/2 while retaining aggregate durations",
+    "Exact synthetic two-session interleaved fixture reported4 queries unpaired and2 paired with42ms total in both cases",
+    "Article shell syntax and exact synthetic fixture equality passed; six-node six-edge Mermaid structural check; generated1280x720 image visually reviewed"
+  ],
+  "limitations": [
+    "Database tests used installed PostgreSQL14.17 only as disposable fixture; PostgreSQL18 documentation reviewed without running18",
+    "Simple-query protocol only; no prepared statements, extended protocol, pipelining, auto_explain or production load test",
+    "No claim that low-volume timing values describe performance; parser results scoped to release13.3 and tested input",
+    "Mermaid not browser-rendered; no live deployment or production settings changed"
+  ]
+}

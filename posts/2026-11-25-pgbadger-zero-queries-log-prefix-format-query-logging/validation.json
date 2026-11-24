@@ -1,0 +1,25 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-25",
+  "runtimeTestsPerformed": true,
+  "sources": [
+    "https://www.postgresql.org/docs/18/view-pg-settings.html",
+    "https://www.postgresql.org/docs/18/runtime-config-logging.html",
+    "https://www.postgresql.org/docs/18/sql-set.html",
+    "https://www.postgresql.org/docs/18/runtime-config-logging.html#RUNTIME-CONFIG-LOGGING-WHERE",
+    "https://github.com/darold/pgbadger/blob/v13.3/README",
+    "https://pgbadger.darold.net/documentation.html"
+  ],
+  "tests": [
+    "pgBadger13.3 with Perl5.34.1 parsed standard fixture as one total and one normalized query; duration-only as one total and zero normalized; checkpoint-only as zero queries",
+    "Disposable PostgreSQL14.17 Unix-socket-only cluster: initial unlogged query absent; exact transaction-scoped SQL probe emitted standalone marker; cluster stopped in finally",
+    "Real database marker parsed as one query with correct prefix, zero with incorrect prefix and zero with syslog format; different database filter yielded zero",
+    "Generated HTML fixture report and verified probe SQL present; article probe matches tested SQL; shell syntax passed",
+    "Six-node five-edge Mermaid structural check;1280x720 social image generated and visually reviewed with three fitting title lines"
+  ],
+  "limitations": [
+    "Database runtime test used locally installed PostgreSQL14.17 only; PostgreSQL18 settings reviewed against official documentation, not executed on18",
+    "No production changes, managed-service export, cloud log transport, CSV/JSON input or incremental state repair tested",
+    "HTML report generated and checked for content, not visually rendered; social image was visually inspected; Mermaid structural check only"
+  ]
+}

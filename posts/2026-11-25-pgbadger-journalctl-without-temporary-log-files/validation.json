@@ -1,0 +1,27 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-25",
+  "runtimeTestsPerformed": true,
+  "sources": [
+    "https://www.postgresql.org/docs/18/runtime-config-logging.html",
+    "https://www.freedesktop.org/software/systemd/man/latest/journalctl.html",
+    "https://www.freedesktop.org/software/systemd/man/latest/systemd.journal-fields.html",
+    "https://github.com/darold/pgbadger/blob/v13.3/pgbadger",
+    "https://github.com/darold/pgbadger/blob/v13.3/README",
+    "https://www.gnu.org/software/bash/manual/html_node/Pipelines.html",
+    "https://www.freedesktop.org/software/systemd/man/latest/journald.conf.html"
+  ],
+  "tests": [
+    "pgBadger13.3 with Perl5.34.1 parsed a controlled short-iso journal fixture through the built-in command; verified appended output mode and quoted timestamps",
+    "Database PID81 matched while wrapper PID500 did not with the explicit prefix",
+    "A producer that emitted a valid record then exited42 produced pgBadger exit0 through the built-in path; Bash3.2.57 pipefail preserved failure42 and the previous report",
+    "Successful explicit message-only pipeline published a one-query text report; no intermediate raw-log file",
+    "Six-node five-edge Mermaid structure checked; generated1280x720 image visually inspected with all title lines visible"
+  ],
+  "limitations": [
+    "No Linux systemd journal, service permissions, retention or rate limits exercised; journalctl commands checked against official documentation",
+    "Controlled producer tests used text reports, not live PostgreSQL or journal transport; HTML/report appearance beyond the social image was not visually tested",
+    "No durable scheduling cursor, concurrency locking or automatic content acceptance gate implemented; these are stated operational requirements",
+    "Mermaid checked structurally, not browser-rendered"
+  ]
+}

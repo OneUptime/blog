@@ -833476,5 +833476,125 @@
       "Dependency Management"
     ],
     "post": "2026-11-25-model-loader-dependencies-python-framework-os-upgrades"
+  },
+  {
+    "title": "Roll Back a Complete Model Release with One Versioned Manifest",
+    "description": "Restore a compatible combination of model weights, application code, prompts, data snapshots, and configuration, then verify it before switching production traffic.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Model Versioning",
+      "MLOps",
+      "Rollback",
+      "Deployment"
+    ],
+    "post": "2026-11-25-rollback-model-release-manifest-weights-code-prompt-data-config"
+  },
+  {
+    "title": "pgBadger Found Zero Queries: Fix Log Format, Prefix, and Query Logging",
+    "description": "Diagnose empty pgBadger query reports by checking the actual log contents, effective PostgreSQL settings, input format, line prefix, and report filters.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "PostgreSQL",
+      "PgBadger",
+      "Troubleshooting",
+      "Logging"
+    ],
+    "post": "2026-11-25-pgbadger-zero-queries-log-prefix-format-query-logging"
+  },
+  {
+    "title": "Capture PostgreSQL Events in pgBadger Without Logging Every Statement",
+    "description": "Collect lock waits, disk spills, autovacuum activity, and checkpoints for pgBadger with explicit thresholds, useful validation, and manageable logging volume.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "PostgreSQL",
+      "PgBadger",
+      "Database Monitoring",
+      "Logging"
+    ],
+    "post": "2026-11-25-pgbadger-locks-temp-autovacuum-checkpoints-without-query-logging"
+  },
+  {
+    "title": "Choose PostgreSQL Query Logging for Accurate pgBadger Reports",
+    "description": "Compare statement, duration, and threshold logging with real pgBadger results, avoid double counting separate records, and interpret incomplete query coverage correctly.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "PostgreSQL",
+      "PgBadger",
+      "Logging",
+      "Performance"
+    ],
+    "post": "2026-11-25-pgbadger-duration-statement-logging-report-accuracy"
+  },
+  {
+    "title": "Parse CloudNativePG and Cloud SQL JSON Logs with pgBadger",
+    "description": "Prepare CloudNativePG records and Cloud SQL JSON exports for pgBadger while preserving timestamps, session identity, multiline SQL, and evidence of capture completeness.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "PostgreSQL",
+      "PgBadger",
+      "CloudNativePG",
+      "Cloud SQL"
+    ],
+    "post": "2026-11-25-pgbadger-jsonlog-cloudnativepg-cloud-sql"
+  },
+  {
+    "title": "Build Reliable pgBadger Reports from Rotating RDS and CloudWatch Logs",
+    "description": "Collect rotating RDS PostgreSQL logs completely, follow CloudWatch pagination, preserve event identity, and reconcile late arrivals before finalizing pgBadger reports.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "PostgreSQL",
+      "PgBadger",
+      "Amazon RDS",
+      "CloudWatch"
+    ],
+    "post": "2026-11-25-pgbadger-gap-free-rds-cloudwatch-rotated-logs"
+  },
+  {
+    "title": "Run pgBadger Directly from journalctl Without Copying Raw Logs",
+    "description": "Stream PostgreSQL journal entries into pgBadger, match their format correctly, and prevent failed reads from replacing a trustworthy report.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "PostgreSQL",
+      "PgBadger",
+      "Systemd",
+      "Logging"
+    ],
+    "post": "2026-11-25-pgbadger-journalctl-without-temporary-log-files"
+  },
+  {
+    "title": "Analyze Remote and Compressed PostgreSQL Logs with pgBadger over SSH",
+    "description": "Read archived PostgreSQL logs over SSH with pgBadger, choose where decompression runs, and catch transfer or archive failures before publishing reports.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "PostgreSQL",
+      "PgBadger",
+      "SSH",
+      "Logging"
+    ],
+    "post": "2026-11-25-pgbadger-remote-compressed-postgresql-logs-ssh"
+  },
+  {
+    "title": "Build Daily and Weekly pgBadger Reports Without Recounting Logs",
+    "description": "Configure incremental pgBadger reports with durable progress state, controlled rotated-log inputs, and repeat-run checks that expose duplicate counting.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "PostgreSQL",
+      "PgBadger",
+      "Logging",
+      "Database Monitoring"
+    ],
+    "post": "2026-11-25-pgbadger-daily-weekly-incremental-reports-rotation"
+  },
+  {
+    "title": "Fix pgBadger No New Entries After Log Rotation Without Losing History",
+    "description": "Diagnose stale pgBadger progress with copied state and a stateless control, then recover reporting without replaying logs into existing totals.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "PostgreSQL",
+      "PgBadger",
+      "Troubleshooting",
+      "Logging"
+    ],
+    "post": "2026-11-25-pgbadger-no-new-entries-stale-last-parsed-rotation"
   }
 ]

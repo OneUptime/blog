@@ -1,0 +1,31 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-25",
+  "runtimeTestsPerformed": true,
+  "sources": [
+    "https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/USER_LogAccess.Concepts.PostgreSQL.html",
+    "https://docs.aws.amazon.com/AmazonRDS/latest/APIReference/API_DescribeDBLogFiles.html",
+    "https://docs.aws.amazon.com/cli/latest/reference/rds/describe-db-log-files.html",
+    "https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/USER_LogAccess.Procedural.Downloading.html",
+    "https://docs.aws.amazon.com/AmazonRDS/latest/APIReference/API_DownloadDBLogFilePortion.html",
+    "https://docs.aws.amazon.com/AmazonCloudWatchLogs/latest/APIReference/API_FilterLogEvents.html",
+    "https://github.com/darold/pgbadger/blob/v13.3/README",
+    "https://docs.aws.amazon.com/AmazonCloudWatchLogs/latest/APIReference/API_FilteredLogEvent.html",
+    "https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/USER_LogAccess.Concepts.PostgreSQL.overview.parameter-groups.html",
+    "https://docs.aws.amazon.com/AmazonCloudWatch/latest/logs/Working-with-log-groups-and-streams.html"
+  ],
+  "tests": [
+    "Python3.11.13 Boto3 1.44.11 collector tested with botocore Stubber, validating actual SDK request/response models without network requests",
+    "Empty intermediate page followed through nextToken; overlapping event ID removed; distinct IDs with identical SQL retained; exclusive end boundary and timezone validation checked",
+    "Repeated token, conflicting copies and missing event ID rejected; equivalent aware timestamps matched",
+    "Exact script entrypoint wrote private new directory, raw multiline log, full event metadata and capture completion record with source identity",
+    "pgBadger13.3 rds parser counted two retained multiline executions with24ms total; code equality and shell syntax checked; six-node five-edge Mermaid structure passed",
+    "Generated1280x720 social image visually inspected; three title lines fit"
+  ],
+  "limitations": [
+    "No live AWS API, database, permissions, retention, export-latency or rotation behavior tested; RDS CLI commands source-reviewed only",
+    "Stub tests prove pagination/deduplication logic for supplied responses, not completeness of an AWS source",
+    "Helper captures bounded intervals in memory and is not a durable incremental collector; late-arrival reconciliation and scheduler checkpoints remain operational procedures",
+    "No CSV/JSON RDS format or multi-instance log-group test; Mermaid not browser-rendered"
+  ]
+}
