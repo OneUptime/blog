@@ -2406,15 +2406,35 @@ Research: [OneUptime air-gapped alerting](https://oneuptime.com/enterprise/air-g
 
     Completed: [Article](posts/2026-11-24-poddisruptionbudget-zero-allowed-disruptions-status/README.md) (24 November 2026).
 3. How Kubernetes Rounds Percentage PDBs—and Why `minAvailable` and `maxUnavailable` Behave Oppositely at One Replica
+
+    Completed: [Article](posts/2026-11-24-kubernetes-percentage-pdb-rounding-one-replica/README.md) (24 November 2026).
 4. Why `kubectl delete pod` Bypasses Your PodDisruptionBudget but `kubectl drain` Does Not
+
+    Completed: [Article](posts/2026-11-24-kubectl-delete-pod-drain-pdb-eviction/README.md) (24 November 2026).
 5. How `unhealthyPodEvictionPolicy: AlwaysAllow` Unblocks Node Drains—and What Recovery Protection You Give Up
+
+    Completed: [Article](posts/2026-11-24-pdb-alwaysallow-unhealthy-pod-eviction-tradeoffs/README.md) (24 November 2026).
 6. A NotReady Pod Is Blocking Node Drain: How to Break a Deadlocked PodDisruptionBudget
+
+    Completed: [Article](posts/2026-11-24-notready-pod-blocks-drain-pdb-recovery/README.md) (24 November 2026).
 7. How to Debug a PodDisruptionBudget Selector That Matches No Pods—or Far Too Many
+
+    Completed: [Article](posts/2026-11-24-debug-pdb-selector-missing-extra-pods/README.md) (24 November 2026).
 8. Why Overlapping PodDisruptionBudgets Make Eviction Fail—and How to Untangle Their Selectors
+
+    Completed: [Article](posts/2026-11-24-overlapping-pdbs-eviction-selector-repair/README.md) (24 November 2026).
 9. Why `selector: {}` Matches Every Pod in a `policy/v1` PDB—and How to Audit the Blast Radius
+
+    Completed: [Article](posts/2026-11-24-audit-empty-pdb-selector-namespace-scope/README.md) (24 November 2026).
 10. How to Test a PodDisruptionBudget Through the Eviction API Without Draining a Shared Node
+
+    Completed: [Article](posts/2026-11-24-test-pdb-eviction-api-without-node-drain/README.md) (24 November 2026).
 11. How to Coordinate HPA `minReplicas` with a PDB So Autoscaling Does Not Stall Maintenance
+
+    Completed: [Article](posts/2026-11-24-coordinate-hpa-minreplicas-pdb-maintenance/README.md) (24 November 2026).
 12. Cluster Autoscaler Reports “Not Enough PodDisruptionBudget”: How to Find the Blocking Workload
+
+    Completed: [Article](posts/2026-11-24-cluster-autoscaler-not-enough-pdb-blocking-workload/README.md) (24 November 2026).
 13. Karpenter Consolidation Is Blocked by a PDB: How Pod Budgets Differ from NodePool Disruption Budgets
 14. How to Design a PodDisruptionBudget for a StatefulSet That Must Preserve Quorum
 15. Can a Single-Replica Workload Survive a Zero-Downtime Drain? PDB Limits and Surge Workarounds

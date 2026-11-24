@@ -1,0 +1,29 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-24",
+  "runtimeTestsPerformed": true,
+  "sources": [
+    "https://v1-34.docs.kubernetes.io/docs/tasks/run-application/configure-pdb/",
+    "https://github.com/kubernetes/kubernetes/blob/v1.34.0/pkg/registry/core/pod/storage/eviction.go",
+    "https://github.com/kubernetes/kubernetes/blob/v1.34.0/pkg/controller/disruption/disruption.go",
+    "https://kubernetes.io/docs/reference/kubectl/generated/kubectl_get/",
+    "https://kubernetes.io/docs/concepts/overview/working-with-objects/labels/",
+    "https://kubernetes.io/docs/concepts/overview/working-with-objects/owners-dependents/",
+    "https://kubernetes.io/docs/reference/using-api/api-concepts/#dry-run",
+    "https://kubernetes.io/docs/reference/kubectl/generated/kubectl_apply/",
+    "https://github.com/kubernetes/kubernetes/blob/v1.34.0/api/openapi-spec/swagger.json",
+    "https://book.kubebuilder.io/reference/envtest.html"
+  ],
+  "tests": [
+    "Reviewed overlapping-selector eviction handling, normal lifecycle scope, controller warning path, label population checks, object ownership and server dry-run boundaries",
+    "Executed actual v1.34.0 API-server tests with envtest/controller-runtime0.22.1 and Go1.25.0: four Ready Pod fixtures and two PDBs with positive allowance; overlapping API Pod dry-run eviction rejected with HTTP500 and specific overlap message",
+    "Narrowed worker selector in isolated fixture, supplied reconciled status, then API/worker dry-run evictions succeeded; all four Pods remained without deletion timestamps and allowances/reservations stayed unchanged",
+    "Both proposed PDB objects passed tagged1.34.0 OpenAPI schema and disjoint fixture coverage checks; three shell blocks passed syntax checks",
+    "Eight-node/five-edge Mermaid diagram and two subgraph boundaries structurally checked; generated1280x720 social image visually inspected, no clipping"
+  ],
+  "limitations": [
+    "API lab supplied Pod readiness and PDB status; no kubelet, scheduler or disruption controller ran",
+    "No live node drains, actual workload evictions, application traffic, production selector edits, or organizational admission controls tested",
+    "Article server dry-run apply example was source-reviewed rather than executed; Mermaid structurally checked but not rendered"
+  ]
+}

@@ -1,0 +1,32 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-24",
+  "runtimeTestsPerformed": true,
+  "sources": [
+    "https://kubernetes.io/docs/tasks/administer-cluster/safely-drain-node/",
+    "https://kubernetes.io/docs/reference/kubectl/generated/kubectl_get/",
+    "https://kubernetes.io/docs/concepts/workloads/pods/pod-lifecycle/",
+    "https://kubernetes.io/docs/reference/node/node-status/",
+    "https://github.com/kubernetes/kubernetes/blob/v1.34.0/staging/src/k8s.io/api/policy/v1/types.go",
+    "https://v1-34.docs.kubernetes.io/docs/tasks/run-application/configure-pdb/",
+    "https://kubernetes.io/docs/tasks/debug/debug-application/debug-pods/",
+    "https://kubernetes.io/docs/reference/kubectl/generated/kubectl_logs/",
+    "https://kubernetes.io/docs/tasks/configure-pod-container/configure-liveness-readiness-startup-probes/",
+    "https://kubernetes.io/docs/concepts/workloads/autoscaling/horizontal-pod-autoscale/",
+    "https://kubernetes.io/docs/reference/kubectl/generated/kubectl_scale/",
+    "https://kubernetes.io/docs/reference/kubectl/generated/kubectl_drain/",
+    "https://book.kubebuilder.io/reference/envtest.html"
+  ],
+  "tests": [
+    "Reviewed safe draining, Pod-versus-node readiness, PDB generation/condition handling, default unhealthy-Pod policy, recovery diagnostics, HPA ownership and drain flags in official sources",
+    "Executed matching kubectl1.34.0 scale server dry run against isolated envtest1.34.0 API/etcd using controller-runtime0.22.1 and Go1.25.0",
+    "Current desired replicas3 accepted the proposed4-replica dry run; incorrect precondition2 was rejected; persisted desired replicas remained3 in both cases",
+    "Three shell blocks passed syntax checks; scale safeguards and previous-log options checked; nine-node/eight-edge Mermaid recovery-cycle structure checked",
+    "Generated1280x720 social image visually inspected, title legible without clipping"
+  ],
+  "limitations": [
+    "No kubelet, scheduler, Deployment controller, autoscaler, disruption controller or application ran in the API test",
+    "Read-only incident diagnostics and logs were source-reviewed, not run against a real failing workload; no live drain, actual scaling, readiness recovery, storage operation or fault injection performed",
+    "The capacity and recovery decision sequence requires workload-specific evidence; diagram structure checked but not rendered"
+  ]
+}

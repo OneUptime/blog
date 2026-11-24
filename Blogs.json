@@ -832531,5 +832531,125 @@
       "High Availability"
     ],
     "post": "2026-11-24-poddisruptionbudget-zero-allowed-disruptions-status"
+  },
+  {
+    "title": "How Percentage PDBs Round at Small Replica Counts",
+    "description": "Understand why complementary PDB percentages allow different evictions, calculate small-replica outcomes, and choose an explicit policy for single-replica workloads.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Kubernetes",
+      "PodDisruptionBudget",
+      "High Availability",
+      "Troubleshooting"
+    ],
+    "post": "2026-11-24-kubernetes-percentage-pdb-rounding-one-replica"
+  },
+  {
+    "title": "Pod Deletion vs. Drain: How PDB Protection Works",
+    "description": "Compare Pod deletion with eviction, understand drain flags, and use server dry runs to investigate PDB behavior without removing a workload.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Kubernetes",
+      "PodDisruptionBudget",
+      "Troubleshooting",
+      "High Availability"
+    ],
+    "post": "2026-11-24-kubectl-delete-pod-drain-pdb-eviction"
+  },
+  {
+    "title": "PDB AlwaysAllow: Unblock Drains and Understand the Recovery Tradeoff",
+    "description": "Use unhealthyPodEvictionPolicy deliberately: learn when AlwaysAllow permits unready Pod eviction, what remains protected, and how to assess recovery before maintenance.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Kubernetes",
+      "PodDisruptionBudget",
+      "High Availability",
+      "Troubleshooting"
+    ],
+    "post": "2026-11-24-pdb-alwaysallow-unhealthy-pod-eviction-tradeoffs"
+  },
+  {
+    "title": "Recover a Node Drain Blocked by an Unready Pod",
+    "description": "Diagnose a drain blocked by an unready Pod, separate budget protection from recovery failures, and restore usable capacity before relaxing maintenance safeguards.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Kubernetes",
+      "PodDisruptionBudget",
+      "Troubleshooting",
+      "High Availability"
+    ],
+    "post": "2026-11-24-notready-pod-blocks-drain-pdb-recovery"
+  },
+  {
+    "title": "Fix a PDB Selector That Matches No Pods or Too Many",
+    "description": "Verify the exact Pods selected by a disruption budget, catch namespace and release-label mistakes, and repair selectors without losing coverage during a rollout.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Kubernetes",
+      "PodDisruptionBudget",
+      "Troubleshooting",
+      "High Availability"
+    ],
+    "post": "2026-11-24-debug-pdb-selector-missing-extra-pods"
+  },
+  {
+    "title": "Fix Overlapping PDBs That Reject Pod Evictions",
+    "description": "Find Pods selected by multiple disruption budgets, distinguish overlap from exhausted capacity, and repair selectors while retaining the intended protection.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Kubernetes",
+      "PodDisruptionBudget",
+      "Troubleshooting",
+      "High Availability"
+    ],
+    "post": "2026-11-24-overlapping-pdbs-eviction-selector-repair"
+  },
+  {
+    "title": "Audit Empty PDB Selectors Across a Kubernetes Cluster",
+    "description": "Find namespace-wide PDB selectors with a read-only audit, distinguish empty from null, assess affected workloads, and repair coverage without silently removing protection.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Kubernetes",
+      "PodDisruptionBudget",
+      "Troubleshooting",
+      "High Availability"
+    ],
+    "post": "2026-11-24-audit-empty-pdb-selector-namespace-scope"
+  },
+  {
+    "title": "Test a PDB Through the Eviction API Without Draining a Node",
+    "description": "Test PDB rejection, dry-run acceptance, and one controlled Pod eviction in a staging namespace while leaving other workloads on the shared node alone.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Kubernetes",
+      "PodDisruptionBudget",
+      "Testing",
+      "High Availability"
+    ],
+    "post": "2026-11-24-test-pdb-eviction-api-without-node-drain"
+  },
+  {
+    "title": "Coordinate HPA Minimum Replicas with a PDB for Maintenance",
+    "description": "Align an HPA replica floor with a PDB health requirement, preserve maintenance headroom at low traffic, and verify the result without mistaking desired replicas for healthy Pods.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Kubernetes",
+      "PodDisruptionBudget",
+      "Horizontal Pod Autoscaler",
+      "Capacity Planning"
+    ],
+    "post": "2026-11-24-coordinate-hpa-minreplicas-pdb-maintenance"
+  },
+  {
+    "title": "Find the PDB Blocking Cluster Autoscaler Scale-Down",
+    "description": "Trace a Cluster Autoscaler PDB warning from its node and Pod to the owning workload, explain the missing allowance, and verify a repair without removing availability protection.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Kubernetes",
+      "PodDisruptionBudget",
+      "Cluster Autoscaler",
+      "Troubleshooting"
+    ],
+    "post": "2026-11-24-cluster-autoscaler-not-enough-pdb-blocking-workload"
   }
 ]

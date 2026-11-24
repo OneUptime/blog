@@ -1,0 +1,32 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-24",
+  "runtimeTestsPerformed": true,
+  "sources": [
+    "https://v1-34.docs.kubernetes.io/docs/concepts/scheduling-eviction/api-eviction/",
+    "https://github.com/kubernetes/kubernetes/blob/v1.34.0/pkg/registry/core/pod/storage/eviction.go",
+    "https://kubernetes.io/docs/reference/kubectl/generated/kubectl_auth/kubectl_auth_can-i/",
+    "https://v1-34.docs.kubernetes.io/docs/tasks/run-application/configure-pdb/",
+    "https://github.com/kubernetes/apimachinery/blob/v0.34.0/pkg/apis/meta/v1/types.go",
+    "https://jqlang.org/manual/v1.6/",
+    "https://github.com/kubernetes/kubectl/blob/v0.34.0/pkg/cmd/create/create.go",
+    "https://kubernetes.io/docs/reference/using-api/api-concepts/#dry-run",
+    "https://v1-34.docs.kubernetes.io/docs/concepts/workloads/controllers/deployment/",
+    "https://kubernetes.io/docs/tasks/configure-pod-container/configure-liveness-readiness-startup-probes/",
+    "https://github.com/kubernetes/kubernetes/blob/v1.34.0/api/openapi-spec/swagger.json",
+    "https://book.kubebuilder.io/reference/envtest.html"
+  ],
+  "tests": [
+    "Reviewed eviction versus drain scope, authorization subresource, healthy Pod path, UID/resource-version preconditions, raw request handling and dry-run persistence rules against official sources",
+    "Executed exact article capture/jq and kubectl1.34.0 raw requests against isolated API server1.34.0: minAvailable3 rejected dry-run; minAvailable2 accepted; two dry runs consumed no allowance; stale UID rejected",
+    "Executed one real fixture eviction: only selected Pod received deletion timestamp, allowance decreased to0, one disruption reservation persisted; second real request rejected429 and other Pods remained nonterminating",
+    "Exact jq payload filter passed valid fixture and seven refusal cases; generated Eviction and PDB passed tagged1.34.0 OpenAPI schemas",
+    "Five shell blocks passed syntax checks; seven-node/six-edge Mermaid structurally checked",
+    "Generated1280x720 social image and visually inspected two-line title and branding; no clipping"
+  ],
+  "limitations": [
+    "Isolated controller-runtime0.22.1/Go1.25.0 fixture supplied Pod readiness and PDB status; no kubelet, scheduler, Deployment or disruption controller ran",
+    "Real eviction was limited to a disposable local API object; no application process, replacement readiness, real node drain, production workload or application traffic tested",
+    "PDB apply and authorization examples source-reviewed, not exercised against an organization RBAC/admission configuration; Mermaid not rendered"
+  ]
+}

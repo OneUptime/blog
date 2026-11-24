@@ -1,0 +1,34 @@
+# Technical validation
+
+The policy comparison retains the healthy minimum and isolates Running but unready Pods. Default behavior at an already-met floor is distinguished from behavior below that floor. Recovery examples are operational assessment guidance.
+
+## Checks performed
+
+- Reviewed stable feature state, default policy, Ready-versus-Running distinction, healthy-Pod protection, and recovery tradeoffs in official documentation and v1.34.0 source
+- Ran isolated envtest1.34.0 API/etcd using controller-runtime0.22.1 and Go1.25.0; created three fixture Pods per scenario with consistent injected readiness and PDB status
+- Twelve actual server dry-run eviction requests covered four healthy-count/target-readiness cases under omitted, IfHealthyBudget and AlwaysAllow policies; verified expected success/429 and unchanged UID, deletion timestamp, allowance and reservations
+- Article YAML passed OpenAPI schema downloaded from Kubernetes v1.34.0 tag; selector/minimum/policy checked; two shell blocks passed bash syntax checks
+- Nine-node/eight-edge Mermaid structure checked; generated1280x720 social image visually inspected, title legible without clipping
+
+## Sources checked
+
+- https://v1-34.docs.kubernetes.io/docs/tasks/run-application/configure-pdb/
+- https://kubernetes.io/docs/concepts/workloads/pods/pod-lifecycle/
+- https://github.com/kubernetes/kubernetes/blob/v1.34.0/staging/src/k8s.io/api/policy/v1/types.go
+- https://github.com/kubernetes/kubernetes/blob/v1.34.0/pkg/registry/core/pod/storage/eviction.go
+- https://kubernetes.io/blog/2023/01/06/unhealthy-pod-eviction-policy-for-pdbs/
+- https://kubernetes.io/docs/reference/kubectl/generated/kubectl_explain/
+- https://kubernetes.io/docs/reference/kubectl/generated/kubectl_get/
+- https://kubernetes.io/docs/reference/kubectl/generated/kubectl_apply/
+- https://github.com/kubernetes/kubernetes/blob/v1.34.0/api/openapi-spec/swagger.json
+- https://book.kubebuilder.io/reference/envtest.html
+
+## Limitations
+
+- No kubelet, scheduler, disruption controller or application ran; health/status were test fixtures, not measured recovery behavior
+- No actual eviction, node drain, production API change, kubectl explain or apply command, storage recovery, readiness-probe behavior or traffic test performed
+- OpenAPI checks do not establish organizational admission acceptance; diagram structure checked but not rendered
+
+## Repository checks
+
+The repository validator passed for this post in an isolated fixture with its catalog entry, author list, tag allowlist, and social image. Shell examples, if present, passed bash syntax checking. The full existing catalog was not revalidated.
