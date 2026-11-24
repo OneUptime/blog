@@ -1,0 +1,27 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-25",
+  "runtimeTestsPerformed": true,
+  "sources": [
+    "https://cheatsheetseries.owasp.org/cheatsheets/Logging_Cheat_Sheet.html",
+    "https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/removing-sensitive-data-from-a-repository",
+    "https://ico.org.uk/for-organisations/uk-gdpr-guidance-and-resources/security/disclosing-documents-to-the-public-securely/avoid-an-accidental-breach-when-personal-information-is-hidden-in-documents/",
+    "https://ico.org.uk/for-organisations/uk-gdpr-guidance-and-resources/security/disclosing-documents-to-the-public-securely/how-do-we-avoid-an-accidental-breach-when-redacting-information/",
+    "https://github.com/BurntSushi/ripgrep/blob/15.2.0/crates/core/flags/defs.rs",
+    "https://certcc.github.io/CERT-Guide-to-CVD/topics/phases/publishing/"
+  ],
+  "tests": [
+    "Reviewed OWASP logging exclusions, GitHub secret-exposure guidance, ICO document/redaction guidance, CERT coordinated disclosure and ripgrep 15.2.0 flag definitions",
+    "Exact Bash block passed bash syntax checking and ran with ripgrep 15.2.0 against synthetic local files",
+    "Confirmed four matching filenames including hidden and ignored text files; matching values were not printed, JSON extension was excluded, and custom ripgrep config did not change behavior",
+    "Verified exit statuses 0 for matches, 1 for no selected matches, and 2 for a missing directory",
+    "Editorial review preserves evidence copies, distinguishes secret containment from editing, scopes legal review and explains scan limitations",
+    "Generated 1280x720 image opened and visually reviewed; three-line title fits"
+  ],
+  "limitations": [
+    "No genuine credentials, personal data, legal case or customer incident was used",
+    "No PDF, office document, screenshot or metadata redaction software was exercised; those sections are documentation-based review guidance",
+    "The example text search is intentionally incomplete and is not a publication or compliance approval",
+    "No diagram added because the category and transformation tables explain the decisions directly"
+  ]
+}

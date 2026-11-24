@@ -2635,15 +2635,45 @@ Research: [OneUptime air-gapped alerting](https://oneuptime.com/enterprise/air-g
     Completed: [Article](posts/2026-11-25-calculate-postmortem-revenue-error-budget-customer-impact/README.md) (25 November 2026).
 
 6. How to Write a Postmortem Executive Summary That Preserves the Technical Truth
+
+    Completed: [Article](posts/2026-11-25-write-postmortem-executive-summary-technical-truth/README.md) (25 November 2026).
+
 7. How to Produce Internal and Customer-Facing Postmortems from One Incident Record
+
+    Completed: [Article](posts/2026-11-25-internal-customer-postmortems-one-incident-record/README.md) (25 November 2026).
+
 8. What Should You Redact Before Publishing a Postmortem? Secrets, PII, Security Details, and Legal Review
+
+    Completed: [Article](posts/2026-11-25-redact-postmortem-secrets-personal-security-details/README.md) (25 November 2026).
+
 9. How to Run a Shared Postmortem with a Cloud Provider or Other Third-Party Vendor
+
+    Completed: [Article](posts/2026-11-25-shared-postmortem-cloud-provider-vendor/README.md) (25 November 2026).
+
 10. How to Review a Cross-Team Incident When No Single Service Owns the Failure
+
+    Completed: [Article](posts/2026-11-25-review-cross-team-incident-shared-failure/README.md) (25 November 2026).
+
 11. How to Run an Asynchronous Postmortem Across Time Zones Without Losing Debate or Decisions
+
+    Completed: [Article](posts/2026-11-25-asynchronous-postmortem-across-time-zones/README.md) (25 November 2026).
+
 12. How to Close a Postmortem When Corrective Actions Are Rejected or Deferred
+
+    Completed: [Article](posts/2026-11-25-close-postmortem-rejected-deferred-actions/README.md) (25 November 2026).
+
 13. How to Use AI to Draft a Postmortem Without Inventing a Timeline or Exposing Sensitive Logs
+
+    Completed: [Article](posts/2026-11-25-ai-postmortem-drafts-evidence-sensitive-logs/README.md) (25 November 2026).
+
 14. How to Reconcile Conflicting Incident Accounts with Evidence and Confidence Levels
+
+    Completed: [Article](posts/2026-11-25-reconcile-conflicting-incident-accounts/README.md) (25 November 2026).
+
 15. How to Use Postmortems to Expose Hidden Service Dependencies and Update the Architecture Map
+
+    Completed: [Article](posts/2026-11-25-postmortems-hidden-service-dependencies-architecture-map/README.md) (25 November 2026).
+
 16. How to Review a Postmortem Draft for Unsupported Claims, Missing Evidence, and Ambiguous Language
 17. Which Postmortem Metrics Actually Improve Reliability? Action Closure, Recurrence, Detection, and Review Lag
 18. How to Turn Postmortem Findings into Runbook Updates That Help the Next On-Call

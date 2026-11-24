@@ -1,0 +1,23 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-25",
+  "runtimeTestsPerformed": false,
+  "sources": [
+    "https://docs.pagerduty.com/ops-guides/incident-response-guide/postmortem-process",
+    "https://docs.pagerduty.com/ops-guides/postmortem-best-practices/postmortem-meeting",
+    "https://sre.google/workbook/error-budget-policy/",
+    "https://sre.google/workbook/postmortem-culture/"
+  ],
+  "tests": [
+    "Reviewed official PagerDuty review lifecycle and action-tradeoff guidance, Google SRE actionable postmortems and explicitly labeled example error-budget policy",
+    "Checked six action dispositions separate acceptance, deferral, rejection, replacement, implementation and verified outcomes",
+    "Reviewed fictional deferral and closure note for consistent owner, residual exposure, interim-control qualification and 9 December decision deadline",
+    "Generated 1280x720 social image opened and visually reviewed; two-line title fits"
+  ],
+  "limitations": [
+    "No actual incident, risk decision, approval process or action-tracking platform was exercised",
+    "The queue incident and decision dates are fictional; no load test or control verification was run",
+    "Google policy is an example, not presented as an applicable policy for all organizations",
+    "Tables provide the practical decision record; no executable code or additional diagram was needed"
+  ]
+}

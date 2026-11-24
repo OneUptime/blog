@@ -1,0 +1,24 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-25",
+  "runtimeTestsPerformed": false,
+  "sources": [
+    "https://docs.aws.amazon.com/health/latest/ug/aws-health-concepts-and-terms.html",
+    "https://learn.microsoft.com/en-us/azure/service-health/azure-status-overview",
+    "https://learn.microsoft.com/en-us/azure/service-health/service-health-event-tags",
+    "https://sre.google/workbook/postmortem-culture/"
+  ],
+  "tests": [
+    "Reviewed official AWS Health account/public event scope, Azure public/targeted communications and preliminary/final PIR definitions, and Google SRE postmortem guidance",
+    "Checked five fictional timeline milestones for chronology and distinct notice, provider recovery, new-request recovery and backlog completion meanings",
+    "Structurally checked Mermaid: seven declared nodes, seven directed edges, no undefined references",
+    "Editorial review distinguishes observed evidence, provider statements and inference; vendor deliverables remain requested until accepted",
+    "Generated 1280x720 image opened and visually reviewed; two-line title fits"
+  ],
+  "limitations": [
+    "No cloud account, vendor support case, actual provider incident, joint meeting or production telemetry was accessed",
+    "The incident and all times are fictional; no provider service behavior was experimentally reproduced",
+    "Mermaid syntax was checked structurally, without browser rendering",
+    "No executable commands included because the task is evidence exchange and review coordination"
+  ]
+}

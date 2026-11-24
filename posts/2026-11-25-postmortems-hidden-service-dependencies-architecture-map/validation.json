@@ -1,0 +1,24 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-25",
+  "runtimeTestsPerformed": false,
+  "sources": [
+    "https://docs.aws.amazon.com/wellarchitected/latest/framework/ops01-bp03.html",
+    "https://v1-36.docs.kubernetes.io/docs/concepts/containers/images/",
+    "https://docs.aws.amazon.com/wellarchitected/latest/framework/rel04-bp01.html",
+    "https://opentelemetry.io/docs/specs/otel/trace/data-model/"
+  ],
+  "tests": [
+    "Reviewed AWS dependency telemetry and interaction-style guidance, Kubernetes 1.36 image behavior and OpenTelemetry trace-completeness documentation",
+    "Parsed the illustrative JSON dependency record and reviewed its phase, platform interaction owner, evidence IDs and uncached-node condition against prose and map",
+    "Structurally checked Mermaid: seven declared nodes, six directed edges, no undefined references",
+    "Editorial review distinguishes logical dependency from packet flow, existence of a dependency from its failure mechanism, and observed dependency from verified recovery capability",
+    "Generated 1280x720 social image opened and visually reviewed; three-line title fits"
+  ],
+  "limitations": [
+    "No Kubernetes cluster, registry, trace backend, renewal process or failure-injection exercise was run",
+    "JSON is an original documentation format, not a vendor service-catalog schema or deployment configuration",
+    "The architecture and evidence identifiers are fictional; proposed staging exercises are not reported as performed",
+    "Mermaid checked structurally without browser rendering"
+  ]
+}

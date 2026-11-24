@@ -1,0 +1,26 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-25",
+  "runtimeTestsPerformed": true,
+  "sources": [
+    "https://docs.pagerduty.com/ops-guides/howie-guide/calibrate",
+    "https://docs.pagerduty.com/ops-guides/howie-guide/interview",
+    "https://www.rfc-editor.org/rfc/rfc3339",
+    "https://docs.aws.amazon.com/AmazonCloudWatchLogs/latest/APIReference/API_OutputLogEvent.html",
+    "https://docs.python.org/3.13/library/datetime.html",
+    "https://www.w3.org/TR/trace-context/"
+  ],
+  "tests": [
+    "Reviewed PagerDuty Howie calibration/interview guidance, RFC 3339, AWS CloudWatch event versus ingestion timestamp fields, W3C Trace Context and Python datetime documentation",
+    "Exact Python block compiled and ran with Python 3.9.6; both expected UTC intervals and overlap result matched",
+    "Five additional cases checked disjoint intervals, negative clock offset, half-hour timezone conversion, missing offset rejection and negative uncertainty rejection",
+    "Editorial review keeps different recovery scopes compatible, confidence labels qualitative, source copies non-independent and causal uncertainty explicit",
+    "Generated 1280x720 social image opened and visually reviewed; three-line title fits"
+  ],
+  "limitations": [
+    "No actual incident accounts, telemetry, clock synchronization or trace backend was examined",
+    "Clock offset and uncertainty bounds are hypothetical inputs; the code does not measure clock accuracy or establish real event order",
+    "Confidence labels are proposed review conventions, not statistical confidence estimates",
+    "Tables and executable interval calculation provide the structure without an additional diagram"
+  ]
+}

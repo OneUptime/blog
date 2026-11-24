@@ -833127,5 +833127,118 @@
       "SLO"
     ],
     "post": "2026-11-25-calculate-postmortem-revenue-error-budget-customer-impact"
+  },
+  {
+    "title": "Write a Postmortem Executive Summary That Preserves the Truth",
+    "description": "Turn a technical incident record into a concise executive summary while preserving impact, causal confidence, recovery milestones, and remaining risk.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Postmortem",
+      "Incident Management",
+      "SRE"
+    ],
+    "post": "2026-11-25-write-postmortem-executive-summary-technical-truth"
+  },
+  {
+    "title": "Produce Internal and Customer Postmortems from One Incident Record",
+    "description": "Build internal and customer-facing postmortems from a shared incident record, with consistent facts, explicit review, and traceable corrections.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Postmortem",
+      "Incident Management",
+      "SRE"
+    ],
+    "post": "2026-11-25-internal-customer-postmortems-one-incident-record"
+  },
+  {
+    "title": "What to Redact Before Publishing an Incident Postmortem",
+    "description": "Review postmortems for credentials, personal information, hidden document content, and security details while preserving an honest explanation of the incident.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Postmortem",
+      "Security",
+      "Privacy",
+      "Incident Response"
+    ],
+    "post": "2026-11-25-redact-postmortem-secrets-personal-security-details"
+  },
+  {
+    "title": "Run a Shared Postmortem with a Cloud Provider or Vendor",
+    "description": "Build a shared incident review with a cloud provider or vendor using scoped evidence, reconciled timelines, explicit unknowns, and verifiable actions.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Postmortem",
+      "Incident Response",
+      "SRE"
+    ],
+    "post": "2026-11-25-shared-postmortem-cloud-provider-vendor"
+  },
+  {
+    "title": "Review a Cross-Team Incident When No Service Owns the Whole Failure",
+    "description": "Review incidents that emerge between services by tracing customer operations, checking interface assumptions, and assigning verifiable work across teams.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Postmortem",
+      "Incident Response",
+      "SRE"
+    ],
+    "post": "2026-11-25-review-cross-team-incident-shared-failure"
+  },
+  {
+    "title": "Run an Asynchronous Postmortem Across Time Zones",
+    "description": "Run a postmortem across time zones with clear review windows, evidence threads, recorded decisions, and targeted live discussion when needed.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Postmortem",
+      "Incident Response",
+      "SRE"
+    ],
+    "post": "2026-11-25-asynchronous-postmortem-across-time-zones"
+  },
+  {
+    "title": "Close a Postmortem When Actions Are Rejected or Deferred",
+    "description": "Close the incident review without hiding unfinished work by recording rejected and deferred actions, residual risk, decision authority, and revisit triggers.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Postmortem",
+      "Incident Management",
+      "SRE"
+    ],
+    "post": "2026-11-25-close-postmortem-rejected-deferred-actions"
+  },
+  {
+    "title": "Use AI for Postmortem Drafts Without Inventing the Incident",
+    "description": "Draft postmortems from a reviewed evidence packet, constrain timeline claims, protect sensitive input, and check generated text before it becomes the incident record.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Postmortem",
+      "AI",
+      "Incident Response",
+      "Security"
+    ],
+    "post": "2026-11-25-ai-postmortem-drafts-evidence-sensitive-logs"
+  },
+  {
+    "title": "Reconcile Conflicting Incident Accounts with Evidence and Confidence",
+    "description": "Resolve conflicting incident accounts by comparing scope, timestamps, source lineage, and evidence strength while keeping unresolved disagreements explicit.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Postmortem",
+      "Incident Response",
+      "Root Cause Analysis"
+    ],
+    "post": "2026-11-25-reconcile-conflicting-incident-accounts"
+  },
+  {
+    "title": "Use Postmortems to Find Hidden Dependencies and Update Architecture Maps",
+    "description": "Turn incident evidence into an architecture-map update that captures runtime, startup, recovery, and renewal dependencies with owners and validation plans.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Postmortem",
+      "Architecture",
+      "Observability",
+      "SRE"
+    ],
+    "post": "2026-11-25-postmortems-hidden-service-dependencies-architecture-map"
   }
 ]

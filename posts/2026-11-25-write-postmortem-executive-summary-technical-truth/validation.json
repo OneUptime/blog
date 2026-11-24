@@ -1,0 +1,22 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-25",
+  "runtimeTestsPerformed": false,
+  "sources": [
+    "https://sre.google/workbook/postmortem-culture/",
+    "https://docs.pagerduty.com/ops-guides/incident-response-guide/postmortem-template",
+    "https://www.atlassian.com/incident-management/handbook/postmortems",
+    "https://sre.google/sre-book/postmortem-culture/"
+  ],
+  "tests": [
+    "Reviewed official Google SRE, PagerDuty and Atlassian postmortem guidance",
+    "Reviewed fictional fact sheet against the three-paragraph executive summary: impact units, regional scope, separate new-traffic and backlog recovery, bounded integrity finding and planned prevention dates agree",
+    "Checked that mitigation is not presented as completed prevention and that causal confidence has explicit guidance",
+    "Generated 1280x720 social image opened and visually reviewed; three-line title fits"
+  ],
+  "limitations": [
+    "Editorial and documentation review only; no actual incident records, customer data or operational systems were examined",
+    "The worked incident, times, impact counts and action dates are fictional",
+    "No executable code or Mermaid diagram included because the fact and evidence tables provide the useful structure"
+  ]
+}

@@ -1,0 +1,23 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-25",
+  "runtimeTestsPerformed": true,
+  "sources": [
+    "https://handbook.gitlab.com/handbook/communication/",
+    "https://docs.python.org/3.13/library/zoneinfo.html",
+    "https://docs.pagerduty.com/ops-guides/postmortem-best-practices/postmortem-meeting"
+  ],
+  "tests": [
+    "Reviewed GitLab communication principles, PagerDuty live-discussion goals and official Python zoneinfo documentation",
+    "Extracted and executed exact Python block with Python 3.9.6 and system time-zone database; all four output lines exactly matched published output",
+    "Checked the fictional window is 48 elapsed hours, all four local conversions round-trip to the same UTC instant, and an unknown zone raises ZoneInfoNotFoundError",
+    "Editorial review distinguishes elapsed review time from working availability, late changes from prior approval, and silence from accepted work",
+    "Generated 1280x720 social image opened and visually reviewed; two-line title fits"
+  ],
+  "limitations": [
+    "No actual review, participant calendar, holiday schedule or communication platform was used",
+    "The program converts one instant only; it does not determine availability, fairness or approval",
+    "Time-zone results use the local system database available during validation; future rules may change",
+    "No additional diagram added because staged workflow tables and executable conversion give the relevant structure"
+  ]
+}

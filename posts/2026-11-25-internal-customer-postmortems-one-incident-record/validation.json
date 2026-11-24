@@ -1,0 +1,25 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-25",
+  "runtimeTestsPerformed": true,
+  "sources": [
+    "https://www.atlassian.com/incident-management/postmortem/reports",
+    "https://docs.pagerduty.com/ops-guides/postmortem-best-practices/step-by-step",
+    "https://docs.python.org/3.13/library/json.html",
+    "https://docs.pagerduty.com/ops-guides/incident-response-guide/postmortem-process"
+  ],
+  "tests": [
+    "Reviewed official Atlassian internal/external report guidance, PagerDuty external messaging and review workflow, and Python JSON documentation",
+    "Extracted and ran exact JSON/Python snippets with Python 3.9.6: seven approved fields exported without internal_notes",
+    "Nine runtime cases covered success, stale revision, invalid approval/revision types, missing required field, unexpected private field and the deliberate limitation that selected text is not sanitized",
+    "Mermaid structurally checked: eight declared nodes, seven valid directed edges, no undeclared references",
+    "Editorial review reconciled fictional impact count, account units, two recovery milestones, causal uncertainty and planned action across both reports",
+    "Generated 1280x720 social image opened and visually reviewed; three-line title fits"
+  ],
+  "limitations": [
+    "No real incident data, access-controlled document platform, approval service or publication channel was used",
+    "The example approval field is editable and demonstrates a local workflow guard, not authenticated approval or security enforcement",
+    "The exporter does not detect sensitive content inside approved fields; human review remains necessary",
+    "Mermaid structure was checked without browser rendering"
+  ]
+}
