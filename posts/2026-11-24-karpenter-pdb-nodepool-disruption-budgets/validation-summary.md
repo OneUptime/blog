@@ -1,0 +1,37 @@
+# Technical validation
+
+The guide uses pinned release source to distinguish Pod eviction protection, NodePool concurrency and forced lifecycle behavior. The example is explicitly a preview-only merge patch, including whole-array replacement semantics.
+
+## Checks performed
+
+- Reviewed Karpenter1.8.0 NodePool API/CRD, event objects, PDB eligibility including multiple matches, budget mapping, versioned disruption lifecycle and NodeClaim documentation
+- Installed exact1.8.0 NodePool CRD in isolated Kubernetes1.34.0 API fixture and executed article kubectl1.34.0 server dry-run merge patch against a valid NodePool
+- Verified preview replaced the budgets array, preserved unrelated metadata and left stored original budgets unchanged; actual CRD validation rejected integer nodes value, unknown disruption reason and schedule without duration
+- Parsed patch YAML and checked three reason intersections, unavailable-node union cases and rounding examples; three shell blocks passed syntax
+- Seven-node/six-edge Mermaid structurally checked; generated1280x720 social image visually inspected with no clipping
+
+## Sources checked
+
+- https://github.com/kubernetes-sigs/karpenter/blob/v1.8.0/pkg/apis/v1/nodepool.go
+- https://kubernetes.io/docs/reference/kubernetes-api/policy/pod-disruption-budget-v1/
+- https://github.com/kubernetes-sigs/karpenter/blob/v1.8.0/pkg/apis/crds/karpenter.sh_nodepools.yaml
+- https://github.com/aws/karpenter-provider-aws/blob/v1.8.0/website/content/en/docs/concepts/disruption.md#control-flow
+- https://github.com/aws/karpenter-provider-aws/blob/v1.8.0/website/content/en/docs/concepts/nodeclaims.md
+- https://github.com/kubernetes-sigs/karpenter/blob/v1.8.0/pkg/controllers/disruption/events/events.go
+- https://kubernetes.io/docs/reference/kubectl/generated/kubectl_describe/
+- https://github.com/kubernetes-sigs/karpenter/blob/v1.8.0/pkg/utils/pdb/pdb.go
+- https://github.com/kubernetes-sigs/karpenter/blob/v1.8.0/pkg/controllers/disruption/helpers.go
+- https://kubernetes.io/docs/tasks/manage-kubernetes-objects/update-api-object-kubectl-patch/
+- https://kubernetes.io/docs/reference/kubectl/generated/kubectl_patch/
+- https://github.com/aws/karpenter-provider-aws/blob/v1.8.0/website/content/en/docs/concepts/disruption.md#terminationgraceperiod
+- https://book.kubebuilder.io/reference/envtest.html
+
+## Limitations
+
+- API fixture used controller-runtime0.22.1/Go1.25.0 and no Karpenter controller, cloud provider, scheduling simulation or node termination
+- Budget calculations were checked with local arithmetic and tagged source, not an executing Karpenter planner; no live PDB eviction or application recovery tested
+- Read-only node/NodeClaim diagnostics source-reviewed; CRD admission does not establish referenced NodeClass existence or usable capacity; Mermaid not rendered
+
+## Repository checks
+
+The repository validator passed for this post in an isolated fixture with its catalog entry, author list, tag allowlist, and social image. Shell examples, if present, passed bash syntax checking. The full existing catalog was not revalidated.

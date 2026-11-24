@@ -2436,21 +2436,41 @@ Research: [OneUptime air-gapped alerting](https://oneuptime.com/enterprise/air-g
 
     Completed: [Article](posts/2026-11-24-cluster-autoscaler-not-enough-pdb-blocking-workload/README.md) (24 November 2026).
 13. Karpenter Consolidation Is Blocked by a PDB: How Pod Budgets Differ from NodePool Disruption Budgets
+
+    Completed: [Article](posts/2026-11-24-karpenter-pdb-nodepool-disruption-budgets/README.md) (24 November 2026).
 14. How to Design a PodDisruptionBudget for a StatefulSet That Must Preserve Quorum
+
+    Completed: [Article](posts/2026-11-24-statefulset-pdb-preserve-quorum/README.md) (24 November 2026).
 15. Can a Single-Replica Workload Survive a Zero-Downtime Drain? PDB Limits and Surge Workarounds
+
+    Completed: [Article](posts/2026-11-24-single-replica-zero-downtime-drain-pdb-surge/README.md) (24 November 2026).
 16. Why a PDB Cannot Guarantee Node or Zone Availability—and How to Pair It with Topology Spread Constraints
+
+    Completed: [Article](posts/2026-11-24-pdb-node-zone-availability-topology-spread/README.md) (24 November 2026).
 17. Why a PodDisruptionBudget Does Not Stop Node-Pressure Eviction, Graceful Shutdown, or Hardware Failure
+
+    Completed: [Article](posts/2026-11-24-pdb-node-pressure-shutdown-hardware-failure/README.md) (24 November 2026).
 18. How to Enforce PDB Coverage for Deployments and StatefulSets Without Blocking Jobs or Single Replicas
+
+    Completed: [Article](posts/2026-11-24-enforce-pdb-coverage-deployments-statefulsets-ci/README.md) (24 November 2026).
 19. How to Alert Before a PDB Blocks Maintenance with `kube_poddisruptionbudget_status_pod_disruptions_allowed`
+
+    Completed: [Article](posts/2026-11-24-alert-pdb-blocked-maintenance-prometheus/README.md) (24 November 2026).
 20. How to Prevent a Helm Chart from Shipping a PDB That Deadlocks Single-Replica Installations
+
+    Completed: [Article](posts/2026-11-24-helm-chart-pdb-single-replica-defaults/README.md) (24 November 2026).
 
 ### Research additions — 20 November 2026
 
 21. How to Repair Helm Release Metadata That Still References policy/v1beta1 PodDisruptionBudgets
 
+    Completed: [Article](posts/2026-11-24-repair-helm-release-metadata-policy-v1beta1-pdb/README.md) (24 November 2026).
+
     Research: [Source](https://stackoverflow.com/questions/78303546/how-do-i-resolve-this-problem-with-upgrading-my-helm) · [Documentation](https://github.com/helm/helm-mapkubeapis).
 
 22. How to Remove Orphaned PodDisruptionBudgets Created by Helm Hooks
+
+    Completed: [Article](posts/2026-11-24-remove-orphaned-pdb-helm-hooks/README.md) (24 November 2026).
 
     Research: [Source](https://github.com/helm/helm/issues/9206) · [Documentation](https://helm.sh/docs/topics/charts_hooks/).
 

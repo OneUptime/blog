@@ -1,0 +1,29 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-24",
+  "runtimeTestsPerformed": true,
+  "sources": [
+    "https://kubernetes.io/docs/concepts/workloads/pods/disruptions/",
+    "https://v1-34.docs.kubernetes.io/docs/concepts/scheduling-eviction/topology-spread-constraints/",
+    "https://v1-34.docs.kubernetes.io/docs/tasks/run-application/configure-pdb/",
+    "https://github.com/kubernetes/kubernetes/blob/v1.34.0/pkg/scheduler/framework/plugins/podtopologyspread/common.go",
+    "https://kubernetes.io/docs/tasks/manage-kubernetes-objects/update-api-object-kubectl-patch/",
+    "https://v1-34.docs.kubernetes.io/docs/concepts/workloads/controllers/deployment/",
+    "https://github.com/kubernetes/kubernetes/blob/v1.34.0/pkg/scheduler/framework/plugins/podtopologyspread/filtering.go",
+    "https://github.com/kubernetes/kubernetes/blob/v1.34.0/api/openapi-spec/swagger.json",
+    "https://kubernetes.io/docs/reference/kubectl/generated/kubectl_patch/",
+    "https://book.kubebuilder.io/reference/envtest.html"
+  ],
+  "tests": [
+    "Reviewed PDB involuntary-failure boundaries and Kubernetes1.34 topology constraint semantics, scheduler domain/skew source, node affinity/taints policies and Deployment rollout behavior",
+    "Executed exact article kubectl1.34.0 merge-patch server dry-run against isolated API server1.34.0; both constraints accepted, unrelated metadata/containers preserved, stored Deployment unchanged",
+    "Actual API validation rejected maxSkew0 and minDomains paired with ScheduleAnyway",
+    "PDB and both topology constraints passed tagged1.34.0 OpenAPI schemas; checked three loss layouts, all six-Pod/three-zone balanced allocations, minDomains/skew boundary examples and combined-loss counterexample",
+    "Two shell blocks passed syntax; six-node/six-edge Mermaid structurally checked; generated1280x720 image visually reviewed without clipping"
+  ],
+  "limitations": [
+    "API fixture used controller-runtime0.22.1/Go1.25.0 without scheduler, workload controller, disruption controller or kubelet",
+    "Scheduling calculations were checked locally against reviewed source; no real scheduler placement, node/zone failure, eviction, traffic or recovery tested",
+    "No claim that replica counts alone guarantee application availability; cluster node inventory commands source-reviewed; Mermaid not rendered"
+  ]
+}

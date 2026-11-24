@@ -1,0 +1,33 @@
+# Technical validation
+
+The exact Prometheus rule and boundary test ran locally; the article separates maintenance warning, application impact, missing telemetry and fresh eviction permission.
+
+## Checks performed
+
+- Checked metric names, types, native labels and direct PDB status field mapping against kube-state-metrics2.17.0 documentation and implementation
+- promtool3.7.3 check rules passed for exact article rule; exact displayed unit test verified pending at14m and firing at15m with labels/annotations
+- Expanded nine-group executable Prometheus suite passed: positive allowance, zero expected Pods, either missing metric, brief blocking, resolution after firing, separate clusters and duplicate exporter observations
+- Confirmed both YAML snippets exactly match executed fixtures; two shell blocks passed syntax; seven-node/six-edge Mermaid structurally checked
+- Generated1280x720 social image and visually inspected two-line title and branding without clipping
+
+## Sources checked
+
+- https://github.com/kubernetes/kube-state-metrics/blob/v2.17.0/internal/store/poddisruptionbudget.go
+- https://github.com/kubernetes/kube-state-metrics/blob/v2.17.0/docs/metrics/policy/poddisruptionbudget-metrics.md
+- https://prometheus.io/docs/prometheus/latest/querying/operators/
+- https://prometheus.io/docs/prometheus/latest/configuration/alerting_rules/
+- https://prometheus.io/docs/prometheus/latest/configuration/configuration/
+- https://prometheus.io/docs/prometheus/latest/configuration/unit_testing_rules/
+- https://prometheus.io/docs/alerting/latest/configuration/
+- https://kubernetes.io/docs/reference/kubectl/generated/kubectl_get/
+- https://kubernetes.io/docs/concepts/workloads/pods/disruptions/
+
+## Limitations
+
+- No live kube-state-metrics scrape, Prometheus deployment, rule reload, Alertmanager delivery, Kubernetes object inspection or drain was performed
+- Input samples are synthetic; real cluster labels, metric availability, policy intent and receiver routing must be verified in the target installation
+- Mermaid structurally checked, not rendered
+
+## Repository checks
+
+The repository validator passed for this post in an isolated fixture with its catalog entry, author list, tag allowlist, and social image. Shell examples, if present, passed bash syntax checking. The full existing catalog was not revalidated.

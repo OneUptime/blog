@@ -832651,5 +832651,125 @@
       "Troubleshooting"
     ],
     "post": "2026-11-24-cluster-autoscaler-not-enough-pdb-blocking-workload"
+  },
+  {
+    "title": "Karpenter PDBs vs. NodePool Budgets: Find the Consolidation Blocker",
+    "description": "Separate Pod eviction protection from NodePool disruption limits, identify which one blocks Karpenter consolidation, and preview policy changes without weakening workload availability.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Kubernetes",
+      "PodDisruptionBudget",
+      "Karpenter",
+      "Troubleshooting"
+    ],
+    "post": "2026-11-24-karpenter-pdb-nodepool-disruption-budgets"
+  },
+  {
+    "title": "Design a StatefulSet PDB That Preserves Quorum",
+    "description": "Derive a StatefulSet disruption budget from voting membership, preserve a failure reserve during maintenance, and verify recovery beyond Kubernetes Pod readiness.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Kubernetes",
+      "PodDisruptionBudget",
+      "StatefulSet",
+      "High Availability"
+    ],
+    "post": "2026-11-24-statefulset-pdb-preserve-quorum"
+  },
+  {
+    "title": "Can a Single-Replica App Survive a Drain Without Downtime?",
+    "description": "Understand why a PDB cannot keep a lone Pod serving during eviction, why rollout surge does not solve node drains, and when temporary replicas provide a safe maintenance path.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Kubernetes",
+      "PodDisruptionBudget",
+      "High Availability",
+      "Deployment"
+    ],
+    "post": "2026-11-24-single-replica-zero-downtime-drain-pdb-surge"
+  },
+  {
+    "title": "Pair PDBs with Topology Spread for Node and Zone Resilience",
+    "description": "Combine eviction budgets with deliberate node and zone placement, understand hard-spread scheduling tradeoffs, and verify the actual failure-domain layout before maintenance.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Kubernetes",
+      "PodDisruptionBudget",
+      "High Availability",
+      "Topology Spread"
+    ],
+    "post": "2026-11-24-pdb-node-zone-availability-topology-spread"
+  },
+  {
+    "title": "Why PDBs Cannot Block Node Pressure, Shutdown, or Hardware Failure",
+    "description": "Identify why a Pod stopped despite its disruption budget, distinguish kubelet termination from API eviction, and address resource pressure, shutdown policy, or infrastructure failure.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Kubernetes",
+      "PodDisruptionBudget",
+      "Troubleshooting",
+      "High Availability"
+    ],
+    "post": "2026-11-24-pdb-node-pressure-shutdown-hardware-failure"
+  },
+  {
+    "title": "Enforce PDB Coverage for Replicated Workloads in CI",
+    "description": "Check PDB coverage for Deployments and StatefulSets before deployment, with explicit exceptions for Jobs, single replicas, and autoscaling.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Kubernetes",
+      "PodDisruptionBudget",
+      "CI/CD",
+      "Go"
+    ],
+    "post": "2026-11-24-enforce-pdb-coverage-deployments-statefulsets-ci"
+  },
+  {
+    "title": "Alert Before a PDB Blocks Kubernetes Maintenance",
+    "description": "Build and test a Prometheus warning for exhausted PDB allowance, preserve cluster identity, and distinguish maintenance risk from missing data.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Kubernetes",
+      "PodDisruptionBudget",
+      "Prometheus",
+      "Alerting"
+    ],
+    "post": "2026-11-24-alert-pdb-blocked-maintenance-prometheus"
+  },
+  {
+    "title": "Keep Helm PDB Defaults Safe for Single-Replica Installations",
+    "description": "Design explicit Helm PDB modes, account for autoscaling minimums, and test chart output so single-replica installations can complete maintenance.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Kubernetes",
+      "Helm",
+      "PodDisruptionBudget",
+      "CI/CD"
+    ],
+    "post": "2026-11-24-helm-chart-pdb-single-replica-defaults"
+  },
+  {
+    "title": "Repair Helm Release Metadata with Old PDB API References",
+    "description": "Repair stored Helm manifests that reference policy/v1beta1 PDBs, using a scoped mapping, protected backups, and checks that separate metadata from live resources.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Kubernetes",
+      "Helm",
+      "PodDisruptionBudget",
+      "Troubleshooting"
+    ],
+    "post": "2026-11-24-repair-helm-release-metadata-policy-v1beta1-pdb"
+  },
+  {
+    "title": "Remove Orphaned PDBs Left Behind by Helm Hooks",
+    "description": "Identify PDBs left by Helm hooks, verify their current protection role, and remove one reviewed object using identity and version preconditions.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Kubernetes",
+      "Helm",
+      "PodDisruptionBudget",
+      "Troubleshooting"
+    ],
+    "post": "2026-11-24-remove-orphaned-pdb-helm-hooks"
   }
 ]

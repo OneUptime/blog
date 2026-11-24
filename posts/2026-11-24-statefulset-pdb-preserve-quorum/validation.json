@@ -1,0 +1,31 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-24",
+  "runtimeTestsPerformed": true,
+  "sources": [
+    "https://etcd.io/docs/v3.6/faq/",
+    "https://etcd.io/docs/v3.6/op-guide/runtime-configuration/",
+    "https://github.com/etcd-io/etcd/blob/v3.6.0/etcdctl/README.md#member-list",
+    "https://v1-34.docs.kubernetes.io/docs/tasks/run-application/configure-pdb/",
+    "https://kubernetes.io/docs/concepts/overview/working-with-objects/labels/",
+    "https://kubernetes.io/docs/reference/kubectl/generated/kubectl_apply/",
+    "https://github.com/kubernetes/kubernetes/blob/v1.34.0/pkg/controller/disruption/disruption.go",
+    "https://v1-34.docs.kubernetes.io/docs/concepts/workloads/controllers/statefulset/#minimum-ready-seconds",
+    "https://v1-34.docs.kubernetes.io/docs/concepts/workloads/controllers/statefulset/#rolling-updates",
+    "https://github.com/etcd-io/etcd/blob/v3.6.0/etcdctl/ctlv3/command/printer.go",
+    "https://github.com/kubernetes/kubernetes/blob/v1.34.0/api/openapi-spec/swagger.json",
+    "https://book.kubebuilder.io/reference/envtest.html"
+  ],
+  "tests": [
+    "Reviewed etcd3.6 majority and learner membership, etcdctl3.6.0 member-list flags and Is Learner table implementation, StatefulSet rollout/readiness behavior, and PDB healthy-count source",
+    "Checked182 combinations of permitted maintenance evictions and one further voter failure across3/5/7-voter groups; verified bare-quorum and correlated-loss counterexamples",
+    "Executed actual Kubernetes1.34.0 API-server dry-run evictions with five/four/three healthy voter fixtures and minAvailable4: accept/reject429/reject429; target Pods and allowances remained unchanged",
+    "Official apimachinery0.34.0 selector matched five voting Pods and excluded an additional Ready learner fixture; article PDB passed tagged1.34.0 OpenAPI schema and API admission",
+    "Three shell blocks passed syntax; seven-node/six-edge Mermaid structurally checked; generated1280x720 social image visually inspected without clipping"
+  ],
+  "limitations": [
+    "API fixture supplied readiness and reconciled PDB status using controller-runtime0.22.1/Go1.25.0; no StatefulSet, disruption controller, scheduler or kubelet ran",
+    "No multi-member etcd process, consensus traffic, database membership change, actual eviction, persistent-volume recovery or failover was exercised",
+    "etcdctl authenticated member-list example is source-verified, not executed; local arithmetic does not establish real quorum connectivity or application availability; Mermaid not rendered"
+  ]
+}

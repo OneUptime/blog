@@ -1,0 +1,33 @@
+# Technical validation
+
+The guide treats overlapping service capacity as a prerequisite and distinguishes rollout surge from node-drain behavior. It scopes replica changes and drains to a reviewed staging rehearsal.
+
+## Checks performed
+
+- Reviewed one-replica PDB limits, Deployment rollout-surge scope, volume access modes, scale preconditions, EndpointSlice conditions and ordinary drain behavior against official documentation
+- Executed exact kubectl1.34.0 scale preview and actual scale against disposable Kubernetes1.34.0 API fixture: preview kept replicas1, actual update set2, stale current-replicas1 request rejected
+- With supplied readiness/PDB status, one healthy Pod still rejected dry-run eviction after desired replicas changed; two supplied healthy Pods allowed dry-run eviction without deleting either
+- Article PDB passed tagged1.34.0 schema and native API admission; integer/100-percent allowance cases checked; four shell blocks passed syntax
+- Seven-node/six-edge Mermaid structurally checked; generated1280x720 social image visually inspected without clipping
+
+## Sources checked
+
+- https://v1-34.docs.kubernetes.io/docs/tasks/run-application/configure-pdb/
+- https://v1-34.docs.kubernetes.io/docs/concepts/workloads/controllers/deployment/#strategy
+- https://kubernetes.io/docs/concepts/storage/persistent-volumes/#access-modes
+- https://kubernetes.io/docs/reference/kubectl/generated/kubectl_scale/
+- https://kubernetes.io/docs/concepts/services-networking/endpoint-slices/#conditions
+- https://kubernetes.io/docs/reference/kubectl/generated/kubectl_drain/
+- https://kubernetes.io/docs/tasks/administer-cluster/safely-drain-node/
+- https://github.com/kubernetes/kubernetes/blob/v1.34.0/api/openapi-spec/swagger.json
+- https://book.kubebuilder.io/reference/envtest.html
+
+## Limitations
+
+- API lab used controller-runtime0.22.1/Go1.25.0 without Deployment/disruption controllers, scheduler or kubelet; second Pod and reconciled status supplied explicitly
+- No node drain, real Pod eviction, request traffic, storage attachment, Service routing or zero-downtime result tested
+- Read-only Service/EndpointSlice checks and drain command are source-verified examples, not executed maintenance; Mermaid not rendered
+
+## Repository checks
+
+The repository validator passed for this post in an isolated fixture with its catalog entry, author list, tag allowlist, and social image. Shell examples, if present, passed bash syntax checking. The full existing catalog was not revalidated.
