@@ -833356,5 +833356,125 @@
       "Data Engineering"
     ],
     "post": "2026-11-25-trace-mlflow-model-version-run-git-dataset-environment"
+  },
+  {
+    "title": "Version a Model and Its Preprocessing as One Deployable Artifact",
+    "description": "Package fitted preprocessing and prediction together with a raw-input signature, pinned dependencies, and reload tests that catch training-serving differences.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "MLflow",
+      "Machine Learning",
+      "Model Versioning",
+      "Python"
+    ],
+    "post": "2026-11-25-version-model-preprocessing-one-deployable-artifact"
+  },
+  {
+    "title": "Block Model Promotion When Input Changes Break Existing Clients",
+    "description": "Add a promotion gate that compares model input signatures and replays existing client requests before approving a new MLflow model version.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "MLflow",
+      "Model Versioning",
+      "MLOps",
+      "Python"
+    ],
+    "post": "2026-11-25-block-model-promotion-breaking-input-signature"
+  },
+  {
+    "title": "Version an LLM Application as One Complete Release Snapshot",
+    "description": "Capture model references, prompts, tool code, retrieval data, and generation settings in a verified release snapshot that supports meaningful evaluation and rollback.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "LLM",
+      "Model Versioning",
+      "MLOps",
+      "Python"
+    ],
+    "post": "2026-11-25-version-llm-application-snapshot"
+  },
+  {
+    "title": "What Should Production Pin: Model Version, Alias, or Artifact Digest?",
+    "description": "Choose the right role for model aliases, numeric registry versions, and artifact digests, then verify that production receives the exact bytes approved for release.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "MLflow",
+      "Model Versioning",
+      "MLOps",
+      "Python"
+    ],
+    "post": "2026-11-25-production-model-pin-version-alias-artifact-digest"
+  },
+  {
+    "title": "Fix MLflow Model URIs That Work Locally but Fail in Production",
+    "description": "Diagnose MLflow production loading failures by separating registry lookup, tracking context, artifact access, credentials, and model runtime dependencies.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "MLflow",
+      "MLOps",
+      "Troubleshooting",
+      "Python"
+    ],
+    "post": "2026-11-25-mlflow-models-uri-fails-production-tracking-artifacts-credentials"
+  },
+  {
+    "title": "Move an MLflow Artifact Store Without Breaking Existing Model Versions",
+    "description": "Plan an MLflow artifact-store migration around existing references, preserve proxied paths, verify copied files, and keep older model versions recoverable.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "MLflow",
+      "Model Versioning",
+      "MLOps",
+      "Data Migration"
+    ],
+    "post": "2026-11-25-move-mlflow-artifact-store-preserve-model-versions"
+  },
+  {
+    "title": "Migrate MLflow Models Across Workspaces with Aliases and Lineage",
+    "description": "Preserve model history across MLflow environments with explicit version mappings, independently retained artifacts, provenance records, and verified alias reassignment.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "MLflow",
+      "Model Versioning",
+      "Data Migration",
+      "MLOps"
+    ],
+    "post": "2026-11-25-migrate-mlflow-registered-models-workspaces-lineage"
+  },
+  {
+    "title": "Compare Models Beyond Accuracy: Calibration, Latency, and Memory",
+    "description": "Compare equally accurate models using probability scores, calibration evidence, repeatable latency measurements, and clearly scoped memory observations.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Machine Learning",
+      "Model Versioning",
+      "MLOps",
+      "Performance"
+    ],
+    "post": "2026-11-25-compare-models-equal-accuracy-calibration-latency-memory"
+  },
+  {
+    "title": "Check Model Artifact References Before Running MLflow Garbage Collection",
+    "description": "Understand why MLflow garbage collection can remove registered-model files and build a read-only reference audit that blocks known dependencies and unresolved locations.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "MLflow",
+      "Model Versioning",
+      "MLOps",
+      "Data Management"
+    ],
+    "post": "2026-11-25-mlflow-gc-model-artifact-reachability-check"
+  },
+  {
+    "title": "Keep Model Loaders Compatible Across Runtime Upgrades",
+    "description": "Test model loading across framework, Python, and operating-system changes with retained runtimes, explicit dependency checks, and fixed prediction fixtures.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Machine Learning",
+      "Model Versioning",
+      "Python",
+      "Dependency Management"
+    ],
+    "post": "2026-11-25-model-loader-dependencies-python-framework-os-upgrades"
   }
 ]

@@ -2717,15 +2717,45 @@ Research: [OneUptime air-gapped alerting](https://oneuptime.com/enterprise/air-g
     Completed: [Article](posts/2026-11-25-trace-mlflow-model-version-run-git-dataset-environment/README.md) (25 November 2026).
 
 6. How to Version a Model and Its Preprocessing Pipeline as One Deployable Artifact
+
+    Completed: [Article](posts/2026-11-25-version-model-preprocessing-one-deployable-artifact/README.md) (25 November 2026).
+
 7. How to Block Model Promotion When a New Input Signature Breaks Existing Clients
+
+    Completed: [Article](posts/2026-11-25-block-model-promotion-breaking-input-signature/README.md) (25 November 2026).
+
 9. How to Version an LLM Application Snapshot: Model, Prompt, Tools, Retrieval Index, and Parameters
+
+    Completed: [Article](posts/2026-11-25-version-llm-application-snapshot/README.md) (25 November 2026).
+
 10. Registry Version, Deployment Alias, or Artifact Digest: What Should Production Pin?
+
+    Completed: [Article](posts/2026-11-25-production-model-pin-version-alias-artifact-digest/README.md) (25 November 2026).
+
 12. Why an MLflow `models:/` URI Works Locally but Fails in Production: Tracking URI, Artifact URI, and Credentials
+
+    Completed: [Article](posts/2026-11-25-mlflow-models-uri-fails-production-tracking-artifacts-credentials/README.md) (25 November 2026).
+
 13. How to Move an MLflow Artifact Store Without Stranding Existing Model Versions
+
+    Completed: [Article](posts/2026-11-25-move-mlflow-artifact-store-preserve-model-versions/README.md) (25 November 2026).
+
 14. How to Migrate Registered Models Between MLflow Workspaces Without Losing Versions, Aliases, or Lineage
+
+    Completed: [Article](posts/2026-11-25-migrate-mlflow-registered-models-workspaces-lineage/README.md) (25 November 2026).
+
 15. How to Compare Model Versions with Equal Accuracy but Different Calibration, Latency, and Memory Use
+
+    Completed: [Article](posts/2026-11-25-compare-models-equal-accuracy-calibration-latency-memory/README.md) (25 November 2026).
+
 18. Why `mlflow gc` Can Delete Artifacts Referenced by Registered Models—and How to Build a Safe Reachability Check
+
+    Completed: [Article](posts/2026-11-25-mlflow-gc-model-artifact-reachability-check/README.md) (25 November 2026).
+
 19. How to Keep Model Loader Dependencies Compatible Across Python, Framework, and Operating-System Upgrades
+
+    Completed: [Article](posts/2026-11-25-model-loader-dependencies-python-framework-os-upgrades/README.md) (25 November 2026).
+
 20. How to Roll Back Weights, Code, Prompt, Data, and Configuration with One Versioned Model Manifest
 
 ## pgBadger

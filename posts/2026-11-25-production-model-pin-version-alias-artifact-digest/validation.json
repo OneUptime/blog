@@ -1,0 +1,26 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-25",
+  "runtimeTestsPerformed": true,
+  "sources": [
+    "https://mlflow.org/docs/latest/ml/model-registry/workflow/",
+    "https://github.com/mlflow/mlflow/blob/v3.18.0/mlflow/store/model_registry/sqlalchemy_store.py",
+    "https://docs.aws.amazon.com/AmazonS3/latest/userguide/object-lock.html",
+    "https://mlflow.org/docs/latest/api_reference/python_api/mlflow.artifacts.html#mlflow.artifacts.download_artifacts",
+    "https://docs.docker.com/reference/cli/docker/image/pull/#pull-an-image-by-digest-immutable-identifier"
+  ],
+  "tests": [
+    "Executed exact record and verify script with MLflow 3.18.0 and Python 3.11.13 in temporary SQLite registry with local model artifacts",
+    "Recorded version1; moving champion to version2 did not change the numeric version checked; refusing to overwrite existing pin record confirmed",
+    "Controlled backing weight change caused fresh loads of the same registered version to return99 instead of10; artifact verification rejected changed bytes",
+    "Added and removed artifact files, different registry label and unsupported digest format rejected; alias remained unchanged by script",
+    "Article Python matched tested file; six-node/five-edge Mermaid structural checks passed; 1280x720 social image generated and visually inspected with three-line title fitting"
+  ],
+  "limitations": [
+    "No remote object-store retention, Docker image pull, hosted model service or production access-control test",
+    "Registry label is an operator assertion, not authenticated server identity; approved-record authenticity is external to the script",
+    "Directory hashing defines a custom file-content format, not an OCI digest; empty directories, file modes and external dependencies are not part of it",
+    "Script is a temporary-download audit utility and does not load models; serving integration must retain and load the verified files without later mutation",
+    "Mermaid checked structurally without browser rendering"
+  ]
+}

@@ -1,0 +1,28 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-25",
+  "runtimeTestsPerformed": true,
+  "sources": [
+    "https://mlflow.org/docs/latest/self-hosting/architecture/backend-store/",
+    "https://mlflow.org/docs/latest/api_reference/python_api/mlflow.client.html#mlflow.client.MlflowClient.search_model_versions",
+    "https://mlflow.org/docs/latest/self-hosting/architecture/tracking-server/",
+    "https://mlflow.org/docs/latest/api_reference/python_api/mlflow.client.html#mlflow.client.MlflowClient.update_model_version",
+    "https://docs.aws.amazon.com/AmazonS3/latest/userguide/checking-object-integrity-upload.html",
+    "https://github.com/mlflow/mlflow/blob/v3.18.0/mlflow/store/artifact/mlflow_artifacts_repo.py"
+  ],
+  "tests": [
+    "Executed exact inventory with MLflow 3.18.0 and Python 3.11.13 against a local HTTP server, SQLite backend and filesystem-backed artifact proxy",
+    "Registered synthetic version1 and champion alias; stopped server, copied all artifact bytes with digest equality, and made original root unavailable",
+    "Restarted same endpoint/database with new artifact destination; version1 loaded and predicted7, inventory unchanged; new version2 logged to replacement store and predicted9; champion stayed1",
+    "Verified exclusive inventory creation; separate two-page mocked pagination test checked page-token handling, numeric sorting and POSIX0600 output",
+    "Checked installed server CLI flags and shell syntax; exact inventory code matched article; six-node/six-edge Mermaid structure checked",
+    "Generated and visually inspected 1280x720 social image with three-line title fitting"
+  ],
+  "limitations": [
+    "Local loopback HTTP without TLS/authentication; no cloud object storage, encryption, lifecycle policy, IAM or production database migration tested",
+    "Filesystem copy used a stopped single server; no online-copy race, distributed server deployment or large-store throughput test",
+    "Two-page pagination used a mocked client; real-server inventory covered one then two versions within a page",
+    "Inventory covers one named model and associated run locations, not every artifact or retention reference",
+    "No destructive cleanup or rollback after production writes; Mermaid checked structurally without browser rendering"
+  ]
+}

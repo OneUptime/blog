@@ -1,0 +1,29 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-25",
+  "runtimeTestsPerformed": true,
+  "sources": [
+    "https://github.com/mlflow/mlflow/blob/v3.18.0/mlflow/store/artifact/models_artifact_repo.py",
+    "https://github.com/mlflow/mlflow/blob/v3.18.0/mlflow/tracking/_model_registry/utils.py",
+    "https://mlflow.org/docs/latest/api_reference/python_api/mlflow.artifacts.html",
+    "https://mlflow.org/docs/latest/self-hosting/architecture/artifact-store/",
+    "https://mlflow.org/docs/latest/self-hosting/architecture/tracking-server/",
+    "https://mlflow.org/docs/latest/api_reference/python_api/mlflow.environment_variables.html",
+    "https://github.com/mlflow/mlflow/blob/v3.18.0/mlflow/environment_variables.py"
+  ],
+  "tests": [
+    "Executed all three exact diagnostic modes under Python 3.11.13 and MLflow 3.18.0 with temporary SQLite stores and synthetic model artifacts",
+    "Wrong registry rejected at registry metadata; wrong tracking store rejected at associated run lookup",
+    "Missing local source directory initially returned an empty download destination; added an explicit MLmodel postcondition and confirmed missing artifacts now reject at download stage",
+    "Missing synthetic model dependency permits download but rejects load with ModuleNotFoundError",
+    "Numeric version validation and location formatter omission of userinfo, paths and query strings tested",
+    "Article Python matches tested file, shell syntax passed, seven-node/seven-edge Mermaid structural check passed; generated 1280x720 social image opened and reviewed with two title lines fitting"
+  ],
+  "limitations": [
+    "No production endpoint, HTTP authentication, live TLS, cloud object storage, network policies or Kubernetes execution tested",
+    "Associated run lookup is an extra lineage check; some direct artifact routes do not require that run to download",
+    "Model load test does not exercise prediction or downstream services",
+    "Script redacts its own URI summaries and exception text; external library logs can still contain operational detail",
+    "Mermaid validated structurally without browser rendering"
+  ]
+}

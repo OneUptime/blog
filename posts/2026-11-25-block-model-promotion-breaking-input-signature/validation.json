@@ -1,0 +1,26 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-25",
+  "runtimeTestsPerformed": true,
+  "sources": [
+    "https://mlflow.org/docs/latest/ml/model/signatures/",
+    "https://mlflow.org/docs/latest/ml/model/signatures/#validation-rules",
+    "https://github.com/mlflow/mlflow/blob/v3.18.0/mlflow/types/schema.py",
+    "https://mlflow.org/docs/latest/api_reference/python_api/mlflow.models.html#mlflow.models.get_model_info",
+    "https://mlflow.org/docs/latest/api_reference/python_api/mlflow.pyfunc.html"
+  ],
+  "tests": [
+    "Executed exact policy, metadata gate and request replay scripts with Python 3.11.13 and MLflow 3.18.0, pandas 3.1.1 and NumPy 2.4.6",
+    "Checked identity, reordered fields, optional additions, required additions, removals, type changes and requiredness changes; unsupported and missing signatures rejected",
+    "Registered six synthetic local Python models in temporary SQLite; required field addition rejected before replay; optional field with broken implementation passed structure but failed replay; compatible candidate passed both",
+    "Rejected nonfinite and wrong-shape scores, empty suite and empty case; champion alias remained on original version",
+    "Article Python blocks matched tested files and compiled; JSON parsed; six-node/five-edge Mermaid structure checked",
+    "Generated 1280x720 social image opened and visually reviewed; three-line title fits"
+  ],
+  "limitations": [
+    "Local SQLite and trusted self-generated artifacts only; no hosted serving service, HTTP serialization, production traffic or cloud credentials tested",
+    "Representative fixtures do not prove exhaustive client compatibility; output check is specific to one finite score per row",
+    "Conservative scalar named-column policy deliberately rejects unsupported signature forms; no tensor or nested-schema migration analysis",
+    "No quality, latency, fairness, release permissions or environment-recreation test; Mermaid checked structurally without browser rendering"
+  ]
+}

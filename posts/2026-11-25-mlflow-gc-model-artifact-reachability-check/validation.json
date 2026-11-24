@@ -1,0 +1,25 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-25",
+  "runtimeTestsPerformed": true,
+  "sources": [
+    "https://mlflow.org/docs/latest/api_reference/cli.html#mlflow-gc",
+    "https://github.com/mlflow/mlflow/blob/v3.18.0/mlflow/cli/__init__.py",
+    "https://mlflow.org/docs/latest/api_reference/python_api/mlflow.client.html#mlflow.client.MlflowClient.search_model_versions",
+    "https://docs.python.org/3.11/library/pathlib.html"
+  ],
+  "tests": [
+    "Executed exact read-only audit under Python3.11.13 and MLflow3.18.0 in a newly created temporary SQLite registry",
+    "Registered synthetic model inside a run artifact directory without alias or associated run_id; audit blocked candidate through artifact-path dependency",
+    "Unrelated deleted run reported no_registry_reference_found; active run blocked; unresolved S3 reference forced manual_review",
+    "Actual gc reproduction was confined to that temporary DB and self-created files: model files removed, registered version remained, and subsequent fresh load failed",
+    "Checked path ancestry versus similar string prefixes, file-URI decoding and unsupported storage schemes; article code matches final tested script and JSON parses",
+    "Seven-node/six-edge Mermaid structure passed; generated1280x720 social image opened and visually reviewed with three title lines fitting"
+  ],
+  "limitations": [
+    "No production cleanup, cloud storage deletion, proxy mapping, multi-workspace inventory or remote authentication tested",
+    "Read-only audit examines visible registered versions and local paths only; external consumers, other retained object types, permissions and filesystem aliases need separate reconciliation",
+    "no_registry_reference_found is not deletion approval; no deletion action is included in the article script",
+    "No concurrent reference creation, distributed locking or backup-restoration test; Mermaid checked structurally without browser rendering"
+  ]
+}

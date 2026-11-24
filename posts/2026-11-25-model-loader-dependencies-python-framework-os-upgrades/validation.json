@@ -1,0 +1,27 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-25",
+  "runtimeTestsPerformed": true,
+  "sources": [
+    "https://mlflow.org/docs/latest/ml/model/dependencies/",
+    "https://pip.pypa.io/en/stable/topics/repeatable-installs/",
+    "https://packaging.python.org/en/latest/specifications/platform-compatibility-tags/",
+    "https://pip.pypa.io/en/stable/cli/pip_check/",
+    "https://scikit-learn.org/1.9/model_persistence.html",
+    "https://scikit-learn.org/1.9/modules/generated/sklearn.exceptions.InconsistentVersionWarning.html"
+  ],
+  "tests": [
+    "Created two new Python3.11.13 virtual environments with scikit-learn1.8.0 and1.9.1; pinned NumPy2.4.6 pandas3.1.1 SciPy1.17.1 joblib1.6.0 threadpoolctl3.8.0 in both",
+    "Both environments passed pip check and full pip freeze inventories were retained in local test records",
+    "Exact baseline training and strict loader passed fixed predictions; baseline artifact rejected under candidate framework through promoted InconsistentVersionWarning",
+    "Verified failed load left artifact SHA256 unchanged; wrong expected predictions and empty fixture lists rejected",
+    "New synthetic artifact trained under1.9.1 passed loader in candidate environment",
+    "Article code matched tested files and shell syntax passed; seven-node/six-edge Mermaid structural check passed; generated1280x720 image visually inspected with two-line title fitting"
+  ],
+  "limitations": [
+    "Both environments used the same Python3.11.13 and macOS ARM64 host; no actual Python-version, OS, CPU-architecture or GPU migration was tested",
+    "Synthetic linear pipeline does not establish production model quality, custom-module coverage or general cross-version compatibility",
+    "Version warning was intentionally made fatal; no claim that suppressing it creates a supported model combination",
+    "No served endpoint, production rollout, runtime image rebuild or security remediation test; Mermaid checked structurally without browser rendering"
+  ]
+}

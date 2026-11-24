@@ -1,0 +1,27 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-25",
+  "runtimeTestsPerformed": true,
+  "sources": [
+    "https://developers.openai.com/api/docs/models/gpt-4.1",
+    "https://mlflow.org/docs/latest/genai/prompt-registry/",
+    "https://developers.openai.com/api/docs/guides/function-calling",
+    "https://qdrant.tech/documentation/snapshots/",
+    "https://developers.openai.com/api/reference/resources/responses/methods/create",
+    "https://docs.python.org/3.11/library/hashlib.html#hashlib.file_digest"
+  ],
+  "tests": [
+    "Executed exact manifest builder and verifier with Python 3.11.13 using seven synthetic component files",
+    "Verified initial success and refusal to overwrite a manifest; mutations to each component, missing files, added files, symbolic links, manifest edits and wrong approved digest rejected",
+    "Identical copied file content produced the same manifest digest; changed prompt produced a different digest; empty directory rejected",
+    "Article Python matched tested script; JSON parsed and shell examples passed bash syntax checking",
+    "Eight-node/seven-edge Mermaid structural check passed; generated 1280x720 image opened and reviewed with unclipped three-line title"
+  ],
+  "limitations": [
+    "No LLM provider request, SDK integration, vector database export or restore, embedding generation, real model load or tool service was performed",
+    "Synthetic local files exercise content verification only; application schema and external reference resolution are not validated by the script",
+    "Approved digest authentication, retained external artifacts, immutable deployment storage and production release permissions remain deployment responsibilities",
+    "Manifest hashing assumes a frozen directory; it does not lock concurrent writers or guarantee deterministic model responses",
+    "Mermaid was checked structurally without browser rendering"
+  ]
+}

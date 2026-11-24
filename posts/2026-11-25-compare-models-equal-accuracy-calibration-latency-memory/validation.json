@@ -1,0 +1,25 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-25",
+  "runtimeTestsPerformed": true,
+  "sources": [
+    "https://scikit-learn.org/1.9/modules/generated/sklearn.metrics.log_loss.html",
+    "https://scikit-learn.org/1.9/modules/calibration.html",
+    "https://docs.python.org/3.11/library/time.html#time.perf_counter",
+    "https://github.com/giampaolo/psutil/blob/release-7.2.0/docs/index.rst"
+  ],
+  "tests": [
+    "Executed exact probability-score example with scikit-learn1.9.1 and NumPy2.4.6; both accuracy0.75, Brier0.1750 versus0.2451 and log loss0.5108 versus1.1588",
+    "Executed exact benchmark twice in fresh Python3.11.13 processes using MLflow3.18.0, pandas3.1.1, psutil7.2.0 and a trusted synthetic CPU model",
+    "Each run completed200 timed batches after20 warmups; verified positive load/first/p50/p95 times, p95>=p50, and coherent before/after/sampled-peak RSS observations",
+    "Empty batch input rejected; article Python blocks matched tested files and compiled",
+    "Seven-node/six-edge Mermaid structural check passed; generated1280x720 social image opened and reviewed with three title lines fitting"
+  ],
+  "limitations": [
+    "No production model comparison, reliability-curve study, representative evaluation dataset, service load test or statistically powered benchmark performed",
+    "Synthetic eight-row scores illustrate equal accuracy with differing probability scores; they do not establish real-world calibration",
+    "Timing used synchronous CPU prediction on local macOS ARM64; no GPU synchronization, HTTP path, concurrency or cold operating-system cache tested",
+    "RSS sampling can miss transient peaks, adds overhead and excludes child processes and device memory; observations are not capacity limits",
+    "Fresh processes reused the installed environment; Mermaid checked structurally without browser rendering"
+  ]
+}

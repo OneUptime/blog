@@ -1,0 +1,27 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-25",
+  "runtimeTestsPerformed": true,
+  "sources": [
+    "https://github.com/mlflow/mlflow-export-import/blob/master/README_limitations.md",
+    "https://mlflow.org/docs/latest/ml/model-registry/workflow/#migrating-from-the-workspace-model-registry-to-unity-catalog",
+    "https://github.com/mlflow/mlflow-export-import",
+    "https://mlflow.org/docs/latest/api_reference/python_api/mlflow.client.html",
+    "https://mlflow.org/docs/latest/ml/model-registry/workflow/"
+  ],
+  "tests": [
+    "Executed exact alias script with MLflow 3.18.0 and Python 3.11.13 against independent temporary SQLite registries",
+    "Created source versions1 and3 with a deleted gap and destination pre-existing versions1 and2; imported model bytes as destination3 and4 with distinct migration runs",
+    "Compared complete copied model file bytes, descriptions, ordinary tags and custom origin run/version tags",
+    "Dry run made no alias changes; missing mapped alias target, wrong origin tag, changed source alias snapshot and conflicting destination alias rejected before application",
+    "Apply and repeat apply produced champion4 and candidate3; both aliases loaded and predicted expected values after source artifact directory was made unavailable",
+    "Article code matched test script; JSON parsed and shell syntax passed; seven-node/six-edge Mermaid structure checked; 1280x720 social image generated and visually reviewed with three-line title fitting"
+  ],
+  "limitations": [
+    "No Databricks, Unity Catalog, remote HTTP authentication or production workspace permissions tested",
+    "Rehearsal used core APIs with small synthetic models, not the MLflow Export Import package; full metric histories, notebook revisions, ownership and all managed metadata were not migrated",
+    "Custom origin tags are reconciliation evidence, not authenticated provenance or a replacement for artifact verification",
+    "Alias script is not a complete exporter and relies on separately verified version inventory; alias updates are sequential and not transactional",
+    "Mermaid was checked structurally without browser rendering"
+  ]
+}

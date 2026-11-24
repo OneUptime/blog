@@ -1,0 +1,32 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-25",
+  "runtimeTestsPerformed": true,
+  "sources": [
+    "https://scikit-learn.org/1.9/modules/generated/sklearn.pipeline.Pipeline.html",
+    "https://scikit-learn.org/1.9/modules/generated/sklearn.compose.ColumnTransformer.html",
+    "https://scikit-learn.org/1.9/modules/generated/sklearn.preprocessing.OneHotEncoder.html",
+    "https://scikit-learn.org/stable/common_pitfalls.html",
+    "https://scikit-learn.org/1.9/model_persistence.html",
+    "https://mlflow.org/docs/latest/ml/model/signatures/",
+    "https://mlflow.org/docs/latest/api_reference/python_api/mlflow.sklearn.html",
+    "https://github.com/mlflow/mlflow/blob/v3.18.0/mlflow/sklearn/__init__.py",
+    "https://skops.readthedocs.io/en/stable/persistence.html"
+  ],
+  "tests": [
+    "Executed exact training and loading snippets with Python 3.11.13, MLflow 3.18.0, scikit-learn 1.9.1, pandas 3.1.1, NumPy 2.4.6 and skops 0.16.0",
+    "Registered whole fitted pipeline in temporary SQLite with local artifacts; compared original, native scikit-learn, pyfunc and fresh-process predictions within relative tolerance 1e-12",
+    "Verified training median 4.0 and unchanged scaling mean after inference; unseen category maps to zero one-hot columns and reordered named columns preserve predictions",
+    "Missing required column and incompatible numeric text rejected by pyfunc input validation",
+    "Initial default serialization refused numpy.dtype; revised example explicitly uses skops and the narrow reviewed numpy.dtype trusted-type entry",
+    "Inspected saved skops artifact using get_untrusted_types and confirmed its sole reported type was numpy.dtype; verified skops 0.16.0 included in model requirements",
+    "Five-node/four-edge Mermaid structural checks passed; generated 1280x720 social image opened and visually reviewed with three-line title fitting"
+  ],
+  "limitations": [
+    "Tests used local SQLite and synthetic training data; no production quality evaluation, hosted inference service, remote storage or new package-environment build was performed",
+    "A fresh process reused the installed virtual environment; it was not a clean dependency reinstall",
+    "Direct requirements are pinned; production transitive dependency locking and image retention remain deployment tasks",
+    "The explicit trusted-type setting applies to this locally constructed artifact and is not a blanket safety assessment of other serialized models",
+    "Mermaid checks were structural without browser rendering"
+  ]
+}
