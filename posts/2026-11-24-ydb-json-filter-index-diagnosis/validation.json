@@ -1,0 +1,27 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-24",
+  "runtimeTestsPerformed": false,
+  "sources": [
+    "https://github.com/ydb-platform/ydb/releases/tag/26.2.1.16",
+    "https://github.com/ydb-platform/ydb/blob/408e1c41ed8f45ac2cbb82895d5566c10313d35b/ydb/docs/en/core/dev/json-indexes.md",
+    "https://github.com/ydb-platform/ydb/blob/408e1c41ed8f45ac2cbb82895d5566c10313d35b/ydb/docs/en/core/yql/reference/syntax/create_table/json_index.md",
+    "https://ydb.tech/docs/en/recipes/json-search/json-index-quickstart",
+    "https://github.com/ydb-platform/ydb/blob/408e1c41ed8f45ac2cbb82895d5566c10313d35b/ydb/docs/en/core/yql/reference/syntax/select/json_index.md",
+    "https://ydb.tech/docs/en/dev/json-indexes"
+  ],
+  "tests": [
+    "Checked latest GitHub release26.2.1.16 and absence of dev/json-indexes.md at that tag; source-pinned examples to documentation commit408e1c41ed8f45ac2cbb82895d5566c10313d35b",
+    "Reviewed pinned JSON index creation, predicate, optimizer, error and write restrictions",
+    "Parsed four fixture JSON documents; Python selection confirmed intended service matches1,3 and missing service field",
+    "CLI2.35.0 explain/stats flags reviewed; shell snippets passed bash -n",
+    "Eight-node seven-edge Mermaid structurally checked",
+    "1280x720 social image visually reviewed"
+  ],
+  "limitations": [
+    "No matching feature-enabled YDB server executed; no binary compatibility assertion",
+    "No YQL compilation, schema/index creation, JSON function execution or query plan benchmark",
+    "Python fixture check is not YDB JSON semantics validation",
+    "Mermaid not rendered"
+  ]
+}

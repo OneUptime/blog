@@ -832119,5 +832119,39 @@
     ],
     "post": "2026-11-21-load-prometheus-rules-reload-without-restart",
     "readmePath": "posts/2026-11-21-load-prometheus-rules-reload-without-restart/README.md"
+  },
+  {
+    "title": "Trace YDB Access That Survives a Direct Permission Revoke",
+    "description": "Trace YDB permissions through parent objects, group memberships, and ownership before changing the grant that actually keeps access available.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Database",
+      "Security",
+      "Troubleshooting"
+    ],
+    "post": "2026-11-24-ydb-inherited-permissions-direct-revoke"
+  },
+  {
+    "title": "Diagnose YDB JSON Filters That Skip a JSON Index",
+    "description": "Check YDB JSON-index availability, supported predicate shapes, return types, and actual plans before treating an unselected index as an optimizer fault.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Database",
+      "SQL",
+      "Performance",
+      "Troubleshooting"
+    ],
+    "post": "2026-11-24-ydb-json-filter-index-diagnosis"
+  },
+  {
+    "title": "Set YDB Changefeed Retention for Consumer Recovery",
+    "description": "Size YDB changefeed retention for outages and catch-up, update an existing feed safely, and detect when expired events require downstream reconciliation.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Database",
+      "Data Pipeline",
+      "Troubleshooting"
+    ],
+    "post": "2026-11-24-ydb-changefeed-retention-consumer-recovery"
   }
 ]

@@ -1,0 +1,24 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-24",
+  "runtimeTestsPerformed": false,
+  "sources": [
+    "https://ydb.tech/docs/en/concepts/cdc",
+    "https://github.com/ydb-platform/ydb/blob/26.2.1.16/ydb/docs/en/core/yql/reference/syntax/alter_table/changefeed.md",
+    "https://github.com/ydb-platform/ydb/blob/26.2.1.16/ydb/docs/en/core/concepts/cdc.md#topic-settings",
+    "https://github.com/ydb-platform/ydb/blob/26.2.1.16/ydb/docs/en/core/yql/reference/syntax/alter-topic.md"
+  ],
+  "tests": [
+    "Reviewed26.2.1.16 CDC retention, changefeed creation and ALTER TOPIC support and storage-limit semantics",
+    "Verified CLI2.35.0 scheme describe statistics and sql --file flags; bash -n passed",
+    "Arithmetic checked:2160000 backlog events,10800 catch-up seconds,34560000000 logical payload bytes",
+    "Eight-node seven-edge Mermaid structurally checked",
+    "1280x720 generated social image visually inspected"
+  ],
+  "limitations": [
+    "No feed creation, alteration, consumer outage/restart, expiry or downstream reconciliation test",
+    "SQL source-reviewed, not server-compiled",
+    "Steady-rate arithmetic excludes bursts, storage overhead and scheduling; not an expiry model",
+    "Mermaid not rendered"
+  ]
+}

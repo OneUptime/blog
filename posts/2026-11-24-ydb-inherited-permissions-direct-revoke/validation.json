@@ -1,0 +1,24 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-24",
+  "runtimeTestsPerformed": false,
+  "sources": [
+    "https://ydb.tech/docs/en/security/authorization",
+    "https://ydb.tech/docs/en/reference/ydb-cli/commands/scheme-permissions",
+    "https://github.com/ydb-platform/ydb/blob/26.2.1.16/ydb/docs/en/core/dev/system-views.md",
+    "https://github.com/ydb-platform/ydb/blob/26.2.1.16/ydb/docs/en/core/yql/reference/syntax/revoke.md"
+  ],
+  "tests": [
+    "Reviewed YDB26.2.1.16 system-view columns and visibility rules, REVOKE syntax and current authorization/CLI permission semantics",
+    "CLI2.35.0 help verified whoami --groups and permissions list/revoke",
+    "All shell examples passed bash -n",
+    "Seven-node eight-edge Mermaid structurally checked",
+    "1280x720 generated social image visually reviewed"
+  ],
+  "limitations": [
+    "No live identity, ACL, system-view, revoke or denial test",
+    "SQL source-reviewed, not server-compiled",
+    "No automated effective-authorization calculation; nested and external groups require separate review",
+    "Mermaid not rendered"
+  ]
+}

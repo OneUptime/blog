@@ -2301,8 +2301,14 @@ Research: [OneUptime air-gapped alerting](https://oneuptime.com/enterprise/air-g
 
     Completed: [Article](posts/2026-11-20-ydb-table-directory-permissions-correct-principal/README.md) (20 November 2026).
 44. How to Trace Inherited YDB Permissions When Revoking Direct Access Is Not Enough
+
+    Completed: [Article](posts/2026-11-24-ydb-inherited-permissions-direct-revoke/README.md) (24 November 2026).
 48. How to Diagnose YDB JSON Filters That Do Not Use a JSON Index
+
+    Completed: [Article](posts/2026-11-24-ydb-json-filter-index-diagnosis/README.md) (24 November 2026).
 51. How to Set YDB Changefeed Retention for Consumers That Fall Behind
+
+    Completed: [Article](posts/2026-11-24-ydb-changefeed-retention-consumer-recovery/README.md) (24 November 2026).
 52. How to Enable the YDB Kafka Listener and Publish Its Port from Docker
 53. How to Configure Authentication for Kafka Clients Connecting to YDB Topics
 54. How to Configure Kafka Consumer CRC Checking for YDB Topic Compatibility
