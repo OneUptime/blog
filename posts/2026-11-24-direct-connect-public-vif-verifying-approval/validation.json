@@ -1,0 +1,29 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-24",
+  "runtimeTestsPerformed": true,
+  "sources": [
+    "https://docs.aws.amazon.com/directconnect/latest/APIReference/API_VirtualInterface.html",
+    "https://docs.aws.amazon.com/directconnect/latest/APIReference/API_ConfirmPublicVirtualInterface.html",
+    "https://docs.aws.amazon.com/cli/latest/reference/directconnect/describe-virtual-interfaces.html",
+    "https://docs.aws.amazon.com/directconnect/latest/UserGuide/routing-and-bgp.html",
+    "https://docs.aws.amazon.com/directconnect/latest/UserGuide/create-public-vif.html",
+    "https://docs.aws.amazon.com/directconnect/latest/UserGuide/WorkingWithVirtualInterfaces.html",
+    "https://repost.aws/knowledge-center/public-vif-stuck-verifying",
+    "https://repost.aws/knowledge-center/direct-connect-add-prefix-public-vif",
+    "https://repost.aws/knowledge-center/setup-direct-connect-vif",
+    "https://github.com/aws/aws-cli/blob/2.42.1/awscli/botocore/data/directconnect/2012-10-25/service-2.json"
+  ],
+  "tests": [
+    "Official AWS interface state, creation, ASN, peering and support guidance reviewed; re:Post content read via indexed official results where direct fetch returned403",
+    "JMESPath1.1.0 filter executed against five provisioning-state fixtures, long ASN, both address families, prefixes, empty response and secret exclusion",
+    "DescribeVirtualInterfaces input passed botocore1.40.76 validation using AWSCLI2.42.1 tagged model",
+    "Shell syntax and eight-node eight-edge Mermaid structural checks passed",
+    "Generated1280x720 social image visually reviewed; no clipping"
+  ],
+  "limitations": [
+    "No AWS CLI process, support case, live BGP session or API call tested",
+    "Local synthetic tests establish filter and request structure only, not resource approval or connectivity",
+    "Mermaid not rendered"
+  ]
+}

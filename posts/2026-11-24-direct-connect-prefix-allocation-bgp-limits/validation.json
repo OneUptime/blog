@@ -1,0 +1,30 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-24",
+  "runtimeTestsPerformed": true,
+  "sources": [
+    "https://docs.aws.amazon.com/directconnect/latest/UserGuide/limits.html",
+    "https://docs.aws.amazon.com/directconnect/latest/UserGuide/prefix-controls.html",
+    "https://docs.aws.amazon.com/cli/latest/reference/directconnect/describe-virtual-interfaces.html",
+    "https://docs.aws.amazon.com/cli/latest/reference/directconnect/describe-connections.html",
+    "https://docs.aws.amazon.com/cli/latest/reference/directconnect/describe-direct-connect-gateways.html",
+    "https://docs.aws.amazon.com/cli/latest/reference/directconnect/update-virtual-interface-attributes.html",
+    "https://docs.aws.amazon.com/directconnect/latest/UserGuide/prefix-allocations.html",
+    "https://docs.aws.amazon.com/vpc/latest/userguide/amazon-vpc-limits.html#vpc-limits-route-tables",
+    "https://github.com/aws/aws-cli/blob/2.42.1/awscli/botocore/data/directconnect/2012-10-25/service-2.json",
+    "https://docs.aws.amazon.com/directconnect/latest/UserGuide/ts-layer-3.html"
+  ],
+  "tests": [
+    "Reviewed current AWS quota, prefix-control, allocation-management and API documentation; used configurable allocation rules over older troubleshooting hard100 wording",
+    "Four JMESPath1.1.0 projections tested with dual-family VIF allocations, dedicated and hosted connection fields, gateway total, missing/empty results and secret omission",
+    "Four operation request shapes validated with botocore1.40.76 using AWSCLI2.42.1 tagged service model",
+    "Failover arithmetic, capacity delta and duplicate-versus-more-specific prefix counting verified",
+    "Shell syntax and eight-node seven-edge Mermaid structural checks passed",
+    "Generated1280x720 image visually inspected; legible and unclipped"
+  ],
+  "limitations": [
+    "No AWS CLI process, API request, live prefix count, BGP reset or allocation change executed",
+    "Request validation checks structure only; AWS service permissions, pool capacity and runtime constraints untested",
+    "No downstream route installation or application test; Mermaid not rendered"
+  ]
+}

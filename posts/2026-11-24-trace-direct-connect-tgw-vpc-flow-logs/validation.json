@@ -1,0 +1,29 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-24",
+  "runtimeTestsPerformed": true,
+  "sources": [
+    "https://aws.amazon.com/blogs/networking-and-content-delivery/introducing-vpc-flow-logs-for-aws-transit-gateway/",
+    "https://docs.aws.amazon.com/vpc/latest/tgw/flow-logs-cwl-create-flow-log.html",
+    "https://docs.aws.amazon.com/cli/latest/reference/ec2/describe-flow-logs.html",
+    "https://docs.aws.amazon.com/vpc/latest/userguide/flow-logs-limitations.html",
+    "https://docs.aws.amazon.com/vpc/latest/tgw/tgw-flow-logs.html",
+    "https://docs.aws.amazon.com/vpc/latest/userguide/flow-log-records.html",
+    "https://docs.aws.amazon.com/AmazonCloudWatch/latest/logs/CWL_QuerySyntax-Parse.html",
+    "https://docs.aws.amazon.com/AmazonCloudWatch/latest/logs/CWL_QuerySyntax-Filter.html",
+    "https://github.com/aws/aws-cli/blob/2.42.1/awscli/botocore/data/ec2/2016-11-15/service-2.json",
+    "https://docs.aws.amazon.com/AmazonCloudWatch/latest/logs/CWL_QuerySyntax.html"
+  ],
+  "tests": [
+    "Official AWS TGW/VPC flow fields, custom formats, creation, delivery, limitations and Logs Insights syntax reviewed",
+    "JMESPath1.1.0 inventory projection tested for successful/failed delivery and empty lists; DescribeFlowLogs request checked against AWSCLI2.42.1 model with botocore1.40.76",
+    "Both custom formats checked for exact16/14 field, glob wildcard and alias correspondence; local synthetic fixtures checked field alignment, dash preservation, forward/reverse matching and wrong-port/protocol/translated-address exclusion",
+    "Shell syntax and eight-node seven-edge Mermaid structure passed",
+    "Generated1280x720 social image visually reviewed; no clipping"
+  ],
+  "limitations": [
+    "CloudWatch Logs Insights queries were not executed or parsed by AWS; local Python fixtures simulate format extraction and predicate intent only",
+    "No AWS CLI process, API call, flow-log subscription, IAM delivery role or network probe exercised",
+    "No traffic translation, packet capture or application validation performed; Mermaid not rendered"
+  ]
+}

@@ -1,0 +1,31 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-24",
+  "runtimeTestsPerformed": true,
+  "sources": [
+    "https://docs.aws.amazon.com/reference-architecture-diagrams/latest/hybrid-connectivity-transit-gateway/hybrid-vpn-over-dx.html",
+    "https://docs.aws.amazon.com/directconnect/latest/UserGuide/WorkingWithVirtualInterfaces.html",
+    "https://docs.aws.amazon.com/vpn/latest/s2svpn/private-ip-dx.html",
+    "https://docs.aws.amazon.com/vpn/latest/s2svpn/private-ip-dx-steps.html",
+    "https://docs.aws.amazon.com/cli/latest/reference/ec2/create-vpn-connection.html",
+    "https://docs.aws.amazon.com/vpn/latest/s2svpn/how_it_works.html",
+    "https://docs.aws.amazon.com/vpn/latest/s2svpn/SetUpVPNConnections.html",
+    "https://docs.aws.amazon.com/cli/latest/reference/ec2/describe-vpn-connections.html",
+    "https://docs.aws.amazon.com/vpn/latest/s2svpn/vpn-limits.html",
+    "https://docs.aws.amazon.com/vpn/latest/s2svpn/cgw-best-practice.html",
+    "https://docs.aws.amazon.com/vpn/latest/s2svpn/VPNTunnels.html",
+    "https://github.com/aws/aws-cli/blob/2.42.1/awscli/botocore/data/ec2/2016-11-15/service-2.json"
+  ],
+  "tests": [
+    "Official VPN-over-DX topology, hosted transit VIF support, private IP prerequisites, router responsibilities, routing and MTU guidance reviewed",
+    "Parsed creation JSON and validated two request shapes against AWSCLI2.42.1 EC2 model using botocore1.40.76; checked private transport, dynamic routing and two IKEv2 tunnel entries",
+    "Two JMESPath1.1.0 filters passed four tunnel-status fixtures plus empty output and authentication-material exclusion",
+    "Illustrative address spaces checked for pairwise overlap; shell syntax and eight-node seven-edge Mermaid structure passed",
+    "Generated1280x720 social image visually inspected"
+  ],
+  "limitations": [
+    "No AWS CLI/API calls, resource creation, router configuration or secret retrieval performed",
+    "No IPsec/IKE/BGP negotiation, encryption counters, route selection, traffic, MTU, capacity or failover verified live",
+    "Local request models cannot prove resource compatibility, permissions or service acceptance; Mermaid not rendered"
+  ]
+}

@@ -1,0 +1,35 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-24",
+  "runtimeTestsPerformed": true,
+  "sources": [
+    "https://docs.aws.amazon.com/eventbridge/latest/ref/events-ref-health.html",
+    "https://docs.aws.amazon.com/eventbridge/latest/ref/events-ref-directconnect.html",
+    "https://docs.aws.amazon.com/directconnect/latest/UserGuide/dx-maintenance.html",
+    "https://docs.aws.amazon.com/health/latest/ug/cloudwatch-events-health.html",
+    "https://docs.aws.amazon.com/health/latest/ug/choosing-a-region.html",
+    "https://aws.amazon.com/blogs/networking-and-content-delivery/testing-aws-direct-connect-resiliency-with-resiliency-toolkit-failover-testing/",
+    "https://docs.aws.amazon.com/cli/latest/reference/events/test-event-pattern.html",
+    "https://docs.aws.amazon.com/eventbridge/latest/userguide/eb-use-resource-based.html",
+    "https://docs.aws.amazon.com/eventbridge/latest/userguide/eb-rule-dlq.html",
+    "https://docs.aws.amazon.com/cli/latest/reference/events/put-rule.html",
+    "https://docs.aws.amazon.com/cli/latest/reference/events/put-targets.html",
+    "https://docs.aws.amazon.com/eventbridge/latest/userguide/eb-rule-retry-policy.html",
+    "https://docs.aws.amazon.com/health/latest/ug/aws-health-events-eventbridge-schema.html",
+    "https://docs.aws.amazon.com/health/latest/ug/pagnation-of-health-events.html",
+    "https://github.com/aws/aws-cli/blob/2.42.1/awscli/botocore/data/events/2015-10-07/service-2.json",
+    "https://github.com/aws/event-ruler/tree/v2.2.0"
+  ],
+  "tests": [
+    "Reviewed official maintenance, Health delivery/region/schema, EventBridge target permissions, retry and DLQ documentation",
+    "Executed seven positive/negative pattern cases with AWS Event Ruler2.2.0 on Java21; service/source/detail-type rejection and status/category retention passed",
+    "Parsed three JSON examples and validated three request shapes against AWSCLI2.42.1 tagged Events model using botocore1.40.76",
+    "Shell syntax and eight-node seven-edge Mermaid structural checks passed",
+    "Generated1280x720 image visually reviewed"
+  ],
+  "limitations": [
+    "Local library checks are not the hosted EventBridge service or its IAM checks",
+    "No AWS CLI/API operations, rule creation, subscription confirmation, notifications, DLQ delivery or live maintenance tests performed",
+    "Synthetic fixture intentionally is not a full Health event; Mermaid not rendered"
+  ]
+}

@@ -1,0 +1,31 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-24",
+  "runtimeTestsPerformed": true,
+  "sources": [
+    "https://docs.aws.amazon.com/directconnect/latest/UserGuide/WorkingWithVirtualInterfaces.html",
+    "https://docs.aws.amazon.com/directconnect/latest/UserGuide/WorkingWithVirtualInterfaces.html#public-vif-prefix-advertisement-rules",
+    "https://docs.aws.amazon.com/directconnect/latest/UserGuide/create-public-vif.html",
+    "https://docs.aws.amazon.com/directconnect/latest/UserGuide/virtualgateways.html",
+    "https://docs.aws.amazon.com/directconnect/latest/UserGuide/direct-connect-transit-gateways.html",
+    "https://docs.aws.amazon.com/directconnect/latest/UserGuide/direct-connect-cloud-wan.html",
+    "https://docs.aws.amazon.com/vpc/latest/privatelink/vpc-endpoints-s3.html",
+    "https://docs.aws.amazon.com/cli/latest/reference/directconnect/describe-virtual-interfaces.html",
+    "https://docs.aws.amazon.com/cli/latest/reference/directconnect/describe-direct-connect-gateway-associations.html",
+    "https://docs.aws.amazon.com/directconnect/latest/UserGuide/limits.html",
+    "https://docs.aws.amazon.com/directconnect/latest/UserGuide/encryption-in-transit.html",
+    "https://github.com/aws/aws-cli/blob/2.42.1/awscli/botocore/data/directconnect/2012-10-25/service-2.json"
+  ],
+  "tests": [
+    "Official AWS VIF, VGW, TGW, Cloud WAN, S3 endpoint and encryption documentation reviewed",
+    "Both JMESPath filters executed using jmespath1.1.0 with public/private/transit fixtures, VGW/TGW/core-network associations, legitimate null fields and empty lists; secret exclusion asserted",
+    "Both API request shapes validated with botocore1.40.76 against AWSCLI2.42.1 tagged service model",
+    "Shell syntax passed; ten-node ten-edge Mermaid structurally checked",
+    "Generated1280x720 social image visually inspected, readable and unclipped"
+  ],
+  "limitations": [
+    "No AWS CLI process or AWS API call executed; no cloud resources created or changed",
+    "Synthetic filters and model checks do not verify live permissions, routes, DNS or attachment compatibility in an account",
+    "Mermaid not rendered"
+  ]
+}

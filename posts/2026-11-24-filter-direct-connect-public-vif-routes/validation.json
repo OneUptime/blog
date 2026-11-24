@@ -1,0 +1,30 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-24",
+  "runtimeTestsPerformed": true,
+  "sources": [
+    "https://docs.aws.amazon.com/directconnect/latest/UserGuide/routing-and-bgp.html",
+    "https://docs.aws.amazon.com/directconnect/latest/UserGuide/WorkingWithVirtualInterfaces.html",
+    "https://datatracker.ietf.org/doc/html/rfc5737",
+    "https://docs.frrouting.org/en/stable-10.4/filter.html",
+    "https://github.com/FRRouting/frr/blob/frr-10.4.0/lib/routemap.c",
+    "https://docs.frrouting.org/en/stable-10.4/routemap.html",
+    "https://docs.frrouting.org/en/stable-10.4/vtysh.html",
+    "https://docs.frrouting.org/en/stable-10.4/bgp.html",
+    "https://github.com/FRRouting/frr/blob/frr-10.4.0/bgpd/bgp_route.c",
+    "https://github.com/FRRouting/frr/blob/frr-10.4.0/bgpd/bgp_routemap.c"
+  ],
+  "tests": [
+    "Reviewed AWS community direction, route aggregation and export boundaries; FRR10.4 documentation and10.4.0 tagged command definitions",
+    "Compiled unmodified route_map_apply_match function extracted from FRR10.4.0 with stub structures/callbacks; all four two-condition AND truth-table cases passed",
+    "Seven independent Python prefix/community policy fixtures checked exact/more-specific/wrong-community/wrong-range/enclosing/default/untagged behavior",
+    "Shell syntax passed; seven-node seven-edge Mermaid structure checked",
+    "Generated1280x720 social image visually reviewed; no clipping"
+  ],
+  "limitations": [
+    "FRR daemon and configuration parser not available; fragment not loaded into a router",
+    "Extracted C function test verifies combination logic only; callbacks and data structures were test stubs, not real FRR prefix/community matchers",
+    "Python policy oracle is not an FRR execution test",
+    "No Direct Connect, route refresh, forwarding, IPv6 or application tests; Mermaid not rendered"
+  ]
+}

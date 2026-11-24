@@ -1,0 +1,32 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-24",
+  "runtimeTestsPerformed": true,
+  "sources": [
+    "https://docs.aws.amazon.com/directconnect/latest/UserGuide/direct-connect-cloud-wan.html",
+    "https://docs.aws.amazon.com/network-manager/latest/cloudwan/cloudwan-dxattach-about.html",
+    "https://docs.aws.amazon.com/network-manager/latest/cloudwan/cloudwan-policies-json.html#attachment-policies",
+    "https://docs.aws.amazon.com/cli/latest/reference/networkmanager/get-core-network-policy.html",
+    "https://docs.aws.amazon.com/cli/latest/reference/networkmanager/create-direct-connect-gateway-attachment.html",
+    "https://docs.aws.amazon.com/network-manager/latest/cloudwan/cloudwan-dxattachment-add.html",
+    "https://docs.aws.amazon.com/cli/latest/reference/networkmanager/get-direct-connect-gateway-attachment.html",
+    "https://docs.aws.amazon.com/network-manager/latest/cloudwan/cloudwan-create-attachment.html",
+    "https://docs.aws.amazon.com/network-manager/latest/cloudwan/cloudwan-policy-network-actions-routes.html",
+    "https://docs.aws.amazon.com/network-manager/latest/cloudwan/cloudwan-routing-policies.html",
+    "https://docs.aws.amazon.com/network-manager/latest/cloudwan/cloudwan-how-routing-works.html",
+    "https://github.com/aws/aws-cli/blob/2.42.1/awscli/botocore/data/networkmanager/2019-07-05/service-2.json",
+    "https://github.com/aws/aws-cli/blob/2.42.1/awscli/botocore/data/networkmanager/2019-07-05/endpoint-rule-set-1.json"
+  ],
+  "tests": [
+    "Official Cloud WAN/DXGW prerequisite, edge, policy, routing, isolation and attachment-state documentation reviewed",
+    "Example JSON parsed and three request shapes checked against AWSCLI2.42.1 NetworkManager model with botocore1.40.76; ARN and core-network ID matched tagged model regex patterns",
+    "JMESPath1.1.0 executed both projections for creating, pending acceptance, available and failed states, including null segments and multiple edges",
+    "Shell syntax and nine-node eight-edge Mermaid structural checks passed",
+    "Generated1280x720 image visually reviewed; no clipping"
+  ],
+  "limitations": [
+    "No AWS CLI process, API requests, attachment creation, policy deployment or owner acceptance executed",
+    "Model checks do not validate IAM permissions, actual gateway compatibility, edge availability or live core-policy matching",
+    "No BGP, reachability, isolation or failover tests; Mermaid not rendered"
+  ]
+}

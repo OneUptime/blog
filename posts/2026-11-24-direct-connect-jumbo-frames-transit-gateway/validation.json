@@ -1,0 +1,31 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-24",
+  "runtimeTestsPerformed": true,
+  "sources": [
+    "https://docs.aws.amazon.com/directconnect/latest/UserGuide/WorkingWithVirtualInterfaces.html",
+    "https://docs.aws.amazon.com/directconnect/latest/APIReference/API_CreateTransitVirtualInterface.html",
+    "https://docs.aws.amazon.com/vpc/latest/tgw/transit-gateway-quotas.html",
+    "https://docs.aws.amazon.com/directconnect/latest/UserGuide/toolkit-classic.html",
+    "https://docs.aws.amazon.com/cli/latest/reference/directconnect/describe-connections.html",
+    "https://docs.aws.amazon.com/cli/latest/reference/directconnect/describe-virtual-interfaces.html",
+    "https://docs.aws.amazon.com/directconnect/latest/APIReference/API_UpdateVirtualInterfaceAttributes.html",
+    "https://docs.aws.amazon.com/cli/latest/reference/directconnect/update-virtual-interface-attributes.html",
+    "https://github.com/iputils/iputils/blob/20250605/doc/ping.xml",
+    "https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/network_mtu.html",
+    "https://docs.aws.amazon.com/vpn/latest/s2svpn/vpn-limits.html",
+    "https://github.com/aws/aws-cli/blob/2.42.1/awscli/botocore/data/directconnect/2012-10-25/service-2.json"
+  ],
+  "tests": [
+    "Official VIF type, shared-connection disruption, TGW ingress-dependent PMTUD, route and VPN MTU documentation reviewed",
+    "Three AWSCLI2.42.1 request shapes checked with botocore1.40.76; three JMESPath1.1.0 filters exercised across four MTU/capability cases, empty lists and secret exclusion",
+    "Constructed synthetic IPv4/ICMP byte buffers proving1472/8472/8473 payloads total1500/8500/8501 bytes; ping options reviewed against iputils20250605",
+    "Shell syntax and eight-node eight-edge Mermaid structure checked",
+    "Generated1280x720 image visually reviewed"
+  ],
+  "limitations": [
+    "No AWS CLI process, live API call, VIF change, router configuration or ping probe executed",
+    "Synthetic size arithmetic is not a network-path, kernel PMTUD, throughput or failover test",
+    "Source model checks do not enforce live service restrictions or authorization; Mermaid not rendered"
+  ]
+}

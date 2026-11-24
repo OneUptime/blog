@@ -832273,5 +832273,135 @@
       "Troubleshooting"
     ],
     "post": "2026-11-24-direct-connect-link-down-optics-cross-connect"
+  },
+  {
+    "title": "Choose a Public, Private, or Transit Direct Connect VIF",
+    "description": "Choose a Direct Connect virtual interface by destination and gateway model, including public services, VPCs, Transit Gateway, and Cloud WAN.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "AWS",
+      "Direct Connect",
+      "Networking",
+      "Cloud Architecture"
+    ],
+    "post": "2026-11-24-choose-direct-connect-vif-attachment"
+  },
+  {
+    "title": "Resolve a Direct Connect Public VIF Stuck in Verifying",
+    "description": "Resolve public VIF approval delays by checking interface state, ASN ownership, peering addresses, advertised prefixes, and the AWS verification case.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "AWS",
+      "Direct Connect",
+      "BGP",
+      "Networking",
+      "Troubleshooting"
+    ],
+    "post": "2026-11-24-direct-connect-public-vif-verifying-approval"
+  },
+  {
+    "title": "Filter AWS Direct Connect Public VIF Routes with FRRouting",
+    "description": "Build a public VIF receive policy using prefix lists and AWS BGP communities, with a scoped FRRouting example and checks for unexpected fallback paths.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "AWS",
+      "Direct Connect",
+      "BGP",
+      "Networking",
+      "Routing"
+    ],
+    "post": "2026-11-24-filter-direct-connect-public-vif-routes"
+  },
+  {
+    "title": "Check Direct Connect Prefix Allocations Before BGP Drops",
+    "description": "Check the actual IPv4 and IPv6 allocations on private and transit VIFs, budget for failover routes, and avoid BGP outages caused by prefix growth.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "AWS",
+      "Direct Connect",
+      "BGP",
+      "Networking",
+      "Troubleshooting"
+    ],
+    "post": "2026-11-24-direct-connect-prefix-allocation-bgp-limits"
+  },
+  {
+    "title": "Trace Direct Connect Traffic with TGW and VPC Flow Logs",
+    "description": "Correlate a Direct Connect application flow across Transit Gateway and VPC logs using exact field formats, attachment IDs, and careful evidence checks.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "AWS",
+      "Direct Connect",
+      "Networking",
+      "Troubleshooting",
+      "Observability"
+    ],
+    "post": "2026-11-24-trace-direct-connect-tgw-vpc-flow-logs"
+  },
+  {
+    "title": "Connect AWS Cloud WAN to a Direct Connect Gateway",
+    "description": "Attach a Direct Connect gateway to Cloud WAN with explicit segment and edge selection, then verify BGP routes, attachment state, and isolation.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "AWS",
+      "Direct Connect",
+      "Networking",
+      "Cloud Architecture",
+      "Routing"
+    ],
+    "post": "2026-11-24-connect-cloud-wan-direct-connect-gateway"
+  },
+  {
+    "title": "Alert on Direct Connect Maintenance with AWS Health and EventBridge",
+    "description": "Capture Direct Connect maintenance notices with AWS Health and EventBridge, verify notification delivery, and preserve reminders and event updates.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "AWS",
+      "Direct Connect",
+      "Monitoring",
+      "Alerting",
+      "Networking"
+    ],
+    "post": "2026-11-24-direct-connect-maintenance-health-eventbridge-alerts"
+  },
+  {
+    "title": "Make Jumbo Frames Work Across Direct Connect and Transit Gateway",
+    "description": "Check the complete Direct Connect jumbo-frame path, set a transit VIF to 8500 MTU, and test packet sizes in both directions before rollout.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "AWS",
+      "Direct Connect",
+      "Networking",
+      "Troubleshooting",
+      "Routing"
+    ],
+    "post": "2026-11-24-direct-connect-jumbo-frames-transit-gateway"
+  },
+  {
+    "title": "Prepare Direct Connect MACsec and Rotate Its Keys Safely",
+    "description": "Verify Direct Connect MACsec port and cipher support, separate key association from active encryption, and plan key rotation without losing protection.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "AWS",
+      "Direct Connect",
+      "Networking",
+      "Security",
+      "Encryption"
+    ],
+    "post": "2026-11-24-direct-connect-macsec-prerequisites-key-rotation"
+  },
+  {
+    "title": "Encrypt Hosted Direct Connect Traffic with a Private IP VPN",
+    "description": "Build a private IP VPN over hosted Direct Connect, separate tunnel transport from application routes, and verify encryption survives routing changes.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "AWS",
+      "Direct Connect",
+      "VPN",
+      "Networking",
+      "Security",
+      "Encryption"
+    ],
+    "post": "2026-11-24-encrypt-hosted-direct-connect-ipsec"
   }
 ]

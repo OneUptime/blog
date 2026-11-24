@@ -1,0 +1,30 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-24",
+  "runtimeTestsPerformed": true,
+  "sources": [
+    "https://docs.aws.amazon.com/reference-architecture-diagrams/latest/traffic-encryption-direct-connect/encryption-macsec.html",
+    "https://docs.aws.amazon.com/directconnect/latest/UserGuide/updateconnection.html",
+    "https://aws.amazon.com/directconnect/faqs/",
+    "https://docs.aws.amazon.com/directconnect/latest/UserGuide/update-lag.html",
+    "https://docs.aws.amazon.com/cli/latest/reference/directconnect/describe-connections.html",
+    "https://docs.aws.amazon.com/cli/latest/reference/directconnect/associate-mac-sec-key.html",
+    "https://docs.aws.amazon.com/directconnect/latest/UserGuide/associate-key-connection.html",
+    "https://docs.aws.amazon.com/directconnect/latest/UserGuide/create-macsec-dedicated.html",
+    "https://docs.aws.amazon.com/directconnect/latest/UserGuide/MACsec.html",
+    "https://docs.aws.amazon.com/cli/latest/reference/directconnect/update-connection.html",
+    "https://github.com/aws/aws-cli/blob/2.42.1/awscli/botocore/data/directconnect/2012-10-25/service-2.json"
+  ],
+  "tests": [
+    "Reviewed official port/cipher/SCI requirements, hosted versus dedicated scope, association, encryption modes, key rotation and deletion considerations",
+    "Three request shapes passed AWSCLI2.42.1 tagged Direct Connect model via botocore1.40.76",
+    "Three JMESPath1.1.0 projections executed across five capability/mode/encryption/key-state fixtures plus empty output and key-identifier exclusion",
+    "Shell syntax and six-node six-edge Mermaid structure passed",
+    "Generated1280x720 image visually reviewed"
+  ],
+  "limitations": [
+    "No AWS CLI/API operation, key generation or retrieval, secret association, mode change or router configuration performed",
+    "No MACsec negotiation, ciphertext inspection, active-key adoption, throughput, failover or rotation tested",
+    "Local response/model tests cannot establish actual encryption or permissions; Mermaid not rendered"
+  ]
+}

@@ -2343,15 +2343,35 @@ Research: [OneUptime air-gapped alerting](https://oneuptime.com/enterprise/air-g
 
     Completed: [Article](posts/2026-11-24-direct-connect-link-down-optics-cross-connect/README.md) (24 November 2026).
 3. Public, Private, or Transit VIF: Choose the Right AWS Direct Connect Attachment
+
+    Completed: [Article](posts/2026-11-24-choose-direct-connect-vif-attachment/README.md) (24 November 2026).
 4. Get an AWS Direct Connect Public VIF Out of “Verifying”: ASN and Prefix Approval Checklist
+
+    Completed: [Article](posts/2026-11-24-direct-connect-public-vif-verifying-approval/README.md) (24 November 2026).
 5. Filter the Routes Received on a Direct Connect Public VIF with Prefix Lists and BGP Communities
+
+    Completed: [Article](posts/2026-11-24-filter-direct-connect-public-vif-routes/README.md) (24 November 2026).
 6. Respect Direct Connect’s 100-Prefix-Per-Address-Family Limit Before a Private or Transit VIF BGP Session Drops
+
+    Completed: [Article](posts/2026-11-24-direct-connect-prefix-allocation-bgp-limits/README.md) (24 November 2026).
 7. How to Trace Direct Connect Traffic with Transit Gateway Flow Logs and VPC Flow Logs
+
+    Completed: [Article](posts/2026-11-24-trace-direct-connect-tgw-vpc-flow-logs/README.md) (24 November 2026).
 8. How to Connect an AWS Cloud WAN Core Network to Direct Connect Through a Direct Connect Gateway
+
+    Completed: [Article](posts/2026-11-24-connect-cloud-wan-direct-connect-gateway/README.md) (24 November 2026).
 9. How to Turn Direct Connect Maintenance Events into AWS Health and EventBridge Alerts
+
+    Completed: [Article](posts/2026-11-24-direct-connect-maintenance-health-eventbridge-alerts/README.md) (24 November 2026).
 10. Make Jumbo Frames Work Across Direct Connect, DX Gateway, and Transit Gateway
+
+    Completed: [Article](posts/2026-11-24-direct-connect-jumbo-frames-transit-gateway/README.md) (24 November 2026).
 11. Encrypt AWS Direct Connect with MACsec: Port, Cipher, CKN/CAK, and Rotation Prerequisites
+
+    Completed: [Article](posts/2026-11-24-direct-connect-macsec-prerequisites-key-rotation/README.md) (24 November 2026).
 12. Encrypt a Hosted Direct Connect Connection with IPsec When MACsec Is Unavailable
+
+    Completed: [Article](posts/2026-11-24-encrypt-hosted-direct-connect-ipsec/README.md) (24 November 2026).
 13. Monitor Direct Connect in CloudWatch: Link State, Throughput, MAC Errors, and Optical Levels
 14. Stop One Direct Connect VIF from Saturating a Shared Dedicated Port with VIF Rate Limiters
 15. Accept and Operate a Cross-Account Hosted VIF Without Confusing Connection and VIF Ownership
