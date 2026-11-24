@@ -1,0 +1,26 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-25",
+  "runtimeTestsPerformed": true,
+  "sources": [
+    "https://sre.google/workbook/postmortem-analysis/",
+    "https://sre.google/workbook/postmortem-culture/",
+    "https://docs.python.org/3.13/library/datetime.html",
+    "https://sre.google/workbook/alerting-on-slos/",
+    "https://docs.pagerduty.com/ops-guides/howie-guide"
+  ],
+  "tests": [
+    "Reviewed official Google SRE postmortem trend/action and SLO-alerting guidance, PagerDuty Howie learning emphasis, and Python date documentation",
+    "Extracted and ran exact Python block with Python 3.9.6: five due actions, 60% verified, 40% on time, two unverified and one rescheduled matched expected output",
+    "Three input variations checked an empty cohort, verification after cutoff and a changed current deadline without changing original-cohort membership",
+    "Checked median of completed-review lags 5, 8 and 12 is 8 while the open review is reported separately",
+    "Editorial review separates verified action progress, residual risk, recurrence exposure, detection quality and incomplete review cohorts",
+    "Generated 1280x720 image opened and visually reviewed; two-line title fits"
+  ],
+  "limitations": [
+    "All records are fictional; no action tracker, incident system, real reliability dataset or alerting system was queried",
+    "The code assumes an already selected snapshot of accepted actions and does not reconstruct historical approval/disposition changes or verify completion evidence",
+    "The examples demonstrate arithmetic and cohort definitions, not causal improvement in reliability",
+    "Tables and runnable cohort calculation provide the practical structure without an additional diagram"
+  ]
+}

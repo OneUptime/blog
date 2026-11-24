@@ -1,0 +1,23 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-25",
+  "runtimeTestsPerformed": false,
+  "sources": [
+    "https://sre.google/workbook/postmortem-culture/",
+    "https://sre.google/workbook/alerting-on-slos/",
+    "https://sre.google/workbook/canarying-releases/",
+    "https://learn.microsoft.com/en-us/azure/architecture/patterns/bulkhead"
+  ],
+  "tests": [
+    "Reviewed official Google SRE postmortem, SLO alerting and canary-release guidance, plus Microsoft bulkhead guidance",
+    "Editorial review checked category overlap, primary acceptance criteria, customer-level detection, restoration limitations and genuine activation/resource boundaries",
+    "Checked the original fictional payment-routing example for consistent action-to-failure-path mapping; acceptance activities remain proposed",
+    "Mermaid structural checks passed for eight declared nodes and seven edges; no browser render",
+    "Generated 1280x720 social image opened and visually inspected; two-line title fits"
+  ],
+  "limitations": [
+    "No payment system, rollout controller, alert route, canary or restoration was tested",
+    "Action categories are an explicitly scoped review vocabulary, not an asserted universal standard",
+    "The article supplies review and acceptance criteria rather than executable product-specific configuration; diagram validation was structural"
+  ]
+}

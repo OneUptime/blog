@@ -1,0 +1,28 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-25",
+  "runtimeTestsPerformed": true,
+  "sources": [
+    "https://mlflow.org/docs/latest/api_reference/python_api/mlflow.client.html#mlflow.client.MlflowClient.set_registered_model_alias",
+    "https://github.com/mlflow/mlflow/blob/v3.18.0/mlflow/store/model_registry/sqlalchemy_store.py",
+    "https://docs.python.org/3.11/library/fcntl.html",
+    "https://docs.python.org/3.11/library/sqlite3.html",
+    "https://redis.io/docs/latest/develop/clients/patterns/distributed-locks/"
+  ],
+  "tests": [
+    "Executed exact publisher snippet with Python 3.11.13 and MLflow 3.18.0 against a temporary SQLite registry and local journal on macOS",
+    "Two competing publisher processes with generations 10 and 11 completed with generation 11 selected",
+    "Verified matching duplicate accepted, stale generation rejected, reused generation for a different version rejected, and higher-generation recovery selecting an older model version accepted",
+    "Out-of-band alias change was detected before a subsequent write",
+    "Injected a failure after the real local alias API applied its update; pending generation 13/version 2 remained while completed generation stayed 12/version 1, and a later publisher was blocked",
+    "Article code compared byte-for-byte with tested script; Mermaid six-node/five-edge structural checks passed",
+    "Generated 1280x720 social image opened and visually reviewed; three-line title fits"
+  ],
+  "limitations": [
+    "Registry fixtures used model-version records without inference artifacts; no model loading or quality evaluation was tested",
+    "No HTTP server, network partition, power loss, multi-host locking, controller failover, authentication or production permission policy was exercised",
+    "Lost-response behavior was simulated by raising after successful local API application, not by disrupting a network",
+    "The example requires cooperating processes on one Unix host, protected persistent local state and externally authorized decision generations; it is not a distributed promotion service",
+    "MLflow was pinned while dependency versions were locally resolved; diagram validation was structural without browser rendering"
+  ]
+}

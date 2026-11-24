@@ -1,0 +1,22 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-25",
+  "runtimeTestsPerformed": false,
+  "sources": [
+    "https://sre.google/sre-book/example-postmortem/",
+    "https://sre.google/workbook/postmortem-culture/",
+    "https://docs.aws.amazon.com/fis/latest/userguide/stop-conditions.html"
+  ],
+  "tests": [
+    "Reviewed official Google SRE example and postmortem culture guidance, including the distinction between bad and improved example narratives",
+    "Reviewed AWS FIS alarm-based stop conditions and avoided assuming stopping reverses all effects",
+    "Editorial review checked fictional incident scope, uncertain causal contributions, skilled human adaptation, bounded counterfactual claims and staging-only exercise prerequisites",
+    "Mermaid structure checked: six declared nodes, five edges, valid references and balanced fences; no browser render",
+    "Generated 1280x720 social image opened and visually reviewed; two-line title fits"
+  ],
+  "limitations": [
+    "No incident dataset, service workload, staging exercise or AWS FIS experiment was executed",
+    "The report-service incident and acceptance exercise are original illustrative examples, not reported measurements",
+    "Structural diagram checks do not establish browser rendering; operational criteria require service-specific thresholds"
+  ]
+}

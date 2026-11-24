@@ -833240,5 +833240,121 @@
       "SRE"
     ],
     "post": "2026-11-25-postmortems-hidden-service-dependencies-architecture-map"
+  },
+  {
+    "title": "Review Postmortem Drafts for Unsupported Claims and Ambiguous Language",
+    "description": "Review a postmortem draft with evidence-backed comments, explicit scope, precise timelines, and clear action status before approving the incident record.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Postmortem",
+      "Incident Response",
+      "SRE"
+    ],
+    "post": "2026-11-25-review-postmortem-unsupported-claims-evidence-language"
+  },
+  {
+    "title": "Postmortem Metrics That Help Improve Reliability",
+    "description": "Measure verified action completion, recurring failure patterns, detection, and review lag with clear cohorts and safeguards against misleading averages.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Postmortem",
+      "SRE",
+      "Incident Management"
+    ],
+    "post": "2026-11-25-postmortem-metrics-reliability-action-recurrence-review-lag"
+  },
+  {
+    "title": "Turn Postmortem Findings into Useful On-Call Runbook Updates",
+    "description": "Convert incident findings into scoped runbook changes with clear prerequisites, safe inspection steps, decision points, recovery checks, and rehearsal evidence.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Postmortem",
+      "Incident Response",
+      "SRE",
+      "Kubernetes"
+    ],
+    "post": "2026-11-25-postmortem-findings-runbook-updates-on-call"
+  },
+  {
+    "title": "Turn Postmortem Luck into Safeguards You Can Test",
+    "description": "Analyze favorable incident conditions, separate real safeguards from assumptions, and turn uncertain protection into scoped tests and accountable improvements.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Postmortem",
+      "SRE",
+      "Incident Response"
+    ],
+    "post": "2026-11-25-postmortem-luck-missing-safeguards"
+  },
+  {
+    "title": "Classify Postmortem Actions by the Protection They Provide",
+    "description": "Separate prevention, detection, mitigation, and blast-radius actions so an incident review produces complementary safeguards with meaningful acceptance criteria.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Postmortem",
+      "SRE",
+      "Incident Management"
+    ],
+    "post": "2026-11-25-postmortem-prevention-detection-mitigation-blast-radius"
+  },
+  {
+    "title": "Migrate MLflow Stages to Aliases Without Breaking Model References",
+    "description": "Migrate MLflow Production and Staging references to aliases with a reviewed version map, a dry run, overlapping readers, and a controlled consumer cutover.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "MLflow",
+      "MLOps",
+      "Model Versioning",
+      "Python"
+    ],
+    "post": "2026-11-25-mlflow-migrate-registry-stages-aliases-model-uris"
+  },
+  {
+    "title": "Define Latest in a Model Registry with Versions and Aliases",
+    "description": "Separate the newest registered model from the approved deployment choice, resolve champion once per release, and preserve artifacts behind fixed version references.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "MLflow",
+      "Model Versioning",
+      "MLOps",
+      "Python"
+    ],
+    "post": "2026-11-25-model-registry-latest-immutable-version-champion-alias"
+  },
+  {
+    "title": "Promote MLflow Models Across Environments with copy_model_version",
+    "description": "Promote a fixed MLflow model version through development, staging, and production with explicit destination versions, validation gates, and artifact-access checks.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "MLflow",
+      "MLOps",
+      "Model Versioning",
+      "Python"
+    ],
+    "post": "2026-11-25-promote-mlflow-model-environments-copy-model-version"
+  },
+  {
+    "title": "Prevent Concurrent Model Promotions from Moving Aliases Out of Order",
+    "description": "Route model promotions through one controlled writer, reject stale release decisions, and preserve uncertain writes instead of letting late training jobs replace champion.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "MLflow",
+      "MLOps",
+      "Model Versioning",
+      "Concurrency"
+    ],
+    "post": "2026-11-25-prevent-concurrent-model-alias-promotions-out-of-order"
+  },
+  {
+    "title": "Trace an MLflow Model Version to Code, Data, and Environment",
+    "description": "Build a verifiable lineage chain from an MLflow model version to its source run, Git commit, exact training snapshot, recorded dependencies, and runtime metadata.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "MLflow",
+      "MLOps",
+      "Model Versioning",
+      "Data Engineering"
+    ],
+    "post": "2026-11-25-trace-mlflow-model-version-run-git-dataset-environment"
   }
 ]

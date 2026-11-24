@@ -1,0 +1,27 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-25",
+  "runtimeTestsPerformed": true,
+  "sources": [
+    "https://mlflow.org/docs/latest/ml/model-registry/",
+    "https://github.com/mlflow/mlflow/blob/v3.18.0/mlflow/store/artifact/utils/models.py",
+    "https://mlflow.org/docs/latest/api_reference/python_api/mlflow.client.html#mlflow.client.MlflowClient.get_model_version_by_alias",
+    "https://mlflow.org/docs/latest/api_reference/python_api/mlflow.pyfunc.html#mlflow.pyfunc.load_model",
+    "https://docs.aws.amazon.com/AmazonS3/latest/userguide/object-lock.html"
+  ],
+  "tests": [
+    "Executed exact manifest-resolution and consumer-loading Python snippets with MLflow 3.18.0 and Python 3.11.13 against a temporary SQLite registry and two synthetic models",
+    "Verified latest selected version 2 while champion selected version 1; initial manifest and consumer loaded version 1",
+    "After moving champion to version 2, prior manifest still loaded version 1 and a new manifest loaded version 2",
+    "Verified existing manifest overwrite refused, registry-identifier mismatch rejected and missing alias fails before manifest creation",
+    "Reviewed distinction between READY creation state and approval, registry selection and actual deployment, and numeric reference and retained immutable artifact bytes",
+    "Checked Mermaid structure for five declared nodes and four edges",
+    "Generated 1280x720 social image opened and visually reviewed; two-line title fits"
+  ],
+  "limitations": [
+    "No HTTP server, cloud artifact storage, production model, serving fleet, evaluation gate or S3 Object Lock policy was tested",
+    "Synthetic alias assignment does not demonstrate a real model approval process",
+    "The selection manifest is deliberately minimal; it does not authenticate itself, hash artifacts or enforce permissions and the registry identifier is only a configuration check",
+    "MLflow 3.18.0 was pinned while dependencies were resolved locally; Mermaid validation was structural without browser rendering"
+  ]
+}

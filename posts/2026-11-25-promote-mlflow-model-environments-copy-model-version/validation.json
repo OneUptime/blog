@@ -1,0 +1,29 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-25",
+  "runtimeTestsPerformed": true,
+  "sources": [
+    "https://mlflow.org/docs/latest/ml/model-registry/workflow/#promoting-an-mlflow-model-across-environments",
+    "https://github.com/mlflow/mlflow/blob/v3.18.0/mlflow/tracking/client.py",
+    "https://github.com/mlflow/mlflow/blob/v3.18.0/mlflow/store/model_registry/abstract_store.py",
+    "https://github.com/mlflow/mlflow/blob/v3.18.0/mlflow/store/model_registry/sqlalchemy_store.py",
+    "https://mlflow.org/docs/latest/api_reference/python_api/mlflow.pyfunc.html#mlflow.pyfunc.load_model"
+  ],
+  "tests": [
+    "Executed both exact Python snippets with MLflow 3.18.0 and Python 3.11.13 against temporary SQLite and synthetic local model artifacts",
+    "Verified dev version 7 copied to staging version 4 and staging version 4 to prod version 9, preserving source run ID, description and source tags",
+    "Verified pending environment-specific tags and recorded promotion source/identifier; registry aliases remained unchanged until explicit selection",
+    "Loaded destination numeric URI and champion before and after selection; synthetic predictions changed from [10] to [99] only after champion selection",
+    "Compared source and destination download URIs and confirmed the same underlying artifact location on this backend",
+    "Repeated copy produced production version 10 while champion remained version 9",
+    "Missing destination, nonnumeric source version and identical source/destination were rejected by the example",
+    "Mermaid structural checks passed for six nodes/five edges; generated 1280x720 social image opened and visually reviewed with three-line title fitting"
+  ],
+  "limitations": [
+    "Tests did not exercise an HTTP server, hosted registry, ACLs, remote artifact store, physical artifact migration or actual ML evaluation",
+    "Approval and environment-quality checks are workflow prerequisites; synthetic tag changes do not demonstrate a real approval system",
+    "Copy and subsequent tagging are not transactional or idempotent; no distributed concurrent promotion was tested",
+    "Backend copy behavior is explicitly scoped to the examined MLflow 3.18.0 OSS SQL/SQLite implementation",
+    "Only MLflow package version was pinned; dependency versions were locally resolved; Mermaid checks did not render in a browser"
+  ]
+}

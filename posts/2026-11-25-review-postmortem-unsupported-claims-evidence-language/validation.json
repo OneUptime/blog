@@ -1,0 +1,22 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-25",
+  "runtimeTestsPerformed": false,
+  "sources": [
+    "https://docs.pagerduty.com/ops-guides/incident-response-guide/effective-postmortems",
+    "https://docs.pagerduty.com/ops-guides/incident-response-guide/postmortem-template",
+    "https://sre.google/workbook/postmortem-culture/",
+    "https://sre.google/sre-book/postmortem-culture/"
+  ],
+  "tests": [
+    "Reviewed official PagerDuty effective-review and template guidance plus Google SRE postmortem-quality and blameless-review guidance",
+    "Compared the fictional flawed paragraph, six review questions, five evidence rows and rewritten paragraph for claim support and scope",
+    "Checked 76/400 equals 19%; reviewed rollback start/completion and later recovery ordering, bounded reconciliation and proposed-alert status",
+    "Generated 1280x720 social image opened and visually reviewed; three-line title fits"
+  ],
+  "limitations": [
+    "No actual postmortem, customer query, deployment record, integrity reconciliation or action tracker was examined",
+    "Example evidence and narrative are fictional; arithmetic checking is not a test of a real incident",
+    "No executable code or additional diagram included because the worked review tables and before/after passage provide the practical demonstration"
+  ]
+}

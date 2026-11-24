@@ -2675,18 +2675,47 @@ Research: [OneUptime air-gapped alerting](https://oneuptime.com/enterprise/air-g
     Completed: [Article](posts/2026-11-25-postmortems-hidden-service-dependencies-architecture-map/README.md) (25 November 2026).
 
 16. How to Review a Postmortem Draft for Unsupported Claims, Missing Evidence, and Ambiguous Language
+
+    Completed: [Article](posts/2026-11-25-review-postmortem-unsupported-claims-evidence-language/README.md) (25 November 2026).
+
 17. Which Postmortem Metrics Actually Improve Reliability? Action Closure, Recurrence, Detection, and Review Lag
+
+    Completed: [Article](posts/2026-11-25-postmortem-metrics-reliability-action-recurrence-review-lag/README.md) (25 November 2026).
+
 18. How to Turn Postmortem Findings into Runbook Updates That Help the Next On-Call
+
+    Completed: [Article](posts/2026-11-25-postmortem-findings-runbook-updates-on-call/README.md) (25 November 2026).
+
 19. How to Analyze “Where We Got Lucky” and Find the Safeguards You Still Need
+
+    Completed: [Article](posts/2026-11-25-postmortem-luck-missing-safeguards/README.md) (25 November 2026).
+
 20. How to Separate Prevention, Detection, Mitigation, and Blast-Radius Actions in a Postmortem
+
+    Completed: [Article](posts/2026-11-25-postmortem-prevention-detection-mitigation-blast-radius/README.md) (25 November 2026).
 
 ## Model Versioning
 
 1. MLflow Registry Stages Are Deprecated: Migrate Production and Staging to Aliases Without Breaking Model URIs
+
+    Completed: [Article](posts/2026-11-25-mlflow-migrate-registry-stages-aliases-model-uris/README.md) (25 November 2026).
+
 2. What Should “Latest” Mean in a Model Registry? Use Immutable Versions and a Movable Champion Alias
+
+    Completed: [Article](posts/2026-11-25-model-registry-latest-immutable-version-champion-alias/README.md) (25 November 2026).
+
 3. How to Promote an MLflow Model Across Dev, Staging, and Production Registered Models with `copy_model_version`
+
+    Completed: [Article](posts/2026-11-25-promote-mlflow-model-environments-copy-model-version/README.md) (25 November 2026).
+
 4. How to Prevent Concurrent Training Jobs from Moving the Same Production Alias Out of Order
+
+    Completed: [Article](posts/2026-11-25-prevent-concurrent-model-alias-promotions-out-of-order/README.md) (25 November 2026).
+
 5. How to Trace an MLflow Model Version Back to Its Run, Git Commit, Dataset Snapshot, and Environment
+
+    Completed: [Article](posts/2026-11-25-trace-mlflow-model-version-run-git-dataset-environment/README.md) (25 November 2026).
+
 6. How to Version a Model and Its Preprocessing Pipeline as One Deployable Artifact
 7. How to Block Model Promotion When a New Input Signature Breaks Existing Clients
 9. How to Version an LLM Application Snapshot: Model, Prompt, Tools, Retrieval Index, and Parameters

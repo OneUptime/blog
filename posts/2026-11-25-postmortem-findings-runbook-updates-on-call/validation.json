@@ -1,0 +1,23 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-25",
+  "runtimeTestsPerformed": false,
+  "sources": [
+    "https://docs.aws.amazon.com/wellarchitected/latest/framework/ops_ready_to_support_use_runbooks.html",
+    "https://docs.aws.amazon.com/wellarchitected/latest/framework/ops_ready_to_support_use_playbooks.html",
+    "https://v1-34.docs.kubernetes.io/docs/reference/kubectl/generated/kubectl_get/"
+  ],
+  "tests": [
+    "Reviewed official AWS runbook/playbook guidance and versioned Kubernetes 1.34 kubectl get documentation",
+    "Confirmed local kubectl v1.34.0 client identity and checked context, namespace, request-timeout, output and selector options through built-in help",
+    "Exact Bash block passed bash -n; no cluster query was executed",
+    "Editorial review checked prerequisites, explicit target scope, selector-empty versus missing-workload distinctions, per-request timeout meaning and readiness versus customer recovery",
+    "Generated 1280x720 social image opened and visually reviewed; three-line title fits"
+  ],
+  "limitations": [
+    "No live Kubernetes cluster, workload, RBAC configuration, recovery command or teammate rehearsal was tested",
+    "Client help and syntax checks do not demonstrate API authorization, workload labels or operational correctness",
+    "The Orders incident and runbook example are fictional; state-changing recovery is delegated to an actual approved procedure",
+    "Tables and inspection commands provide the relevant structure without an extra diagram"
+  ]
+}

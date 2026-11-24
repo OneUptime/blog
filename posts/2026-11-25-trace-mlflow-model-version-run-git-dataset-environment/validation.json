@@ -1,0 +1,31 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-25",
+  "runtimeTestsPerformed": true,
+  "sources": [
+    "https://mlflow.org/docs/latest/ml/dataset/",
+    "https://mlflow.org/docs/latest/api_reference/python_api/mlflow.data.html",
+    "https://mlflow.org/docs/latest/api_reference/python_api/mlflow.sklearn.html",
+    "https://git-scm.com/docs/git-status",
+    "https://git-scm.com/docs/git-rev-parse",
+    "https://docs.python.org/3.11/library/hashlib.html",
+    "https://pip.pypa.io/en/stable/cli/pip_freeze/"
+  ],
+  "tests": [
+    "Executed exact training and inspection snippets with MLflow 3.18.0, scikit-learn 1.9.1, pandas 3.1.1 and Python 3.11.13",
+    "Used a temporary committed Git training checkout, temporary SQLite registry and local artifact directory outside the checkout",
+    "Verified registered version source run, exact Git commit tag, retained dataset metadata, snapshot bytes, full CSV SHA256 and environment/provenance artifacts",
+    "Loaded the registered model and checked its prediction for x=4 was approximately 9",
+    "Verified untracked files and modified tracked CSV prevent training; incorrect recorded snapshot hash and missing source run cause inspection failure",
+    "Mermaid structural checking passed for six declared nodes and five edges",
+    "Generated 1280x720 social image opened and visually reviewed; two-line title fits"
+  ],
+  "limitations": [
+    "No hosted registry, cloud artifact storage, production dataset, remote access-control policy or fresh-environment rebuild was tested",
+    "Hash mismatch was simulated by changing the recorded expected hash in the temporary run; this is not an adversarial integrity-control test",
+    "The tiny linear-regression example verifies linkage and loading, not production model quality or deterministic retraining across hardware",
+    "Git cleanliness excludes ignored/external inputs; the article explicitly requires separately recording them and an isolated checkout",
+    "MLflow/scikit-learn/pandas example versions were verified locally; remaining dependencies were captured from the environment rather than independently locked",
+    "Diagram checking was structural without browser rendering"
+  ]
+}

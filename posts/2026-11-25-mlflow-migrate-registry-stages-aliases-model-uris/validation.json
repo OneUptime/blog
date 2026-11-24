@@ -1,0 +1,29 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-25",
+  "runtimeTestsPerformed": true,
+  "sources": [
+    "https://mlflow.org/docs/latest/ml/model-registry/workflow/#migrating-from-stages",
+    "https://mlflow.org/docs/latest/ml/model-registry/",
+    "https://mlflow.org/docs/latest/api_reference/python_api/mlflow.client.html#mlflow.client.MlflowClient.set_registered_model_alias",
+    "https://github.com/mlflow/mlflow/blob/v3.18.0/mlflow/tracking/client.py",
+    "https://github.com/mlflow/mlflow/blob/v3.18.0/mlflow/store/artifact/utils/models.py",
+    "https://github.com/mlflow/mlflow/releases/tag/v3.18.0"
+  ],
+  "tests": [
+    "Installed MLflow 3.18.0 in an isolated Python 3.11.13 virtual environment",
+    "Executed exact inventory and migration snippets against a temporary SQLite registry containing three synthetic Python model artifacts",
+    "Verified dry run does not assign aliases; apply and repeat succeed; latest Production selection is version 2 with both versions 1 and 2 in Production; existing stages remain unchanged",
+    "Loaded stage, alias and numeric URIs: Production/champion/2 returned [20], Staging/candidate returned [30]",
+    "Verified conflicting existing alias, changed stage selection and empty stage are rejected",
+    "Verified moving champion changes a subsequent load but not the already-loaded Python model",
+    "Exact migration snippet compared byte-for-byte with tested script; Bash syntax and five-node/four-edge Mermaid structure checked",
+    "Generated 1280x720 social image opened and visually reviewed; three-line title fits"
+  ],
+  "limitations": [
+    "Tests used local SQLite and local synthetic artifacts; no HTTP MLflow server, authentication, permissions, cloud artifact store, managed registry or serving deployment was exercised",
+    "Migration requires coordinated single-writer operation; preflight checks are not atomic concurrency protection, and two alias writes can partially succeed",
+    "Only MLflow version was pinned in installation; transitive dependencies were resolved locally",
+    "Mermaid was structurally checked without browser rendering; production promotion and recovery rehearsals remain reader tasks"
+  ]
+}
