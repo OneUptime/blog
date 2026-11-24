@@ -1,0 +1,28 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-24",
+  "runtimeTestsPerformed": true,
+  "sources": [
+    "https://kafka.apache.org/40/security/authentication-using-sasl/",
+    "https://github.com/ydb-platform/ydb/blob/26.2.1.16/ydb/docs/en/core/reference/kafka-api/auth.md",
+    "https://yandex.cloud/en/docs/data-streams/kafkaapi/auth",
+    "https://github.com/confluentinc/librdkafka/blob/v2.12.0/CONFIGURATION.md",
+    "https://docs.confluent.io/platform/current/clients/confluent-kafka-python/html/index.html",
+    "https://pypi.org/pypi/confluent-kafka/2.12.0/json",
+    "https://github.com/confluentinc/confluent-kafka-python/blob/v2.12.0/src/confluent_kafka/admin/__init__.py"
+  ],
+  "tests": [
+    "Reviewed YDB26.2.1.16 self-hosted SASL identity mapping and official Yandex Cloud API-key mapping",
+    "Verified confluent-kafka2.12.0 release metadata, tagged AdminClient list_topics wrapper and librdkafka2.12.0 TLS/SASL configuration names",
+    "Executed make_config: correct identity/TLS flags; rejected empty endpoint, empty password, relative database and missing CA path",
+    "Python syntax check passed",
+    "Seven-node six-edge Mermaid structurally checked",
+    "1280x720 generated social image visually reviewed"
+  ],
+  "limitations": [
+    "No SDK installation or network client execution; helper uses standard library only",
+    "No CA parsing, TLS handshake, login, permissions, produce/consume or rotation test",
+    "Temporary fixture file only proves CA path existence check, not certificate validity",
+    "Mermaid not rendered"
+  ]
+}

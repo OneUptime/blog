@@ -1,0 +1,33 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-24",
+  "runtimeTestsPerformed": true,
+  "sources": [
+    "https://docs.aws.amazon.com/cli/latest/reference/directconnect/describe-connections.html",
+    "https://docs.aws.amazon.com/directconnect/latest/UserGuide/ts-layer-2.html",
+    "https://docs.aws.amazon.com/directconnect/latest/UserGuide/download-loa-cfa.html",
+    "https://docs.aws.amazon.com/directconnect/latest/UserGuide/ts_layer_1.html",
+    "https://docs.aws.amazon.com/directconnect/latest/UserGuide/Colocation.html",
+    "https://docs.aws.amazon.com/directconnect/latest/UserGuide/dedicated_connection.html",
+    "https://docs.aws.amazon.com/directconnect/latest/UserGuide/connection_options.html",
+    "https://docs.aws.amazon.com/directconnect/latest/UserGuide/monitoring-cloudwatch.html",
+    "https://docs.aws.amazon.com/directconnect/latest/UserGuide/viewing-metrics.html",
+    "https://docs.aws.amazon.com/cli/latest/reference/cloudwatch/list-metrics.html",
+    "https://docs.aws.amazon.com/cli/latest/reference/cloudwatch/get-metric-statistics.html",
+    "https://repost.aws/knowledge-center/direct-connect-layer-1-issues",
+    "https://github.com/aws/aws-cli/blob/2.42.1/awscli/botocore/data/cloudwatch/2010-08-01/service-2.json"
+  ],
+  "tests": [
+    "Reviewed official AWS LOA-CFA, physical troubleshooting, connection requirements and metric definitions; acknowledged endpoint-dependent negotiation wording",
+    "JMESPath1.1.0 executed three filters with synthetic connection, four-lane metric and unsorted datapoint fixtures; empty datapoints handled",
+    "ListMetrics and GetMetricStatistics request objects passed botocore1.40.76 validator using AWSCLI2.42.1 tagged CloudWatch service model",
+    "Shell syntax passed; nine-node eight-edge Mermaid structurally checked",
+    "Generated1280x720 social image visually reviewed; no clipping"
+  ],
+  "limitations": [
+    "No AWSCLI process, AWS API requests or physical diagnostics executed",
+    "Model validation verifies request structure, not service permissions, metric availability, signal levels or timestamps",
+    "No optic compatibility, strand change, loopback, cross-connect or traffic test",
+    "Mermaid not rendered"
+  ]
+}

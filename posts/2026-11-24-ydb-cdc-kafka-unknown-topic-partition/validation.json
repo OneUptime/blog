@@ -1,0 +1,27 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-24",
+  "runtimeTestsPerformed": false,
+  "sources": [
+    "https://kafka.apache.org/38/design/protocol/",
+    "https://github.com/ydb-platform/ydb/blob/26.2.1.16/ydb/docs/en/core/dev/cdc.md",
+    "https://github.com/ydb-platform/ydb/blob/26.2.1.16/ydb/docs/en/core/reference/kafka-api/auth.md",
+    "https://github.com/ydb-platform/ydb/blob/26.2.1.16/ydb/docs/en/core/reference/kafka-api/connect/connect-step-by-step.md",
+    "https://github.com/edenhill/kcat/blob/1.7.1/README.md",
+    "https://github.com/edenhill/kcat/blob/1.7.1/kcat.c",
+    "https://github.com/ydb-platform/ydb/blob/26.2.1.16/ydb/docs/en/core/reference/kafka-api/constraints.md"
+  ],
+  "tests": [
+    "Reviewed Kafka error3 and YDB26.2.1.16 CDC paths, Kafka database identity, relative/full topic names and autopartition constraints",
+    "Reviewed CLI2.35.0 describe flags and kcat1.7.1 metadata/config/-X source",
+    "Shell snippets passed bash -n",
+    "Eight-node seven-edge Mermaid structurally checked",
+    "1280x720 generated social image visually reviewed"
+  ],
+  "limitations": [
+    "No YDB object/identity/consumer or Kafka metadata/partition/event execution",
+    "Metadata visibility and errors remain deployment-dependent; no claim of a reproduced root cause",
+    "No feed recreation, offset reset or data change performed",
+    "Mermaid not rendered"
+  ]
+}

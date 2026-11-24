@@ -832153,5 +832153,125 @@
       "Troubleshooting"
     ],
     "post": "2026-11-24-ydb-changefeed-retention-consumer-recovery"
+  },
+  {
+    "title": "Enable the YDB Kafka Listener and Publish Its Docker Port",
+    "description": "Enable YDB's Kafka API in a local Docker lab, publish the matching port, and distinguish listener, networking, metadata, and authentication failures.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Database",
+      "Kafka",
+      "Docker",
+      "Troubleshooting"
+    ],
+    "post": "2026-11-24-ydb-kafka-listener-docker-port"
+  },
+  {
+    "title": "Configure Kafka Client Authentication for YDB Topics",
+    "description": "Configure a YDB Kafka client with the correct database-qualified identity, SASL credentials, TLS trust, and separate authentication and authorization checks.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Database",
+      "Kafka",
+      "Security",
+      "Python"
+    ],
+    "post": "2026-11-24-ydb-kafka-client-sasl-authentication"
+  },
+  {
+    "title": "Configure Kafka Consumer CRC Checks for YDB Compatibility",
+    "description": "Apply YDB's documented check.crcs=false consumer setting, verify the effective Java configuration, and keep TLS and payload validation separate.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Database",
+      "Kafka",
+      "Java",
+      "Troubleshooting"
+    ],
+    "post": "2026-11-24-ydb-kafka-consumer-crc-compatibility"
+  },
+  {
+    "title": "Diagnose Unknown Topics and Partitions in YDB CDC Kafka Reads",
+    "description": "Trace YDB CDC Kafka errors through database selection, changefeed paths, visible metadata, consumer identity, and partition assignments without recreating data.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Database",
+      "Kafka",
+      "Troubleshooting"
+    ],
+    "post": "2026-11-24-ydb-cdc-kafka-unknown-topic-partition"
+  },
+  {
+    "title": "Deliver Managed YDB Changes to Kafka with Data Transfer",
+    "description": "Connect Managed YDB to a separate Kafka cluster with Data Transfer, choose explicit event formats, and verify inserts, updates, and deletes safely.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Database",
+      "Kafka",
+      "Data Pipeline",
+      "Cloud"
+    ],
+    "post": "2026-11-24-managed-ydb-changes-kafka-data-transfer"
+  },
+  {
+    "title": "Set YDB_PDISK_SIZE for a Fresh Local Development Container",
+    "description": "Choose a local YDB disk-file size before initialization, use the supported units, and verify the fresh container without resizing or deleting existing data.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Database",
+      "Docker",
+      "Storage",
+      "Development"
+    ],
+    "post": "2026-11-24-ydb-pdisk-size-fresh-development-container"
+  },
+  {
+    "title": "Preserve Local YDB Data Across Docker Container Recreation",
+    "description": "Preserve local YDB data and TLS files outside the container, recreate a pinned development instance, and verify the same saved row afterward.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Database",
+      "Docker",
+      "Storage",
+      "Development"
+    ],
+    "post": "2026-11-24-preserve-local-ydb-data-container-recreation"
+  },
+  {
+    "title": "Separate YDB Application Checks from Cluster SelfCheck",
+    "description": "Distinguish YDB request-path failures from database health reports, inspect SelfCheck results correctly, and design useful application probes.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "Database",
+      "Monitoring",
+      "Troubleshooting",
+      "Reliability"
+    ],
+    "post": "2026-11-24-ydb-application-connectivity-cluster-selfcheck"
+  },
+  {
+    "title": "Troubleshoot AWS Direct Connect BGP Stuck in Idle",
+    "description": "Trace an idle Direct Connect BGP session through connection state, VLAN reachability, peer settings, TCP negotiation, and configured prefix limits.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "AWS",
+      "Direct Connect",
+      "BGP",
+      "Networking",
+      "Troubleshooting"
+    ],
+    "post": "2026-11-24-direct-connect-bgp-idle-troubleshooting"
+  },
+  {
+    "title": "Diagnose a Dark or Down AWS Direct Connect Link",
+    "description": "Diagnose a Direct Connect physical-link failure by matching the LOA-CFA, validating optics and cross-connects, and comparing per-lane light readings.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "AWS",
+      "Direct Connect",
+      "Networking",
+      "Troubleshooting"
+    ],
+    "post": "2026-11-24-direct-connect-link-down-optics-cross-connect"
   }
 ]

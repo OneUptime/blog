@@ -2310,18 +2310,38 @@ Research: [OneUptime air-gapped alerting](https://oneuptime.com/enterprise/air-g
 
     Completed: [Article](posts/2026-11-24-ydb-changefeed-retention-consumer-recovery/README.md) (24 November 2026).
 52. How to Enable the YDB Kafka Listener and Publish Its Port from Docker
+
+    Completed: [Article](posts/2026-11-24-ydb-kafka-listener-docker-port/README.md) (24 November 2026).
 53. How to Configure Authentication for Kafka Clients Connecting to YDB Topics
+
+    Completed: [Article](posts/2026-11-24-ydb-kafka-client-sasl-authentication/README.md) (24 November 2026).
 54. How to Configure Kafka Consumer CRC Checking for YDB Topic Compatibility
+
+    Completed: [Article](posts/2026-11-24-ydb-kafka-consumer-crc-compatibility/README.md) (24 November 2026).
 55. How to Investigate Unknown Topic or Partition Errors on YDB CDC Kafka Reads
+
+    Completed: [Article](posts/2026-11-24-ydb-cdc-kafka-unknown-topic-partition/README.md) (24 November 2026).
 56. How to Deliver Managed YDB Changes to an Apache Kafka Cluster with Data Transfer
+
+    Completed: [Article](posts/2026-11-24-managed-ydb-changes-kafka-data-transfer/README.md) (24 November 2026).
 57. How to Set YDB_PDISK_SIZE for a Fresh Local YDB Development Container
+
+    Completed: [Article](posts/2026-11-24-ydb-pdisk-size-fresh-development-container/README.md) (24 November 2026).
 58. How to Preserve Local YDB Data Across Docker Container Recreation
+
+    Completed: [Article](posts/2026-11-24-preserve-local-ydb-data-container-recreation/README.md) (24 November 2026).
 59. How to Separate YDB Application Connectivity Checks from Cluster SelfCheck Results
+
+    Completed: [Article](posts/2026-11-24-ydb-application-connectivity-cluster-selfcheck/README.md) (24 November 2026).
 
 ## Direct Connect
 
 1. AWS Direct Connect BGP Is Stuck in Idle: A Layer-by-Layer Troubleshooting Checklist
+
+    Completed: [Article](posts/2026-11-24-direct-connect-bgp-idle-troubleshooting/README.md) (24 November 2026).
 2. Direct Connect Link Is Down or Shows No Light: Validate Optics, Cross-Connects, and LOA-CFA
+
+    Completed: [Article](posts/2026-11-24-direct-connect-link-down-optics-cross-connect/README.md) (24 November 2026).
 3. Public, Private, or Transit VIF: Choose the Right AWS Direct Connect Attachment
 4. Get an AWS Direct Connect Public VIF Out of “Verifying”: ASN and Prefix Approval Checklist
 5. Filter the Routes Received on a Direct Connect Public VIF with Prefix Lists and BGP Communities

@@ -1,0 +1,33 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-24",
+  "runtimeTestsPerformed": false,
+  "sources": [
+    "https://yandex.cloud/en/docs/data-transfer/tutorials/cdc-ydb",
+    "https://yandex.cloud/en/docs/data-transfer/concepts/transfer-lifecycle",
+    "https://yandex.cloud/en/docs/data-transfer/operations/endpoint/source/ydb",
+    "https://yandex.cloud/en/docs/data-transfer/concepts/network",
+    "https://github.com/ydb-platform/ydb/blob/26.2.1.16/ydb/docs/en/core/yql/reference/syntax/create_table/index.md",
+    "https://yandex.cloud/en/docs/data-transfer/operations/endpoint/target/kafka",
+    "https://yandex.cloud/en/docs/data-transfer/concepts/serializer",
+    "https://github.com/ydb-platform/ydb/blob/26.2.1.16/ydb/docs/en/core/yql/reference/syntax/upsert_into.md",
+    "https://github.com/edenhill/kcat/blob/1.7.1/kcat.c",
+    "https://github.com/ydb-platform/ydb/blob/26.2.1.16/ydb/docs/en/core/yql/reference/syntax/update.md",
+    "https://github.com/ydb-platform/ydb/blob/26.2.1.16/ydb/docs/en/core/yql/reference/syntax/delete.md",
+    "https://yandex.cloud/en/docs/data-transfer/concepts/delivery-configuration"
+  ],
+  "tests": [
+    "Official source and target endpoint, network, serialization, lifecycle and delivery-guarantee documentation reviewed",
+    "YQL statements reviewed against YDB26.2.1.16 CREATE/UPSERT/UPDATE/DELETE syntax",
+    "Shell block passed bash -n; kcat1.7.1 options reviewed in tagged source",
+    "Fixture identifier, table names and exact-key modification predicates checked",
+    "Mermaid structurally checked: nine nodes, eight edges",
+    "Generated1280x720 social image visually reviewed; title legible without clipping"
+  ],
+  "limitations": [
+    "No Yandex Cloud resources created; no managed transfer activated",
+    "No YDB SQL statements or Kafka reads executed",
+    "No IAM, TLS, delivery, serialization, delete event or restart behavior tested against live services",
+    "Mermaid not rendered"
+  ]
+}

@@ -1,0 +1,26 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-24",
+  "runtimeTestsPerformed": true,
+  "sources": [
+    "https://ydb.tech/docs/en/reference/kafka-api/constraints",
+    "https://github.com/ydb-platform/ydb/blob/26.2.1.16/ydb/docs/en/core/reference/kafka-api/examples.md",
+    "https://kafka.apache.org/39/configuration/consumer-configs/",
+    "https://github.com/apache/kafka/blob/3.9.1/clients/src/main/java/org/apache/kafka/clients/consumer/ConsumerConfig.java",
+    "https://github.com/apache/kafka/blob/3.9.1/tools/src/main/java/org/apache/kafka/tools/consumer/ConsoleConsumerOptions.java"
+  ],
+  "tests": [
+    "Reviewed YDB26.2.1.16 Kafka CRC constraint and reader requirement",
+    "Compiled YdbConsumerConfig and ConfigCheck using JDK17 javac -Xlint:all -Werror against actual kafka-clients3.9.1",
+    "Executed Kafka configDef parser: default true, YDB override false, original map unchanged, SASL_SSL retained",
+    "Reviewed Kafka3.9.1 console flags and property precedence; shell syntax passed",
+    "Eight-node seven-edge Mermaid structurally checked",
+    "1280x720 generated social image visually reviewed"
+  ],
+  "limitations": [
+    "No KafkaConsumer created or YDB/Kafka connection performed",
+    "No record CRC, message delivery, offset commit, restart or payload validation runtime test",
+    "Console command source-reviewed only",
+    "Mermaid not rendered"
+  ]
+}

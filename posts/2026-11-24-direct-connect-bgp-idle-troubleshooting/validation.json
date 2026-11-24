@@ -1,0 +1,31 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-24",
+  "runtimeTestsPerformed": true,
+  "sources": [
+    "https://docs.aws.amazon.com/cli/latest/reference/directconnect/describe-virtual-interfaces.html",
+    "https://docs.aws.amazon.com/cli/latest/reference/directconnect/describe-connections.html",
+    "https://repost.aws/knowledge-center/direct-connect-layer-3-issues",
+    "https://docs.aws.amazon.com/directconnect/latest/UserGuide/ts-layer-2.html",
+    "https://repost.aws/knowledge-center/troubleshoot-bgp-dx",
+    "https://docs.aws.amazon.com/directconnect/latest/UserGuide/ts-layer-3.html",
+    "https://repost.aws/knowledge-center/vpn-troubleshoot-bgp-connection-errors",
+    "https://docs.aws.amazon.com/directconnect/latest/UserGuide/limits.html",
+    "https://docs.aws.amazon.com/directconnect/latest/UserGuide/prefix-controls.html",
+    "https://docs.aws.amazon.com/directconnect/latest/UserGuide/ts-routing.html",
+    "https://github.com/aws/aws-cli/blob/2.42.1/awscli/botocore/data/directconnect/2012-10-25/service-2.json"
+  ],
+  "tests": [
+    "Official AWS layer2/3, BGP-state, routing, API and current prefix-control documentation reviewed",
+    "AWSCLI2.42.1 tagged service model verified for new ASN and allocation fields",
+    "JMESPath1.1.0 executed both query filters against synthetic fixtures: large ASN retained, two families distinct, provisioning/session distinct, allocation retained, secret fields excluded; empty VIF list handled",
+    "Bash syntax passed; seven-node six-edge Mermaid structurally checked",
+    "Generated1280x720 social image visually reviewed; no clipping"
+  ],
+  "limitations": [
+    "No AWSCLI executable or AWS API calls used; filters tested independently with synthetic JSON",
+    "No physical link, VLAN, BGP session, router commands, capture or route change tested",
+    "No live quota allocation or access-policy verification",
+    "Mermaid not rendered"
+  ]
+}

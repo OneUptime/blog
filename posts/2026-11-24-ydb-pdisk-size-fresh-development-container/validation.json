@@ -1,0 +1,35 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-24",
+  "runtimeTestsPerformed": true,
+  "sources": [
+    "https://ydb.tech/docs/en/reference/docker/configuration",
+    "https://github.com/ydb-platform/ydb/blob/26.2.1.16/ydb/tests/library/harness/kikimr_config.py",
+    "https://docs.docker.com/desktop/settings-and-maintenance/settings/",
+    "https://ydb.tech/docs/en/reference/docker/start",
+    "https://hub.docker.com/v2/repositories/ydbplatform/local-ydb/tags/26.2.1.16",
+    "https://docs.docker.com/engine/storage/bind-mounts/",
+    "https://docs.docker.com/engine/network/port-publishing/",
+    "https://github.com/ydb-platform/ydb/blob/26.2.1.16/ydb/public/tools/lib/cmds/__init__.py",
+    "https://docs.docker.com/reference/cli/docker/container/inspect/",
+    "https://docs.docker.com/reference/cli/docker/container/logs/",
+    "https://docs.python.org/3.14/library/pathlib.html#pathlib.Path.stat",
+    "https://github.com/ydb-platform/ydb/blob/26.2.1.16/.github/docker/files/initialize_local_ydb"
+  ],
+  "tests": [
+    "Official26.2.1.16 local image tag/digest and AMD64 platform verified using Docker Hub metadata",
+    "Executed extracted actual26.2.1.16 size-parser AST: GB/MB/KB/integer values correct; GiB/lowercase/fractional rejected",
+    "Published file-inspection helper executed against isolated4096-byte fixture and missing-file case",
+    "Shell examples passed bash -n",
+    "Eight-node six-edge Mermaid structurally checked",
+    "Generated1280x720 social image visually reviewed; title fits without clipping",
+    "Follow-up entrypoint review corrected inspection to /ydb_data/pdisks numeric files; helper rechecked"
+  ],
+  "limitations": [
+    "No Docker executable/container runtime test; image not pulled",
+    "No real PDisk initialized or inspected; helper used an ordinary small test file",
+    "No database readiness, workload, persistence or capacity test",
+    "Extracted parser execution does not execute full YDB launcher",
+    "Mermaid not rendered"
+  ]
+}

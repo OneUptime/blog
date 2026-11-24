@@ -1,0 +1,29 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-24",
+  "runtimeTestsPerformed": true,
+  "sources": [
+    "https://ydb.tech/docs/en/concepts/connect",
+    "https://ydb.tech/docs/en/yql/reference/syntax/select/",
+    "https://ydb.tech/docs/en/reference/ydb-cli/connect",
+    "https://ydb.tech/docs/en/reference/ydb-sdk/error_handling",
+    "https://ydb.tech/docs/en/reference/ydb-cli/commands/monitoring-healthcheck",
+    "https://github.com/ydb-platform/ydb/blob/26.2.1.16/ydb/public/lib/ydb_cli/commands/ydb_service_monitoring.cpp",
+    "https://ydb.tech/docs/en/reference/ydb-sdk/health-check-api",
+    "https://github.com/ydb-platform/ydb/blob/26.2.1.16/ydb/public/api/protos/ydb_monitoring.proto"
+  ],
+  "tests": [
+    "YDBCLI2.35.0 local help verified monitoring healthcheck timeout/format and SQL file flags",
+    "Reviewed26.2.1.16 monitoring proto and CLI JSON printing return behavior",
+    "Python helper executed for all four recognized states, missing/unspecified/future/non-string fields, non-object JSON, malformed JSON and missing file:11 cases passed",
+    "Shell syntax and assumed complete-key query shape checked",
+    "Eight-node seven-edge Mermaid structurally checked",
+    "Generated1280x720 social image visually reviewed; title legible without clipping"
+  ],
+  "limitations": [
+    "No YDB database, SDK application probe or SelfCheck RPC executed",
+    "Fixtures test report parsing only, not current cluster health or CLI transport behavior",
+    "No latency, TLS, authorization, readiness or failover tests",
+    "Mermaid not rendered"
+  ]
+}

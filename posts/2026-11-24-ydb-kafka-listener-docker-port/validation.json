@@ -1,0 +1,32 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-24",
+  "runtimeTestsPerformed": false,
+  "sources": [
+    "https://ydb.tech/docs/en/reference/docker/configuration",
+    "https://docs.docker.com/engine/network/port-publishing/",
+    "https://hub.docker.com/v2/repositories/ydbplatform/local-ydb/tags/latest",
+    "https://github.com/ydb-platform/ydb/blob/26.2.1.16/ydb/docs/en/core/reference/docker/start.md",
+    "https://docs.docker.com/reference/cli/docker/container/inspect/",
+    "https://docs.docker.com/reference/cli/docker/container/logs/",
+    "https://docs.docker.com/reference/cli/docker/container/port/",
+    "https://github.com/edenhill/kcat/blob/1.7.1/README.md",
+    "https://ydb.tech/docs/en/reference/kafka-api/examples",
+    "https://github.com/ydb-platform/ydb/blob/26.2.1.16/ydb/public/tools/lib/cmds/__init__.py"
+  ],
+  "tests": [
+    "Official Docker Hub tag metadata verified Linux AMD64 digestsha256:9e46fd45875551a75bcf34d0bb9ca0baa1d8763a4ccf2070af45f4467c4b7402",
+    "Reviewed YDB26.2.1.16 Docker wrapper/start options and current Kafka compatibility examples",
+    "Reviewed Docker run/port/inspect/logs and kcat1.7.1 metadata-listing documentation",
+    "All shell snippets passed bash -n; listener and container mapping both9092",
+    "Eight-node six-edge Mermaid structurally checked",
+    "Generated1280x720 social image visually reviewed",
+    "Follow-up launcher review selected canonical true spelling for volatile disk mode"
+  ],
+  "limitations": [
+    "Docker executable unavailable; image not pulled or executed",
+    "No readiness, listener, metadata, authentication or message-flow runtime test",
+    "Image digest pin does not assert embedded server release26.2.1.16",
+    "Mermaid not rendered"
+  ]
+}

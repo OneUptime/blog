@@ -1,0 +1,33 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-24",
+  "runtimeTestsPerformed": true,
+  "sources": [
+    "https://ydb.tech/docs/en/reference/docker/start",
+    "https://docs.docker.com/engine/storage/bind-mounts/",
+    "https://ydb.tech/docs/en/reference/docker/configuration",
+    "https://hub.docker.com/v2/repositories/ydbplatform/local-ydb/tags/26.2.1.16",
+    "https://github.com/ydb-platform/ydb/blob/26.2.1.16/ydb/public/tools/lib/cmds/__init__.py",
+    "https://github.com/ydb-platform/ydb/blob/26.2.1.16/.github/docker/files/initialize_local_ydb",
+    "https://ydb.tech/docs/en/reference/ydb-cli/connect",
+    "https://github.com/ydb-platform/ydb/blob/26.2.1.16/ydb/docs/en/core/yql/reference/syntax/create_table/index.md",
+    "https://github.com/ydb-platform/ydb/blob/26.2.1.16/ydb/docs/en/core/yql/reference/syntax/upsert_into.md",
+    "https://docs.docker.com/reference/cli/docker/container/inspect/",
+    "https://docs.docker.com/reference/cli/docker/container/stop/",
+    "https://docs.docker.com/reference/cli/docker/container/rename/"
+  ],
+  "tests": [
+    "Reviewed YDB26.2.1.16 entrypoint/launcher and official image digest/platform",
+    "YDBCLI2.35.0 help verified endpoint/database/ca-file and SQL file/script flags",
+    "Bash syntax passed; script executed with argument-printing Docker stub: mount path with spaces preserved, persistent mode false, three path guards rejected invalid inputs",
+    "SQL create/upsert statements reviewed in tagged docs; probe read uses exact key",
+    "Seven-node seven-edge Mermaid structurally checked",
+    "Generated1280x720 social image visually reviewed; title legible without clipping"
+  ],
+  "limitations": [
+    "Docker was replaced by an argument-printing stub for script tests; no container or database was run",
+    "No live SQL execution, TLS verification, graceful shutdown, persistence or recovery test",
+    "No backup restoration or upgrade compatibility test",
+    "Mermaid not rendered"
+  ]
+}
