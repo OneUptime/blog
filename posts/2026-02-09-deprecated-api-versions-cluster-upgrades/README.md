@@ -77,6 +77,8 @@ kubent
 #         └─ Replacement: policy/v1
 ```
 
+If you only have manifests or chart output and cannot run a CLI against a cluster, the [Kubernetes Deprecated API Checker](https://www.oreonit.com/deprecated-api-checker-for-kubernetes/) takes pasted YAML or `helm template` output and lists the apiVersions that are removed in the target version. It runs in the browser, so nothing is uploaded.
+
 ## Migrating Deployments from extensions/v1beta1 to apps/v1
 
 One of the most common migrations is from extensions/v1beta1 to apps/v1:
