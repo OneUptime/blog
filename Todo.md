@@ -1,5 +1,7 @@
 # Blog Post Ideas
 
+Research added on 26 November 2026: 200 new how-to ideas across 10 Topics.md entries covering telemetry, log collection, Kubernetes policy and recovery, and offline package and image delivery. Reddit, Stack Overflow, and upstream community questions informed the titles and related editorial follow-ups; popularity has not been measured. Each title includes research and primary reference links. Check current versions and unresolved issue status when drafting.
+
 Research added on 24 November 2026: 200 new how-to ideas across 10 Topics.md entries covering OpenTelemetry, Kubernetes reliability, offline software delivery, and synthetic monitoring. Recurring Reddit, Stack Overflow, and upstream community questions informed the titles and related follow-ups; popularity has not been measured. Each title includes research and primary documentation links. Check current versions when drafting from historical reports.
 
 Research added on 23 November 2026: 200 new how-to ideas across 10 Topics.md entries covering OpenTelemetry, Kubernetes reliability, alerting, and disconnected operations. Reddit, Stack Overflow, and upstream community questions informed the titles and related follow-ups; popularity has not been measured. Each title includes research and primary documentation links. Check current versions when drafting from historical reports.
@@ -5698,6 +5700,86 @@ Research: [OneUptime air-gapped alerting](https://oneuptime.com/enterprise/air-g
 19. How to Tune Velero Node-Agent Concurrency, Timeouts, and Repository Cache for Large Volume Backups
 20. How to Delete a Velero Backup Safely When Its BackupStorageLocation Is Missing
 
+21. How to Preserve Sparse Files During Velero Restores to Avoid Unexpected Disk Exhaustion
+
+    Research: [Source 1](https://github.com/velero-io/velero/issues/6664) · [Source 2](https://github.com/velero-io/velero/issues/2812) · [Documentation](https://velero.io/docs/v1.19/restore-reference/).
+
+22. How to Restore Velero File System Backups into Larger PVCs with Resource Modifiers
+
+    Research: [Source 1](https://github.com/velero-io/velero/issues/3854) · [Source 2](https://github.com/velero-io/velero/issues/2812) · [Documentation 1](https://velero.io/docs/v1.19/restore-resource-modifiers/) · [Documentation 2](https://velero.io/docs/v1.19/file-system-backup/).
+
+23. How to Preserve Status for Individual Custom Resources During a Velero Restore
+
+    Research: [Source 1](https://github.com/velero-io/velero/issues/8204) · [Source 2](https://github.com/mariadb-operator/mariadb-operator/issues/1677) · [Documentation](https://velero.io/docs/v1.19/restore-reference/).
+
+24. How to Rewrite Image Registry Paths When Restoring Velero Backups into an Air-Gapped Cluster
+
+    Research: [Source 1](https://github.com/velero-io/velero/issues/5519) · [Source 2](https://github.com/velero-io/velero/issues/6344) · [Documentation](https://velero.io/docs/v1.19/restore-reference/).
+
+25. How to Fix Velero CLI Log Downloads That Fail on an Internal MinIO DNS Name
+
+    Research: [Source](https://github.com/velero-io/velero/issues/7763) · [Documentation](https://velero.io/docs/v1.19/troubleshooting/).
+
+26. How to Diagnose a Missing velero.io/aws ObjectStore Plugin After Installation
+
+    Research: [Source](https://stackoverflow.com/questions/69371806/velero-backup-failing-for-aws-eks-cluster) · [Documentation](https://velero.io/docs/v1.19/customize-installation/).
+
+27. How to Preserve Access to Legacy Restic Backups Before Upgrading to Velero 1.19
+
+    Research: [Source 1](https://github.com/velero-io/velero/issues/8813) · [Source 2](https://www.reddit.com/r/kubernetes/comments/16yyj8i) · [Documentation 1](https://velero.io/docs/v1.19/upgrade-to-1.19/) · [Documentation 2](https://github.com/velero-io/velero/releases/tag/v1.19.0).
+
+28. How to Diagnose Velero CRON_TZ Schedules That Fail with Unknown Time Zone
+
+    Research: [Source 1](https://github.com/velero-io/velero/issues/8224) · [Source 2](https://knowledge.broadcom.com/external/article/428155/velero-scheduled-backup-fails-with-unkno.html) · [Documentation](https://velero.io/docs/v1.19/backup-reference/).
+
+29. How to Prevent Velero Backup CRs from Being Garbage-Collected When GitOps Replaces a Schedule
+
+    Research: [Source](https://github.com/velero-io/velero/issues/10729) · [Documentation](https://velero.io/docs/v1.19/backup-reference/).
+
+30. How to Diagnose Velero Failure Counters That Miss Backups Marked Failed During Server Restart
+
+    Research: [Source](https://github.com/velero-io/velero/issues/10686) · [Documentation 1](https://velero.io/docs/v1.19/troubleshooting/) · [Documentation 2](https://github.com/velero-io/velero/releases/tag/v1.19.0).
+
+31. How to Take Coordinated Multi-PVC Backups with Velero Volume Group Snapshots
+
+    Research: [Source 1](https://www.reddit.com/r/kubernetes/comments/16qk9iq) · [Source 2](https://www.reddit.com/r/kubernetes/comments/1efjwmq) · [Documentation](https://velero.io/docs/v1.19/volume-group-snapshots/).
+
+32. How to Recreate a Missing Velero Kopia Secret Using the Original Repository Password
+
+    Research: [Source 1](https://github.com/velero-io/velero/issues/6413) · [Source 2](https://github.com/velero-io/velero/discussions/8352) · [Documentation](https://velero.io/docs/v1.19/csi-snapshot-data-movement/).
+
+33. How to Prepare Existing PVCs for an In-Place Volume Data Restore with Velero 1.19
+
+    Research: [Source](https://www.reddit.com/r/kubernetes/comments/1grqdvf/selfhosting_k8s_cluster_how_should_i_handle_pv/) · [Documentation](https://velero.io/docs/v1.19/volume-data-inplace-restore/).
+
+34. How to Remove Files Created After a Backup During a Velero 1.19 Incremental Restore
+
+    Research: [Source 1](https://www.reddit.com/r/kubernetes/comments/1kblzom) · [Source 2](https://www.reddit.com/r/kubernetes/comments/1grqdvf/selfhosting_k8s_cluster_how_should_i_handle_pv/) · [Documentation](https://velero.io/docs/v1.19/volume-data-inplace-restore/).
+
+35. How to Place Velero Data-Mover Restore Pods on Compatible Nodes for Immediate-Binding StorageClasses
+
+    Research: [Source 1](https://github.com/velero-io/velero/issues/8186) · [Source 2](https://github.com/velero-io/velero/issues/8223) · [Documentation](https://velero.io/docs/v1.19/data-movement-node-selection/).
+
+36. How to Diagnose Velero Data-Mover Pods That Cannot Schedule on Tainted Nodes
+
+    Research: [Source](https://github.com/velero-io/velero/issues/8857) · [Documentation 1](https://velero.io/docs/v1.19/data-movement-node-selection/) · [Documentation 2](https://github.com/velero-io/velero/blob/main/changelogs/CHANGELOG-1.17.md).
+
+37. How to Diagnose ErrImageNeverPull in Velero Restore Pods on Offline Kubernetes Nodes
+
+    Research: [Source](https://github.com/velero-io/velero/issues/9411) · [Documentation 1](https://velero.io/docs/v1.19/customize-installation/) · [Documentation 2](https://github.com/vmware-tanzu/helm-charts/blob/main/charts/velero/values.yaml).
+
+38. How to Investigate Leftover CSI Member Snapshots After Deleting a Velero Volume Group Backup
+
+    Research: [Source](https://github.com/velero-io/velero/issues/10688) · [Documentation 1](https://velero.io/docs/v1.19/volume-group-snapshots/) · [Documentation 2](https://velero.io/docs/v1.19/backup-reference/).
+
+39. How to Diagnose Velero Restores That Mix Immediate and WaitForFirstConsumer PVCs
+
+    Research: [Source](https://github.com/velero-io/velero/issues/10730) · [Documentation 1](https://github.com/velero-io/velero/releases/tag/v1.19.0) · [Documentation 2](https://velero.io/docs/v1.19/csi-snapshot-data-movement/).
+
+40. How to Run Concurrent Velero Backups Without Overlapping Namespace Scopes
+
+    Research: [Source](https://www.reddit.com/r/kubernetes/comments/jtmqq5) · [Documentation 1](https://velero.io/docs/v1.19/customize-installation/) · [Documentation 2](https://github.com/velero-io/velero/blob/main/design/Implemented/concurrent-backup-processing.md).
+
 ## Multi-Stage Builds
 
 1. How to Convert a Single-Stage Dockerfile into a Multi-Stage Build Without Changing Runtime Behavior
@@ -8977,6 +9059,86 @@ Research: [OneUptime air-gapped alerting](https://oneuptime.com/enterprise/air-g
 18. How to Wait for containerd CRI Readiness After Its Socket Appears
 19. How to Diagnose Unknown Leases Service Errors on a containerd TCP Endpoint
 20. How to Preserve Client Source IPs Through Rootless containerd Port Forwarding
+
+21. How to Diagnose containerd Whiteout Extraction Failures After Moving Storage to NFS
+
+    Research: [Source](https://stackoverflow.com/questions/78631556/error-when-changing-containerd-root-directory-to-nfsshare-mount-point) · [Documentation](https://github.com/containerd/containerd/blob/main/core/unpack/unpacker.go).
+
+22. How to Verify That Preloaded containerd Images Are Pinned Against Kubelet Garbage Collection
+
+    Research: [Source 1](https://github.com/containerd/containerd/issues/10270) · [Source 2](https://github.com/containerd/containerd/issues/13314) · [Documentation 1](https://github.com/containerd/containerd/blob/main/docs/cri/config.md) · [Documentation 2](https://github.com/containerd/containerd/issues/6352).
+
+23. How to Diagnose containerd Registry Authentication When ctr Pulls Succeed but Kubernetes Pulls Fail
+
+    Research: [Source 1](https://github.com/containerd/containerd/issues/12202) · [Source 2](https://stackoverflow.com/questions/76136482/containerd-v1-4-how-to-authenticate-by-config) · [Documentation](https://containerd.io/docs/main/hosts/).
+
+24. How to Call containerd's CRI PullImage RPC with grpcurl
+
+    Research: [Source](https://stackoverflow.com/questions/78400979/how-to-use-grpcurl-with-containerd-sock-pull-image) · [Documentation 1](https://github.com/kubernetes/cri-api/blob/master/pkg/apis/runtime/v1/api.proto) · [Documentation 2](https://github.com/containerd/containerd/blob/main/docs/cri/crictl.md) · [Documentation 3](https://github.com/fullstorydev/grpcurl).
+
+25. How to Diagnose containerd Image Pulls That Ignore the Shell's Proxy Settings
+
+    Research: [Source](https://www.reddit.com/r/kubernetes/comments/q49vgi) · [Documentation](https://github.com/containerd/containerd/blob/main/docs/cri/config.md).
+
+26. How to Distinguish containerd Inotify Exhaustion from Ordinary File Descriptor Limits
+
+    Research: [Source](https://github.com/containerd/containerd/issues/10468) · [Documentation](https://release-1-8.cluster-api.sigs.k8s.io/user/troubleshooting).
+
+27. How to Audit Container File Limits After a containerd 2.x Upgrade
+
+    Research: [Source](https://github.com/influxdata/influxdata-docker/issues/847) · [Documentation](https://github.com/containerd/containerd/blob/main/docs/containerd-2.0.md).
+
+28. How to Trace Orphaned containerd Rootfs Mounts Back to Deleted Kubernetes Pods
+
+    Research: [Source](https://github.com/containerd/containerd/issues/13893) · [Documentation 1](https://github.com/containerd/containerd/blob/main/docs/mounts.md) · [Documentation 2](https://github.com/containerd/containerd/blob/main/docs/garbage-collection.md).
+
+29. How to Collect containerd Shim State When CRI Calls Stall Under Pod Churn
+
+    Research: [Source](https://github.com/containerd/containerd/issues/13692) · [Documentation](https://github.com/containerd/containerd/blob/main/docs/cri/config.md).
+
+30. How to Diagnose containerd Container Deletion Stuck on FIFO Drain Timeouts
+
+    Research: [Source](https://github.com/containerd/containerd/issues/13377) · [Documentation](https://github.com/containerd/containerd/pull/12364).
+
+31. How to Isolate Large stdin Transfer Truncation in containerd CRI Exec
+
+    Research: [Source](https://github.com/containerd/containerd/issues/13934) · [Documentation](https://github.com/containerd/containerd/blob/main/docs/cri/config.md).
+
+32. How to Investigate AppArmor Signal Denials When containerd Cannot Stop a Pod
+
+    Research: [Source 1](https://www.reddit.com/r/kubernetes/comments/1byq52f) · [Source 2](https://www.reddit.com/r/kubernetes/comments/1dv6z9d) · [Documentation 1](https://github.com/containerd/containerd/blob/main/docs/cri/config.md) · [Documentation 2](https://github.com/containerd/containerd/issues/14485).
+
+33. How to Recover Leaked Mounts After Failed containerd Checkpoint Restores
+
+    Research: [Source](https://github.com/containerd/containerd/security/advisories/GHSA-5p7c-hggf-c748) · [Documentation 1](https://github.com/containerd/containerd/security/advisories/GHSA-5p7c-hggf-c748) · [Documentation 2](https://github.com/containerd/containerd/blob/main/docs/mounts.md).
+
+34. How to Diagnose containerd No-Space Errors When /run Has Free Bytes but No Inodes
+
+    Research: [Source](https://github.com/containerd/containerd/issues/2421) · [Documentation](https://github.com/containerd/containerd/blob/main/docs/cri/config.md).
+
+35. How to Diagnose containerd Layer Storage That Remains After Image Removal
+
+    Research: [Source 1](https://github.com/containerd/containerd/issues/1398) · [Source 2](https://github.com/containerd/containerd/discussions/12156) · [Documentation 1](https://github.com/containerd/containerd/blob/main/docs/content-flow.md) · [Documentation 2](https://github.com/containerd/containerd/blob/main/docs/garbage-collection.md).
+
+36. How to Match Platform Selection When Exporting and Importing containerd Image Archives
+
+    Research: [Source](https://github.com/containerd/containerd/issues/10032) · [Documentation](https://github.com/containerd/containerd/blob/main/docs/content-flow.md).
+
+37. How to Diagnose containerd List Responses That Exceed gRPC Message Limits
+
+    Research: [Source](https://github.com/containerd/containerd/issues/2320) · [Documentation](https://github.com/containerd/containerd/blob/main/docs/cri/config.md).
+
+38. How to Trace containerd Unexpected Media Type text/html Errors to Registry Responses
+
+    Research: [Source 1](https://github.com/containerd/containerd/issues/9224) · [Source 2](https://github.com/containerd/containerd/issues/6984) · [Source 3](https://github.com/containerd/containerd/issues/8612) · [Documentation](https://containerd.io/docs/main/hosts/).
+
+39. How to Diagnose Ignored containerd Registry Hosts After a config_path Upgrade
+
+    Research: [Source](https://github.com/containerd/containerd/issues/12636) · [Documentation 1](https://containerd.io/docs/main/hosts/) · [Documentation 2](https://github.com/containerd/containerd/blob/main/docs/cri/config.md).
+
+40. How to Configure and Test Mutual TLS for containerd Registry Pulls
+
+    Research: [Source](https://github.com/containerd/containerd/discussions/5790) · [Documentation](https://containerd.io/docs/main/hosts/).
 
 ## Databend
 
@@ -13987,3 +14149,668 @@ Research: [OneUptime air-gapped alerting](https://oneuptime.com/enterprise/air-g
 20. How to Investigate Missing Synthetic Results When a Grafana Private Probe Still Reports Ready
 
     Research: [Source](https://www.reddit.com/r/grafana/comments/opnarn) · [Documentation 1](https://grafana.com/docs/grafana-cloud/observe-and-act/testing/synthetic-monitoring/set-up/set-up-private-probes/set-up/) · [Documentation 2](https://grafana.com/docs/grafana-cloud/observe-and-act/testing/synthetic-monitoring/set-up/set-up-private-probes/troubleshoot/).
+
+## Exemplars
+
+1. How to Replace Trace ID Metric Labels with Real Prometheus Exemplars
+
+    Research: [Source](https://community.grafana.com/t/exemplars-not-working/147674) · [Documentation 1](https://grafana.com/docs/mimir/latest/manage/use-exemplars/before-you-begin/) · [Documentation 2](https://github.com/prometheus/client_python/blob/master/docs/content/instrumenting/exemplars.md).
+
+2. How to Keep Grafana Exemplar Markers Aligned When Displaying Latency in Milliseconds
+
+    Research: [Source](https://community.grafana.com/t/grafana-exemplars-scale/69301) · [Documentation](https://grafana.com/docs/grafana/latest/datasources/prometheus/query-editor/).
+
+3. How to Disable Exemplar Queries in Provisioned Grafana Panels for Unsupported Prometheus Proxies
+
+    Research: [Source 1](https://community.grafana.com/t/disable-exemplars-for-prometheus-dashboards/56012) · [Source 2](https://community.grafana.com/t/issue-error-log-spam-with-exemplar-query-failed-exemplars-are-not-even-enabled/57958) · [Documentation](https://grafana.com/docs/grafana/latest/datasources/prometheus/query-editor/).
+
+4. How to Verify That the OpenTelemetry Java Agent Generates Exemplars Before Debugging Grafana
+
+    Research: [Source](https://github.com/open-telemetry/opentelemetry-java-instrumentation/discussions/13698) · [Documentation 1](https://github.com/open-telemetry/opentelemetry-java-instrumentation) · [Documentation 2](https://opentelemetry.io/docs/specs/otel/metrics/data-model/).
+
+5. How to Diagnose Missing Exemplars in Python Prometheus Multiprocess Deployments
+
+    Research: [Source](https://www.reddit.com/r/ExperiencedDevs/comments/1ow8c61/opentelemetry_worth_the_effort/) · [Documentation](https://github.com/prometheus/client_python/blob/master/docs/content/multiprocess/_index.md).
+
+6. How to Preserve Exemplar-Referenced Java Traces When Applying Collector Tail Sampling
+
+    Research: [Source](https://github.com/open-telemetry/opentelemetry-specification/issues/2922) · [Documentation](https://github.com/prometheus/client_java/blob/main/examples/example-exemplars-tail-sampling/README.md).
+
+7. How to Interpret Exemplar Refreshes for Cumulative OpenTelemetry Counters
+
+    Research: [Source](https://github.com/open-telemetry/opentelemetry-specification/issues/3891) · [Documentation](https://opentelemetry.io/docs/specs/otel/metrics/sdk/).
+
+8. How to Size Prometheus Exemplar Storage from Ingestion Rate and Investigation Windows
+
+    Research: [Source 1](https://groups.google.com/g/prometheus-developers/c/JELFPHd-oFM) · [Source 2](https://www.reddit.com/r/golang/comments/1haeewd) · [Documentation 1](https://github.com/prometheus/prometheus/blob/main/docs/feature_flags.md) · [Documentation 2](https://prometheus.io/docs/prometheus/3.9/configuration/configuration/).
+
+9. How to Verify Exemplar Recovery After a Prometheus Restart with Memory Snapshots
+
+    Research: [Source](https://github.com/prometheus/prometheus/issues/9228) · [Documentation](https://github.com/prometheus/prometheus/blob/main/docs/feature_flags.md).
+
+10. How to Diagnose Out-of-Order Exemplar Errors After Scrape Ownership Changes
+
+    Research: [Source 1](https://github.com/grafana/alloy/issues/1117) · [Source 2](https://github.com/prometheus/prometheus/issues/13577) · [Documentation 1](https://prometheus.io/docs/prometheus/latest/querying/api/) · [Documentation 2](https://github.com/prometheus/prometheus/blob/main/storage/remote/write_handler.go).
+
+11. How to Find Mimir Tenant Overrides That Prevent Exemplar Storage
+
+    Research: [Source](https://community.grafana.com/t/exemplars-not-working/147674) · [Documentation](https://grafana.com/docs/mimir/latest/manage/use-exemplars/before-you-begin/).
+
+12. How to Diagnose Missing Counter Exemplars in Google Managed Service for Prometheus
+
+    Research: [Source](https://www.reddit.com/r/ExperiencedDevs/comments/1ow8c61/opentelemetry_worth_the_effort/) · [Documentation](https://docs.cloud.google.com/stackdriver/docs/managed-prometheus/exemplars).
+
+13. How to Make Managed Prometheus Exemplars Resolve to the Correct Cloud Trace Project
+
+    Research: [Source](https://www.reddit.com/r/grafana/comments/z2xhk8) · [Documentation](https://docs.cloud.google.com/stackdriver/docs/managed-prometheus/exemplars).
+
+14. How to Prevent Filtered Metric Attributes from Leaking Through OpenTelemetry Exemplars
+
+    Research: [Source](https://github.com/open-telemetry/opentelemetry-specification/issues/4618) · [Documentation](https://opentelemetry.io/docs/specs/otel/metrics/sdk/).
+
+15. How to Check SDK Support Before Configuring Exemplar Reservoirs Per Metric View
+
+    Research: [Source](https://github.com/open-telemetry/opentelemetry-java/issues/7314) · [Documentation](https://opentelemetry.io/docs/specs/otel/metrics/sdk/).
+
+16. How to Enable the Experimental Exemplar Build Option in OpenTelemetry C++
+
+    Research: [Source](https://github.com/open-telemetry/opentelemetry-cpp/issues/4178) · [Documentation](https://github.com/open-telemetry/opentelemetry-cpp/blob/main/DEPRECATED.md).
+
+17. How to Diagnose Incorrect Exemplar Trace IDs in ClickHouse Metric Tables
+
+    Research: [Source](https://github.com/open-telemetry/opentelemetry-collector-contrib/issues/31332) · [Documentation 1](https://github.com/open-telemetry/opentelemetry-collector-contrib/blob/main/exporter/clickhouseexporter/README.md) · [Documentation 2](https://opentelemetry.io/docs/specs/otel/metrics/data-model/).
+
+18. How to Query Prometheus Exemplars Directly When Grafana Instant Queries Show None
+
+    Research: [Source](https://community.grafana.com/t/exemplars-not-working/147674) · [Documentation 1](https://prometheus.io/docs/prometheus/latest/querying/api/) · [Documentation 2](https://grafana.com/docs/grafana/latest/datasources/prometheus/query-editor/).
+
+19. How to Test Exemplar Coverage When OpenTelemetry Metrics Hit Cardinality Overflow
+
+    Research: [Source](https://github.com/open-telemetry/opentelemetry-specification/issues/5318) · [Documentation](https://opentelemetry.io/docs/specs/otel/metrics/sdk/).
+
+20. How to Reproduce Exemplar Loss During Delta Histogram Accumulation in the Collector
+
+    Research: [Source](https://github.com/open-telemetry/opentelemetry-collector-contrib/issues/53377) · [Documentation 1](https://github.com/open-telemetry/opentelemetry-collector-contrib/blob/main/exporter/prometheusexporter/README.md) · [Documentation 2](https://opentelemetry.io/docs/specs/otel/metrics/data-model/).
+
+
+## Span Events
+
+1. How to Plan an OpenTelemetry Span Event API Migration Without Losing Trace-Timeline Details
+
+    Research: [Source](https://github.com/open-telemetry/opentelemetry-specification/issues/4414) · [Documentation](https://opentelemetry.io/blog/2026/deprecating-span-events/).
+
+2. How to Evaluate the Development-Stage Log-to-Span-Event Bridge Before Migrating Instrumentation
+
+    Research: [Source](https://github.com/open-telemetry/opentelemetry-specification/issues/4393) · [Documentation](https://github.com/open-telemetry/opentelemetry-specification/blob/main/specification/logs/sdk.md).
+
+3. How to Diagnose Exception Events Added to Ended Spans in Quarkus RabbitMQ Consumers
+
+    Research: [Source](https://stackoverflow.com/questions/79090479/opentelemetry-span-recordexception-with-quarkus-rabbitmq) · [Documentation 1](https://opentelemetry.io/docs/specs/otel/trace/api/) · [Documentation 2](https://opentelemetry.io/docs/specs/otel/trace/exceptions/).
+
+4. How to Find Missing Activity Events from Unregistered .NET ActivitySources in Azure Monitor
+
+    Research: [Source](https://stackoverflow.com/questions/77705516/cannot-find-opentelemetry-tags-and-events-in-azure-application-insights) · [Documentation 1](https://opentelemetry.io/docs/languages/dotnet/traces/reporting-exceptions/) · [Documentation 2](https://learn.microsoft.com/en-us/azure/azure-monitor/app/opentelemetry-add-modify?tabs=aspnetcore#send-custom-events).
+
+5. How to Keep Azure Monitor Custom Events Distinct from OpenTelemetry Span Events
+
+    Research: [Source](https://stackoverflow.com/questions/78046144/how-to-register-custom-events-in-application-insights-by-using-opentelemetry-ne) · [Documentation](https://learn.microsoft.com/en-us/azure/azure-monitor/app/opentelemetry-add-modify?tabs=aspnetcore#send-custom-events).
+
+6. How to Diagnose Why Exception Span Events Do Not Set an OpenTelemetry Span to Error
+
+    Research: [Source](https://stackoverflow.com/questions/79090479/opentelemetry-span-recordexception-with-quarkus-rabbitmq) · [Documentation](https://opentelemetry.io/blog/2024/otel-errors/).
+
+7. How to Avoid Recording the Same Exception in Both Manual and Automatic Span Events
+
+    Research: [Source](https://www.reddit.com/r/mcp/comments/1w32u4v/my_scrubber_stripped_emails_from_error_messages/) · [Documentation](https://opentelemetry.io/docs/specs/semconv/general/recording-errors/).
+
+8. How to Redact Sensitive Span Event Attributes That Span-Level Rules Miss
+
+    Research: [Source](https://github.com/open-telemetry/opentelemetry-collector-contrib/issues/36633) · [Documentation 1](https://github.com/open-telemetry/opentelemetry-collector-contrib/blob/main/processor/redactionprocessor/README.md) · [Documentation 2](https://github.com/open-telemetry/opentelemetry-collector-contrib/blob/main/processor/transformprocessor/README.md).
+
+9. How to Test That Automatic Exception Events Stay Redacted Through the Full Export Pipeline
+
+    Research: [Source](https://www.reddit.com/r/mcp/comments/1w32u4v/my_scrubber_stripped_emails_from_error_messages/) · [Documentation 1](https://opentelemetry.io/docs/specs/otel/trace/exceptions/) · [Documentation 2](https://github.com/open-telemetry/opentelemetry-collector-contrib/blob/main/processor/redactionprocessor/README.md).
+
+10. How to Find Browser Navigation Events Timestamped Before Their OpenTelemetry Span Starts
+
+    Research: [Source](https://github.com/open-telemetry/opentelemetry-js/issues/7017) · [Documentation 1](https://opentelemetry.io/docs/specs/otel/trace/api/) · [Documentation 2](https://github.com/open-telemetry/opentelemetry-js/blob/main/CHANGELOG.md).
+
+11. How to Preserve Original Event Times When Importing Delayed Annotations into Recording Spans
+
+    Research: [Source](https://github.com/open-telemetry/opentelemetry-js/issues/3279) · [Documentation 1](https://opentelemetry.io/docs/specs/otel/trace/api/) · [Documentation 2](https://opentelemetry-python.readthedocs.io/en/stable/api/trace.html).
+
+12. How to Diagnose Span Events That Appear Only After Long-Running Operations Finish
+
+    Research: [Source](https://github.com/open-telemetry/opentelemetry-specification/issues/373) · [Documentation](https://github.com/open-telemetry/opentelemetry-specification/blob/main/specification/trace/sdk.md).
+
+13. How to Decide Which Legacy Message-Publish Span Events Should Become Attributes
+
+    Research: [Source](https://github.com/open-telemetry/opentelemetry.io/issues/4184) · [Documentation 1](https://github.com/open-telemetry/opentelemetry.io/blob/main/content/en/docs/concepts/signals/traces.md) · [Documentation 2](https://opentelemetry.io/blog/2026/deprecating-span-events/).
+
+14. How to Diagnose Span Event Attribute Truncation After an OpenTelemetry JavaScript Upgrade
+
+    Research: [Source](https://github.com/open-telemetry/opentelemetry-js/pull/6479) · [Documentation](https://github.com/open-telemetry/opentelemetry-js/blob/main/CHANGELOG.md).
+
+15. How to Inspect Nested Span Event Payloads When an SDK Rejects Complex Attribute Values
+
+    Research: [Source](https://github.com/open-telemetry/opentelemetry-specification/issues/376) · [Documentation](https://github.com/open-telemetry/opentelemetry-specification/blob/main/specification/common/README.md).
+
+16. How to Find Exception Events Attached to Successful Spans with Tempo TraceQL
+
+    Research: [Source](https://github.com/open-telemetry/opentelemetry-specification/issues/4429) · [Documentation 1](https://grafana.com/docs/tempo/latest/traceql/construct-traceql-queries/) · [Documentation 2](https://opentelemetry.io/docs/specs/otel/trace/exceptions/).
+
+17. How to Find Late-Stage Span Events with TraceQL event:timeSinceStart Filters
+
+    Research: [Source](https://github.com/open-telemetry/opentelemetry-js/issues/3279) · [Documentation](https://grafana.com/docs/tempo/latest/traceql/construct-traceql-queries/).
+
+18. How to Avoid Event Enrichment in Read-Only SpanProcessor OnEnd Callbacks
+
+    Research: [Source](https://github.com/open-telemetry/opentelemetry-specification/issues/1089) · [Documentation](https://github.com/open-telemetry/opentelemetry-specification/blob/main/specification/trace/sdk.md).
+
+19. How to Diagnose OTTL Context Errors When Combining Span Predicates with Event Filters
+
+    Research: [Source](https://github.com/open-telemetry/opentelemetry-collector-contrib/issues/7151) · [Documentation](https://github.com/open-telemetry/opentelemetry-collector-contrib/blob/main/processor/filterprocessor/README.md).
+
+20. How to Trace Missing Kafka Streams Events Back to Unfinished Manual Spans
+
+    Research: [Source](https://stackoverflow.com/questions/76562549/opentelemetry-kafka-streams-manual-instrumentation-trace-spans-not-exported) · [Documentation 1](https://github.com/open-telemetry/opentelemetry-specification/blob/main/specification/trace/sdk.md) · [Documentation 2](https://github.com/open-telemetry/opentelemetry-java-instrumentation).
+
+
+## OpAMP
+
+Research scope: The OpenTelemetry OpAMP Supervisor and Collector OpAMP extension are alpha components. Verify release-specific support when drafting.
+
+1. How to Diagnose an OpAMP Supervisor Bootstrap Timeout Before the Collector Connects
+
+    Research: [Source](https://github.com/open-telemetry/opentelemetry-collector-contrib/issues/44913) · [Documentation 1](https://github.com/open-telemetry/opentelemetry-collector-contrib/blob/v0.166.0/cmd/opampsupervisor/README.md) · [Documentation 2](https://github.com/open-telemetry/opentelemetry-collector-contrib/blob/v0.166.0/cmd/opampsupervisor/specification/README.md).
+
+2. How to Keep Local Compliance Settings from Being Overwritten by OpAMP Remote Configuration
+
+    Research: [Source 1](https://github.com/open-telemetry/opentelemetry-collector-contrib/issues/32048) · [Source 2](https://github.com/open-telemetry/opentelemetry-collector-contrib/issues/39963) · [Documentation](https://github.com/open-telemetry/opentelemetry-collector-contrib/blob/v0.166.0/cmd/opampsupervisor/specification/README.md).
+
+3. How to Preserve the Injected OpAMP Extension When Adding Collector Extensions Locally
+
+    Research: [Source](https://github.com/open-telemetry/opentelemetry-collector-contrib/issues/32050) · [Documentation](https://github.com/open-telemetry/opentelemetry-collector-contrib/blob/v0.166.0/cmd/opampsupervisor/specification/README.md).
+
+4. How to Start an OpAMP-Managed Collector During a First-Boot Control-Plane Outage
+
+    Research: [Source](https://github.com/open-telemetry/opentelemetry-collector-contrib/issues/44368) · [Documentation](https://github.com/open-telemetry/opentelemetry-collector-contrib/blob/v0.166.0/cmd/opampsupervisor/README.md).
+
+5. How to Preserve OpAMP Collector Identity and Cached Configuration Across Pod Restarts
+
+    Research: [Source](https://github.com/open-telemetry/opentelemetry-collector-contrib/issues/32034) · [Documentation 1](https://github.com/open-telemetry/opentelemetry-collector-contrib/blob/v0.166.0/cmd/opampsupervisor/README.md) · [Documentation 2](https://github.com/open-telemetry/opentelemetry-collector-contrib/blob/v0.166.0/cmd/opampsupervisor/specification/README.md).
+
+6. How to Validate OpAMP Remote Configurations Without Reusing a Stale effective.yaml
+
+    Research: [Source 1](https://github.com/open-telemetry/opentelemetry-collector-contrib/issues/50153) · [Source 2](https://github.com/open-telemetry/opentelemetry-collector-contrib/issues/41068) · [Documentation](https://github.com/open-telemetry/opentelemetry-collector-contrib/blob/v0.166.0/cmd/opampsupervisor/specification/README.md).
+
+7. How to Verify Whether an OpAMP APPLIED Status Matches the Collector Configuration on Disk
+
+    Research: [Source](https://github.com/open-telemetry/opentelemetry-collector-contrib/issues/52299) · [Documentation](https://github.com/open-telemetry/opamp-spec/blob/main/specification.md).
+
+8. How to Investigate OpAMP Configurations Stuck in APPLYING After a Supervisor Restart
+
+    Research: [Source](https://github.com/open-telemetry/opentelemetry-collector-contrib/issues/52300) · [Documentation](https://github.com/open-telemetry/opamp-spec/blob/main/specification.md).
+
+9. How to Diagnose OpAMP Supervisor Startup Panics from Empty Persistent State Files
+
+    Research: [Source](https://github.com/open-telemetry/opentelemetry-collector-contrib/issues/52720) · [Documentation](https://github.com/open-telemetry/opentelemetry-collector-contrib/blob/v0.166.0/cmd/opampsupervisor/README.md).
+
+10. How to Migrate OpAMP Supervisor Configurations Away from reports_remote_config
+
+    Research: [Source](https://github.com/open-telemetry/opentelemetry-collector-contrib/issues/49763) · [Documentation](https://raw.githubusercontent.com/open-telemetry/opentelemetry-collector-contrib/v0.166.0/CHANGELOG.md).
+
+11. How to Enable Experimental Authentication Extensions in the OpAMP Supervisor
+
+    Research: [Source 1](https://github.com/open-telemetry/opentelemetry-collector-contrib/issues/32762) · [Source 2](https://github.com/open-telemetry/opentelemetry-collector-contrib/issues/41756) · [Documentation](https://github.com/open-telemetry/opentelemetry-collector-contrib/blob/v0.166.0/cmd/opampsupervisor/specification/README.md).
+
+12. How to Preserve TLS Server Verification When OpAMP Connection Settings Change
+
+    Research: [Source](https://github.com/open-telemetry/opentelemetry-collector-contrib/security/advisories/GHSA-c35f-chp7-9chr) · [Documentation](https://github.com/open-telemetry/opentelemetry-collector-contrib/security/advisories/GHSA-c35f-chp7-9chr).
+
+13. How to Investigate False Unhealthy Reports After OpAMP Endpoint or Credential Rotation
+
+    Research: [Source](https://github.com/open-telemetry/opentelemetry-collector-contrib/issues/51009) · [Documentation](https://github.com/open-telemetry/opamp-spec/blob/main/specification.md).
+
+14. How to Verify Server-Requested Heartbeat Intervals in the Collector OpAMP Extension
+
+    Research: [Source](https://github.com/open-telemetry/opentelemetry-collector-contrib/issues/51427) · [Documentation](https://github.com/open-telemetry/opentelemetry-collector-contrib/blob/v0.166.0/extension/opampextension/README.md).
+
+15. How to Connect the Collector OpAMP Extension Through a Unix Domain Socket
+
+    Research: [Source](https://github.com/open-telemetry/opentelemetry-collector-contrib/issues/50603) · [Documentation 1](https://github.com/open-telemetry/opentelemetry-collector-contrib/blob/v0.166.0/extension/opampextension/README.md) · [Documentation 2](https://github.com/open-telemetry/opentelemetry-collector-contrib/releases/).
+
+16. How to Check OpAMP Supervisor and Collector Compatibility Before a Fleet Upgrade
+
+    Research: [Source](https://github.com/open-telemetry/opentelemetry-collector-contrib/issues/48739) · [Documentation](https://github.com/open-telemetry/opentelemetry-collector-contrib/blob/v0.166.0/cmd/opampsupervisor/README.md).
+
+17. How to Capture Bounded Collector Crash Logs in OpAMP Failure Reports
+
+    Research: [Source](https://github.com/open-telemetry/opentelemetry-collector-contrib/issues/21072) · [Documentation](https://github.com/open-telemetry/opentelemetry-collector-contrib/blob/v0.166.0/cmd/opampsupervisor/README.md).
+
+18. How to Detect Orphaned Collector Processes After an OpAMP Supervisor Stops on Windows
+
+    Research: [Source](https://github.com/open-telemetry/opentelemetry-collector-contrib/issues/51076) · [Documentation](https://github.com/open-telemetry/opentelemetry-collector-contrib/blob/v0.166.0/cmd/opampsupervisor/specification/README.md).
+
+19. How to Check Whether OpAMP Effective Configuration Reports Omit Named Config Files
+
+    Research: [Source](https://github.com/open-telemetry/opentelemetry-collector-contrib/issues/49902) · [Documentation](https://github.com/open-telemetry/opamp-spec/blob/main/specification.md).
+
+20. How to Verify TLS Settings for Collector Self-Telemetry Offered Through OpAMP
+
+    Research: [Source](https://github.com/open-telemetry/opentelemetry-collector-contrib/issues/50767) · [Documentation 1](https://github.com/open-telemetry/opamp-spec/blob/main/specification.md) · [Documentation 2](https://github.com/open-telemetry/opentelemetry-collector-contrib/blob/v0.166.0/cmd/opampsupervisor/specification/README.md).
+
+
+## Fluent Bit
+
+1. How to Use Application Event Time in Fluent Bit Without Losing the Original Timestamp Field
+
+    Research: [Source](https://stackoverflow.com/questions/75762348/whats-the-purpose-of-time-key-in-fluent-bit-parsers) · [Documentation](https://docs.fluentbit.io/manual/data-pipeline/parsers/configuring-parser).
+
+2. How to Diagnose Fluent Bit Timestamp Parsing When the Parser Targets a Missing Record Key
+
+    Research: [Source](https://stackoverflow.com/questions/78928089/simple-parsing-of-json-timestamp-not-working-in-fluentbit) · [Documentation 1](https://docs.fluentbit.io/manual/data-pipeline/filters/parser) · [Documentation 2](https://docs.fluentbit.io/manual/data-pipeline/parsers/configuring-parser).
+
+3. How to Convert Millisecond Unix Timestamps into Fluent Bit Event Time with Lua
+
+    Research: [Source](https://github.com/fluent/fluent-bit/issues/9156) · [Documentation 1](https://docs.fluentbit.io/manual/data-pipeline/parsers/configuring-parser) · [Documentation 2](https://docs.fluentbit.io/manual/data-pipeline/filters/lua).
+
+4. How to Decode Escaped JSON into a Nested Fluent Bit Field Without Flattening the Record
+
+    Research: [Source 1](https://stackoverflow.com/questions/79843982/how-to-parse-an-escaped-json-string-into-a-json-object-and-use-it-as-an-object-i) · [Source 2](https://github.com/fluent/fluent-bit/issues/1278) · [Documentation](https://docs.fluentbit.io/manual/data-pipeline/parsers/decoders).
+
+5. How to Preserve Kubernetes Metadata When Applying a Fluent Bit Parser Filter
+
+    Research: [Source 1](https://stackoverflow.com/questions/79843982/how-to-parse-an-escaped-json-string-into-a-json-object-and-use-it-as-an-object-i) · [Source 2](https://stackoverflow.com/questions/69581731/fluent-bit-kubernetes-annotation-does-not-work) · [Documentation](https://docs.fluentbit.io/manual/data-pipeline/filters/parser).
+
+6. How to Filter Fluent Bit Logs by Severity When the Level Is Inside a JSON String
+
+    Research: [Source](https://stackoverflow.com/questions/75737734/fluent-bit-grep-filter-not-working-as-expected) · [Documentation 1](https://docs.fluentbit.io/manual/data-pipeline/filters/grep) · [Documentation 2](https://docs.fluentbit.io/manual/data-pipeline/filters/parser).
+
+7. How to Prevent Fluent Bit Rewrite-Tag Rules from Reprocessing Their Own Emitted Records
+
+    Research: [Source 1](https://stackoverflow.com/questions/64459784/how-to-overwrite-a-rewrite-tag-in-fluent-bit) · [Source 2](https://www.reddit.com/r/devops/comments/iyiwz4) · [Documentation](https://docs.fluentbit.io/manual/data-pipeline/filters/rewrite-tag).
+
+8. How to Apply a Second Fluent Bit Rewrite-Tag Rule Using Record Fields Instead of a Tag as a Key
+
+    Research: [Source](https://stackoverflow.com/questions/64459784/how-to-overwrite-a-rewrite-tag-in-fluent-bit) · [Documentation](https://docs.fluentbit.io/manual/data-pipeline/filters/rewrite-tag).
+
+9. How to Capture the Sender IP for Syslog Devices That Omit Hostnames in Fluent Bit
+
+    Research: [Source](https://www.reddit.com/r/devops/comments/n7512e) · [Documentation](https://docs.fluentbit.io/manual/data-pipeline/inputs/syslog).
+
+10. How to Fix Graylog Missing Host Errors by Mapping Fluent Bit GELF Fields
+
+    Research: [Source](https://www.reddit.com/r/graylog/comments/18x33ea) · [Documentation](https://docs.fluentbit.io/manual/data-pipeline/outputs/gelf).
+
+11. How to Diagnose OTLP Transport and Port Mismatches Between Fluent Bit and an OpenTelemetry Collector
+
+    Research: [Source](https://www.reddit.com/r/OpenTelemetry/comments/1ef5fee) · [Documentation](https://docs.fluentbit.io/manual/data-pipeline/outputs/opentelemetry).
+
+12. How to Keep Fluent Bit Tailing a File After an Oversized Log Line
+
+    Research: [Source](https://github.com/fluent/fluent-bit/issues/10435) · [Documentation](https://docs.fluentbit.io/manual/data-pipeline/inputs/tail).
+
+13. How to Diagnose Fluent Bit CPU Spikes from Very Large Tail Records Under Tight Memory Limits
+
+    Research: [Source](https://github.com/fluent/fluent-bit/issues/9903) · [Documentation 1](https://docs.fluentbit.io/manual/data-pipeline/inputs/tail) · [Documentation 2](https://github.com/aws/aws-for-fluent-bit/blob/mainline/troubleshooting/debugging.md).
+
+14. How to Bound CRI and Docker Multiline Buffers in Fluent Bit 5.1.4 and Later
+
+    Research: [Source 1](https://github.com/fluent/fluent-bit/issues/8871) · [Source 2](https://github.com/fluent/fluent-bit/issues/10435) · [Documentation 1](https://github.com/fluent/fluent-bit-docs/blob/master/pipeline/parsers/multiline-parsing.md) · [Documentation 2](https://fluentbit.io/announcements/v5.1.4/).
+
+15. How to Apply Different Fluent Bit Parsers to stdout and stderr in the Same Kubernetes Pod
+
+    Research: [Source](https://stackoverflow.com/questions/69581731/fluent-bit-kubernetes-annotation-does-not-work) · [Documentation](https://docs.fluentbit.io/manual/data-pipeline/filters/kubernetes).
+
+16. How to Diagnose Fluent Bit S3 Disk Growth When Generic Storage Limits Do Not Apply
+
+    Research: [Source](https://github.com/fluent/fluent-bit/issues/7390) · [Documentation](https://docs.fluentbit.io/manual/data-pipeline/outputs/s3).
+
+17. How to Investigate Fluent Bit S3 Buffer Full Errors When the Spool Directory Is Empty
+
+    Research: [Source](https://github.com/fluent/fluent-bit/issues/12149) · [Documentation](https://docs.fluentbit.io/manual/data-pipeline/outputs/s3).
+
+18. How to Verify Fluent Bit S3 Delivery Independently of Generic Output Success Counters
+
+    Research: [Source 1](https://github.com/aws/aws-for-fluent-bit/issues/254) · [Source 2](https://github.com/fluent/fluent-bit/issues/7390) · [Documentation](https://docs.fluentbit.io/manual/data-pipeline/outputs/s3).
+
+19. How to Fix Fluent Bit Parser File Resolution During Hot Reload on Older Releases
+
+    Research: [Source](https://github.com/fluent/fluent-bit/issues/8918) · [Documentation](https://github.com/fluent/fluent-bit-docs/blob/master/administration/hot-reload.md).
+
+20. How to Detect Fluent Bit Collectors That Stop Forwarding After a Certificate-Triggered Hot Reload
+
+    Research: [Source](https://github.com/fluent/fluent-bit/issues/10518) · [Documentation 1](https://github.com/fluent/fluent-bit-docs/blob/master/administration/hot-reload.md) · [Documentation 2](https://github.com/aws/aws-for-fluent-bit/blob/mainline/troubleshooting/debugging.md).
+
+
+## Grafana Alloy
+
+1. How to Alert on Hosts That Stop Sending Metrics Through Grafana Alloy
+
+    Research: [Source](https://www.reddit.com/r/PrometheusMonitoring/comments/1md3ti1) · [Documentation 1](https://grafana.com/docs/alloy/latest/reference/components/prometheus/prometheus.remote_write/) · [Documentation 2](https://prometheus.io/docs/prometheus/latest/querying/functions/).
+
+2. How to Connect Grafana Alloy Embedded Unix Exporter Targets to a Prometheus Scrape Pipeline
+
+    Research: [Source](https://www.reddit.com/r/grafana/comments/1hrcn0l) · [Documentation](https://grafana.com/docs/alloy/latest/reference/components/prometheus/prometheus.exporter.unix/).
+
+3. How to Reduce Grafana Alloy Scrape Memory by Verifying Target Sharding Across Cluster Peers
+
+    Research: [Source](https://www.reddit.com/r/grafana/comments/1hv4kpr) · [Documentation](https://grafana.com/docs/alloy/latest/configure/clustering/configure-alloy/).
+
+4. How to Reduce Duplicate Metric Scrapes While a Grafana Alloy Cluster Starts
+
+    Research: [Source 1](https://www.reddit.com/r/grafana/comments/1fdcnni) · [Source 2](https://www.reddit.com/r/grafana/comments/1lsxkeg) · [Documentation](https://grafana.com/docs/alloy/latest/configure/clustering/configure-alloy/).
+
+5. How to Diagnose Nonsequential WAL Segment Errors in Grafana Alloy Remote Write
+
+    Research: [Source](https://github.com/grafana/alloy/issues/6165) · [Documentation](https://grafana.com/docs/alloy/latest/reference/components/prometheus/prometheus.remote_write/).
+
+6. How to Size Grafana Alloy Remote-Write Retention for Intermittently Connected Sites
+
+    Research: [Source](https://www.reddit.com/r/grafana/comments/1fzndr5) · [Documentation](https://grafana.com/docs/alloy/latest/reference/components/prometheus/prometheus.remote_write/).
+
+7. How to Prepend Journald SYSLOG_IDENTIFIER to Log Messages in Grafana Alloy
+
+    Research: [Source](https://www.reddit.com/r/grafana/comments/1jkz8io) · [Documentation 1](https://grafana.com/docs/alloy/latest/reference/components/loki/loki.source.journal/) · [Documentation 2](https://grafana.com/docs/alloy/latest/reference/components/loki/loki.process/).
+
+8. How to Send Script Output to Grafana Alloy Through the Loki Push API
+
+    Research: [Source](https://www.reddit.com/r/devops/comments/1nloznd) · [Documentation](https://grafana.com/docs/alloy/latest/reference/components/loki/loki.source.api/).
+
+9. How to Load Database Connection Strings as Secrets in Grafana Alloy
+
+    Research: [Source](https://www.reddit.com/r/grafana/comments/1lvjxqu) · [Documentation](https://grafana.com/docs/alloy/latest/reference/components/local/local.file/).
+
+10. How to Apply Custom Configuration Paths and Arguments to the Grafana Alloy Windows Service
+
+    Research: [Source](https://www.reddit.com/r/grafana/comments/1fj4bl4) · [Documentation](https://grafana.com/docs/alloy/latest/configure/windows/).
+
+11. How to Diagnose Network-Device Syslog Messages That Grafana Alloy Receives but Cannot Parse
+
+    Research: [Source](https://www.reddit.com/r/grafana/comments/1jbz9w0) · [Documentation](https://grafana.com/docs/alloy/latest/reference/components/loki/loki.source.syslog/).
+
+12. How to Give Grafana Alloy Read Access to Application Logs That Rotate Under Another User
+
+    Research: [Source](https://www.reddit.com/r/grafana/comments/1lj9pyn) · [Documentation](https://grafana.com/docs/alloy/latest/access_permissions/linux/).
+
+13. How to Drop Stale Journal Entries Before Grafana Alloy Replays Them to Loki
+
+    Research: [Source](https://www.reddit.com/r/grafana/comments/1lsxkeg) · [Documentation 1](https://grafana.com/docs/alloy/latest/reference/components/loki/loki.source.journal/) · [Documentation 2](https://grafana.com/docs/alloy/latest/reference/components/loki/loki.process/).
+
+14. How to Diagnose cAdvisor Permission Errors in Grafana Alloy Running as a systemd Service
+
+    Research: [Source](https://github.com/grafana/alloy/issues/4068) · [Documentation 1](https://grafana.com/docs/alloy/latest/access_permissions/linux/) · [Documentation 2](https://grafana.com/docs/alloy/latest/reference/components/prometheus/prometheus.exporter.cadvisor/).
+
+15. How to Fix Unknown TraceService Errors When Grafana Alloy Exports to the Wrong Tempo Port
+
+    Research: [Source](https://www.reddit.com/r/grafana/comments/1irxqer) · [Documentation 1](https://grafana.com/docs/tempo/latest/troubleshooting/send-traces/alloy/) · [Documentation 2](https://grafana.com/docs/alloy/latest/access_permissions/).
+
+16. How to Use telemetrygen to Separate Missing Application Spans from a Broken Grafana Alloy Trace Pipeline
+
+    Research: [Source](https://stackoverflow.com/questions/79400979/cannot-see-any-traces-from-alloy-in-grafana) · [Documentation 1](https://grafana.com/docs/learning-paths/send-traces-alloy/view-traces/) · [Documentation 2](https://grafana.com/docs/tempo/latest/troubleshooting/send-traces/alloy/).
+
+17. How to Avoid Span-Metric Counter Collisions Across Multiple Grafana Alloy Instances
+
+    Research: [Source](https://www.reddit.com/r/grafana/comments/1q7l2u6/issues_with_metric_values/) · [Documentation](https://grafana.com/docs/alloy/latest/reference/components/otelcol/otelcol.connector.spanmetrics/).
+
+18. How to Diagnose Grafana Alloy Docker Log Streams That Disconnect Every Refresh Interval
+
+    Research: [Source 1](https://www.reddit.com/r/grafana/comments/1xq2pjj/alloys_lokisourcedocker_cut_every_docker_log/) · [Source 2](https://github.com/grafana/alloy/issues/7290) · [Documentation 1](https://grafana.com/docs/alloy/latest/reference/components/loki/loki.source.docker/) · [Documentation 2](https://github.com/grafana/alloy/releases).
+
+19. How to Restore Grafana Alloy Configuration Loading When Experimental Loki WAL Requires a Stability Flag
+
+    Research: [Source](https://github.com/grafana/alloy/issues/7314) · [Documentation 1](https://grafana.com/docs/alloy/latest/reference/components/loki/loki.write/) · [Documentation 2](https://github.com/grafana/alloy/pull/7257) · [Documentation 3](https://grafana.com/whats-new/2026-10-22-alloy-v121/).
+
+20. How to Investigate Grafana Alloy Thread Growth After Prometheus or Loki Endpoint Outages
+
+    Research: [Source](https://github.com/grafana/alloy/issues/7019) · [Documentation 1](https://grafana.com/docs/alloy/latest/reference/components/prometheus/prometheus.remote_write/) · [Documentation 2](https://grafana.com/docs/alloy/latest/reference/components/loki/loki.write/).
+
+
+## Kyverno
+
+1. How to Escape Legacy Kyverno ClusterPolicy Variables When Rendering Them Through Helm
+
+    Research: [Source](https://www.reddit.com/r/kubernetes/comments/1amkpme) · [Documentation](https://release-1-18-0.kyverno.io/docs/policy-types/cluster-policy/variables/).
+
+2. How to Reference Labels with Slashes and Dots in Legacy Kyverno JMESPath Expressions
+
+    Research: [Source](https://www.reddit.com/r/kubernetes/comments/1doumzm) · [Documentation](https://release-1-18-0.kyverno.io/docs/policy-types/cluster-policy/variables/).
+
+3. How to Migrate Kyverno Missing-Field Checks from JMESPath Defaults to CEL
+
+    Research: [Source 1](https://github.com/kyverno/kyverno/issues/16692) · [Source 2](https://www.reddit.com/r/kubernetes/comments/1doumzm) · [Documentation](https://kyverno.io/docs/guides/jmespath-to-cel/).
+
+4. How to Diagnose Legacy Kyverno foreach Image Mutations That Skip Only Some Containers
+
+    Research: [Source](https://github.com/kyverno/kyverno/issues/2971) · [Documentation 1](https://release-1-18-0.kyverno.io/docs/policy-types/cluster-policy/mutate/) · [Documentation 2](https://release-1-18-0.kyverno.io/docs/policy-types/cluster-policy/preconditions/).
+
+5. How to Remove Multiple Environment Variables with Legacy Kyverno foreach Rules Without Shifting Array Indexes
+
+    Research: [Source](https://github.com/kyverno/policies/discussions/593) · [Documentation](https://release-1-18-0.kyverno.io/docs/policy-types/cluster-policy/mutate/).
+
+6. How to Rewrite Image Registries with Kyverno Without Making External Registry Lookups
+
+    Research: [Source](https://github.com/kyverno/kyverno/discussions/9368) · [Documentation 1](https://release-1-18-0.kyverno.io/docs/policy-types/cluster-policy/variables/) · [Documentation 2](https://release-1-18-0.kyverno.io/docs/policy-types/cluster-policy/external-data-sources/).
+
+7. How to Keep Argo CD in Sync When Kyverno Redirects Pod Images to an Air-Gapped Registry
+
+    Research: [Source 1](https://www.reddit.com/r/kubernetes/comments/1028ksg) · [Source 2](https://www.reddit.com/r/kubernetes/comments/1ipdwap) · [Documentation 1](https://release-1-18-0.kyverno.io/docs/policy-types/cluster-policy/mutate/) · [Documentation 2](https://release-1-18-0.kyverno.io/docs/policy-types/cluster-policy/autogen/).
+
+8. How to Provide Private Registry Credentials for Kyverno Image-Metadata Context Calls
+
+    Research: [Source](https://www.reddit.com/r/kubernetes/comments/123pmwy) · [Documentation 1](https://release-1-18-0.kyverno.io/docs/policy-types/cluster-policy/external-data-sources/) · [Documentation 2](https://kyverno.io/docs/installation/customization/).
+
+9. How to Trace Kyverno Webhook Timeouts to Control-Plane Network Access
+
+    Research: [Source](https://www.reddit.com/r/kubernetes/comments/1lyzeuo) · [Documentation](https://kyverno.io/docs/guides/troubleshooting/).
+
+10. How to Grant Kyverno Background Controllers Only the Permissions Needed to Generate Custom Resources
+
+    Research: [Source 1](https://github.com/kyverno/kyverno/issues/7353) · [Source 2](https://www.reddit.com/r/kubernetes/comments/181huzm) · [Documentation 1](https://kyverno.io/docs/installation/customization/) · [Documentation 2](https://kyverno.io/docs/guides/troubleshooting/).
+
+11. How to Use Server-Side Apply for Legacy Kyverno Generate Rules Shared with Other Controllers
+
+    Research: [Source 1](https://www.reddit.com/r/kubernetes/comments/181huzm) · [Source 2](https://github.com/kyverno/kyverno/issues/7353) · [Documentation](https://release-1-18-0.kyverno.io/docs/policy-types/cluster-policy/generate/).
+
+12. How to Diagnose Legacy Kyverno Mutate-Existing Rules That Run with Background Scanning Disabled
+
+    Research: [Source](https://github.com/kyverno/kyverno/issues/16090) · [Documentation](https://release-1-18-0.kyverno.io/docs/policy-types/cluster-policy/mutate/).
+
+13. How to Migrate Kyverno Pod Auto-Generation Settings from ClusterPolicy Annotations to CEL Policies
+
+    Research: [Source 1](https://www.reddit.com/r/kubernetes/comments/vffkjq) · [Source 2](https://github.com/kyverno/kyverno/issues/16692) · [Documentation 1](https://kyverno.io/docs/guides/migration-to-cel/) · [Documentation 2](https://kyverno.io/docs/policy-types/mutating-policy/).
+
+14. How to Diagnose Kyverno PolicyException Field Paths for Autogenerated Deployment and DaemonSet Rules
+
+    Research: [Source](https://github.com/kyverno/kyverno/issues/16952) · [Documentation 1](https://kyverno.io/docs/guides/exceptions/) · [Documentation 2](https://kyverno.io/docs/policy-types/validating-policy/).
+
+15. How to Interpret Skip Results from Legacy Kyverno ClusterPolicy Preconditions
+
+    Research: [Source 1](https://github.com/kyverno/kyverno/issues/2971) · [Source 2](https://github.com/kyverno/kyverno/issues/16692) · [Documentation 1](https://release-1-18-0.kyverno.io/docs/policy-types/cluster-policy/preconditions/) · [Documentation 2](https://kyverno.io/docs/guides/reports/).
+
+16. How to Determine Which Kyverno ValidatingPolicies Can Run as Native Kubernetes Admission Policies
+
+    Research: [Source](https://www.reddit.com/r/kubernetes/comments/1wz32ae/do_we_still_need_kyverno_or_gatekeeper_for_simple/) · [Documentation](https://kyverno.io/docs/policy-types/validating-policy/).
+
+17. How to Migrate Kyverno Registry-Rewrite Logic from JMESPath to CEL Image Functions
+
+    Research: [Source 1](https://www.reddit.com/r/kubernetes/comments/1ipdwap) · [Source 2](https://www.reddit.com/r/kubernetes/comments/1o3aa9r) · [Documentation 1](https://kyverno.io/docs/guides/jmespath-to-cel/) · [Documentation 2](https://kyverno.io/docs/policy-types/mutating-policy/).
+
+18. How to Evaluate Race Conditions Before Using Kyverno API Lookups to Limit Matching Pod Counts
+
+    Research: [Source](https://www.reddit.com/r/kubernetes/comments/1doumzm) · [Documentation](https://release-1-18-0.kyverno.io/docs/policy-types/cluster-policy/external-data-sources/).
+
+19. How to Avoid Pre-Scheduling Node Lookups in Kyverno Pod Mutation Policies
+
+    Research: [Source](https://www.reddit.com/r/kubernetes/comments/1s662oy/best_way_to_get_node_labels_onto_pods/) · [Documentation 1](https://kyverno.io/docs/policy-types/mutating-policy/) · [Documentation 2](https://github.com/kubernetes/kubernetes/blob/master/plugin/pkg/admission/podtopologylabels/admission.go).
+
+20. How to Read a Central Registry Mapping from a ConfigMap in Kyverno Mutation Policies
+
+    Research: [Source](https://www.reddit.com/r/kubernetes/comments/1hwqjbc) · [Documentation 1](https://release-1-18-0.kyverno.io/docs/policy-types/cluster-policy/external-data-sources/) · [Documentation 2](https://kyverno.io/docs/policy-types/mutating-policy/).
+
+
+## Trivy Operator
+
+1. How to Find Kubernetes Workloads Missing Trivy Operator VulnerabilityReports
+
+    Research: [Source 1](https://github.com/aquasecurity/trivy-operator/discussions/2464) · [Source 2](https://www.reddit.com/r/kubernetes/comments/1n6kbbl) · [Documentation 1](https://aquasecurity.github.io/trivy-operator/latest/docs/) · [Documentation 2](https://github.com/aquasecurity/trivy-operator/blob/main/docs/getting-started/installation/configuration.md).
+
+2. How to Rescan Unchanged Running Images with Trivy Operator Report TTL
+
+    Research: [Source 1](https://www.reddit.com/r/kubernetes/comments/1wnisw3/how_do_you_continuously_monitor_running_images/) · [Source 2](https://www.reddit.com/r/kubernetes/comments/1xbwl5u/rematching_stored_sboms_of_running_images_against/) · [Documentation 1](https://github.com/aquasecurity/trivy-operator/blob/main/docs/getting-started/installation/configuration.md) · [Documentation 2](https://aquasecurity.github.io/trivy-operator/latest/docs/).
+
+3. How to Separate Trivy Operator Scan Timeouts from Image Download and Database Failures
+
+    Research: [Source](https://github.com/aquasecurity/trivy-operator/discussions/2464) · [Documentation 1](https://github.com/aquasecurity/trivy-operator/blob/main/docs/getting-started/installation/configuration.md) · [Documentation 2](https://github.com/aquasecurity/trivy-operator/blob/main/docs/docs/vulnerability-scanning/trivy.md).
+
+4. How to Size Trivy Operator Scan Jobs for Pods with Multiple Containers
+
+    Research: [Source](https://github.com/aquasecurity/trivy-operator/issues/632) · [Documentation 1](https://github.com/aquasecurity/trivy-operator/blob/main/deploy/helm/values.yaml) · [Documentation 2](https://github.com/aquasecurity/trivy-operator/blob/main/docs/docs/vulnerability-scanning/trivy.md).
+
+5. How to Diagnose Trivy Operator Cache Lock Failures in Multi-Container Scan Jobs
+
+    Research: [Source](https://github.com/aquasecurity/trivy-operator/issues/2967) · [Documentation 1](https://github.com/aquasecurity/trivy-operator/blob/main/docs/docs/vulnerability-scanning/trivy.md) · [Documentation 2](https://github.com/aquasecurity/trivy-operator/blob/main/deploy/helm/values.yaml).
+
+6. How to Give Trivy Operator Registry Credentials When K3s Uses Node-Level Registry Authentication
+
+    Research: [Source](https://github.com/aquasecurity/trivy-operator/issues/2586) · [Documentation 1](https://aquasecurity.github.io/trivy-operator/latest/tutorials/private-registries/) · [Documentation 2](https://github.com/aquasecurity/trivy-operator/blob/main/deploy/helm/README.md).
+
+7. How to Fix Trivy Operator Database Authentication When Image Pull Secrets Already Work
+
+    Research: [Source](https://github.com/aquasecurity/trivy-operator/issues/1885) · [Documentation 1](https://github.com/aquasecurity/trivy-operator/blob/main/docs/docs/vulnerability-scanning/trivy.md) · [Documentation 2](https://github.com/aquasecurity/trivy-operator/blob/main/deploy/helm/README.md).
+
+8. How to Pass Private Database Credentials to the Trivy Server Used by Trivy Operator
+
+    Research: [Source](https://github.com/aquasecurity/trivy-operator/issues/2536) · [Documentation 1](https://github.com/aquasecurity/trivy-operator/blob/main/deploy/helm/values.yaml) · [Documentation 2](https://github.com/aquasecurity/trivy-operator/blob/main/docs/docs/vulnerability-scanning/trivy.md).
+
+9. How to Diagnose Trivy Operator Registry CA Errors Before Scan Jobs Start
+
+    Research: [Source](https://github.com/aquasecurity/trivy-operator/issues/3027) · [Documentation 1](https://github.com/aquasecurity/trivy-operator/blob/main/deploy/helm/README.md) · [Documentation 2](https://aquasecurity.github.io/trivy-operator/latest/tutorials/private-registries/).
+
+10. How to Keep Trivy Operator Database Downloads Inside an Air-Gapped Registry
+
+    Research: [Source 1](https://github.com/aquasecurity/trivy-operator/issues/1342) · [Source 2](https://github.com/aquasecurity/trivy-operator/issues/2536) · [Documentation 1](https://github.com/aquasecurity/trivy-operator/blob/main/deploy/helm/values.yaml) · [Documentation 2](https://github.com/aquasecurity/trivy-operator/blob/main/docs/docs/vulnerability-scanning/trivy.md).
+
+11. How to Expose Trivy Operator CVE Details Without Enabling Every High-Cardinality Metric
+
+    Research: [Source](https://www.reddit.com/r/kubernetes/comments/10w4e49/is_there_a_dashboard_for_the_trivyoperator/) · [Documentation 1](https://aquasecurity.github.io/trivy-operator/latest/tutorials/integrations/metrics/) · [Documentation 2](https://github.com/aquasecurity/trivy-operator/blob/main/deploy/helm/README.md).
+
+12. How to Attach Team Ownership Labels to Trivy Operator Vulnerability Metrics
+
+    Research: [Source](https://www.reddit.com/r/kubernetes/comments/1nw9zo0/trivy_operator_dashboard_visualize_trivy_reports/) · [Documentation 1](https://aquasecurity.github.io/trivy-operator/latest/tutorials/integrations/metrics/) · [Documentation 2](https://github.com/aquasecurity/trivy-operator/blob/main/deploy/helm/values.yaml).
+
+13. How to Avoid Double-Counting Trivy Operator CVEs Across Replicas and Old ReplicaSets
+
+    Research: [Source 1](https://www.reddit.com/r/kubernetes/comments/1nw9zo0/trivy_operator_dashboard_visualize_trivy_reports/) · [Source 2](https://github.com/aquasecurity/trivy-operator/issues/3069) · [Documentation 1](https://aquasecurity.github.io/trivy-operator/latest/tutorials/integrations/metrics/) · [Documentation 2](https://github.com/aquasecurity/trivy-operator/blob/main/docs/getting-started/installation/configuration.md).
+
+14. How to Include Package Paths and CVSS Details in Trivy Operator Reports
+
+    Research: [Source](https://www.reddit.com/r/kubernetes/comments/10w4e49/is_there_a_dashboard_for_the_trivyoperator/) · [Documentation](https://github.com/aquasecurity/trivy-operator/blob/main/deploy/helm/README.md).
+
+15. How to Preserve Trivy Operator Scan-Job Logs Long Enough to Diagnose Missing Reports
+
+    Research: [Source 1](https://github.com/aquasecurity/trivy-operator/discussions/2464) · [Source 2](https://github.com/aquasecurity/trivy-operator/issues/942) · [Documentation 1](https://github.com/aquasecurity/trivy-operator/blob/main/docs/getting-started/installation/configuration.md) · [Documentation 2](https://github.com/aquasecurity/trivy-operator/blob/main/deploy/helm/values.yaml).
+
+16. How to Diagnose Trivy Operator Scan Secrets That Remain After Their TTL
+
+    Research: [Source](https://github.com/aquasecurity/trivy-operator/issues/3078) · [Documentation 1](https://github.com/aquasecurity/trivy-operator/blob/main/docs/getting-started/installation/configuration.md) · [Documentation 2](https://github.com/aquasecurity/trivy-operator/blob/main/deploy/helm/README.md).
+
+17. How to Investigate Trivy Operator Workloads That Stop Scanning After a Registry Secret Collision
+
+    Research: [Source](https://github.com/aquasecurity/trivy-operator/issues/3077) · [Documentation 1](https://aquasecurity.github.io/trivy-operator/latest/tutorials/private-registries/) · [Documentation 2](https://github.com/aquasecurity/trivy-operator/blob/main/docs/getting-started/installation/configuration.md).
+
+18. How to Validate Trivy Operator Webhook Delivery Before Switching to Alternate Report Storage
+
+    Research: [Source](https://github.com/aquasecurity/trivy-operator/issues/2682) · [Documentation 1](https://aquasecurity.github.io/trivy-operator/latest/tutorials/integrations/webhook/) · [Documentation 2](https://github.com/aquasecurity/trivy-operator/blob/main/pkg/webhook/webhookreporter.go).
+
+19. How to Reconcile Deleted Trivy Operator Reports in an External Vulnerability Inventory
+
+    Research: [Source](https://www.reddit.com/r/kubernetes/comments/1nw9zo0/trivy_operator_dashboard_visualize_trivy_reports/) · [Documentation 1](https://github.com/aquasecurity/trivy-operator/blob/main/pkg/webhook/webhookreporter.go) · [Documentation 2](https://github.com/aquasecurity/trivy-operator/blob/main/docs/getting-started/installation/configuration.md).
+
+20. How to Distinguish Trivy Operator Image Findings from Runtime File Changes
+
+    Research: [Source](https://www.reddit.com/r/kubernetes/comments/1fil1l9) · [Documentation 1](https://aquasecurity.github.io/trivy-operator/latest/tutorials/private-registries/) · [Documentation 2](https://aquasecurity.github.io/trivy-operator/latest/docs/).
+
+
+## APT
+
+1. How to Refresh Offline APT Indexes Before Requesting Newly Available Packages
+
+    Research: [Source](https://askubuntu.com/questions/1144640/how-to-escape-dependency-hell) · [Documentation 1](https://manpages.ubuntu.com/manpages/jammy/man8/apt-offline.8.html) · [Documentation 2](https://manpages.debian.org/trixie/apt/apt-get.8.en.html).
+
+2. How to Build an Offline APT Dependency Bundle Without Relying on the Download Host's Installed Packages
+
+    Research: [Source 1](https://www.reddit.com/r/debian/comments/jrwlnx/download_packages_and_dependencies_without/) · [Source 2](https://askubuntu.com/questions/1033682/how-to-download-a-software-package-with-all-dependencies-and-sub-dependencies?noredirect=1) · [Documentation 1](https://manpages.ubuntu.com/manpages/jammy/man8/apt-offline.8.html) · [Documentation 2](https://manpages.debian.org/trixie/apt/apt-get.8.en.html).
+
+3. How to Detect Incomplete apt-offline Bundles Before Transferring Them to Disconnected Servers
+
+    Research: [Source](https://askubuntu.com/questions/1566635/im-trying-to-install-packages-on-an-offline-pc-using-apt-offline-but-im-getti/1566662) · [Documentation](https://manpages.ubuntu.com/manpages/jammy/man8/apt-offline.8.html).
+
+4. How to Make Offline APT Installations Fail When Required Packages Are Missing from the Cache
+
+    Research: [Source](https://askubuntu.com/questions/1516968/copy-some-apt-packages-so-that-they-can-be-installed-offline) · [Documentation](https://manpages.debian.org/trixie/apt/apt-get.8.en.html).
+
+5. How to Bootstrap Updated Debian Archive Keys on a Disconnected Server
+
+    Research: [Source 1](https://www.reddit.com/r/debian/comments/usbwqr) · [Source 2](https://www.reddit.com/r/debian/comments/1li26fk) · [Documentation](https://manpages.debian.org/trixie/apt/apt-secure.8.en.html).
+
+6. How to Restrict a Private APT Repository Key to Its Own Source Entry
+
+    Research: [Source 1](https://www.reddit.com/r/linuxquestions/comments/1mp9992) · [Source 2](https://askubuntu.com/questions/1391954/what-is-the-signed-by-option-in-deb-command) · [Documentation 1](https://manpages.debian.org/trixie/apt/apt-secure.8.en.html) · [Documentation 2](https://manpages.debian.org/trixie/apt/sources.list.5.en.html).
+
+7. How to Diagnose APT NO_PUBKEY Errors Caused by Unreadable Keyring Files
+
+    Research: [Source](https://askubuntu.com/questions/1391954/what-is-the-signed-by-option-in-deb-command) · [Documentation 1](https://manpages.debian.org/trixie/apt/sources.list.5.en.html) · [Documentation 2](https://learn.microsoft.com/en-us/troubleshoot/azure/virtual-machines/linux/apt-common-issues-in-ubuntu).
+
+8. How to Separate HTTPS Certificate Failures from APT Repository Signature Errors
+
+    Research: [Source](https://www.reddit.com/r/debian/comments/1g8mdeu) · [Documentation 1](https://manpages.debian.org/trixie/apt/apt-secure.8.en.html) · [Documentation 2](https://manpages.debian.org/trixie/apt/apt.conf.5.en.html).
+
+9. How to Handle Expired APT Release Metadata on One Offline Mirror Without Disabling All Expiry Checks
+
+    Research: [Source](https://unix.stackexchange.com/questions/2544/how-to-work-around-release-file-expired-problem-on-a-local-mirror) · [Documentation 1](https://manpages.debian.org/trixie/apt/sources.list.5.en.html) · [Documentation 2](https://manpages.debian.org/trixie/apt/apt.conf.5.en.html).
+
+10. How to Diagnose APT Release Files That Are Not Valid Yet by Checking System Time
+
+    Research: [Source 1](https://askubuntu.com/questions/1513255/problem-with-update-archive-ubuntu) · [Source 2](https://askubuntu.com/questions/1569138/ubuntu-server-26-04-install-cant-get-past-mirror-configuration) · [Documentation](https://manpages.debian.org/trixie/apt/apt.conf.5.en.html).
+
+11. How to Reject Stale APT Mirror Metadata That Has No Valid-Until Field
+
+    Research: [Source](https://www.reddit.com/r/debian/comments/usbwqr) · [Documentation 1](https://manpages.debian.org/trixie/apt/apt.conf.5.en.html) · [Documentation 2](https://manpages.debian.org/trixie/apt/sources.list.5.en.html).
+
+12. How to Make APT Update Jobs Return a Failure When Any Repository Refresh Fails
+
+    Research: [Source](https://lists.ubuntu.com/archives/foundations-bugs/2021-March/446279.html) · [Documentation](https://manpages.debian.org/trixie/apt/apt-get.8.en.html).
+
+13. How to Bound APT Lock Waits in Cloud-Init and Provisioning Scripts
+
+    Research: [Source](https://lists.ubuntu.com/archives/foundations-bugs/2021-December/465376.html) · [Documentation](https://github.com/Debian/apt/blob/main/apt-pkg/deb/debsystem.cc).
+
+14. How to Stop Automated APT Upgrades from Blocking on Conffile and Debconf Prompts
+
+    Research: [Source 1](https://serverfault.com/questions/1118244/why-would-dpkgoptions-force-confold-be-ignored) · [Source 2](https://serverfault.com/questions/227190/how-do-i-ask-apt-get-to-skip-any-interactive-post-install-configuration-steps/227194) · [Documentation 1](https://manpages.debian.org/trixie/apt/apt-get.8.en.html) · [Documentation 2](https://manpages.debian.org/trixie/apt/apt.conf.5.en.html).
+
+15. How to Control needrestart Service Restarts During APT Maintenance on Ubuntu 24.04
+
+    Research: [Source 1](https://discourse.ubuntu.com/t/needrestart-changes-in-ubuntu-24-04-service-restarts/44671) · [Source 2](https://askubuntu.com/questions/775504/does-unattended-upgrades-restart-services-automatically/841491) · [Documentation 1](https://ubuntu.com/server/docs/how-to/software/automatic-updates/) · [Documentation 2](https://manpages.ubuntu.com/manpages/noble/man1/needrestart.1.html).
+
+16. How to Tell APT Phased Updates Apart from Held Packages Before Forcing an Upgrade
+
+    Research: [Source 1](https://askubuntu.com/questions/1431940/what-are-phased-updates-and-why-does-ubuntu-use-them/1450794) · [Source 2](https://www.reddit.com/r/Ubuntu/comments/1j06byc/the_following_upgrades_have_been_deferred_due_to/) · [Documentation](https://ubuntu.com/server/docs/explanation/software/about-apt-upgrade-and-phased-updates/).
+
+17. How to Store Private APT Repository Credentials in auth.conf Instead of Source URLs
+
+    Research: [Source](https://unix.stackexchange.com/questions/800627/apt-auth-conf-file-with-machine-login-password-fails-on-an-not-findable-extra-ju) · [Documentation](https://manpages.debian.org/trixie/apt/apt_auth.conf.5.en.html).
+
+18. How to Diagnose APT Authentication Failures Caused by Protocol and Path Matching
+
+    Research: [Source](https://www.reddit.com/r/debian/comments/l19q1i) · [Documentation](https://manpages.debian.org/trixie/apt/apt_auth.conf.5.en.html).
+
+19. How to Review APT Suite Changes Before Accepting New Release Metadata
+
+    Research: [Source 1](https://www.reddit.com/r/Crostini/comments/prcyu1) · [Source 2](https://www.reddit.com/r/chromeos/comments/preaj8) · [Documentation 1](https://manpages.debian.org/trixie/apt/apt-secure.8.en.html) · [Documentation 2](https://manpages.debian.org/trixie/apt/apt-get.8.en.html).
+
+20. How to Limit a deb822 APT Source to Supported Architectures Without Removing System Multiarch
+
+    Research: [Source 1](https://askubuntu.com/questions/1520471/skipping-acquire-of-configured-file-doesnt-support-architecture-i386-ubuntu) · [Source 2](https://askubuntu.com/questions/1345751/apt-error-repository-doesnt-support-architecture-i386?noredirect=1) · [Documentation](https://manpages.debian.org/trixie/apt/sources.list.5.en.html).
