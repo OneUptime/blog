@@ -547,6 +547,25 @@ SHOW CREATE TABLE events_kafka;
 SELECT * FROM events_kafka LIMIT 1;
 ```
 
+If `CREATE TABLE` succeeds but nothing arrives, check the consumer's last exception. Wrong security settings don't fail the DDL; the error only appears once the materialized view starts the consumer:
+
+```sql
+SELECT table, exceptions.text[-1] AS last_exception
+FROM system.kafka_consumers
+WHERE database = 'default';
+```
+
+Common signatures (librdkafka wording, ClickHouse 26.8):
+
+| Mistake | What `last_exception` shows |
+|---|---|
+| Wrong mechanism (`PLAIN` against a SCRAM broker) | `Unsupported SASL mechanism: broker's supported mechanisms: SCRAM-SHA-256` (state `AUTH_HANDSHAKE`) |
+| Wrong SCRAM variant (`SCRAM-SHA-512` against a SCRAM-SHA-256 broker) | The same `Unsupported SASL mechanism` error, naming the mechanism the broker supports |
+| Wrong password | `Authentication failed during authentication due to invalid credentials` (state `AUTH_REQ`) |
+| `sasl_plaintext` against a TLS listener | Only `1/1 brokers are down`; `system.text_log` shows `connection closed by peer` in state `APIVERSION_QUERY` |
+
+Signatures from [a ClickHouse 26.8 test](https://selfhost.dev/blog/clickhouse-kafka-engine/#how-do-you-set-up-click-house-kafka-ssl-sasl-ssl-with-scram).
+
 ### Parsing Errors
 
 ```sql
