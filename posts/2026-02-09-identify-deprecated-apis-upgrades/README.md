@@ -78,6 +78,8 @@ kubent -o json > kubent-report.json
 kubent --exit-error
 ```
 
+If you only have manifests or chart output and cannot run a CLI against a cluster, the [Kubernetes Deprecated API Checker](https://www.oreonit.com/deprecated-api-checker-for-kubernetes/) takes pasted YAML or `helm template` output and lists the apiVersions that are removed in the target version. It runs in the browser, so nothing is uploaded.
+
 ## Analyzing API Server Audit Logs
 
 Enable audit logging to track actual API usage.
