@@ -1,0 +1,23 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-25",
+  "runtimeTestsPerformed": true,
+  "sources": [
+    "https://github.com/darold/pgbadger/blob/v13.3/README",
+    "https://github.com/darold/pgbadger/blob/v13.3/pgbadger",
+    "https://www.postgresql.org/docs/18/sql-syntax-lexical.html#SQL-SYNTAX-COMMENTS",
+    "https://google.github.io/sqlcommenter/"
+  ],
+  "tests": [
+    "pgBadger13.3/Perl5.34.1:5 synthetic statements produced1 default group,3 with--keep-comments and1 with-C plus--keep-comments",
+    "Exact Python3.11.13 article fixture and Bash report commands ran; total5 queries/15ms unchanged; retained group counts1/2/2; raw default samples retained annotations; generator refused overwrite",
+    "Quoted service/route values normalized to placeholders and collapsed annotated callers;20 unique request comments created20 groups",
+    "Default-normalized saved binary remained1 group when rendered with--keep-comments, demonstrating no retroactive regrouping",
+    "Seven-node/six-edge Mermaid structural check;1280x720 three-line image generated and visually reviewed"
+  ],
+  "limitations": [
+    "Synthetic logs only; illustrative SELECT statements were source-reviewed but not executed against an orders table",
+    "No application driver, ORM, proxy, live PostgreSQL or production rollout test; no sqlcommenter middleware installed",
+    "No cardinality performance benchmark, universal comment grammar or security/anonymization guarantee; Mermaid not browser-rendered"
+  ]
+}

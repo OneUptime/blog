@@ -1,0 +1,23 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-25",
+  "runtimeTestsPerformed": true,
+  "sources": [
+    "https://github.com/darold/pgbadger/blob/v13.3/README",
+    "https://github.com/darold/pgbadger/blob/v13.3/pgbadger",
+    "https://docs.python.org/3.11/library/pathlib.html",
+    "https://nginx.org/en/docs/http/ngx_http_core_module.html#root"
+  ],
+  "tests": [
+    "pgBadger13.3/Perl5.34.1 separated daily binaries/default checkpoint from HTML/assets; appended and replayed synthetic input retained3 queries",
+    "Rebuilt fresh HTML destination and monthly page with-I/-H; state hashes unchanged; all local JS/CSS references resolved",
+    "Confirmed monthly-H without-I fails, exact corrected example succeeds",
+    "Every article Bash block executed with local paths; Python3.11.13 packaging helper accepted24 presentation files and rejected .bin, LAST_PARSED, JSON and symbolic-link fixtures",
+    "New-directory guard rejected reuse; state700 and HTML750 modes verified; eight-node/eight-edge Mermaid structurally valid;1280x720 two-line image visually inspected"
+  ],
+  "limitations": [
+    "No production logs, database, web server, HTTP authentication/TLS or different Unix account test",
+    "NGINX serving-root discussion documentation reviewed only; packaging check is not a sanitizer or protection against concurrent hostile changes",
+    "Per-database/calendar variants not exercised; Mermaid not browser-rendered"
+  ]
+}

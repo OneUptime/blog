@@ -1,0 +1,26 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-25",
+  "runtimeTestsPerformed": true,
+  "sources": [
+    "https://github.com/darold/pgbadger/blob/v13.3/README",
+    "https://github.com/darold/pgbadger/blob/v13.3/pgbadger",
+    "https://www.postgresql.org/docs/18/runtime-config-logging.html#RUNTIME-CONFIG-LOGGING-JSONLOG",
+    "https://docs.python.org/3.11/library/html.parser.html",
+    "https://docs.python.org/3.11/library/urllib.parse.html",
+    "https://docs.python.org/3.11/library/http.server.html"
+  ],
+  "tests": [
+    "pgBadger13.3/Perl5.34.1 JSON fixture generated4 database calendars from7 queries; monthly HTML counts3/2/1/1 for shop,2025,tenant/eu,../escape",
+    "Exact article initial generation, per-database rebuild and monthly shell commands executed; numeric/slash/dot folder encoding and absent root index verified",
+    "Exact Python3.11.13 link checker checked436 references in20 pages; broken local link fixture rejected",
+    "All4 correctly URL-encoded calendar entry points returnedHTTP200 through temporary Python loopback server; server shut down afterward",
+    "Custom stderr%d prefix omitted slash-name records; JSON format parsed them; per-database JSON export retained other database aggregates, both limits disclosed",
+    "Eight-node/eight-edge Mermaid structural check and1280x720 three-line social-image visual review passed"
+  ],
+  "limitations": [
+    "Synthetic log records only; PostgreSQL18 JSON fields documentation reviewed, no live PostgreSQL18 logging configuration tested",
+    "No production authentication, reverse proxy or browser/chart rendering; link helper skips external URLs and fragments",
+    "Report organization does not establish access isolation; auxiliary JSON cross-database contents remain; Mermaid structurally checked only"
+  ]
+}

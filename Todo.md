@@ -2840,13 +2840,36 @@ Research: [OneUptime air-gapped alerting](https://oneuptime.com/enterprise/air-g
 
 20. How to Export pgBadger JSON, Raw CSV, and Normalized Query Fingerprints into an Observability Pipeline
 
+    Completed: [Article](posts/2026-11-25-pgbadger-export-json-csv-query-fingerprints/README.md) (25 November 2026).
+
 21. How to Build a Monthly pgBadger Report from Existing Binary Data
+
+    Completed: [Article](posts/2026-11-25-pgbadger-monthly-report-existing-binary-data/README.md) (25 November 2026).
+
 22. How to Rebuild pgBadger HTML Reports After an Upgrade Without Reprocessing Logs
+
+    Completed: [Article](posts/2026-11-25-pgbadger-rebuild-html-after-upgrade/README.md) (25 November 2026).
+
 23. How to Keep pgBadger Binary Data Separate from Published HTML Reports
+
+    Completed: [Article](posts/2026-11-25-pgbadger-separate-binary-data-published-html/README.md) (25 November 2026).
+
 24. How to Generate Per-Database pgBadger Reports and Verify Their Calendar Links
+
+    Completed: [Article](posts/2026-11-25-pgbadger-per-database-reports-calendar-links/README.md) (25 November 2026).
+
 25. How to Preserve SQL Comments in pgBadger to Trace Queries Back to Application Code
+
+    Completed: [Article](posts/2026-11-25-pgbadger-preserve-sql-comments-application-code/README.md) (25 November 2026).
+
 26. How to Separate Parse, Bind, and Execute Time in pgBadger Prepared Query Reports
+
+    Completed: [Article](posts/2026-11-25-pgbadger-parse-bind-execute-prepared-queries/README.md) (25 November 2026).
+
 27. How to Include auto_explain Plans in pgBadger Reports
+
+    Completed: [Article](posts/2026-11-25-pgbadger-include-auto-explain-plans/README.md) (25 November 2026).
+
 28. How to Connect pgBadger Explain Plan Links to a Private Visualization Service
 29. How to Align Log Timestamps and JavaScript Chart Time Zones in pgBadger
 30. How to Customize Query and Session Duration Histogram Buckets in pgBadger

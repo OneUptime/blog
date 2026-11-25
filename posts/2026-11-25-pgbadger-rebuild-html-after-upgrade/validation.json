@@ -1,0 +1,25 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-25",
+  "runtimeTestsPerformed": true,
+  "sources": [
+    "https://github.com/darold/pgbadger/releases/tag/v13.2",
+    "https://github.com/darold/pgbadger/releases/tag/v13.3",
+    "https://github.com/darold/pgbadger/blob/v13.3/README",
+    "https://github.com/darold/pgbadger/blob/v13.3/pgbadger",
+    "https://docs.python.org/3.11/library/hashlib.html#hashlib.file_digest"
+  ],
+  "tests": [
+    "Created daily binaries and monthly HTML with pgBadger13.2; rebuilt under13.3/Perl5.34.1; three synthetic queries retained30ms aggregate",
+    "Daily/weekly generator version refreshed; monthly page hash unchanged by general rebuild, then refreshed by explicit monthly command; binary/default checkpoint hashes unchanged",
+    "Existing test asset survived rebuild; moving13 resource directory aside regenerated20 assets; all local JS/CSS references resolve",
+    "Removing daily binary in disposable copy left old HTML marker; demonstrates successful exit does not ensure complete refresh",
+    "Executed every article Bash block with local paths and exact Python manifest under3.11.13; cmp passed; changed checkpoint detected; reused review paths rejected",
+    "Eight-node/seven-edge Mermaid structural check and1280x720 three-line social-image visual review passed"
+  ],
+  "limitations": [
+    "No live database, browser, production web deployment, performance measurement or all historical cross-version compatibility test",
+    "Combined incremental layout only; per-database, custom checkpoint and separate HTML destinations source-reviewed but not executed",
+    "Rebuild does not correct already discarded or misparsed source evidence; Mermaid not rendered"
+  ]
+}

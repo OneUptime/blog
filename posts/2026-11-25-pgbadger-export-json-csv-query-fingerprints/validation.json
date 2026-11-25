@@ -1,0 +1,25 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-25",
+  "runtimeTestsPerformed": true,
+  "sources": [
+    "https://github.com/darold/pgbadger/blob/v13.3/README",
+    "https://github.com/darold/pgbadger/blob/v13.3/pgbadger",
+    "https://docs.python.org/3.11/library/csv.html",
+    "https://docs.python.org/3.11/library/hashlib.html"
+  ],
+  "tests": [
+    "pgBadger13.3/Perl5.34.1/JSON::XS4.02 exported four synthetic duration records with repeated shapes, comma/double quote/non-ASCII literal and multiline SQL",
+    "Exact article Bash commands produced JSON, raw CSV from stdout and normalized text; CSV14-column header/rows verified; normalized text framing and normalyzed_info structure checked",
+    "Exact Python3.11.13 CSV validator rejected wrong header, short row and unterminated quote; a quote inside appname reproduced writer framing rejection",
+    "Exact JSON adapter emitted3 groups/count4/duration10ms, stable repeat IDs; different source identity changed batch IDs without changing query fingerprints; negative count and malformed/nonfinite duration rejected before output",
+    "CSV preserved non-ASCII literal but JSON sample altered its encoding; article explicitly discloses observed limit and adapter excludes raw samples",
+    "Seven-node seven-edge Mermaid structural check and1280x720 two-line social-image visual review passed"
+  ],
+  "limitations": [
+    "No external telemetry destination, database or production records; no remote import/upsert performed",
+    "Adapter uses pinned internal JSON structure and single closed input; caller must pair report with source and prevent overlapping windows",
+    "CSV quote and JSON sample-encoding limitations remain; tests do not establish universal export fidelity or anonymization",
+    "No prepared-protocol, unusual Unicode identifiers, all event formats or arbitrary CSV values covered; Mermaid not browser-rendered"
+  ]
+}

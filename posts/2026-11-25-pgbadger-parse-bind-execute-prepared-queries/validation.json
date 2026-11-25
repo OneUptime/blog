@@ -1,0 +1,25 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-25",
+  "runtimeTestsPerformed": true,
+  "sources": [
+    "https://github.com/darold/pgbadger/blob/v13.3/pgbadger",
+    "https://www.postgresql.org/docs/18/protocol-flow.html#PROTOCOL-FLOW-EXT-QUERY",
+    "https://www.postgresql.org/docs/18/runtime-config-logging.html#GUC-LOG-MIN-DURATION-STATEMENT",
+    "https://www.postgresql.org/docs/18/sql-prepare.html",
+    "https://github.com/psycopg/psycopg/blob/3.2.10/docs/advanced/prepare.rst",
+    "https://pypi.org/project/psycopg/3.2.10/"
+  ],
+  "tests": [
+    "Installed Psycopg3.2.10 in isolated Python3.11.13 environment; disposable PostgreSQL14.17 Unix-socket instance executed exact-semantics article probe, output42/43; AST comparison matched article Python to executed script",
+    "Live named prepared statement logged1 Parse/2 Binds/2 Executes; pgBadger13.3 JSON phase durations matched raw sums0.582/0.065/0.007ms, query count2; server stopped in finally and temporary cluster removed",
+    "Synthetic phases2/3/10/4/20ms yielded prepare2/bind7/execute30,total39ms and2 queries; execute-only threshold model yielded0/0/30, total30ms",
+    "HTML ratio showed0.00 despite known phase reuse, while chart contained counts; live submillisecond durations displayed0ms; both limits explicitly reported",
+    "Exact article report shell command executed; pinned driver install exercised with local environment path; seven-node/seven-edge Mermaid structurally checked and1280x720 three-line image visually reviewed"
+  ],
+  "limitations": [
+    "Live server14.17 was an available lab fixture, not a supported-version deployment recommendation; PostgreSQL18 semantics reviewed in docs but no18 runtime test",
+    "No production application, pool, PgBouncer, pipeline, cursor fetch, plan invalidation or performance benchmark",
+    "Placeholder service definition not provisioned; live test supplied isolated local DSN; no browser/chart runtime or rendered Mermaid check"
+  ]
+}

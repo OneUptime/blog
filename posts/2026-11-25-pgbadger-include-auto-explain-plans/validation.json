@@ -1,0 +1,23 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-25",
+  "runtimeTestsPerformed": true,
+  "sources": [
+    "https://www.postgresql.org/docs/18/auto-explain.html",
+    "https://www.postgresql.org/docs/14/auto-explain.html",
+    "https://github.com/darold/pgbadger/blob/v13.3/README",
+    "https://github.com/darold/pgbadger/blob/v13.3/pgbadger"
+  ],
+  "tests": [
+    "Disposable PostgreSQL14.17 Unix-socket lab executed article SQL:temporary10000-row table, SELECT returned1001, text plan included actual rows1001/filter8999/local buffers94",
+    "Transaction-local auto_explain and statement duration thresholds returned to-1 after rollback; server stopped in finally and temporary cluster removed",
+    "pgBadger13.3/Perl5.34.1 HTML/JSON counted1 execution despite paired auto_explain and duration records; default report retained scan plan, --noexplain comparison omitted it while count remained1",
+    "Article SQL compared line-for-line with executed SQL ignoring blank separator; both exact article report commands executed with local paths",
+    "Seven-node/seven-edge Mermaid structural check;1280x720 two-line image generated and visually reviewed"
+  ],
+  "limitations": [
+    "PostgreSQL14.17 used only as available disposable fixture; PostgreSQL18 documentation reviewed without18 runtime test",
+    "No production overhead measurement, shared preload rollout, sampling/nested-statement test, JSON/XML/YAML plan-format test or log shipper integration",
+    "No browser, external graphical service submission or rendered Mermaid; psql service name is a configured-lab placeholder and actual test used local socket arguments"
+  ]
+}

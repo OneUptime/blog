@@ -833716,5 +833716,107 @@
       "Troubleshooting"
     ],
     "post": "2026-11-25-pgbadger-checkpoint-spikes-query-latency"
+  },
+  {
+    "title": "Export pgBadger JSON, CSV, and Query Fingerprints Safely",
+    "description": "Export pgBadger analysis into an observability pipeline with validated CSV, versioned query fingerprints and explicit rules for units, privacy and replay.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "PostgreSQL",
+      "PgBadger",
+      "Observability",
+      "Data Pipeline"
+    ],
+    "post": "2026-11-25-pgbadger-export-json-csv-query-fingerprints"
+  },
+  {
+    "title": "Build a Monthly pgBadger Report from Saved Binary Data",
+    "description": "Build monthly pgBadger reports from retained daily binaries, check coverage before trusting totals, and rebuild safely without rereading PostgreSQL logs.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "PostgreSQL",
+      "PgBadger",
+      "Observability"
+    ],
+    "post": "2026-11-25-pgbadger-monthly-report-existing-binary-data"
+  },
+  {
+    "title": "Rebuild pgBadger HTML After an Upgrade Without Reprocessing Logs",
+    "description": "Rebuild pgBadger reports from saved analysis after an upgrade, refresh the correct assets, preserve collection state, and identify reports that cannot be rebuilt.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "PostgreSQL",
+      "PgBadger",
+      "Observability"
+    ],
+    "post": "2026-11-25-pgbadger-rebuild-html-after-upgrade"
+  },
+  {
+    "title": "Keep pgBadger Binary Data Separate from Published HTML",
+    "description": "Use pgBadger's separate state and HTML directories, preserve incremental progress, and check publication contents before exposing reports through a web server.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "PostgreSQL",
+      "PgBadger",
+      "Security",
+      "Observability"
+    ],
+    "post": "2026-11-25-pgbadger-separate-binary-data-published-html"
+  },
+  {
+    "title": "Generate pgBadger Reports per Database and Check Calendar Links",
+    "description": "Generate per-database pgBadger reports, find each database's calendar, and verify encoded directory names, monthly links and shared assets before publication.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "PostgreSQL",
+      "PgBadger",
+      "Observability"
+    ],
+    "post": "2026-11-25-pgbadger-per-database-reports-calendar-links"
+  },
+  {
+    "title": "Preserve SQL Comments in pgBadger to Find Application Code",
+    "description": "Preserve useful SQL annotations in pgBadger, distinguish query groups from raw samples, and trace slow statements to stable application locations without excessive groups.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "PostgreSQL",
+      "PgBadger",
+      "Observability"
+    ],
+    "post": "2026-11-25-pgbadger-preserve-sql-comments-application-code"
+  },
+  {
+    "title": "Separate Parse, Bind, and Execute Time in pgBadger Reports",
+    "description": "Read prepared-query phase timings in pgBadger, verify statement reuse with a small driver test, and avoid confusing partial logs or summary ratios with application latency.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "PostgreSQL",
+      "PgBadger",
+      "Observability"
+    ],
+    "post": "2026-11-25-pgbadger-parse-bind-execute-prepared-queries"
+  },
+  {
+    "title": "Include auto_explain Plans in pgBadger Reports",
+    "description": "Capture a query plan with session-scoped auto_explain settings, include it in pgBadger, and verify plan contents and query counts before broader collection.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "PostgreSQL",
+      "PgBadger",
+      "Observability"
+    ],
+    "post": "2026-11-25-pgbadger-include-auto-explain-plans"
+  },
+  {
+    "title": "Connect pgBadger Explain Links to a Private Plan Visualizer",
+    "description": "Redirect pgBadger plan links to an internal visualizer, adapt its encoded form payload, and verify routing and privacy boundaries before sharing database plans.",
+    "authorGitHubUsername": "nawazdhandala",
+    "tags": [
+      "PostgreSQL",
+      "PgBadger",
+      "Observability",
+      "Security"
+    ],
+    "post": "2026-11-25-pgbadger-private-explain-plan-visualization"
   }
 ]

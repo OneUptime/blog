@@ -1,0 +1,23 @@
+{
+  "status": "validated",
+  "validatedAt": "2026-11-25",
+  "runtimeTestsPerformed": true,
+  "sources": [
+    "https://github.com/darold/pgbadger/blob/v13.3/README",
+    "https://github.com/darold/pgbadger/blob/v13.3/pgbadger",
+    "https://metacpan.org/pod/Storable#SECURITY-WARNING",
+    "https://docs.python.org/3.11/library/pathlib.html"
+  ],
+  "tests": [
+    "pgBadger13.3/Perl5.34.1: seven synthetic records across four days produced four daily binaries; October aggregation6 queries/60ms excludes November record",
+    "Repeated monthly build retained six-query total and identical daily binary/LAST_PARSED hashes; calendar link and monthly HTML existence verified",
+    "Removed October15 binary in disposable copy: exit0 with5 queries/50ms; incomplete-coverage behavior explicitly explained",
+    "Exact combined-layout article shell commands executed with local path substitutions; existing review destination rejected; Python3.11.13 inventory listed31 October days/28 missing and30 November days; missing month failed",
+    "Eight-node/seven-edge Mermaid structural check; generated1280x720 image visually reviewed with two title lines"
+  ],
+  "limitations": [
+    "Synthetic logs only; no live PostgreSQL workload or production archive; no complete real-month coverage guarantee",
+    "Per-database monthly variant source-reviewed only; no cross-version binary compatibility claim",
+    "Browser rendering and HTTP publication not performed; Mermaid structurally checked only"
+  ]
+}
