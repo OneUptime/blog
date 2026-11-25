@@ -22,6 +22,8 @@ EKS follows an extended support model. Each version goes through these phases:
 
 You can only upgrade one minor version at a time. So going from 1.33 to 1.35 requires two upgrades: 1.33 to 1.34, then 1.34 to 1.35.
 
+To see what staying in extended support costs, the [extended support cost calculator for EKS, GKE and AKS](https://www.oreonit.com/extended-support-cost-calculator-for-eks-gke-aks/) works it out per cluster from list prices, and the [version support calendar](https://www.oreonit.com/kubernetes-version-support-calendar-eks-gke-aks/) shows the end of standard and extended support for each version on all three services.
+
 ```mermaid
 flowchart LR
     A[Check Current Version] --> B[Review Changelog]
