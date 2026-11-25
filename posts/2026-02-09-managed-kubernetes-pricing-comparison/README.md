@@ -22,6 +22,8 @@ The Kubernetes control plane costs differ dramatically between providers.
 
 **DigitalOcean DOKS**: Free control plane. High availability for the control plane costs $40/month, prorated hourly.
 
+To see how extended support changes the control plane bill for a given number of clusters and months, the [extended support cost calculator for EKS, GKE and AKS](https://www.oreonit.com/extended-support-cost-calculator-for-eks-gke-aks/) works it out from list prices.
+
 Cost comparison for 5 development clusters and 2 production clusters:
 
 ```text
