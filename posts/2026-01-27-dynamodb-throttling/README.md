@@ -26,6 +26,7 @@ Before solving throttling, you need to understand why it occurs. DynamoDB distri
 2. **Burst Capacity Exhaustion**: Sustained traffic above provisioned capacity depletes burst credits
 3. **Partition-Level Limits**: Single partition limits of 3,000 read operations or 1,000 write operations per second
 4. **Sudden Traffic Spikes**: Traffic increases faster than auto-scaling can respond
+5. **On-Demand Scaling Limits**: A new on-demand table sustains up to 4,000 writes and 12,000 reads per second. After that, on-demand instantly accommodates up to double the previous peak; growing past that needs about 30 minutes or a pre-warmed table ([AWS docs](https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/on-demand-capacity-mode.html))
 
 ```mermaid
 flowchart TD
@@ -1129,7 +1130,7 @@ Effective DynamoDB throttling management requires a multi-layered approach combi
 1. **Choose high-cardinality partition keys** - Avoid dates, status codes, or any attribute with limited unique values
 2. **Implement write sharding** for high-velocity writes to single logical entities
 3. **Calculate partition capacity** before provisioning - remember the 3,000 read operations / 1,000 write operations per second per partition limit
-4. **Use on-demand mode** for unpredictable workloads where you cannot forecast capacity needs
+4. **Use on-demand mode** for unpredictable workloads where you cannot forecast capacity needs, but do not treat it as throttle-proof. Before a known spike such as a launch or migration, [pre-warm the table](https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/warm-throughput.html) by raising its warm throughput
 
 ### Implementation Phase
 
