@@ -74,6 +74,16 @@ SETTINGS
 
 Each ClickHouse node can consume up to `kafka_num_consumers` partitions in parallel. To use all 12 partitions, set `kafka_num_consumers = 12` on a single node, or split across nodes with the same consumer group.
 
+Measured effect on a single node (ClickHouse 26.8 on a 2 vCPU t4g.large, 3 partitions, a backlog of 3,000,000 messages of 256 B):
+
+| Config | Drain time | Rows/s | New parts |
+|---|---|---|---|
+| `kafka_num_consumers = 1` | 56.6 s | 53,018 | 8 |
+| `kafka_num_consumers = 3` | 44.4 s | 67,642 | 15 |
+| `kafka_num_consumers = 3`, `kafka_thread_per_consumer = 1` | 37.7 s | 79,554 | 15 |
+
+With the default `kafka_thread_per_consumer = 0`, rows from all consumers are squashed into one block; setting it to 1 gives each consumer its own thread and its own flush. More consumers also created more parts for merges to clean up. ([source](https://selfhost.dev/blog/clickhouse-kafka-engine/#kafka-num-consumers-and-kafka-thread-per-consumer-measured))
+
 ## Distributed Consumer Setup
 
 For high-throughput pipelines, distribute consumers across ClickHouse nodes:
